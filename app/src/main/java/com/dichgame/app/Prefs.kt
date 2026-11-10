@@ -1,0 +1,184 @@
+package com.dichgame.app
+
+import android.content.Context
+import android.content.SharedPreferences
+import org.json.JSONArray
+
+/** Toàn bộ cài đặt của app, lưu trong SharedPreferences "dg" (giữ nguyên các khóa cũ để CaptureService vẫn đọc được). */
+class Prefs(ctx: Context) {
+    val sp: SharedPreferences = ctx.applicationContext.getSharedPreferences("dg", Context.MODE_PRIVATE)
+
+    companion object {
+        const val ENGINE_LOCAL = "local"
+        const val ENGINE_CLOUD = "cloud"
+        const val ENGINE_GEMINI = "gemini"
+        const val DEFAULT_PROFILE = "Mặc định"
+        val LANGS = listOf("en" to "Tiếng Anh", "ja" to "Tiếng Nhật", "ko" to "Tiếng Hàn", "zh" to "Tiếng Trung", "vi" to "Tiếng Việt")
+        val STYLES = listOf("Chữ trắng, nền đen", "Chữ vàng, nền đen", "Chữ đen, nền trắng", "Chữ trắng, không nền")
+        /** Phong cách dịch: tên hiển thị và chỉ dẫn đưa cho AI. */
+        val TR_STYLES = listOf(
+            "Tự nhiên" to "Dịch tự nhiên, trôi chảy như người Việt nói.",
+            "Thuyết minh" to "Dịch theo giọng thuyết minh phim: câu gọn, rõ nghĩa, dễ nghe khi đọc to.",
+            "Ngắn gọn" to "Dịch ngắn gọn nhất có thể, đủ ý, phù hợp phụ đề hiện nhanh.",
+            "Sát nghĩa" to "Dịch sát nghĩa nguyên văn, ít diễn đạt lại."
+        )
+        /** Giọng AI của Gemini: (mã giọng, mô tả). */
+        val AI_VOICES = listOf(
+            "Kore" to "Chắc chắn", "Puck" to "Vui tươi", "Charon" to "Rõ ràng, thông tin", "Zephyr" to "Sáng",
+            "Sulafat" to "Ấm", "Aoede" to "Nhẹ nhàng", "Achird" to "Thân thiện", "Gacrux" to "Trưởng thành"
+        )
+        fun langName(code: String) = LANGS.firstOrNull { it.first == code }?.second ?: "Tiếng Anh"
+    }
+
+    /** Chế độ: "translate" (dịch sang tiếng Việt) hoặc "narrate" (thuyết minh, đọc phụ đề có sẵn). */
+    var narrate: Boolean
+        get() = sp.getBoolean("narrate", false)
+        set(v) = sp.edit().putBoolean("narrate", v).apply()
+
+    /** Ngôn ngữ trong game: en, ja, ko, zh. Khi thuyết minh thì nguồn luôn là tiếng Việt. */
+    var lang: String
+        get() = sp.getString("langc", null) ?: arrayOf("en", "ja", "ko", "zh")[sp.getInt("lang", 0).coerceIn(0, 3)]
+        set(v) = sp.edit().putString("langc", v).apply()
+
+    var engine: String
+        get() = sp.getString("engine", null) ?: if (sp.getString("key", "").isNullOrEmpty()) ENGINE_LOCAL else ENGINE_GEMINI
+        set(v) = sp.edit().putString("engine", v).apply()
+
+    var geminiKey: String
+        get() = sp.getString("key", "").orEmpty()
+        set(v) = sp.edit().putString("key", v.trim()).apply()
+    var geminiModel: String
+        get() = sp.getString("gmodel", "gemini-flash-latest").orEmpty().ifBlank { "gemini-flash-latest" }
+        set(v) = sp.edit().putString("gmodel", v.trim()).apply()
+
+    /** CloudAPI: dịch vụ AI đám mây theo chuẩn OpenAI (/chat/completions), cần địa chỉ, khóa và tên model. */
+    var cloudUrl: String
+        get() = sp.getString("curl", "").orEmpty()
+        set(v) = sp.edit().putString("curl", v.trim()).apply()
+    var cloudKey: String
+        get() = sp.getString("ckey", "").orEmpty()
+        set(v) = sp.edit().putString("ckey", v.trim()).apply()
+    var cloudModel: String
+        get() = sp.getString("cmodel", "gemini-3.1-flash-lite").orEmpty()
+        set(v) = sp.edit().putString("cmodel", v.trim()).apply()
+
+    /** Số câu trước đưa cho AI để hiểu mạch truyện. */
+    var ctxCount: Int
+        get() = sp.getInt("ctxn", 3).coerceIn(0, 10)
+        set(v) = sp.edit().putInt("ctxn", v.coerceIn(0, 10)).apply()
+
+    /** Phong cách dịch AI (chỉ số trong TR_STYLES). */
+    var trStyle: Int
+        get() = sp.getInt("trstyle", 1).coerceIn(0, TR_STYLES.size - 1)
+        set(v) = sp.edit().putInt("trstyle", v).apply()
+
+    /** Khoảng cách giữa hai lần quét khung phụ đề, mili giây. Nhỏ hơn đỡ sót câu, lớn hơn đỡ nóng máy. */
+    var scanMs: Int
+        get() = sp.getInt("scanms", 1000).coerceIn(400, 3000)
+        set(v) = sp.edit().putInt("scanms", v.coerceIn(400, 3000)).apply()
+
+    /** "system" = giọng của máy, "ai" = giọng AI Gemini (cần khóa Gemini, tự lùi về giọng máy khi lỗi). */
+    var voiceEngine: String
+        get() = sp.getString("voiceengine", "system").orEmpty()
+        set(v) = sp.edit().putString("voiceengine", v).apply()
+    var aiVoice: String
+        get() = sp.getString("aivoice", "Kore").orEmpty().ifBlank { "Kore" }
+        set(v) = sp.edit().putString("aivoice", v).apply()
+    var ttsModel: String
+        get() = sp.getString("ttsmodel", "gemini-3.8-flash-tts").orEmpty().ifBlank { "gemini-3.8-flash-tts" }
+        set(v) = sp.edit().putString("ttsmodel", v.trim()).apply()
+    val aiVoiceOn: Boolean get() = voiceEngine == "ai" && geminiKey.isNotEmpty()
+
+    var voice: String
+        get() = sp.getString("voice", "").orEmpty()
+        set(v) = sp.edit().putString("voice", v).apply()
+    /** Tốc độ đọc theo bước 0,1 (14 = 1,4x). */
+    var rate10: Int
+        get() = sp.getInt("rate10", 10).coerceIn(5, 30)
+        set(v) = sp.edit().putInt("rate10", v.coerceIn(5, 30)).apply()
+    var emotion: Boolean
+        get() = sp.getBoolean("emotion", false)
+        set(v) = sp.edit().putBoolean("emotion", v).apply()
+
+    var showOrig: Boolean
+        get() = sp.getBoolean("showorig", false)
+        set(v) = sp.edit().putBoolean("showorig", v).apply()
+    /** Cỡ chữ phụ đề, phần trăm so với cỡ gốc (50..200). */
+    var subScale: Int
+        get() = sp.getInt("subscale", 100).coerceIn(50, 200)
+        set(v) = sp.edit().putInt("subscale", v.coerceIn(50, 200)).apply()
+    var style: Int
+        get() = sp.getInt("style", 0).coerceIn(0, 3)
+        set(v) = sp.edit().putInt("style", v).apply()
+
+    /** "phone" hoặc "tv": nơi chơi game. */
+    var playOn: String
+        get() = sp.getString("playon", "phone").orEmpty()
+        set(v) = sp.edit().putString("playon", v).apply()
+    var tvSpeak: Boolean
+        get() = sp.getBoolean("tvspeak", false)
+        set(v) = sp.edit().putBoolean("tvspeak", v).apply()
+    val tvIp: String get() = sp.getString("tvip", "").orEmpty()
+    var tvToken: String
+        get() = sp.getString("tvtoken", "").orEmpty()
+        set(v) = sp.edit().putString("tvtoken", v).apply()
+    val tvPaired: Boolean get() = tvIp.isNotEmpty() && tvToken.isNotEmpty()
+    fun saveTv(ip: String, token: String) = sp.edit().putString("tvip", ip).putString("tvtoken", token).apply()
+    fun clearTv() = sp.edit().remove("tvtoken").apply()
+
+    // ---- Hồ sơ game: mỗi hồ sơ có tên game riêng và vùng quét riêng (CaptureService đọc "game" theo hồ sơ hiện tại) ----
+    var profiles: List<String>
+        get() {
+            val out = ArrayList<String>()
+            try {
+                val a = JSONArray(sp.getString("profiles", "[]"))
+                for (i in 0 until a.length()) out.add(a.getString(i))
+            } catch (_: Exception) {}
+            if (!out.contains(DEFAULT_PROFILE)) out.add(0, DEFAULT_PROFILE)
+            return out
+        }
+        set(v) = sp.edit().putString("profiles", JSONArray(v).toString()).apply()
+
+    var profile: String
+        get() = sp.getString("profile", DEFAULT_PROFILE).orEmpty().ifBlank { DEFAULT_PROFILE }
+        set(v) {
+            // đổi hồ sơ: lưu tên game của hồ sơ cũ, rồi nạp tên game của hồ sơ mới vào khóa "game" mà CaptureService đang đọc
+            val old = profile
+            val cur = sp.getString("game", "").orEmpty()
+            val next = if (v == old) cur else (sp.getString("game_$v", null) ?: "")
+            sp.edit().putString("game_$old", cur).putString("profile", v).putString("game", next).apply()
+        }
+
+    fun gameOf(p: String): String = sp.getString("game_$p", null) ?: if (p == profile) sp.getString("game", "").orEmpty() else ""
+    var game: String
+        get() = sp.getString("game", "").orEmpty()
+        set(v) = sp.edit().putString("game", v.trim()).putString("game_$profile", v.trim()).apply()
+
+    fun addProfile(name: String): Boolean {
+        val n = name.trim()
+        if (n.isEmpty() || profiles.contains(n)) return false
+        profiles = profiles + n
+        profile = n
+        return true
+    }
+
+    fun deleteProfile(name: String) {
+        if (name == DEFAULT_PROFILE) return
+        profiles = profiles.filter { it != name }
+        if (profile == name) profile = DEFAULT_PROFILE
+        sp.edit().remove("game_$name").apply()
+    }
+
+    var fontSize: Int
+        get() = sp.getInt("fs", 18)
+        set(v) = sp.edit().putInt("fs", v).apply()
+    var autoMenu: Boolean
+        get() = sp.getBoolean("automenu", false)
+        set(v) = sp.edit().putBoolean("automenu", v).apply()
+    var slow: Boolean
+        get() = sp.getBoolean("slow", false)
+        set(v) = sp.edit().putBoolean("slow", v).apply()
+    var speak: Boolean
+        get() = sp.getBoolean("speak", true)
+        set(v) = sp.edit().putBoolean("speak", v).apply()
+}
