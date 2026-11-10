@@ -1,0 +1,18 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <boolean name="narrate" value="true" />
+    <string name="engine">cloud</string>
+    <string name="curl">https://api.example.com/v1</string>
+    <string name="ckey">test</string>
+    <string name="key">test</string>
+    <string name="voiceengine">ai</string>
+    <string name="profiles">["Mặc định","Elden Ring"]</string>
+    <string name="profile">Elden Ring</string>
+    <string name="game_Elden Ring">Elden Ring, giả tưởng</string>
+    <string name="game">Elden Ring, giả tưởng</string>
+    <string name="tvip">192.168.1.40</string>
+    <string name="tvtoken">abc</string>
+    <string name="playon">tv</string>
+    <boolean name="emotion" value="true" />
+    <boolean name="showorig" value="true" />
+</map>

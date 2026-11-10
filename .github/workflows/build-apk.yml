@@ -5,7 +5,7 @@ name: Build APK
 # Đẩy lên nhánh main/master hoặc gắn tag v* thì tự tạo bản phát hành (Releases) kèm 4 file APK để tải thẳng.
 on:
   push:
-    branches: ["**"]
+    branches: ["**", "!ci-shots"]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
