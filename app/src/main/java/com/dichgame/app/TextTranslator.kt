@@ -26,6 +26,16 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                     "ja" -> TranslateLanguage.JAPANESE
                     "ko" -> TranslateLanguage.KOREAN
                     "zh" -> TranslateLanguage.CHINESE
+                    "fr" -> TranslateLanguage.FRENCH
+                    "de" -> TranslateLanguage.GERMAN
+                    "es" -> TranslateLanguage.SPANISH
+                    "pt" -> TranslateLanguage.PORTUGUESE
+                    "it" -> TranslateLanguage.ITALIAN
+                    "id" -> TranslateLanguage.INDONESIAN
+                    "nl" -> TranslateLanguage.DUTCH
+                    "pl" -> TranslateLanguage.POLISH
+                    "tr" -> TranslateLanguage.TURKISH
+                    "hi" -> TranslateLanguage.HINDI
                     else -> TranslateLanguage.ENGLISH
                 }
             )
@@ -33,12 +43,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             .build()
     )
 
-    private fun srcName() = when (lang) {
-        "ja" -> "tiếng Nhật"
-        "ko" -> "tiếng Hàn"
-        "zh" -> "tiếng Trung"
-        else -> "tiếng Anh"
-    }
+    private fun srcName() = Prefs.srcNameOf(lang)
 
     /** Tải mô hình dịch trên máy (lần đầu cần mạng). */
     fun prepare(onDone: (Boolean) -> Unit) {

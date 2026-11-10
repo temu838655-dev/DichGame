@@ -13,7 +13,17 @@ class Prefs(ctx: Context) {
         const val ENGINE_CLOUD = "cloud"
         const val ENGINE_GEMINI = "gemini"
         const val DEFAULT_PROFILE = "Mặc định"
-        val LANGS = listOf("en" to "Tiếng Anh", "ja" to "Tiếng Nhật", "ko" to "Tiếng Hàn", "zh" to "Tiếng Trung", "vi" to "Tiếng Việt")
+        /** Ngôn ngữ chữ trong game đọc được bằng OCR trên máy (chữ Latin, Hindi, Nhật, Hàn, Trung). "vi" chỉ dùng cho chế độ Thuyết minh. */
+        val LANGS = listOf(
+            "en" to "Tiếng Anh", "ja" to "Tiếng Nhật", "ko" to "Tiếng Hàn", "zh" to "Tiếng Trung",
+            "fr" to "Tiếng Pháp", "de" to "Tiếng Đức", "es" to "Tiếng Tây Ban Nha", "pt" to "Tiếng Bồ Đào Nha",
+            "it" to "Tiếng Ý", "id" to "Tiếng Indonesia", "nl" to "Tiếng Hà Lan", "pl" to "Tiếng Ba Lan",
+            "tr" to "Tiếng Thổ Nhĩ Kỳ", "hi" to "Tiếng Hindi", "vi" to "Tiếng Việt"
+        )
+        /** Chữ Nhật, Hàn, Trung không có dấu cách giữa các từ. */
+        fun isCjk(code: String) = code == "ja" || code == "ko" || code == "zh"
+        /** Tên ngôn ngữ viết thường để đưa vào câu lệnh cho AI, vd "tiếng Pháp". */
+        fun srcNameOf(code: String) = langName(code).replaceFirst("Tiếng", "tiếng")
         val STYLES = listOf("Chữ trắng, nền đen", "Chữ vàng, nền đen", "Chữ đen, nền trắng", "Chữ trắng, không nền")
         /** Phong cách dịch: tên hiển thị và chỉ dẫn đưa cho AI. */
         val TR_STYLES = listOf(
@@ -63,6 +73,11 @@ class Prefs(ctx: Context) {
         set(v) = sp.edit().putString("cmodel", v.trim()).apply()
 
     /** Số câu trước đưa cho AI để hiểu mạch truyện. */
+    /** Từ điển riêng của hồ sơ hiện tại, mỗi dòng "gốc = tiếng Việt". Chỉ dùng cho dịch AI. */
+    var glossary: String
+        get() = sp.getString("gloss_$profile", "").orEmpty()
+        set(v) = sp.edit().putString("gloss_$profile", v).apply()
+
     var ctxCount: Int
         get() = sp.getInt("ctxn", 3).coerceIn(0, 10)
         set(v) = sp.edit().putInt("ctxn", v.coerceIn(0, 10)).apply()
@@ -166,7 +181,7 @@ class Prefs(ctx: Context) {
         if (name == DEFAULT_PROFILE) return
         profiles = profiles.filter { it != name }
         if (profile == name) profile = DEFAULT_PROFILE
-        sp.edit().remove("game_$name").apply()
+        sp.edit().remove("game_$name").remove("gloss_$name").apply()
     }
 
     var fontSize: Int

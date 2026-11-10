@@ -114,8 +114,10 @@ class TvSetupActivity : Activity() {
         num.gravity = Gravity.CENTER
         num.background = Ui.goldBg(this, 20)
         row.addView(num, Ui.lp(Ui.dp(this, 32), Ui.dp(this, 32)))
-        row.addView(Ui.tv(this, text, 14.5f, Ui.TEXT).apply { setLineSpacing(0f, 1.1f) },
-            Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@TvSetupActivity, 12) })
+        // Bọc chữ trong một cột như màn Hướng dẫn: đặt TextView trực tiếp làm con có trọng số thì dòng cuối bị cắt.
+        val col = Ui.vbox(this)
+        col.addView(Ui.tv(this, text, 14.5f, Ui.TEXT).apply { setLineSpacing(0f, 1.1f) })
+        row.addView(col, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@TvSetupActivity, 12) })
         row.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6))
         return row
     }

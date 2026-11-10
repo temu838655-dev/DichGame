@@ -166,8 +166,35 @@ class SettingsActivity : Activity() {
         c.addView(Ui.divider(this), Ui.lpm(this, 14, 0))
         c.addView(Ui.dropRow(this, "Phong cách dịch", { Prefs.TR_STYLES[p.trStyle].first }, { Prefs.TR_STYLES.map { it.first } }) { p.trStyle = it })
         c.addView(Ui.tv(this, "Phong cách áp dụng đầy đủ cho bộ dịch AI. Mỗi hồ sơ lưu vùng quét riêng.", 12.5f, Ui.SUB), Ui.lpm(this, 2, 10))
-        c.addView(Ui.button(this, "＋  Thêm hồ sơ") { addProfile() }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT))
+        c.addView(Ui.tv(this, "Từ điển riêng: ${glossaryCount()}", 15f, Ui.TEXT, true), Ui.lpm(this, 12, 2))
+        c.addView(Ui.tv(this, "Ép bộ dịch AI luôn dịch đúng tên riêng, chiêu thức, địa danh của game này.", 12.5f, Ui.SUB), Ui.lpm(this, 2, 10))
+        val row = Ui.hbox(this)
+        row.addView(Ui.button(this, "＋  Thêm hồ sơ") { addProfile() }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT))
+        row.addView(Ui.button(this, "Sửa từ điển") { glossaryDialog() }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = Ui.dp(this@SettingsActivity, 10) })
+        c.addView(row)
         return c
+    }
+
+    private fun glossaryCount(): String {
+        val n = p.glossary.lines().count { it.contains("=") }
+        return if (n == 0) "Chưa có từ nào" else "$n từ"
+    }
+
+    private fun glossaryDialog() {
+        val et = Ui.field(this, "Mỗi dòng một từ: gốc = tiếng Việt", p.glossary)
+        et.minLines = 6
+        et.gravity = android.view.Gravity.TOP
+        et.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        val box = Ui.vbox(this)
+        val pad = Ui.dp(this, 20)
+        box.setPadding(pad, pad / 2, pad, 0)
+        box.addView(Ui.tv(this, "Ví dụ:\nHollow Knight = Hiệp sĩ Rỗng\nBonfire = Lửa trại", 12.5f, Ui.SUB))
+        box.addView(et)
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Từ điển riêng · ${p.profile}")
+            .setView(box)
+            .setPositiveButton("Lưu") { _, _ -> p.glossary = et.text.toString().trim(); render() }
+            .setNegativeButton("Hủy", null).show()
     }
 
     private fun gameList() {

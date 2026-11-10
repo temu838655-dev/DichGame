@@ -19,9 +19,16 @@ object Ai {
         "Bạn dịch phụ đề game từ $srcName sang tiếng Việt." +
             (if (game.isNotEmpty()) " Game / phong cách: $game." else "") +
             " " + Prefs.TR_STYLES[p.trStyle].second +
+            glossaryLine(p) +
             " Chọn xưng hô (tôi, anh, em, cậu, ông, bà...) hợp quan hệ và ngữ cảnh, sửa lỗi đọc chữ rõ ràng, giữ nguyên tên riêng. Chỉ trả về bản dịch." +
             (if (history.isNotEmpty()) "\nCác câu trước (chỉ để hiểu mạch truyện, không dịch lại):\n" + history.joinToString("\n") else "") +
             "\nCần dịch: $text"
+
+    private fun glossaryLine(p: Prefs): String {
+        val lines = p.glossary.lines().map { it.trim() }.filter { it.contains("=") }.take(40)
+        if (lines.isEmpty()) return ""
+        return " Bắt buộc dùng đúng các thuật ngữ sau (gốc = tiếng Việt): " + lines.joinToString("; ") + "."
+    }
 
     fun cloudEndpoint(base: String): String {
         val b = base.trim().trimEnd('/')

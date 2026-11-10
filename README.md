@@ -11,11 +11,11 @@ Dịch phụ đề game và phim sang tiếng Việt ngay trên màn hình, có 
 
 | Màn hình | Có gì |
 | --- | --- |
-| Chính | Chuyển **Dịch / Thuyết minh**, chọn ngôn ngữ game (Anh, Nhật, Hàn, Trung), nút Bắt đầu, hộp **"Bạn chơi ở đâu?"** (TV / điện thoại) |
+| Chính | Chuyển **Dịch / Thuyết minh**, chọn ngôn ngữ game (14 thứ tiếng: Anh, Nhật, Hàn, Trung, Pháp, Đức, Tây Ban Nha, Bồ Đào Nha, Ý, Indonesia, Hà Lan, Ba Lan, Thổ Nhĩ Kỳ, Hindi), nút Bắt đầu, hộp **"Bạn chơi ở đâu?"** (TV / điện thoại) |
 | Cách dịch | **Dịch trên máy** (miễn phí, offline), **CloudAPI** (AI theo chuẩn OpenAI, nhập địa chỉ + khóa + model), **Google Gemini** (khóa + model), nút **Lưu và kiểm tra**, số câu trước cho AI hiểu mạch truyện |
 | Cài đặt › Giọng đọc | **Giọng của máy** hoặc **giọng AI Gemini** (8 giọng, tự lùi về giọng máy khi lỗi), tốc độ 0,5x–3x, **đọc theo cảm xúc**, đọc qua loa TV, nghe thử |
 | Cài đặt › Phụ đề | Hiện câu gốc, cỡ chữ 50–200 %, kiểu chữ, mục **Nâng cao** (tần suất quét, chữ hiện dần, dịch menu tự động) |
-| Cài đặt › Hồ sơ game | Nhiều hồ sơ, mỗi hồ sơ nhớ tên game + vùng quét riêng, **phong cách dịch** (Tự nhiên, Thuyết minh, Ngắn gọn, Sát nghĩa) |
+| Cài đặt › Hồ sơ game | Nhiều hồ sơ, mỗi hồ sơ nhớ tên game + vùng quét riêng, **phong cách dịch** (Tự nhiên, Thuyết minh, Ngắn gọn, Sát nghĩa), **từ điển riêng** (ép AI dịch đúng tên nhân vật, chiêu thức) |
 | Phụ đề trên TV | Chọn hãng TV, hướng dẫn 4 bước, tìm TV trong mạng, ghép bằng mã 8 số, gửi câu thử |
 | Dịch video trên web | Trình duyệt trong app, đọc phụ đề của trình phát (thẻ track, YouTube, video.js, JW Player, Plyr...) rồi hiện bản dịch, có thể đọc to |
 | Hướng dẫn / Tính năng | Hướng dẫn 5 bước, danh sách tính năng |
@@ -60,6 +60,7 @@ Lưu ý: đổi khóa thì phải gỡ app cũ rồi cài lại.
 - Chưa có app cho **TV LG (webOS)** và **TV Samsung (Tizen)**; chỉ Android TV / Google TV.
 - Chưa có **Chơi trên điện thoại bằng Remote Play** (điều khiển máy chơi game ngay trong app). "Chơi trên điện thoại" hiện nghĩa là hình game đã hiện sẵn trên điện thoại (ứng dụng Remote Play, cloud gaming, thẻ capture...).
 - Giao diện chỉ có tiếng Việt.
+- Đọc chữ trong game chỉ hỗ trợ các thứ tiếng ở trên. Chữ **Nga, Thái, Ả Rập, Hy Lạp...** chưa đọc được vì bộ đọc chữ trên máy (ML Kit) không có mô hình cho các chữ này.
 - Giọng của máy là các giọng tiếng Việt cài sẵn (Cài đặt › Ngôn ngữ và nhập › Chuyển văn bản thành giọng nói). Giọng AI dùng chung khóa Google Gemini với bộ dịch, tên model mặc định `gemini-3.8-flash-tts` (đổi được trong app nếu Google đổi tên).
 - "Đọc theo cảm xúc" đoán cảm xúc bằng từ khóa và dấu câu, chưa dùng AI.
 - "Dịch video trên web" phụ thuộc trang web có để lộ phụ đề cho trình duyệt hay không; trang dùng DRM hoặc vẽ phụ đề lên canvas thì không đọc được, khi đó dùng chế độ chụp màn hình thường.

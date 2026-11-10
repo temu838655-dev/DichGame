@@ -161,7 +161,7 @@ class MainActivity : Activity() {
     private fun help() {
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("Hai chế độ")
-            .setMessage("Dịch: đọc chữ trên màn hình (tiếng Anh, Nhật, Hàn, Trung) rồi dịch sang tiếng Việt.\n\n" +
+            .setMessage("Dịch: đọc chữ trên màn hình (Anh, Nhật, Hàn, Trung, Pháp, Đức, Tây Ban Nha, Bồ Đào Nha, Ý, Indonesia, Hà Lan, Ba Lan, Thổ Nhĩ Kỳ, Hindi) rồi dịch sang tiếng Việt.\n\n" +
                 "Thuyết minh: game hoặc phim đã có phụ đề tiếng Việt, app chỉ đọc to phụ đề, không dịch.\n\n" +
                 "Sau khi bấm Bắt đầu, kéo khung xanh tới dòng phụ đề rồi bấm \"Chỉnh/Khóa khung\" trong thông báo.")
             .setPositiveButton("Đã hiểu", null).show()

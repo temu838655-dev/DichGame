@@ -40,6 +40,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
+import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
 import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -123,15 +124,17 @@ class CaptureService : Service() {
         needStable = if (intent.getBooleanExtra("slow", false)) 2 else 1
         autoMenu = intent.getBooleanExtra("automenu", false) && !narrate
         lang = if (narrate) "en" else intent.getStringExtra("lang") ?: "en"
-        srcName = when (lang) { "ja" -> "tiếng Nhật"; "ko" -> "tiếng Hàn"; "zh" -> "tiếng Trung"; else -> "tiếng Anh" }
-        sep = if (lang == "en") " " else ""
-        minLen = if (lang == "en") 3 else 2
-        longLen = if (lang == "en") 25 else 12
+        srcName = Prefs.srcNameOf(lang)
+        val cjk = Prefs.isCjk(lang)
+        sep = if (cjk) "" else " "
+        minLen = if (cjk) 2 else 3
+        longLen = if (cjk) 12 else 25
         recognizer = TextRecognition.getClient(
             when (lang) {
                 "ja" -> JapaneseTextRecognizerOptions.Builder().build()
                 "ko" -> KoreanTextRecognizerOptions.Builder().build()
                 "zh" -> ChineseTextRecognizerOptions.Builder().build()
+                "hi" -> DevanagariTextRecognizerOptions.Builder().build()
                 else -> TextRecognizerOptions.DEFAULT_OPTIONS
             }
         )
