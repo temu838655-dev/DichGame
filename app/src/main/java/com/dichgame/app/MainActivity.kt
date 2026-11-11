@@ -50,8 +50,8 @@ class MainActivity : Activity() {
             row1.addView(tile("🎙", "Giọng đọc", voiceLabel(), null) { open(SettingsActivity::class.java) }, tileLp())
             put(row1, 0, 12)
             val row2 = Ui.hbox(this@MainActivity)
-            row2.addView(tile("🎮", "Hồ sơ game", p.profile, "SLOT") {
-                startActivity(Intent(this@MainActivity, SettingsActivity::class.java).putExtra("goto", "profile"))
+            row2.addView(tile("🕹", "Kho game", p.game.substringBefore(',').ifEmpty { "Chưa chọn game" }, "MỚI") {
+                open(KhoGameActivity::class.java)
             }, Ui.lp(0, WRAP_CONTENT, 1f))
             row2.addView(tile("💡", "Hướng dẫn", "Cách dùng từng bước", "1-5") { open(GuideActivity::class.java) }, tileLp())
             put(row2, 0, 12)
@@ -83,7 +83,7 @@ class MainActivity : Activity() {
         row.addView(icon, Ui.lp(Ui.dp(this, 52), Ui.dp(this, 52)))
         val col = Ui.vbox(this)
         col.addView(Ui.tv(this, "Dịch game", 22f, Ui.TEXT, true))
-        col.addView(Ui.tv(this, "Chơi game nào cũng hiểu", 13f, Ui.SUB))
+        col.addView(Ui.tv(this, "Dịch game, hiểu mọi lời thoại", 13f, Ui.SUB))
         row.addView(col, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@MainActivity, 12) })
         row.addView(roundBtn("★") { open(FeaturesActivity::class.java) })
         row.addView(roundBtn("⚙") { open(SettingsActivity::class.java) }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = Ui.dp(this@MainActivity, 8) })

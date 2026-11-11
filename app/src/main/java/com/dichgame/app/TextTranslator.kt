@@ -4,7 +4,9 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.nl.translate.TranslateLanguage
+import com.google.mlkit.nl.translate.TranslateRemoteModel
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.Translator
 import com.google.mlkit.nl.translate.TranslatorOptions
@@ -21,41 +23,56 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
 
     private val local: Translator? = if (lang == "vi") null else Translation.getClient(
         TranslatorOptions.Builder()
-            .setSourceLanguage(
-                when (lang) {
-                    "ja" -> TranslateLanguage.JAPANESE
-                    "ko" -> TranslateLanguage.KOREAN
-                    "zh" -> TranslateLanguage.CHINESE
-                    "fr" -> TranslateLanguage.FRENCH
-                    "de" -> TranslateLanguage.GERMAN
-                    "es" -> TranslateLanguage.SPANISH
-                    "pt" -> TranslateLanguage.PORTUGUESE
-                    "it" -> TranslateLanguage.ITALIAN
-                    "id" -> TranslateLanguage.INDONESIAN
-                    "nl" -> TranslateLanguage.DUTCH
-                    "pl" -> TranslateLanguage.POLISH
-                    "tr" -> TranslateLanguage.TURKISH
-                    "hi" -> TranslateLanguage.HINDI
-                    "sv" -> TranslateLanguage.SWEDISH
-                    "cs" -> TranslateLanguage.CZECH
-                    "ro" -> TranslateLanguage.ROMANIAN
-                    "hu" -> TranslateLanguage.HUNGARIAN
-                    "da" -> TranslateLanguage.DANISH
-                    "fi" -> TranslateLanguage.FINNISH
-                    "no" -> TranslateLanguage.NORWEGIAN
-                    "ms" -> TranslateLanguage.MALAY
-                    "ru" -> TranslateLanguage.RUSSIAN
-                    "uk" -> TranslateLanguage.UKRAINIAN
-                    "th" -> TranslateLanguage.THAI
-                    "ar" -> TranslateLanguage.ARABIC
-                    "el" -> TranslateLanguage.GREEK
-                    "he" -> TranslateLanguage.HEBREW
-                    else -> TranslateLanguage.ENGLISH
-                }
-            )
+            .setSourceLanguage(mlCode(lang))
             .setTargetLanguage(TranslateLanguage.VIETNAMESE)
             .build()
     )
+
+    companion object {
+        /** Mã ngôn ngữ của ML Kit cho ngôn ngữ trong game. */
+        fun mlCode(lang: String): String = when (lang) {
+            "ja" -> TranslateLanguage.JAPANESE
+            "ko" -> TranslateLanguage.KOREAN
+            "zh" -> TranslateLanguage.CHINESE
+            "fr" -> TranslateLanguage.FRENCH
+            "de" -> TranslateLanguage.GERMAN
+            "es" -> TranslateLanguage.SPANISH
+            "pt" -> TranslateLanguage.PORTUGUESE
+            "it" -> TranslateLanguage.ITALIAN
+            "id" -> TranslateLanguage.INDONESIAN
+            "nl" -> TranslateLanguage.DUTCH
+            "pl" -> TranslateLanguage.POLISH
+            "tr" -> TranslateLanguage.TURKISH
+            "hi" -> TranslateLanguage.HINDI
+            "sv" -> TranslateLanguage.SWEDISH
+            "cs" -> TranslateLanguage.CZECH
+            "ro" -> TranslateLanguage.ROMANIAN
+            "hu" -> TranslateLanguage.HUNGARIAN
+            "da" -> TranslateLanguage.DANISH
+            "fi" -> TranslateLanguage.FINNISH
+            "no" -> TranslateLanguage.NORWEGIAN
+            "ms" -> TranslateLanguage.MALAY
+            "ru" -> TranslateLanguage.RUSSIAN
+            "uk" -> TranslateLanguage.UKRAINIAN
+            "th" -> TranslateLanguage.THAI
+            "ar" -> TranslateLanguage.ARABIC
+            "el" -> TranslateLanguage.GREEK
+            "he" -> TranslateLanguage.HEBREW
+            else -> TranslateLanguage.ENGLISH
+        }
+
+        /** Hỏi xem mô hình dịch (ngôn ngữ trong game và tiếng Việt) đã tải về máy chưa. */
+        fun isDownloaded(lang: String, cb: (Boolean) -> Unit) {
+            val m = RemoteModelManager.getInstance()
+            m.isModelDownloaded(TranslateRemoteModel.Builder(mlCode(lang)).build())
+                .addOnSuccessListener { a ->
+                    m.isModelDownloaded(TranslateRemoteModel.Builder(TranslateLanguage.VIETNAMESE).build())
+                        .addOnSuccessListener { b -> cb(a && b) }
+                        .addOnFailureListener { cb(false) }
+                }
+                .addOnFailureListener { cb(false) }
+        }
+    }
 
     private fun srcName() = Prefs.srcNameOf(lang)
 

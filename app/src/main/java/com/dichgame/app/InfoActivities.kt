@@ -80,3 +80,31 @@ class FeaturesActivity : Activity() {
         }
     }
 }
+
+
+/** Ghi công và giấy phép của các thành phần app đang dùng. */
+class LicensesActivity : Activity() {
+    override fun onCreate(b: Bundle?) {
+        super.onCreate(b)
+        val items = listOf(
+            "Dịch game" to "App viết độc lập, tất cả tính năng dùng miễn phí. Không dùng mã nguồn, hình ảnh hay dữ liệu của app khác.",
+            "Google ML Kit" to "Đọc chữ trên màn hình (Latin, Nhật, Hàn, Trung, Devanagari) và dịch trên máy. Theo điều khoản Google ML Kit.",
+            "Google Gemini API" to "Dịch AI, giọng đọc AI và đọc chữ Nga, Thái, Ả Rập... Chỉ chạy khi bạn nhập khóa của riêng bạn, theo điều khoản Google AI.",
+            "CloudAPI (tùy chọn)" to "Dịch AI qua dịch vụ theo chuẩn OpenAI mà bạn tự nhập địa chỉ và khóa.",
+            "Giọng đọc của máy" to "Dùng bộ đọc văn bản thành giọng nói có sẵn trong Android.",
+            "App chơi từ xa" to "PS Remote Play, Chiaki, Moonlight, Steam Link... là app riêng của bên thứ ba. Dịch game chỉ mở chúng và hiện bản dịch đè lên."
+        )
+        screen("Giấy phép và ghi công") {
+            val c = Ui.card(this@LicensesActivity)
+            items.forEachIndexed { i, it ->
+                val col = Ui.vbox(this@LicensesActivity)
+                col.setPadding(0, Ui.dp(this@LicensesActivity, 10), 0, Ui.dp(this@LicensesActivity, 10))
+                col.addView(Ui.tv(this@LicensesActivity, it.first, 16f, Ui.TEXT, true))
+                col.addView(Ui.tv(this@LicensesActivity, it.second, 13f, Ui.SUB))
+                c.addView(col)
+                if (i < items.size - 1) c.addView(Ui.divider(this@LicensesActivity), Ui.lp(MATCH_PARENT, 1))
+            }
+            put(c, 0, 12)
+        }
+    }
+}

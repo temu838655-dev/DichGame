@@ -25,6 +25,12 @@ class SettingsActivity : Activity() {
         render(intent?.getStringExtra("goto"))
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(req: Int, res: Int, data: android.content.Intent?) {
+        super.onActivityResult(req, res, data)
+        if (req == 7) render("profile")
+    }
+
     override fun onDestroy() {
         speaker?.shutdown()
         super.onDestroy()
@@ -53,7 +59,8 @@ class SettingsActivity : Activity() {
         c.addView(Ui.button(this, "Kiểm tra bản mới") { checkUpdate(status) }, Ui.lpm(this, 0, 6))
         c.addView(status, Ui.lpm(this, 0, 8))
         c.addView(Ui.button(this, "Báo lỗi / yêu cầu game") { report() }, Ui.lpm(this, 0, 8))
-        c.addView(Ui.button(this, "Trang dự án trên GitHub") { openUrl("https://github.com/" + Update.REPO) }, Ui.lpm(this, 0, 0))
+        c.addView(Ui.button(this, "Trang dự án trên GitHub") { openUrl("https://github.com/" + Update.REPO) }, Ui.lpm(this, 0, 8))
+        c.addView(Ui.button(this, "Giấy phép và ghi công") { startActivity(android.content.Intent(this, LicensesActivity::class.java)) }, Ui.lpm(this, 0, 0))
         return c
     }
 
@@ -106,13 +113,10 @@ class SettingsActivity : Activity() {
         val c = Ui.card(this)
         c.addView(Ui.section(this, "🎙", "Giọng đọc"))
         c.addView(Ui.switchRow(this, "Đọc to bản dịch", "Tắt nếu chỉ muốn xem chữ.", p.speak) { p.speak = it })
-        c.addView(Ui.dropRow(this, "Loại giọng",
-            { if (p.voiceEngine == "ai") "Giọng AI (Gemini)" else "Giọng của máy" },
-            { listOf("Giọng của máy", "Giọng AI (Gemini)") }
-        ) { i ->
+        c.addView(Ui.segmented(this, listOf("Giọng cơ bản", "Giọng AI"), if (p.voiceEngine == "ai") 1 else 0) { i ->
             p.voiceEngine = if (i == 1) "ai" else "system"
             render()
-        })
+        }, Ui.lpm(this, 8, 8))
         if (p.voiceEngine == "ai") {
             c.addView(Ui.dropRow(this, "Giọng AI",
                 { Prefs.AI_VOICES.firstOrNull { it.first == p.aiVoice }?.let { "${it.first} · ${it.second}" } ?: p.aiVoice },
@@ -151,6 +155,8 @@ class SettingsActivity : Activity() {
         c.addView(Ui.seekRow(this, "Tốc độ đọc", { v -> String.format("%.1f", v / 10f).replace('.', ',') + "x" }, 5, 30, p.rate10) { p.rate10 = it }, Ui.lpm(this, 6, 10))
         c.addView(Ui.switchRow(this, "Đọc theo cảm xúc",
             "Nhận ra câu giận, buồn, vui hay sợ qua câu chữ để đổi nhịp và giọng đọc.", p.emotion) { p.emotion = it }, Ui.lpm(this, 4, 10))
+        c.addView(Ui.switchRow(this, "Tự đọc nhanh khi câu dồn lại",
+            "Câu thoại mới tới lúc câu cũ chưa đọc xong thì đọc nhanh hơn để kịp hình.", p.autoFast) { p.autoFast = it }, Ui.lpm(this, 0, 10))
         c.addView(Ui.switchRow(this, "Đọc qua loa TV",
             if (p.tvPaired) "Điện thoại im lặng, tiếng phát ra từ TV." else "Cần ghép TV trước (mục Phụ đề trên TV).", p.tvSpeak) {
             p.tvSpeak = it
@@ -167,7 +173,8 @@ class SettingsActivity : Activity() {
     private fun subtitleCard(): View {
         val c = Ui.card(this)
         c.addView(Ui.section(this, "💬", "Phụ đề"))
-        c.addView(Ui.switchRow(this, "Hiện câu gốc", null, p.showOrig) { p.showOrig = it })
+        c.addView(Ui.switchRow(this, "Hiện câu gốc ${Prefs.srcNameOf(p.lang)}", null, p.showOrig) { p.showOrig = it })
+        c.addView(Ui.switchRow(this, "Hiện câu thoại trước", "Hiện câu vừa dịch bằng chữ nhỏ phía trên phụ đề hiện tại (trên điện thoại).", p.showPrev) { p.showPrev = it }, Ui.lpm(this, 10, 0))
         c.addView(Ui.seekRow(this, "Cỡ chữ phụ đề", { v -> "$v%" }, 50, 200, p.subScale) { p.subScale = it }, Ui.lpm(this, 14, 6))
         c.addView(Ui.dropRow(this, "Kiểu chữ", { Prefs.STYLES[p.style] }, { Prefs.STYLES }) { p.style = it })
         c.addView(Ui.divider(this), Ui.lp(MATCH_PARENT, 1))
@@ -212,7 +219,11 @@ class SettingsActivity : Activity() {
         c.addView(game)
         c.addView(Ui.tv(this, "Việt hóa và dịch theo game (giữ đúng tên, xưng hô nhân vật) khi dùng bộ dịch AI.", 12.5f, Ui.SUB), Ui.lpm(this, 6, 10))
         val btns = Ui.hbox(this)
-        btns.addView(Ui.button(this, "Danh sách game") { gameList() }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT))
+        c.addView(Ui.button(this, "🕹  Chọn trong Kho game", true) {
+            @Suppress("DEPRECATION")
+            startActivityForResult(android.content.Intent(this, KhoGameActivity::class.java), 7)
+        }, Ui.lpm(this, 0, 8))
+        btns.addView(Ui.button(this, "Danh sách hồ sơ") { gameList() }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT))
         if (p.profile != Prefs.DEFAULT_PROFILE) {
             btns.addView(Ui.button(this, "Xóa hồ sơ này") {
                 AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)

@@ -397,7 +397,9 @@ class CaptureService : Service() {
             sb.setSpan(ForegroundColorSpan(color), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         val fg = styleFg()
-        if (Prefs(this).showOrig) { add(prevVi, 0.7f, (fg and 0x00FFFFFF) or 0x99000000.toInt()); add(orig, 0.75f, (fg and 0x00FFFFFF) or 0xCC000000.toInt()) }
+        val pr = Prefs(this)
+        if (pr.showPrev) add(prevVi, 0.7f, (fg and 0x00FFFFFF) or 0x99000000.toInt())
+        if (pr.showOrig) add(orig, 0.75f, (fg and 0x00FFFFFF) or 0xCC000000.toInt())
         add(vi, 1.15f, fg)
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
         overlay?.apply { text = sb; visibility = View.VISIBLE }

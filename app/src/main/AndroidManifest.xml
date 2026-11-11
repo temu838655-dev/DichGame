@@ -31,6 +31,8 @@
         <activity android:name=".TvSetupActivity" android:exported="false" />
         <activity android:name=".GuideActivity" android:exported="false" />
         <activity android:name=".FeaturesActivity" android:exported="false" />
+        <activity android:name=".KhoGameActivity" android:exported="false" />
+        <activity android:name=".LicensesActivity" android:exported="false" />
         <activity
             android:name=".WebTranslateActivity"
             android:exported="false"

@@ -127,6 +127,30 @@ class Prefs(ctx: Context) {
     var showOrig: Boolean
         get() = sp.getBoolean("showorig", false)
         set(v) = sp.edit().putBoolean("showorig", v).apply()
+    /** Hiện câu vừa dịch trước đó bằng chữ nhỏ phía trên phụ đề hiện tại. */
+    var showPrev: Boolean
+        get() = sp.getBoolean("showprev", false)
+        set(v) = sp.edit().putBoolean("showprev", v).apply()
+    /** Khi câu thoại dồn lại (câu mới tới lúc câu cũ chưa đọc xong) thì tự đọc nhanh hơn. */
+    var autoFast: Boolean
+        get() = sp.getBoolean("autofast", true)
+        set(v) = sp.edit().putBoolean("autofast", v).apply()
+    /** Các game đã chọn trong Kho game, mới nhất đứng đầu. */
+    val played: List<String>
+        get() {
+            val out = ArrayList<String>()
+            try {
+                val a = JSONArray(sp.getString("played", "[]"))
+                for (i in 0 until a.length()) out.add(a.getString(i))
+            } catch (_: Exception) {}
+            return out
+        }
+    fun addPlayed(name: String) {
+        val n = name.trim()
+        if (n.isEmpty()) return
+        val l = (listOf(n) + played.filter { it != n }).take(30)
+        sp.edit().putString("played", JSONArray(l).toString()).apply()
+    }
     /** Cỡ chữ phụ đề, phần trăm so với cỡ gốc (50..200). */
     var subScale: Int
         get() = sp.getInt("subscale", 100).coerceIn(50, 200)

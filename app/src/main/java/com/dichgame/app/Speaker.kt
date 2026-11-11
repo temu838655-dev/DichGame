@@ -8,6 +8,7 @@ import android.media.PlaybackParams
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.LruCache
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -31,6 +32,12 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     @Volatile var ready = false
         private set
 
+    /** Số câu đang đọc hoặc đang chờ (giọng máy), để biết câu có đang dồn lại không. */
+    private val queued = AtomicInteger(0)
+    private val utt = AtomicInteger(0)
+    @Volatile private var aiPlayUntil = 0L
+    private fun dec() { queued.updateAndGet { if (it > 0) it - 1 else 0 } }
+
     /** Được gọi (ở luồng chính) khi giọng AI lỗi; Speaker tự đọc bằng giọng máy thay thế. */
     var onAiError: ((String) -> Unit)? = null
     private var aiErrorShown = false
@@ -39,6 +46,13 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         tts = TextToSpeech(ctx.applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.setLanguage(Locale("vi", "VN"))
+                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {}
+                    override fun onDone(utteranceId: String?) { dec() }
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) { dec() }
+                    override fun onStop(utteranceId: String?, interrupted: Boolean) { dec() }
+                })
                 applyVoice()
                 ready = true
                 onReady?.invoke()
@@ -94,9 +108,16 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                 "happy" -> { rate *= 1.05f; pitch = 1.15f }
             }
         }
+        // Tự đọc nhanh: câu mới tới lúc câu cũ chưa đọc xong thì để câu cũ đọc nốt, câu mới xếp hàng và đọc nhanh hơn.
+        // Dồn quá 3 câu thì bỏ hàng cũ, đọc câu mới nhất.
+        val backlog = queued.get()
+        val add = queue || (p.autoFast && backlog in 1..2)
+        if (p.autoFast && backlog > 0) rate *= (1f + 0.3f * backlog)
         t.setSpeechRate(rate.coerceIn(0.3f, 3f))
         t.setPitch(pitch)
-        t.speak(text, if (queue) TextToSpeech.QUEUE_ADD else TextToSpeech.QUEUE_FLUSH, null, "dg")
+        if (!add) queued.set(0)
+        queued.incrementAndGet()
+        t.speak(text, if (add) TextToSpeech.QUEUE_ADD else TextToSpeech.QUEUE_FLUSH, null, "dg" + utt.incrementAndGet())
     }
 
     // ---------------- Giọng AI ----------------
@@ -118,7 +139,8 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         try { tts?.stop() } catch (_: Exception) {}
         val style = styleFor(text)
         val key = p.aiVoice + "|" + p.ttsModel + "|" + style + "|" + text
-        val speed = (p.rate10 / 10f).coerceIn(0.5f, 2.5f)
+        val backlog = p.autoFast && System.currentTimeMillis() < aiPlayUntil
+        val speed = ((p.rate10 / 10f) * (if (backlog) 1.35f else 1f)).coerceIn(0.5f, 2.5f)
         exec.execute {
             val cached: Pcm? = cache.get(key)
             val pcm: Pcm = cached ?: try {
@@ -167,6 +189,8 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                 releaseLocked()
                 track = t
                 t.play()
+                val bytesPerSec = (pcm.rate * 2 * (if (pcm.channels == 2) 2 else 1)).coerceAtLeast(1)
+                aiPlayUntil = System.currentTimeMillis() + (pcm.data.size * 1000L / bytesPerSec / speed).toLong()
             } catch (_: Exception) {}
         }
     }

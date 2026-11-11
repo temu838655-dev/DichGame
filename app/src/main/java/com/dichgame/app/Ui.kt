@@ -173,6 +173,22 @@ object Ui {
         return row
     }
 
+    /** Thanh chọn một trong vài nút nằm ngang (kiểu "Giọng cơ bản | Giọng AI"). */
+    fun segmented(a: Activity, labels: List<String>, selected: Int, onPick: (Int) -> Unit): View {
+        val seg = hbox(a)
+        seg.background = bg(a, CARD2, 22)
+        labels.forEachIndexed { i, l ->
+            seg.addView(TextView(a).apply {
+                text = l; textSize = 14f; gravity = Gravity.CENTER
+                setTextColor(if (i == selected) Color.parseColor("#2A1A08") else TEXT)
+                if (i == selected) background = goldBg(a, 20)
+                setPadding(dp(a, 12), dp(a, 11), dp(a, 12), dp(a, 11))
+                setOnClickListener { onPick(i) }
+            }, lp(0, WRAP_CONTENT, 1f))
+        }
+        return seg
+    }
+
     /** Bảng trượt từ dưới lên (bottom sheet). */
     fun sheet(a: Activity, build: LinearLayout.(Dialog) -> Unit) {
         val d = Dialog(a)
