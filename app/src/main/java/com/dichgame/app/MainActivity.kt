@@ -124,7 +124,7 @@ class MainActivity : Activity() {
         if (!narrate) {
             lang.addView(Ui.tv(this, "›", 26f, Ui.SUB))
             lang.setOnClickListener {
-                Ui.pick(this, "Ngôn ngữ trong game", Prefs.LANGS.filter { it.first != "vi" }.map { it.second }) { i ->
+                Ui.pick(this, "Ngôn ngữ trong game", Prefs.LANGS.filter { it.first != "vi" }.map { Prefs.langLabel(it.first) }) { i ->
                     p.lang = Prefs.LANGS.filter { it.first != "vi" }[i].first
                     render()
                 }
@@ -161,7 +161,7 @@ class MainActivity : Activity() {
     private fun help() {
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("Hai chế độ")
-            .setMessage("Dịch: đọc chữ trên màn hình (Anh, Nhật, Hàn, Trung, Pháp, Đức, Tây Ban Nha, Bồ Đào Nha, Ý, Indonesia, Hà Lan, Ba Lan, Thổ Nhĩ Kỳ, Hindi) rồi dịch sang tiếng Việt.\n\n" +
+            .setMessage("Dịch: đọc chữ trên màn hình (Anh, Nhật, Hàn, Trung, Pháp, Đức, Tây Ban Nha, Nga, Thái, Ả Rập... tổng cộng 28 thứ tiếng) rồi dịch sang tiếng Việt.\n\n" +
                 "Thuyết minh: game hoặc phim đã có phụ đề tiếng Việt, app chỉ đọc to phụ đề, không dịch.\n\n" +
                 "Sau khi bấm Bắt đầu, kéo khung xanh tới dòng phụ đề rồi bấm \"Chỉnh/Khóa khung\" trong thông báo.")
             .setPositiveButton("Đã hiểu", null).show()
@@ -208,6 +208,18 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Hãy bật \"Hiển thị trên các ứng dụng khác\" cho Dịch game, rồi quay lại bấm Bắt đầu.", Toast.LENGTH_LONG).show()
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             return
+        }
+        if (!p.narrate && Prefs.isCloudOcr(p.lang)) {
+            if (p.geminiKey.isEmpty()) {
+                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("Cần khóa Gemini")
+                    .setMessage("Chữ ${Prefs.srcNameOf(p.lang)} không đọc được trên máy, nên app gửi ảnh phần màn hình cần đọc cho Google Gemini để lấy chữ. " +
+                        "Hãy nhập khóa Gemini (lấy miễn phí ở aistudio.google.com) trong mục Cách dịch. Ảnh chỉ được gửi khi bạn chọn ngôn ngữ này.")
+                    .setPositiveButton("Mở Cách dịch") { _, _ -> startActivity(Intent(this, TranslateActivity::class.java)) }
+                    .setNegativeButton("Để sau", null).show()
+                return
+            }
+            Toast.makeText(this, "Chữ ${Prefs.srcNameOf(p.lang)} được đọc bằng Gemini: ảnh khung phụ đề sẽ gửi cho Google.", Toast.LENGTH_LONG).show()
         }
         Ui.sheet(this) { d ->
             addView(Ui.tv(this@MainActivity, "Bạn chơi ở đâu?", 24f, Ui.TEXT, true))

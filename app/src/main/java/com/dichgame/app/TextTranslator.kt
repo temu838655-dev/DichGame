@@ -36,6 +36,20 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                     "pl" -> TranslateLanguage.POLISH
                     "tr" -> TranslateLanguage.TURKISH
                     "hi" -> TranslateLanguage.HINDI
+                    "sv" -> TranslateLanguage.SWEDISH
+                    "cs" -> TranslateLanguage.CZECH
+                    "ro" -> TranslateLanguage.ROMANIAN
+                    "hu" -> TranslateLanguage.HUNGARIAN
+                    "da" -> TranslateLanguage.DANISH
+                    "fi" -> TranslateLanguage.FINNISH
+                    "no" -> TranslateLanguage.NORWEGIAN
+                    "ms" -> TranslateLanguage.MALAY
+                    "ru" -> TranslateLanguage.RUSSIAN
+                    "uk" -> TranslateLanguage.UKRAINIAN
+                    "th" -> TranslateLanguage.THAI
+                    "ar" -> TranslateLanguage.ARABIC
+                    "el" -> TranslateLanguage.GREEK
+                    "he" -> TranslateLanguage.HEBREW
                     else -> TranslateLanguage.ENGLISH
                 }
             )

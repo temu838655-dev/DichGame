@@ -237,7 +237,7 @@ class SettingsActivity : Activity() {
         c.addView(app)
         c.addView(Ui.divider(this), Ui.lp(MATCH_PARENT, 1))
         val src = Prefs.LANGS.filter { it.first != "vi" }
-        c.addView(Ui.dropRow(this, "Ngôn ngữ trong game", { Prefs.langName(p.lang) }, { src.map { it.second } }) { p.lang = src[it].first })
+        c.addView(Ui.dropRow(this, "Ngôn ngữ trong game", { Prefs.langLabel(p.lang) }, { src.map { Prefs.langLabel(it.first) } }) { p.lang = src[it].first })
         return c
     }
 }

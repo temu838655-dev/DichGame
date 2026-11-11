@@ -36,14 +36,6 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.Translator
 import com.google.mlkit.nl.translate.TranslatorOptions
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.TextRecognizer
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
-import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
-import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
-import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
@@ -55,7 +47,9 @@ class CaptureService : Service() {
     companion object { const val STOP = "stop"; const val TOGGLE = "toggle"; const val MENU = "menu"; const val REGION = "region"; @Volatile var active = false }
 
     private val handler = Handler(Looper.getMainLooper())
-    private var recognizer: TextRecognizer? = null
+    private var ocr: Ocr? = null
+    private var lastSig: IntArray? = null
+    private var lastErrAt = 0L
     private var lang = "en"
     private var srcName = "tiếng Anh"
     private var sep = " "
@@ -129,15 +123,10 @@ class CaptureService : Service() {
         sep = if (cjk) "" else " "
         minLen = if (cjk) 2 else 3
         longLen = if (cjk) 12 else 25
-        recognizer = TextRecognition.getClient(
-            when (lang) {
-                "ja" -> JapaneseTextRecognizerOptions.Builder().build()
-                "ko" -> KoreanTextRecognizerOptions.Builder().build()
-                "zh" -> ChineseTextRecognizerOptions.Builder().build()
-                "hi" -> DevanagariTextRecognizerOptions.Builder().build()
-                else -> TextRecognizerOptions.DEFAULT_OPTIONS
-            }
-        )
+        val o = Ocr(Prefs(this), lang)
+        ocr = o
+        // Đọc chữ bằng Gemini thì không tự quét liên tục (tốn lượt dùng); vẫn dùng được "Dịch menu" và "Vùng dịch".
+        if (o.isCloud) autoMenu = false
         startAsForeground()
 
         val data = intent.getParcelableExtra<Intent>("data")
@@ -241,20 +230,19 @@ class CaptureService : Service() {
         } finally { img.close() }
         busy = true
         val skip = listOfNotNull(rectOf(frame), rectOf(overlay))
-        recognizer!!.process(InputImage.fromBitmap(bmp, 0))
-            .addOnSuccessListener { r ->
-                val blocks = r.textBlocks.filter { b ->
-                    val bb = b.boundingBox
+        ocr!!.read(bmp, { m -> ocrFail(m) }) { r ->
+                val blocks = r.filter { b ->
+                    val bb = b.box
                     b.text.length >= longLen && (bb == null || skip.none { it.contains(bb.centerX(), bb.centerY()) })
                 }.map { it.text.replace("\n", sep).trim() }.take(4)
                 if (blocks.size < 2) {
                     autoCand = ""; autoStable = 0; autoDone = ""
                     if (autoShown) { autoShown = false; show("") }
-                    busy = false; return@addOnSuccessListener
+                    busy = false; return@read
                 }
                 val sig = blocks.joinToString("|")
                 if (sig != autoCand) { autoCand = sig; autoStable = 1 } else autoStable++
-                if (autoStable < 2 || sig == autoDone) { busy = false; return@addOnSuccessListener }
+                if (autoStable < 2 || sig == autoDone) { busy = false; return@read }
                 autoDone = sig
                 val parts = arrayOfNulls<String>(blocks.size)
                 var left = blocks.size
@@ -271,7 +259,14 @@ class CaptureService : Service() {
                     }
                 }
             }
-            .addOnFailureListener { busy = false }
+    }
+
+    /** Lỗi đọc chữ: mở khóa để quét lại, chỉ hiện thông báo lỗi của Gemini (không báo lỗi đọc trên máy), tối đa 8 giây một lần. */
+    private fun ocrFail(m: String) {
+        busy = false
+        lastSig = null
+        overlay?.let { if (it.visibility != View.VISIBLE) it.visibility = View.VISIBLE }
+        if (m.isNotEmpty() && System.currentTimeMillis() - lastErrAt > 8000) { lastErrAt = System.currentTimeMillis(); show(m) }
     }
 
     /** Vùng dịch: khung cam, thả tay là dịch ngay vùng đó (nhiệm vụ, thư, mô tả vật phẩm). Bấm lần nữa để đóng. */
@@ -350,13 +345,11 @@ class CaptureService : Service() {
             val y = loc[1].coerceIn(0, img.height - 1)
             Bitmap.createBitmap(full, x, y, box.width.coerceIn(1, img.width - x), box.height.coerceIn(1, img.height - y))
         } finally { img.close() }
-        recognizer!!.process(InputImage.fromBitmap(crop, 0))
-            .addOnSuccessListener { r ->
-                val text = r.text.replace("\n", sep).trim()
-                if (text.length < minLen) { show("Không thấy chữ trong khung."); busy = false; return@addOnSuccessListener }
+        ocr!!.read(crop, { m -> ocrFail(m) }) { r ->
+                val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
+                if (text.length < minLen) { show("Không thấy chữ trong khung."); busy = false; return@read }
                 translateText(text) { vi -> show(vi); sendTv("region", vi, speak && tvSpeakOn()); busy = false }
             }
-            .addOnFailureListener { busy = false; overlay?.visibility = View.VISIBLE }
     }
 
     /** Dịch bằng AI nếu đã bật (CloudAPI / Gemini, có nhớ vài câu trước), lỗi thì quay về dịch trên máy. */
@@ -431,14 +424,13 @@ class CaptureService : Service() {
             full.copyPixelsFromBuffer(p.buffer)
             Bitmap.createBitmap(full, 0, 0, img.width, img.height)
         } finally { img.close() }
-        recognizer!!.process(InputImage.fromBitmap(bmp, 0))
-            .addOnSuccessListener { r ->
-                val blocks = r.textBlocks.map { it.text.replace("\n", sep).trim() }.filter { it.length >= longLen }.take(4)
+        ocr!!.read(bmp, { m -> ocrFail(m) }) { r ->
+                val blocks = r.map { it.text.replace("\n", sep).trim() }.filter { it.length >= longLen }.take(4)
                 if (blocks.isEmpty()) {
                     menuUntil = System.currentTimeMillis() + 3000
                     show("Không thấy đoạn chữ dài nào để dịch.")
                     handler.postDelayed({ if (!editing) show("") }, 3000)
-                    busy = false; return@addOnSuccessListener
+                    busy = false; return@read
                 }
                 val parts = arrayOfNulls<String>(blocks.size)
                 var left = blocks.size
@@ -456,7 +448,6 @@ class CaptureService : Service() {
                     }
                 }
             }
-            .addOnFailureListener { busy = false; overlay?.visibility = View.VISIBLE }
     }
 
     /** Mỗi hướng màn hình (dọc/ngang) nhớ vị trí khung riêng. */
@@ -601,19 +592,24 @@ class CaptureService : Service() {
             Bitmap.createBitmap(full, x, y, w, h)
         } finally { img.close() }
 
+        val o = ocr ?: return
+        if (o.isCloud) {
+            // Gemini: chỉ gửi khi hình trong khung thật sự đổi, để khỏi tốn lượt dùng.
+            val sig = Ocr.thumb(crop)
+            if (Ocr.same(sig, lastSig)) return
+            lastSig = sig
+        }
         busy = true
-        recognizer!!.process(InputImage.fromBitmap(crop, 0))
-            .addOnSuccessListener { r ->
-                val text = r.text.replace("\n", sep).trim()
-                if (text.length < minLen) { last = ""; cand = ""; if (!autoShown) show(""); busy = false; return@addOnSuccessListener }
-                if (text == last) { busy = false; return@addOnSuccessListener }
+        o.read(crop, { m -> ocrFail(m) }) { r ->
+                val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
+                if (text.length < minLen) { last = ""; cand = ""; if (!autoShown) show(""); busy = false; return@read }
+                if (text == last) { busy = false; return@read }
                 if (text != cand) { cand = text; stable = 1 } else stable++
-                if (stable < needStable) { busy = false; return@addOnSuccessListener }
+                if (stable < needStable) { busy = false; return@read }
                 last = text
-                if (narrate) { showSub("", text); busy = false; return@addOnSuccessListener }
+                if (narrate) { showSub("", text); busy = false; return@read }
                 translateText(text) { vi -> showSub(text, vi); busy = false }
             }
-            .addOnFailureListener { busy = false }
     }
 
     override fun onDestroy() {
@@ -623,7 +619,7 @@ class CaptureService : Service() {
         try { overlay?.let { wm.removeView(it) }; frame?.let { wm.removeView(it) }; region?.let { wm.removeView(it) } } catch (_: Exception) {}
         display?.release(); reader?.close()
         projection?.stop()
-        tt?.close(); recognizer?.close()
+        tt?.close(); ocr?.close()
         speaker?.shutdown(); tvExec.shutdown()
         super.onDestroy()
     }

@@ -13,7 +13,7 @@ class GuideActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         val steps = listOf(
-            "Chọn chế độ" to "Ở màn hình chính chọn Dịch (game tiếng Anh, Nhật, Hàn, Trung, Pháp, Đức, Tây Ban Nha... 14 thứ tiếng) hoặc Thuyết minh (game, phim đã có phụ đề tiếng Việt, chỉ đọc to).",
+            "Chọn chế độ" to "Ở màn hình chính chọn Dịch (game tiếng Anh, Nhật, Hàn, Trung, Pháp, Đức, Nga, Thái, Ả Rập... 28 thứ tiếng) hoặc Thuyết minh (game, phim đã có phụ đề tiếng Việt, chỉ đọc to).",
             "Bấm Bắt đầu" to "Chọn chơi trên TV hay trên điện thoại. Cấp quyền \"Hiển thị trên các ứng dụng khác\" và cho phép ghi màn hình khi app hỏi.",
             "Đặt khung phụ đề" to "Mở game. Kéo khung xanh tới đúng dòng phụ đề, kéo ô vuông ở góc dưới phải để đổi cỡ khung.",
             "Khóa khung" to "Kéo thông báo xuống, bấm \"Chỉnh/Khóa khung\". Từ đó app tự đọc chữ trong khung và hiện bản dịch ở phía đối diện khung. Vị trí khung được nhớ theo từng hồ sơ game.",

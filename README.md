@@ -11,7 +11,7 @@ Dịch phụ đề game và phim sang tiếng Việt ngay trên màn hình, có 
 
 | Màn hình | Có gì |
 | --- | --- |
-| Chính | Chuyển **Dịch / Thuyết minh**, chọn ngôn ngữ game (14 thứ tiếng: Anh, Nhật, Hàn, Trung, Pháp, Đức, Tây Ban Nha, Bồ Đào Nha, Ý, Indonesia, Hà Lan, Ba Lan, Thổ Nhĩ Kỳ, Hindi), nút Bắt đầu, hộp **"Bạn chơi ở đâu?"** (TV / điện thoại) |
+| Chính | Chuyển **Dịch / Thuyết minh**, chọn ngôn ngữ game (**28 thứ tiếng**, xem mục "Ngôn ngữ đọc được"), nút Bắt đầu, hộp **"Bạn chơi ở đâu?"** (TV / điện thoại) |
 | Cách dịch | **Dịch trên máy** (miễn phí, offline), **CloudAPI** (AI theo chuẩn OpenAI, nhập địa chỉ + khóa + model), **Google Gemini** (khóa + model), nút **Lưu và kiểm tra**, số câu trước cho AI hiểu mạch truyện |
 | Cài đặt › Giọng đọc | **Giọng của máy** hoặc **giọng AI Gemini** (8 giọng, tự lùi về giọng máy khi lỗi), tốc độ 0,5x–3x, **đọc theo cảm xúc**, đọc qua loa TV, nghe thử |
 | Cài đặt › Phụ đề | Hiện câu gốc, cỡ chữ 50–200 %, kiểu chữ, mục **Nâng cao** (tần suất quét, chữ hiện dần, dịch menu tự động) |
@@ -55,12 +55,22 @@ Lưu ý: đổi khóa thì phải gỡ app cũ rồi cài lại.
 5. Điện thoại và TV phải cùng Wi-Fi. Cổng 8765 (TCP) và 8766 (UDP, để tìm TV).
 6. Khi bấm Bắt đầu chọn **Chơi trên TV** thì phụ đề (và giọng đọc, nếu bật "Đọc qua loa TV") được đẩy lên TV.
 
+## Ngôn ngữ đọc được
+
+| Cách đọc | Ngôn ngữ |
+| --- | --- |
+| Trên máy (nhanh, offline, miễn phí) | Anh, Nhật, Hàn, Trung, Pháp, Đức, Tây Ban Nha, Bồ Đào Nha, Ý, Indonesia, Hà Lan, Ba Lan, Thổ Nhĩ Kỳ, Hindi, Thụy Điển, Séc, Romania, Hungary, Đan Mạch, Phần Lan, Na Uy, Mã Lai |
+| Nhờ Google Gemini đọc ảnh (cần khóa Gemini miễn phí từ aistudio.google.com) | Nga, Ukraina, Thái, Ả Rập, Hy Lạp, Do Thái |
+
+Với nhóm Gemini, chỉ ảnh phần màn hình cần đọc (khung phụ đề, hoặc vùng bạn chọn) được gửi cho Google, và chỉ khi bạn chọn các thứ tiếng này. Bản dịch sang tiếng Việt vẫn có thể chạy trên máy.
+Lần đầu dùng mỗi thứ tiếng, app tải mô hình dịch nên cần mạng.
+
 ## Giới hạn hiện tại
 
 - Chưa có app cho **TV LG (webOS)** và **TV Samsung (Tizen)**; chỉ Android TV / Google TV.
 - Chưa có **Chơi trên điện thoại bằng Remote Play** (điều khiển máy chơi game ngay trong app). "Chơi trên điện thoại" hiện nghĩa là hình game đã hiện sẵn trên điện thoại (ứng dụng Remote Play, cloud gaming, thẻ capture...).
 - Giao diện chỉ có tiếng Việt.
-- Đọc chữ trong game chỉ hỗ trợ các thứ tiếng ở trên. Chữ **Nga, Thái, Ả Rập, Hy Lạp...** chưa đọc được vì bộ đọc chữ trên máy (ML Kit) không có mô hình cho các chữ này.
+- Chữ Nga, Ukraina, Thái, Ả Rập, Hy Lạp, Do Thái đọc chậm hơn (khoảng 1–3 giây mỗi câu) vì phải nhờ Gemini đọc ảnh; ở chế độ này tắt "Dịch menu tự động" (vẫn dùng được nút "Dịch menu" và "Vùng dịch").
 - Giọng của máy là các giọng tiếng Việt cài sẵn (Cài đặt › Ngôn ngữ và nhập › Chuyển văn bản thành giọng nói). Giọng AI dùng chung khóa Google Gemini với bộ dịch, tên model mặc định `gemini-3.8-flash-tts` (đổi được trong app nếu Google đổi tên).
 - "Đọc theo cảm xúc" đoán cảm xúc bằng từ khóa và dấu câu, chưa dùng AI.
 - "Dịch video trên web" phụ thuộc trang web có để lộ phụ đề cho trình duyệt hay không; trang dùng DRM hoặc vẽ phụ đề lên canvas thì không đọc được, khi đó dùng chế độ chụp màn hình thường.
