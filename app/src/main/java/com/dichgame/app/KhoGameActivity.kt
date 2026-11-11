@@ -68,6 +68,7 @@ class KhoGameActivity : Activity() {
         val cur = p.game
         for (row in list.chunked(3)) {
             val r = Ui.hbox(this)
+            r.gravity = Gravity.TOP
             for (k in 0 until 3) {
                 val name = row.getOrNull(k)
                 val cell: View = if (name == null) View(this) else cellOf(name, cur.startsWith(name))
@@ -102,7 +103,9 @@ class KhoGameActivity : Activity() {
     private fun initials(name: String): String {
         val skip = setOf("the", "of", "a", "and", "&")
         val words = name.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() && it.lowercase() !in skip }
-        val s = words.take(3).joinToString("") { it.take(1) }.uppercase()
+        // Tên dài thì lấy chữ cái đầu của hai từ đầu và từ cuối, để các phần của cùng một series không trùng nhau (ACM, ACS, ACV).
+        val pick = if (words.size > 3) listOf(words[0], words[1], words.last()) else words
+        val s = pick.joinToString("") { it.take(1) }.uppercase()
         return s.ifEmpty { name.take(2).uppercase() }
     }
 
