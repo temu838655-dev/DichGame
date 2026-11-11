@@ -42,6 +42,8 @@ set_prefs ci/prefs-full.xml
 run_screens b-full
 
 # Thử giọng offline thật trên máy giả lập: app tự tải gói giọng, nạp sherpa-onnx và đọc thử một câu (SelfTest.kt)
+set_prefs ci/prefs-offline.xml
+start SettingsActivity; shot offline-chua-tai
 adb logcat -c
 adb shell am force-stop "$PKG"
 adb shell am start -W -n "$PKG/.SettingsActivity" --ez selftest true >/dev/null 2>&1
@@ -53,7 +55,8 @@ done
 cat "$OUT/selftest.txt"
 grep -qE "DG_SELFTEST.*OK" "$OUT/selftest.txt" || echo "Giọng offline không chạy được trên máy giả lập" > "$OUT/selftest-fail.txt"
 adb exec-out run-as "$PKG" cat files/selftest.wav > "$OUT/selftest.wav" 2>/dev/null || true
-shot selftest-settings
+adb shell am force-stop "$PKG"
+start SettingsActivity; shot offline-da-tai
 
 adb logcat -d -b crash > "$OUT/crash.txt" 2>&1
 adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime|ANR in|dichgame" > "$OUT/logcat-filtered.txt" 2>&1
