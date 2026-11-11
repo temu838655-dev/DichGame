@@ -41,6 +41,20 @@ run_screens a-default
 set_prefs ci/prefs-full.xml
 run_screens b-full
 
+# Thử giọng offline thật trên máy giả lập: app tự tải gói giọng, nạp sherpa-onnx và đọc thử một câu (SelfTest.kt)
+adb logcat -c
+adb shell am force-stop "$PKG"
+adb shell am start -W -n "$PKG/.SettingsActivity" --ez selftest true >/dev/null 2>&1
+for i in $(seq 1 90); do
+  sleep 5
+  adb logcat -d -s DG_SELFTEST:I > "$OUT/selftest.txt" 2>&1
+  grep -qE "DG_SELFTEST.*(OK|FAIL)" "$OUT/selftest.txt" && break
+done
+cat "$OUT/selftest.txt"
+grep -qE "DG_SELFTEST.*OK" "$OUT/selftest.txt" || echo "Giọng offline không chạy được trên máy giả lập" > "$OUT/selftest-fail.txt"
+adb exec-out run-as "$PKG" cat files/selftest.wav > "$OUT/selftest.wav" 2>/dev/null || true
+shot selftest-settings
+
 adb logcat -d -b crash > "$OUT/crash.txt" 2>&1
 adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime|ANR in|dichgame" > "$OUT/logcat-filtered.txt" 2>&1
 # chỉ coi là lỗi khi nhật ký crash có nội dung thật

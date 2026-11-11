@@ -9,8 +9,10 @@ import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Toast
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Cài đặt: Giọng đọc, Phụ đề, Hồ sơ game, Ngôn ngữ. */
 class SettingsActivity : Activity() {
@@ -23,6 +25,7 @@ class SettingsActivity : Activity() {
         speaker = Speaker(this, p)
         speaker?.onAiError = { m -> Toast.makeText(this, m, Toast.LENGTH_LONG).show() }
         render(intent?.getStringExtra("goto"))
+        if (BuildConfig.DEBUG && intent?.getBooleanExtra("selftest", false) == true) SelfTest.voice(applicationContext)
     }
 
     @Deprecated("Deprecated in Java")
@@ -109,15 +112,77 @@ class SettingsActivity : Activity() {
 
     // ---------------- Giọng đọc ----------------
 
+    /** Khối "Giọng offline": tải về, xóa, và thông tin giấy phép. */
+    private fun offlineBlock(): View {
+        val box = Ui.vbox(this)
+        val pack = Voices.pack(p.offlineVoice) ?: Voices.PACKS[0]
+        val has = Voices.installed(this, pack.id)
+        box.addView(Ui.tv(this, pack.name, 15f, Ui.TEXT, true))
+        box.addView(Ui.tv(this, pack.desc, 13f, Ui.SUB), Ui.lpm(this, 2, 8))
+        if (has) {
+            box.addView(Ui.tv(this, "✔ Đã tải về máy (${Voices.sizeMb(this, pack.id)} MB)", 13.5f, Ui.OK), Ui.lpm(this, 0, 8))
+            box.addView(Ui.button(this, "Xóa giọng khỏi máy") {
+                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("Xóa giọng đọc?")
+                    .setMessage("Giọng sẽ bị xóa khỏi máy, muốn dùng lại phải tải lần nữa. Trong lúc đó app đọc bằng giọng cơ bản.")
+                    .setPositiveButton("Xóa") { _, _ -> speaker?.release(); Voices.delete(this, pack.id); render() }
+                    .setNegativeButton("Giữ lại", null).show()
+            }, Ui.lpm(this, 0, 6, WRAP_CONTENT))
+        } else {
+            box.addView(Ui.tv(this, "Chưa tải nên app đang đọc bằng giọng cơ bản. Cần khoảng ${pack.downloadMb} MB, nên dùng Wi-Fi.", 13f, Ui.SUB), Ui.lpm(this, 0, 8))
+            box.addView(Ui.button(this, "⬇  Tải giọng (${pack.downloadMb} MB)", true) { downloadVoice(pack) }, Ui.lpm(this, 0, 6, WRAP_CONTENT))
+        }
+        box.addView(Ui.tv(this, "Giấy phép giọng: ${pack.license}. ${pack.credit} Số, ký hiệu được đọc thành chữ; tên riêng và chữ nước ngoài được đọc theo kiểu tiếng Việt.", 12f, Ui.SUB), Ui.lpm(this, 6, 4))
+        return box
+    }
+
+    private fun downloadVoice(pack: VoicePack) {
+        val cancel = AtomicBoolean(false)
+        val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100 }
+        val msg = Ui.tv(this, "Đang tải 0%...", 14f, Ui.TEXT)
+        val box = Ui.vbox(this)
+        val pad = Ui.dp(this, 20)
+        box.setPadding(pad, pad, pad, pad / 2)
+        box.addView(msg, Ui.lpm(this, 0, 10))
+        box.addView(bar, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
+        val d = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Đang tải giọng đọc")
+            .setView(box)
+            .setCancelable(false)
+            .setNegativeButton("Hủy") { _, _ -> cancel.set(true) }
+            .create()
+        d.show()
+        val app = applicationContext
+        Thread {
+            val err = Voices.download(app, pack, cancel) { pct ->
+                runOnUiThread { bar.progress = pct; msg.text = "Đang tải $pct%..." }
+            }
+            runOnUiThread {
+                try { if (d.isShowing) d.dismiss() } catch (_: Exception) {}
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (err == null) {
+                    Toast.makeText(this, "Đã tải xong giọng đọc.", Toast.LENGTH_SHORT).show()
+                    speaker?.prepare()
+                    render()
+                } else {
+                    Toast.makeText(this, err, Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
     private fun voiceCard(): View {
         val c = Ui.card(this)
         c.addView(Ui.section(this, "🎙", "Giọng đọc"))
         c.addView(Ui.switchRow(this, "Đọc to bản dịch", "Tắt nếu chỉ muốn xem chữ.", p.speak) { p.speak = it })
-        c.addView(Ui.segmented(this, listOf("Giọng cơ bản", "Giọng AI"), if (p.voiceEngine == "ai") 1 else 0) { i ->
-            p.voiceEngine = if (i == 1) "ai" else "system"
+        c.addView(Ui.segmented(this, listOf("Cơ bản", "Giọng AI", "Offline"), when (p.voiceEngine) { "ai" -> 1; "offline" -> 2; else -> 0 }) { i ->
+            p.voiceEngine = when (i) { 1 -> "ai"; 2 -> "offline"; else -> "system" }
+            if (i == 2) speaker?.prepare()
             render()
         }, Ui.lpm(this, 8, 8))
-        if (p.voiceEngine == "ai") {
+        if (p.voiceEngine == "offline") {
+            c.addView(offlineBlock(), Ui.lpm(this, 4, 6))
+        } else if (p.voiceEngine == "ai") {
             c.addView(Ui.dropRow(this, "Giọng AI",
                 { Prefs.AI_VOICES.firstOrNull { it.first == p.aiVoice }?.let { "${it.first} · ${it.second}" } ?: p.aiVoice },
                 { Prefs.AI_VOICES.map { "${it.first} · ${it.second}" } }

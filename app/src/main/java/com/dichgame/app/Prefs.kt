@@ -101,7 +101,7 @@ class Prefs(ctx: Context) {
         get() = sp.getInt("scanms", 1000).coerceIn(400, 3000)
         set(v) = sp.edit().putInt("scanms", v.coerceIn(400, 3000)).apply()
 
-    /** "system" = giọng của máy, "ai" = giọng AI Gemini (cần khóa Gemini, tự lùi về giọng máy khi lỗi). */
+    /** "system" = giọng của máy, "ai" = giọng AI Gemini (cần khóa Gemini), "offline" = giọng đã tải về máy. AI và offline lỗi thì tự lùi về giọng máy. */
     var voiceEngine: String
         get() = sp.getString("voiceengine", "system").orEmpty()
         set(v) = sp.edit().putString("voiceengine", v).apply()
@@ -112,6 +112,10 @@ class Prefs(ctx: Context) {
         get() = sp.getString("ttsmodel", "gemini-3.8-flash-tts").orEmpty().ifBlank { "gemini-3.8-flash-tts" }
         set(v) = sp.edit().putString("ttsmodel", v.trim()).apply()
     val aiVoiceOn: Boolean get() = voiceEngine == "ai" && geminiKey.isNotEmpty()
+    /** Mã gói giọng offline đang chọn (xem Voices.PACKS). */
+    var offlineVoice: String
+        get() = sp.getString("offvoice", "vais1000").orEmpty().ifBlank { "vais1000" }
+        set(v) = sp.edit().putString("offvoice", v).apply()
 
     var voice: String
         get() = sp.getString("voice", "").orEmpty()

@@ -92,6 +92,7 @@ class LicensesActivity : Activity() {
             "Google Gemini API" to "Dịch AI, giọng đọc AI và đọc chữ Nga, Thái, Ả Rập... Chỉ chạy khi bạn nhập khóa của riêng bạn, theo điều khoản Google AI.",
             "CloudAPI (tùy chọn)" to "Dịch AI qua dịch vụ theo chuẩn OpenAI mà bạn tự nhập địa chỉ và khóa.",
             "Giọng đọc của máy" to "Dùng bộ đọc văn bản thành giọng nói có sẵn trong Android.",
+            "Giọng đọc offline" to "Chạy bằng sherpa-onnx (Apache-2.0) và ONNX Runtime (MIT). Giọng Piper VAIS-1000 (CC BY 4.0) là gói tải thêm trong Cài đặt, lấy từ kho phát hành của sherpa-onnx trên GitHub. Bảng phiên âm tiếng Việt của app được tạo bằng eSpeak NG (GPL-3.0) ở máy của người làm app; trong app không có mã eSpeak.",
             "App chơi từ xa" to "PS Remote Play, Chiaki, Moonlight, Steam Link... là app riêng của bên thứ ba. Dịch game chỉ mở chúng và hiện bản dịch đè lên."
         )
         screen("Giấy phép và ghi công") {

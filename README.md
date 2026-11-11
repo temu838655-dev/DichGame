@@ -13,7 +13,7 @@ Dịch phụ đề game và phim sang tiếng Việt ngay trên màn hình, có 
 | --- | --- |
 | Chính | Chuyển **Dịch / Thuyết minh**, chọn ngôn ngữ game (**28 thứ tiếng**, xem mục "Ngôn ngữ đọc được"), nút Bắt đầu, hộp **"Bạn chơi ở đâu?"** (TV / điện thoại) |
 | Cách dịch | **Dịch trên máy** (miễn phí, offline), **CloudAPI** (AI theo chuẩn OpenAI, nhập địa chỉ + khóa + model), **Google Gemini** (khóa + model), nút **Tải gói ngôn ngữ** (tải trước mô hình dịch trên máy), nút **Lưu và kiểm tra**, số câu trước cho AI hiểu mạch truyện |
-| Cài đặt › Giọng đọc | **Giọng của máy** hoặc **giọng AI Gemini** (8 giọng, tự lùi về giọng máy khi lỗi), tốc độ 0,5x–3x, **đọc theo cảm xúc**, **tự đọc nhanh khi câu dồn lại**, đọc qua loa TV, nghe thử |
+| Cài đặt › Giọng đọc | **Giọng của máy**, **giọng AI Gemini** (8 giọng) hoặc **giọng offline** tải thêm về máy (chạy không cần mạng; AI và offline lỗi thì tự lùi về giọng máy), tốc độ 0,5x–3x, **đọc theo cảm xúc**, **tự đọc nhanh khi câu dồn lại**, đọc qua loa TV, nghe thử |
 | Cài đặt › Phụ đề | Hiện câu gốc, **hiện câu thoại trước** (chữ nhỏ phía trên), cỡ chữ 50–200 %, kiểu chữ, mục **Nâng cao** (tần suất quét, chữ hiện dần, dịch menu tự động) |
 | Kho game | Tìm kiếm, tab **Đã chơi / Tất cả**, nút **Game khác**. Chọn một game là tạo (hoặc chuyển sang) hồ sơ riêng tên game đó và ghi thể loại để AI dịch đúng giọng. Danh sách có hơn 100 game phổ biến (chỉ tên, không kèm ảnh bìa) |
 | Cài đặt › Hồ sơ game | Nhiều hồ sơ, mỗi hồ sơ nhớ tên game + vùng quét riêng, **phong cách dịch** (Tự nhiên, Thuyết minh, Ngắn gọn, Sát nghĩa), **từ điển riêng** (ép AI dịch đúng tên nhân vật, chiêu thức) |
@@ -77,6 +77,7 @@ Lần đầu dùng mỗi thứ tiếng, app tải mô hình dịch nên cần m�
 - Giao diện chỉ có tiếng Việt.
 - Chữ Nga, Ukraina, Thái, Ả Rập, Hy Lạp, Do Thái đọc chậm hơn (khoảng 1–3 giây mỗi câu) vì phải nhờ Gemini đọc ảnh; ở chế độ này tắt "Dịch menu tự động" (vẫn dùng được nút "Dịch menu" và "Vùng dịch").
 - Giọng của máy là các giọng tiếng Việt cài sẵn (Cài đặt › Ngôn ngữ và nhập › Chuyển văn bản thành giọng nói). Giọng AI dùng chung khóa Google Gemini với bộ dịch, tên model mặc định `gemini-3.8-flash-tts` (đổi được trong app nếu Google đổi tên).
+- **Giọng offline**: dùng thư viện sherpa-onnx (tự tải về lúc build, nằm ở `app/libs/`, không để trong git) và giọng Piper VAIS-1000 tải thêm trong app (khoảng 65 MB). Chưa có giọng nam, và mới có một giọng. Vì sherpa-onnx từ bản 2.0 không còn eSpeak, app tự đổi chữ sang phiên âm bằng bảng `app/src/main/assets/vi_phon.txt`, tạo bởi `tools/gen_vi_phon.py` (cần eSpeak NG ở máy dựng bảng, xem đầu file). Số và ký hiệu được đọc thành chữ; tên riêng, chữ nước ngoài được đọc theo kiểu tiếng Việt nên có thể nghe lạ. Smoke test trên máy giả lập có tự tải giọng và đọc thử một câu (SelfTest.kt) để chắc rằng thư viện chạy được; chất lượng nghe thật vẫn cần bạn nghe trên máy. Nghe không ổn thì dùng mục "Báo lỗi" trong app.
 - "Đọc theo cảm xúc" đoán cảm xúc bằng từ khóa và dấu câu, chưa dùng AI.
 - "Dịch video trên web" phụ thuộc trang web có để lộ phụ đề cho trình duyệt hay không; trang dùng DRM hoặc vẽ phụ đề lên canvas thì không đọc được, khi đó dùng chế độ chụp màn hình thường.
 - Không có phần trả phí, không có mạng xã hội.

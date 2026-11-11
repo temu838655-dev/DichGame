@@ -15,10 +15,13 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Đọc to tiếng Việt. Hai kiểu giọng: giọng của máy, hoặc giọng AI Gemini (cần khóa, lỗi thì tự lùi về giọng máy).
+ * Đọc to tiếng Việt. Ba kiểu giọng: giọng của máy, giọng AI Gemini (cần khóa), hoặc giọng offline đã tải về.
+ * Giọng AI và giọng offline lỗi thì tự lùi về giọng máy.
  * Theo cài đặt: giọng, tốc độ và "đọc theo cảm xúc".
  */
 class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Unit)? = null) {
+    private val app = ctx.applicationContext
+    private val offline = OfflineVoice(app)
     private var tts: TextToSpeech? = null
     private val main = Handler(Looper.getMainLooper())
     private val exec = Executors.newSingleThreadExecutor()
@@ -43,6 +46,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     private var aiErrorShown = false
 
     init {
+        prepare()
         tts = TextToSpeech(ctx.applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.setLanguage(Locale("vi", "VN"))
@@ -88,9 +92,23 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         }
     }
 
+    private fun offlineOn() = p.voiceEngine == "offline" && Voices.installed(app, p.offlineVoice)
+
+    /** Nạp sẵn giọng offline (nếu đang dùng) để câu đầu tiên đọc ngay. */
+    fun prepare() {
+        if (offlineOn()) try { exec.execute { try { offline.warm(p.offlineVoice) } catch (_: Throwable) {} } } catch (_: Exception) {}
+    }
+
+    /** Giải phóng giọng offline (trước khi xóa file giọng). */
+    fun release() { try { offline.close() } catch (_: Throwable) {} }
+
     fun speak(text: String, queue: Boolean = false) {
         if (text.isBlank()) return
-        if (p.aiVoiceOn) speakAi(text) else speakSystem(text, queue)
+        when {
+            offlineOn() -> speakOffline(text)
+            p.aiVoiceOn -> speakAi(text)
+            else -> speakSystem(text, queue)
+        }
     }
 
     // ---------------- Giọng máy ----------------
@@ -153,10 +171,45 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         }
     }
 
-    private fun fallback(text: String, e: Exception) {
+    // ---------------- Giọng offline ----------------
+
+    private fun speedFor(text: String): Float {
+        var v = p.rate10 / 10f
+        if (p.emotion) {
+            v *= when (emotionOf(text)) { "angry" -> 1.1f; "scared" -> 1.15f; "sad" -> 0.88f; "happy" -> 1.05f; else -> 1f }
+        }
+        if (p.autoFast && System.currentTimeMillis() < aiPlayUntil) v *= 1.3f
+        return v.coerceIn(0.5f, 2.2f)
+    }
+
+    private fun speakOffline(text: String) {
+        val my = seq.incrementAndGet()
+        stopTrack()
+        try { tts?.stop() } catch (_: Exception) {}
+        val id = p.offlineVoice
+        val speed = speedFor(text)
+        exec.execute {
+            if (my != seq.get()) return@execute // đã có câu mới hơn, bỏ câu này
+            val key = "off|$id|${(speed * 10).toInt()}|$text"
+            val cached: Pcm? = cache.get(key)
+            val pcm: Pcm = cached ?: try {
+                offline.synth(id, text, speed).also { if (it.data.isNotEmpty()) cache.put(key, it) }
+            } catch (e: Throwable) {
+                if (my == seq.get()) main.post { fallback(text, e) }
+                return@execute
+            }
+            if (my == seq.get()) play(pcm, 1f)
+        }
+    }
+
+    private fun fallback(text: String, e: Throwable) {
         if (!aiErrorShown) {
             aiErrorShown = true
-            val m = if (e is AiException) "Giọng AI lỗi ${e.code}, đọc bằng giọng máy." else "Giọng AI không dùng được, đọc bằng giọng máy."
+            val m = when {
+                e is OfflineVoiceException || e is LinkageError -> (e.message ?: "Giọng offline không dùng được") + " Đọc bằng giọng máy."
+                e is AiException -> "Giọng AI lỗi ${e.code}, đọc bằng giọng máy."
+                else -> "Giọng AI không dùng được, đọc bằng giọng máy."
+            }
             onAiError?.invoke(m)
         }
         speakSystem(text, false)
@@ -213,6 +266,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         seq.incrementAndGet()
         stopTrack()
         exec.shutdownNow()
+        try { offline.close() } catch (_: Throwable) {}
         try { tts?.stop(); tts?.shutdown() } catch (_: Exception) {}
         tts = null
         ready = false

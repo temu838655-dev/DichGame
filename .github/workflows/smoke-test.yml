@@ -74,3 +74,6 @@ jobs:
           if [ -s shots/crash.txt ]; then
             echo "App bị crash:"; cat shots/crash.txt; exit 1
           fi
+          if [ -s shots/selftest-fail.txt ]; then
+            echo "Giọng offline lỗi:"; cat shots/selftest.txt; exit 1
+          fi
