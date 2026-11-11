@@ -10,7 +10,7 @@ android {
         applicationId = "com.dichgame.tv"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
+        versionCode = 3 + ((project.findProperty("buildNo") as String?)?.toIntOrNull() ?: 0)
         versionName = "1.2"
     }
     // Cùng cách ký với app điện thoại, xem app/build.gradle.kts.

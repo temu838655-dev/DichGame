@@ -51,7 +51,7 @@ jobs:
           fi
 
       - name: Build điện thoại và TV
-        run: gradle :app:assembleDebug :app:assembleRelease :tv:assembleDebug :tv:assembleRelease --no-daemon --stacktrace
+        run: gradle :app:assembleDebug :app:assembleRelease :tv:assembleDebug :tv:assembleRelease -PbuildNo=${{ github.run_number }} --no-daemon --stacktrace
 
       - name: Gom file APK
         run: |

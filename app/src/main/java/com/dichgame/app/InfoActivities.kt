@@ -54,7 +54,13 @@ class FeaturesActivity : Activity() {
             Triple("Dịch AI", "CloudAPI hoặc Google Gemini: giữ đúng tên, xưng hô, nhớ mạch truyện.", true),
             Triple("Hồ sơ game không giới hạn", "Lưu khung quét, tên game và phong cách cho từng game.", true),
             Triple("Dịch video trên web", "Mở trang video, dịch phụ đề ngay khi xem.", true),
-            Triple("Cài app cho TV LG, Samsung từ điện thoại", "Chưa có trong bản này.", false)
+            Triple("28 thứ tiếng trong game", "Chữ Latin, Nhật, Hàn, Trung, Hindi đọc trên máy; Nga, Thái, Ả Rập... nhờ Gemini.", true),
+            Triple("Từ điển riêng cho từng game", "Ép AI dịch đúng tên nhân vật, chiêu thức, địa danh.", true),
+            Triple("Mở app chơi từ xa", "Mở PS Remote Play, Chiaki, Moonlight, Steam Link... rồi hiện bản dịch đè lên.", true),
+            Triple("Kiểm tra bản mới, báo lỗi, yêu cầu game", "Ở cuối màn Cài đặt.", true),
+            Triple("Điều khiển PS4/PS5 ngay trong app", "Chưa có, hiện dùng app chơi từ xa riêng.", false),
+            Triple("App cho TV LG, Samsung", "Chưa có trong bản này.", false),
+            Triple("App iOS, Windows, Mac", "Chưa có, hiện chỉ có Android.", false)
         )
         screen("Tính năng") {
             put(Ui.tv(this@FeaturesActivity, "Mọi tính năng đều dùng miễn phí, không gia hạn, không quảng cáo.", 14f, Ui.SUB), 0, 12)

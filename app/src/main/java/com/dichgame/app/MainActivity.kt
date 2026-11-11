@@ -227,7 +227,7 @@ class MainActivity : Activity() {
                 d.dismiss(); chooseTv()
             }, Ui.lpm(this@MainActivity, 16, 0))
             addView(choice("📱", "Chơi trên điện thoại", "Hình game hiện trên điện thoại, bản dịch hiện ngay trên hình.") {
-                d.dismiss(); p.playOn = "phone"; capture()
+                d.dismiss(); p.playOn = "phone"; remotePicker()
             }, Ui.lpm(this@MainActivity, 12, 0))
         }
     }
@@ -258,6 +258,48 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private var pendingApp: String? = null
+
+    /** (gói, tên, mô tả) các app chơi từ xa / chơi đám mây thường dùng. */
+    private val remoteApps = listOf(
+        Triple("com.playstation.remoteplay", "PS Remote Play", "Chơi PS4/PS5 từ xa (app chính thức của Sony)"),
+        Triple("com.metallic.chiaki", "Chiaki", "Chơi PS4/PS5 từ xa (mã nguồn mở)"),
+        Triple("com.limelight", "Moonlight", "Chơi game từ máy tính qua Sunshine hoặc GeForce"),
+        Triple("com.valvesoftware.steamlink", "Steam Link", "Chơi game Steam trên điện thoại"),
+        Triple("com.nvidia.geforcenow", "GeForce NOW", "Chơi game đám mây"),
+        Triple("com.microsoft.xboxone.smartglass", "Xbox", "Chơi Xbox từ xa, Game Pass")
+    )
+
+    /** Chơi trên điện thoại: mở sẵn app chơi từ xa, bản dịch hiện đè lên hình game. Dịch game không tự điều khiển máy chơi game. */
+    private fun remotePicker() {
+        val installed = remoteApps.filter { packageManager.getLaunchIntentForPackage(it.first) != null }
+        Ui.sheet(this) { d ->
+            addView(Ui.tv(this@MainActivity, "Mở app chơi từ xa?", 24f, Ui.TEXT, true))
+            addView(Ui.tv(this@MainActivity,
+                "Dịch game mở app chơi từ xa bạn đã cài rồi hiện bản dịch đè lên hình game. Việc điều khiển máy chơi game do app đó làm.",
+                13f, Ui.SUB), Ui.lpm(this@MainActivity, 6, 0))
+            for (a in installed) {
+                addView(choice("🎮", a.second, a.third) { d.dismiss(); pendingApp = a.first; capture() }, Ui.lpm(this@MainActivity, 12, 0))
+            }
+            if (installed.isEmpty()) {
+                addView(choice("📥", "Cài PS Remote Play", "Chưa thấy app chơi từ xa nào trên máy. Mở trang cài đặt.") {
+                    d.dismiss(); openStore("com.playstation.remoteplay")
+                }, Ui.lpm(this@MainActivity, 12, 0))
+            }
+            addView(choice("📱", "Mình tự mở app", "Chỉ bật dịch, bạn tự mở app hoặc hình game.") {
+                d.dismiss(); pendingApp = null; capture()
+            }, Ui.lpm(this@MainActivity, 12, 0))
+        }
+    }
+
+    private fun openStore(pkg: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg")))
+        } catch (_: Exception) {
+            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg"))) } catch (_: Exception) {}
+        }
+    }
+
     private fun capture() {
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         @Suppress("DEPRECATION")
@@ -277,7 +319,10 @@ class MainActivity : Activity() {
             startForegroundService(i)
             CaptureService.active = true
             Toast.makeText(this, "Đang chạy. Quay lại game, kéo khung xanh tới dòng phụ đề.", Toast.LENGTH_LONG).show()
-            moveTaskToBack(true)
+            val app = pendingApp
+            pendingApp = null
+            val launch = if (app != null) packageManager.getLaunchIntentForPackage(app) else null
+            if (launch != null) startActivity(launch) else moveTaskToBack(true)
         }
     }
 }

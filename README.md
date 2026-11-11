@@ -18,6 +18,8 @@ Dịch phụ đề game và phim sang tiếng Việt ngay trên màn hình, có 
 | Cài đặt › Hồ sơ game | Nhiều hồ sơ, mỗi hồ sơ nhớ tên game + vùng quét riêng, **phong cách dịch** (Tự nhiên, Thuyết minh, Ngắn gọn, Sát nghĩa), **từ điển riêng** (ép AI dịch đúng tên nhân vật, chiêu thức) |
 | Phụ đề trên TV | Chọn hãng TV, hướng dẫn 4 bước, tìm TV trong mạng, ghép bằng mã 8 số, gửi câu thử |
 | Dịch video trên web | Trình duyệt trong app, đọc phụ đề của trình phát (thẻ track, YouTube, video.js, JW Player, Plyr...) rồi hiện bản dịch, có thể đọc to |
+| Chơi trên điện thoại | Chọn **Chơi trên điện thoại** thì app liệt kê các app chơi từ xa đã cài (PS Remote Play, Chiaki, Moonlight, Steam Link, GeForce NOW, Xbox), mở sẵn app bạn chọn rồi hiện bản dịch đè lên hình game. Chưa cài thì có nút mở trang cài PS Remote Play |
+| Cài đặt › Giới thiệu và hỗ trợ | Xem phiên bản, **Kiểm tra bản mới** (so với trang Releases), **Báo lỗi / yêu cầu game** (mở GitHub Issues điền sẵn thông tin máy) |
 | Hướng dẫn / Tính năng | Hướng dẫn 5 bước, danh sách tính năng |
 
 Trong lúc chạy, thông báo có 3 nút: **Chỉnh/Khóa khung**, **Dịch menu**, **Vùng dịch**.
@@ -38,6 +40,7 @@ Trong lúc chạy, thông báo có 3 nút: **Chỉnh/Khóa khung**, **Dịch men
 | `*-debug.apk` | Bản gỡ lỗi, cùng khóa ký nên cài đè lên nhau được |
 
 Phát hành bản có số phiên bản: `git tag v2.0 && git push origin v2.0`.
+Mỗi bản dựng trên nhánh `main` có số thứ tự (`build-N`), số này được ghi vào app (versionCode = 20 + N) để app biết có bản mới hơn khi bấm **Kiểm tra bản mới**. Cài đè lên bản cũ được vì cùng khóa ký.
 
 ### Khóa ký
 
@@ -68,7 +71,8 @@ Lần đầu dùng mỗi thứ tiếng, app tải mô hình dịch nên cần m�
 ## Giới hạn hiện tại
 
 - Chưa có app cho **TV LG (webOS)** và **TV Samsung (Tizen)**; chỉ Android TV / Google TV.
-- Chưa có **Chơi trên điện thoại bằng Remote Play** (điều khiển máy chơi game ngay trong app). "Chơi trên điện thoại" hiện nghĩa là hình game đã hiện sẵn trên điện thoại (ứng dụng Remote Play, cloud gaming, thẻ capture...).
+- Chưa có **điều khiển PS4/PS5 thẳng trong app** (giao thức Remote Play). Dịch game chỉ mở app chơi từ xa bạn đã cài (nút ở mục "Chơi trên điện thoại") rồi hiện bản dịch đè lên; việc kết nối và điều khiển máy chơi game do app đó làm.
+- Chưa có app cho **iOS, Windows, Mac**, và chưa có **kho game Việt hóa kèm bot gửi yêu cầu** (cần máy chủ). Thay vào đó có mục báo lỗi / yêu cầu game dẫn tới GitHub Issues.
 - Giao diện chỉ có tiếng Việt.
 - Chữ Nga, Ukraina, Thái, Ả Rập, Hy Lạp, Do Thái đọc chậm hơn (khoảng 1–3 giây mỗi câu) vì phải nhờ Gemini đọc ảnh; ở chế độ này tắt "Dịch menu tự động" (vẫn dùng được nút "Dịch menu" và "Vùng dịch").
 - Giọng của máy là các giọng tiếng Việt cài sẵn (Cài đặt › Ngôn ngữ và nhập › Chuyển văn bản thành giọng nói). Giọng AI dùng chung khóa Google Gemini với bộ dịch, tên model mặc định `gemini-3.8-flash-tts` (đổi được trong app nếu Google đổi tên).

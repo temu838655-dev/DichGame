@@ -186,7 +186,9 @@ object Ui {
         val p = dp(a, 20)
         box.setPadding(p, p, p, p * 2)
         box.build(d)
-        d.setContentView(box)
+        val sv = ScrollView(a)
+        sv.addView(box)
+        d.setContentView(sv)
         d.window?.apply {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             setGravity(Gravity.BOTTOM)

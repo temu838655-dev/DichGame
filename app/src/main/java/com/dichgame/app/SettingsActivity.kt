@@ -37,8 +37,67 @@ class SettingsActivity : Activity() {
             val prof = profileCard()
             put(prof, 0, 12)
             put(languageCard(), 0, 12)
+            put(aboutCard(), 0, 12)
             if (target == "profile") post { (parent as? ScrollView)?.smoothScrollTo(0, prof.top) }
         }
+    }
+
+    // ---------------- Giới thiệu và hỗ trợ ----------------
+
+    private fun aboutCard(): View {
+        val c = Ui.card(this)
+        c.addView(Ui.section(this, "💬", "Giới thiệu và hỗ trợ"))
+        val ver = try { packageManager.getPackageInfo(packageName, 0).versionName.orEmpty() } catch (_: Exception) { "?" }
+        c.addView(Ui.tv(this, "Phiên bản $ver" + (if (BuildConfig.BUILD_NO > 0) " (bản dựng ${BuildConfig.BUILD_NO})" else ""), 14f, Ui.SUB), Ui.lpm(this, 0, 10))
+        val status = Ui.tv(this, "", 13.5f, Ui.SUB)
+        c.addView(Ui.button(this, "Kiểm tra bản mới") { checkUpdate(status) }, Ui.lpm(this, 0, 6))
+        c.addView(status, Ui.lpm(this, 0, 8))
+        c.addView(Ui.button(this, "Báo lỗi / yêu cầu game") { report() }, Ui.lpm(this, 0, 8))
+        c.addView(Ui.button(this, "Trang dự án trên GitHub") { openUrl("https://github.com/" + Update.REPO) }, Ui.lpm(this, 0, 0))
+        return c
+    }
+
+    private fun openUrl(u: String) {
+        try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(u))) }
+        catch (_: Exception) { Toast.makeText(this, "Không mở được trình duyệt.", Toast.LENGTH_SHORT).show() }
+    }
+
+    private fun checkUpdate(status: android.widget.TextView) {
+        status.text = "Đang kiểm tra..."
+        Thread {
+            var info: Update.Info? = null
+            var err = false
+            try { info = Update.latest() } catch (_: Exception) { err = true }
+            val got = info
+            runOnUiThread {
+                when {
+                    err -> status.text = "Không kiểm tra được. Kiểm tra mạng rồi thử lại."
+                    got == null -> status.text = "Chưa có bản phát hành nào trên GitHub."
+                    BuildConfig.BUILD_NO == 0 -> status.text = "Bản này tự build nên không so sánh được. Bản mới nhất trên GitHub là bản dựng ${got.no}."
+                    got.no > BuildConfig.BUILD_NO -> { status.text = "Có bản mới: bản dựng ${got.no}."; offerUpdate(got) }
+                    else -> status.text = "Bạn đang dùng bản mới nhất."
+                }
+            }
+        }.start()
+    }
+
+    private fun offerUpdate(i: Update.Info) {
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Có bản mới")
+            .setMessage("Bản dựng ${i.no} đã có trên GitHub. Tải file về rồi mở để cài đè, cài đặt và hồ sơ game của bạn được giữ nguyên.")
+            .setPositiveButton("Tải về") { _, _ -> openUrl(i.apk ?: i.page) }
+            .setNegativeButton("Để sau", null).show()
+    }
+
+    /** Mở trang tạo báo cáo trên GitHub, điền sẵn thông tin máy. Bạn xem lại rồi mới gửi. */
+    private fun report() {
+        val body = "Mô tả (lỗi gặp phải, hoặc tên game cần hỗ trợ):\n\n\n---\n" +
+            "Phiên bản: " + (try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { "?" }) + "\n" +
+            "Android: " + android.os.Build.VERSION.RELEASE + "\n" +
+            "Máy: " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + "\n" +
+            "Ngôn ngữ game: " + Prefs.langName(p.lang) + "\n" +
+            "Game: " + p.game
+        openUrl("https://github.com/" + Update.REPO + "/issues/new?title=" + android.net.Uri.encode("[Lỗi/Yêu cầu game] ") + "&body=" + android.net.Uri.encode(body))
     }
 
     // ---------------- Giọng đọc ----------------

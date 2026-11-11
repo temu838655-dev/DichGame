@@ -3,6 +3,9 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Số bản dựng do GitHub Actions truyền vào (-PbuildNo=<số lần chạy>), build ở máy thì là 0.
+val buildNo = (project.findProperty("buildNo") as String?)?.toIntOrNull() ?: 0
+
 android {
     namespace = "com.dichgame.app"
     compileSdk = 34
@@ -10,8 +13,9 @@ android {
         applicationId = "com.dichgame.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 20
-        versionName = "2.0"
+        versionCode = 20 + buildNo
+        versionName = if (buildNo > 0) "2.0.$buildNo" else "2.0"
+        buildConfigField("int", "BUILD_NO", "$buildNo")
     }
     // Khóa ký: dùng khóa trong thư mục keystore/ (cùng khóa cho debug và release nên cài đè lên nhau được).
     // Muốn dùng khóa riêng: đặt các biến môi trường KEYSTORE_FILE, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD (hoặc secrets trên GitHub).
@@ -41,6 +45,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+    buildFeatures { buildConfig = true }
 }
 
 dependencies {
