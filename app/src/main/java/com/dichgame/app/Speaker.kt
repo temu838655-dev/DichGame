@@ -202,6 +202,29 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         }
     }
 
+    private val tvSeq = AtomicInteger(0)
+
+    /**
+     * Tạo âm thanh giọng offline mà không phát trên điện thoại, để gửi sang loa TV.
+     * [cb] chạy ở luồng nền, nhận null nếu giọng lỗi. Câu cũ chưa kịp làm mà đã có câu mới thì bị bỏ (không gọi [cb]).
+     */
+    fun synthOffline(text: String, cb: (Pcm?) -> Unit) {
+        if (text.isBlank()) return
+        val my = tvSeq.incrementAndGet()
+        val id = p.offlineVoice
+        val speed = speedFor(text)
+        try {
+            exec.execute {
+                if (my != tvSeq.get()) return@execute
+                val key = "off|$id|${(speed * 10).toInt()}|$text"
+                val pcm: Pcm? = cache.get(key) ?: try {
+                    offline.synth(id, text, speed).also { if (it.data.isNotEmpty()) cache.put(key, it) }
+                } catch (_: Throwable) { null }
+                cb(pcm)
+            }
+        } catch (_: Exception) { cb(null) }
+    }
+
     private fun fallback(text: String, e: Throwable) {
         if (!aiErrorShown) {
             aiErrorShown = true

@@ -7,6 +7,9 @@ import android.app.Service
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -33,6 +36,8 @@ object TvState {
     fun rotate() { prev = code; code = String.format("%08d", SecureRandom().nextInt(100_000_000)); fails = 0 }
 }
 
+private const val MAX_AUDIO = 6_000_000
+
 /** Nhận phụ đề từ điện thoại qua Wi-Fi (cổng 8765) rồi vẽ nổi lên hình TV, kể cả khi TV đang ở cổng HDMI. */
 class TvService : Service() {
     private val handler = Handler(Looper.getMainLooper())
@@ -40,6 +45,7 @@ class TvService : Service() {
     private var server: ServerSocket? = null
     private var disc: java.net.DatagramSocket? = null
     private var tts: TextToSpeech? = null
+    private var track: AudioTrack? = null
     private var subView: TextView? = null
     private var regView: TextView? = null
     private val hideSub = Runnable { subView?.visibility = View.GONE }
@@ -123,8 +129,10 @@ class TvService : Service() {
         s.soTimeout = 3000
         val i = s.getInputStream().buffered()
         val req = line(i) ?: return
+        val path = req.split(" ").getOrElse(1) { "" }
         var len = 0
         var token = ""
+        var rate = 22050
         while (true) {
             val h = line(i) ?: return
             if (h.isEmpty()) break
@@ -132,6 +140,26 @@ class TvService : Service() {
             val v = h.substringAfter(':', "").trim()
             if (k == "content-length") len = v.toIntOrNull() ?: 0
             if (k == "x-token") token = v
+            if (k == "x-rate") rate = v.toIntOrNull() ?: 22050
+        }
+        var status = 404
+        var out = ""
+        if (path == "/audio") {
+            // Âm thanh PCM 16 bit mono do điện thoại tạo (giọng offline), phát bằng loa TV
+            if (token.isEmpty() || !TvState.tokens.contains(token)) status = 403
+            else if (len <= 0 || len > MAX_AUDIO || rate < 8000 || rate > 48000) status = 400
+            else {
+                val pcm = ByteArray(len)
+                var got = 0
+                while (got < len) {
+                    val r = i.read(pcm, got, len - got)
+                    if (r < 0) break
+                    got += r
+                }
+                if (got == len) { playPcm(pcm, rate); status = 200; out = "ok" } else status = 400
+            }
+            reply(s, status, out)
+            return
         }
         val buf = ByteArray(len.coerceIn(0, 8192))
         var off = 0
@@ -141,9 +169,6 @@ class TvService : Service() {
             off += r
         }
         val body = String(buf, 0, off, Charsets.UTF_8)
-        val path = req.split(" ").getOrElse(1) { "" }
-        var status = 404
-        var out = ""
         if (path == "/pair") {
             if (TvState.fails >= 10) status = 429
             else if (body.length == 8 && (body == TvState.code || body == TvState.prev)) {
@@ -165,12 +190,35 @@ class TvService : Service() {
                 status = 200; out = "ok"
             }
         }
+        reply(s, status, out)
+    }
+
+    private fun reply(s: Socket, status: Int, out: String) {
         val bytes = out.toByteArray()
         s.getOutputStream().apply {
             write("HTTP/1.1 $status OK\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n".toByteArray())
             write(bytes)
             flush()
         }
+    }
+
+    /** Phát một câu thoại có sẵn âm thanh; câu mới tới thì ngắt câu đang đọc. */
+    @Synchronized
+    private fun playPcm(data: ByteArray, rate: Int) {
+        try { tts?.stop() } catch (_: Exception) {}
+        try { track?.stop(); track?.release() } catch (_: Exception) {}
+        track = null
+        try {
+            val t = AudioTrack.Builder()
+                .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+                .setTransferMode(AudioTrack.MODE_STATIC)
+                .setBufferSizeInBytes(data.size.coerceAtLeast(4096))
+                .build()
+            t.write(data, 0, data.size)
+            track = t
+            t.play()
+        } catch (_: Exception) {}
     }
 
     private fun mk(top: Boolean): TextView {
@@ -219,6 +267,7 @@ class TvService : Service() {
         try { server?.close() } catch (_: Exception) {}
         try { disc?.close() } catch (_: Exception) {}
         try { subView?.let { wm.removeView(it) }; regView?.let { wm.removeView(it) } } catch (_: Exception) {}
+        try { track?.stop(); track?.release() } catch (_: Exception) {}
         tts?.shutdown()
         super.onDestroy()
     }

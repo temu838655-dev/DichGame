@@ -348,7 +348,12 @@ class CaptureService : Service() {
         ocr!!.read(crop, { m -> ocrFail(m) }) { r ->
                 val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
                 if (text.length < minLen) { show("Không thấy chữ trong khung."); busy = false; return@read }
-                translateText(text) { vi -> show(vi); sendTv("region", vi, speak && tvSpeakOn()); busy = false }
+                translateText(text) { vi ->
+                    show(vi)
+                    sendTv("region", vi, speak && tvSpeakOn() && !tvOfflineOn())
+                    if (speak && tvOfflineOn()) tvVoice(vi)
+                    busy = false
+                }
             }
     }
 
@@ -363,14 +368,38 @@ class CaptureService : Service() {
         return p.getBoolean("tvspeak", false) && p.getString("playon", "phone") == "tv" && !p.getString("tvip", "").isNullOrEmpty() && !p.getString("tvtoken", "").isNullOrEmpty()
     }
 
+    /** Giọng offline đang chọn (và đã tải) trong khi tiếng được phát ở loa TV: điện thoại tạo âm thanh rồi gửi sang TV. */
+    private fun tvOfflineOn(): Boolean {
+        val pr = Prefs(this)
+        return tvSpeakOn() && pr.voiceEngine == "offline" && Voices.installed(this, pr.offlineVoice)
+    }
+
+    private var tvVoiceWarned = false
+
+    private fun tvVoice(text: String) {
+        val sp = speaker ?: return
+        sp.synthOffline(text) { pcm ->
+            val pf = getSharedPreferences("dg", MODE_PRIVATE)
+            val err = if (pcm == null) "giọng offline lỗi" else TvLink.postAudio(pf.getString("tvip", "").orEmpty(), pf.getString("tvtoken", "").orEmpty(), pcm)
+            if (err != null) {
+                // lùi về giọng của chính TV để vẫn nghe được
+                sendTv("sub", text, true, force = true)
+                if (!tvVoiceWarned) {
+                    tvVoiceWarned = true
+                    handler.post { android.widget.Toast.makeText(this, "Không gửi được tiếng sang TV ($err). TV đọc bằng giọng của TV; nếu TV chưa cập nhật hãy cài bản TV mới.", android.widget.Toast.LENGTH_LONG).show() }
+                }
+            }
+        }
+    }
+
     /** Gửi phụ đề lên app Dịch game TV (nếu đã ghép). kind: sub | region | clear. */
-    private fun sendTv(kind: String, text: String, speakIt: Boolean = false) {
+    private fun sendTv(kind: String, text: String, speakIt: Boolean = false, force: Boolean = false) {
         val p = getSharedPreferences("dg", MODE_PRIVATE)
         val ip = p.getString("tvip", "").orEmpty()
         val tok = p.getString("tvtoken", "").orEmpty()
         if (p.getString("playon", "phone") != "tv" || ip.isEmpty() || tok.isEmpty()) return
         val key = kind + ":" + text
-        if (key == tvLast) return
+        if (!force && key == tvLast) return
         tvLast = key
         val size = p.getInt("fs", 18) * p.getInt("subscale", 100) / 100 + 12
         tvExec.execute {
@@ -403,7 +432,8 @@ class CaptureService : Service() {
         add(vi, 1.15f, fg)
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
         overlay?.apply { text = sb; visibility = View.VISIBLE }
-        sendTv("sub", vi, speak && tvSpeakOn())
+        sendTv("sub", vi, speak && tvSpeakOn() && !tvOfflineOn())
+        if (speak && tvOfflineOn()) tvVoice(vi)
         if (speak && ready && !editing && !tvSpeakOn()) speaker?.speak(vi)
         prevVi = vi; prevOrig = orig; autoShown = false
     }
