@@ -350,8 +350,8 @@ class CaptureService : Service() {
                 if (text.length < minLen) { show("Không thấy chữ trong khung."); busy = false; return@read }
                 translateText(text) { vi ->
                     show(vi)
-                    sendTv("region", vi, speak && tvSpeakOn() && !tvOfflineOn())
-                    if (speak && tvOfflineOn()) tvVoice(vi)
+                    sendTv("region", vi, speak && tvSpeakOn() && !tvVoiceOn())
+                    if (speak && tvVoiceOn()) tvVoice(vi)
                     busy = false
                 }
             }
@@ -368,19 +368,19 @@ class CaptureService : Service() {
         return p.getBoolean("tvspeak", false) && p.getString("playon", "phone") == "tv" && !p.getString("tvip", "").isNullOrEmpty() && !p.getString("tvtoken", "").isNullOrEmpty()
     }
 
-    /** Giọng offline đang chọn (và đã tải) trong khi tiếng được phát ở loa TV: điện thoại tạo âm thanh rồi gửi sang TV. */
-    private fun tvOfflineOn(): Boolean {
+    /** Giọng offline hoặc giọng AI đang chọn trong khi tiếng được phát ở loa TV: điện thoại tạo âm thanh rồi gửi sang TV. */
+    private fun tvVoiceOn(): Boolean {
         val pr = Prefs(this)
-        return tvSpeakOn() && pr.voiceEngine == "offline" && Voices.installed(this, pr.offlineVoice)
+        return tvSpeakOn() && ((pr.voiceEngine == "offline" && Voices.installed(this, pr.offlineVoice)) || pr.aiVoiceOn)
     }
 
     private var tvVoiceWarned = false
 
     private fun tvVoice(text: String) {
         val sp = speaker ?: return
-        sp.synthOffline(text) { pcm ->
+        sp.synthForTv(text) { pcm, speed ->
             val pf = getSharedPreferences("dg", MODE_PRIVATE)
-            val err = if (pcm == null) "giọng offline lỗi" else TvLink.postAudio(pf.getString("tvip", "").orEmpty(), pf.getString("tvtoken", "").orEmpty(), pcm)
+            val err = if (pcm == null) "giọng đọc lỗi" else TvLink.postAudio(pf.getString("tvip", "").orEmpty(), pf.getString("tvtoken", "").orEmpty(), pcm, speed)
             if (err != null) {
                 // lùi về giọng của chính TV để vẫn nghe được
                 sendTv("sub", text, true, force = true)
@@ -432,8 +432,8 @@ class CaptureService : Service() {
         add(vi, 1.15f, fg)
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
         overlay?.apply { text = sb; visibility = View.VISIBLE }
-        sendTv("sub", vi, speak && tvSpeakOn() && !tvOfflineOn())
-        if (speak && tvOfflineOn()) tvVoice(vi)
+        sendTv("sub", vi, speak && tvSpeakOn() && !tvVoiceOn())
+        if (speak && tvVoiceOn()) tvVoice(vi)
         if (speak && ready && !editing && !tvSpeakOn()) speaker?.speak(vi)
         prevVi = vi; prevOrig = orig; autoShown = false
     }

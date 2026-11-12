@@ -223,18 +223,18 @@ class SettingsActivity : Activity() {
         c.addView(Ui.switchRow(this, "Tự đọc nhanh khi câu dồn lại",
             "Câu thoại mới tới lúc câu cũ chưa đọc xong thì đọc nhanh hơn để kịp hình.", p.autoFast) { p.autoFast = it }, Ui.lpm(this, 0, 10))
         c.addView(Ui.switchRow(this, "Đọc qua loa TV",
-            if (p.tvPaired) "Điện thoại im lặng, tiếng phát ra từ TV." + (if (p.voiceEngine == "offline") " Giọng offline do điện thoại tạo rồi gửi sang TV, TV không cần tải gì thêm." else "")
+            if (p.tvPaired) "Điện thoại im lặng, tiếng phát ra từ TV." + (if (p.voiceEngine != "system") " Giọng offline và giọng AI do điện thoại tạo rồi gửi sang TV, TV không cần tải gì thêm." else "")
             else "Cần ghép TV trước (mục Phụ đề trên TV).", p.tvSpeak) {
             p.tvSpeak = it
             if (it && !p.tvPaired) Toast.makeText(this, "Chưa ghép TV nên vẫn đọc trên điện thoại.", Toast.LENGTH_SHORT).show()
         }, Ui.lpm(this, 0, 12))
         c.addView(Ui.button(this, "▶  Nghe thử") {
             val text = "Xin chào, đây là giọng đọc bản dịch trong game."
-            val onTv = p.tvSpeak && p.tvPaired && p.playOn == "tv" && p.voiceEngine == "offline" && Voices.installed(this, p.offlineVoice)
+            val onTv = p.tvSpeak && p.tvPaired && p.playOn == "tv" && speaker?.makesAudio() == true
             if (onTv) {
                 // tiếng phát ở loa TV: điện thoại tạo âm thanh rồi gửi sang
-                speaker?.synthOffline(text) { pcm ->
-                    val err = if (pcm == null) "giọng offline lỗi" else TvLink.postAudio(p.tvIp, p.tvToken, pcm)
+                speaker?.synthForTv(text) { pcm, speed ->
+                    val err = if (pcm == null) "giọng đọc lỗi" else TvLink.postAudio(p.tvIp, p.tvToken, pcm, speed)
                     runOnUiThread { Toast.makeText(this, if (err == null) "Đã gửi tiếng sang TV." else "Không gửi được sang TV: $err", Toast.LENGTH_LONG).show() }
                 }
             } else speaker?.speak(text)

@@ -30,13 +30,14 @@ Trong lúc chạy, thông báo có 3 nút: **Chỉnh/Khóa khung**, **Dịch men
 1. Tạo repo mới trên GitHub, đẩy **toàn bộ** thư mục này lên (nhớ cả thư mục ẩn `.github` và thư mục `keystore`).
    Dùng dòng lệnh: `git init && git add -A && git commit -m "Dịch game" && git branch -M main && git remote add origin <địa chỉ repo> && git push -u origin main`
 2. Vào tab **Actions** › workflow **Build APK**. Nó chạy tự động mỗi lần đẩy code, hoặc bấm **Run workflow**.
-3. Khi xong có 4 file APK:
+3. Khi xong có 5 file APK:
    - mục **Artifacts** của lần chạy (`DichGame-APKs`), và
    - mục **Releases** của repo (khi đẩy lên nhánh `main`/`master` hoặc gắn tag `v*`), tải thẳng được bằng điện thoại.
 
 | File | Dùng cho |
 | --- | --- |
-| `DichGame-phone-release.apk` | Cài lên điện thoại |
+| `DichGame-phone-arm64-release.apk` | Cài lên điện thoại (nhẹ hơn nhiều, hợp với hầu hết điện thoại đời mới dùng chip arm64) |
+| `DichGame-phone-release.apk` | Cài lên điện thoại, chạy được mọi loại chip (nặng hơn). Nút "Kiểm tra bản mới" trong app tự chọn bản arm64 nếu máy dùng được |
 | `DichGame-TV-release.apk` | Cài lên Android TV |
 | `*-debug.apk` | Bản gỡ lỗi, cùng khóa ký nên cài đè lên nhau được |
 

@@ -4,7 +4,7 @@
 set -u
 PKG=com.dichgame.app
 OUT=shots
-APK=app/build/outputs/apk/debug/app-debug.apk
+APK=app/build/outputs/apk/debug/app-universal-debug.apk
 mkdir -p "$OUT"
 
 adb wait-for-device

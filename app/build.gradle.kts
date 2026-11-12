@@ -33,8 +33,16 @@ android {
         versionCode = 20 + buildNo
         versionName = if (buildNo > 0) "2.0.$buildNo" else "2.0"
         buildConfigField("int", "BUILD_NO", "$buildNo")
-        // Bỏ x86 32-bit (gần như không còn máy nào) để APK nhẹ hơn.
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+    }
+    // Ngoài file APK đủ mọi loại máy (universal) còn có file riêng cho từng loại chip, nhẹ hơn nhiều.
+    // Máy điện thoại đời mới dùng bản arm64-v8a. Không đóng gói x86 32-bit (gần như không còn máy nào).
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true
+        }
     }
     // Khóa ký: dùng khóa trong thư mục keystore/ (cùng khóa cho debug và release nên cài đè lên nhau được).
     // Muốn dùng khóa riêng: đặt các biến môi trường KEYSTORE_FILE, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD (hoặc secrets trên GitHub).
@@ -66,6 +74,7 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { buildConfig = true }
     packaging {
+        jniLibs { excludes += "lib/x86/**" }
         resources {
             excludes += setOf("META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/DEPENDENCIES", "META-INF/AL2.0", "META-INF/LGPL2.1")
         }

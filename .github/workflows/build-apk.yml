@@ -56,8 +56,10 @@ jobs:
       - name: Gom file APK
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk dist/DichGame-phone-release.apk
-          cp app/build/outputs/apk/debug/app-debug.apk dist/DichGame-phone-debug.apk
+          ls -la app/build/outputs/apk/release app/build/outputs/apk/debug
+          cp app/build/outputs/apk/release/app-universal-release.apk dist/DichGame-phone-release.apk
+          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk dist/DichGame-phone-arm64-release.apk
+          cp app/build/outputs/apk/debug/app-universal-debug.apk dist/DichGame-phone-debug.apk
           cp tv/build/outputs/apk/release/tv-release.apk dist/DichGame-TV-release.apk
           cp tv/build/outputs/apk/debug/tv-debug.apk dist/DichGame-TV-debug.apk
           ls -la dist

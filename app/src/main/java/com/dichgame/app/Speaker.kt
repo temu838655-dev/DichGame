@@ -204,25 +204,39 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     private val tvSeq = AtomicInteger(0)
 
+    /** Giọng offline hoặc giọng AI đang dùng được: loại giọng mà điện thoại tự tạo âm thanh (khác giọng máy). */
+    fun makesAudio(): Boolean = offlineOn() || p.aiVoiceOn
+
     /**
-     * Tạo âm thanh giọng offline mà không phát trên điện thoại, để gửi sang loa TV.
-     * [cb] chạy ở luồng nền, nhận null nếu giọng lỗi. Câu cũ chưa kịp làm mà đã có câu mới thì bị bỏ (không gọi [cb]).
+     * Tạo âm thanh (giọng offline hoặc giọng AI) mà không phát trên điện thoại, để gửi sang loa TV.
+     * [cb] chạy ở luồng nền, nhận âm thanh và tốc độ cần phát; âm thanh null nếu giọng lỗi.
+     * Câu cũ chưa kịp làm mà đã có câu mới thì bị bỏ (không gọi [cb]).
      */
-    fun synthOffline(text: String, cb: (Pcm?) -> Unit) {
+    fun synthForTv(text: String, cb: (Pcm?, Float) -> Unit) {
         if (text.isBlank()) return
         val my = tvSeq.incrementAndGet()
+        val useOffline = offlineOn()
         val id = p.offlineVoice
-        val speed = speedFor(text)
+        val speed = if (useOffline) speedFor(text) else ((p.rate10 / 10f)).coerceIn(0.5f, 2.5f)
+        val style = styleFor(text)
         try {
             exec.execute {
                 if (my != tvSeq.get()) return@execute
-                val key = "off|$id|${(speed * 10).toInt()}|$text"
-                val pcm: Pcm? = cache.get(key) ?: try {
-                    offline.synth(id, text, speed).also { if (it.data.isNotEmpty()) cache.put(key, it) }
-                } catch (_: Throwable) { null }
-                cb(pcm)
+                if (useOffline) {
+                    val key = "off|$id|${(speed * 10).toInt()}|$text"
+                    val pcm: Pcm? = cache.get(key) ?: try {
+                        offline.synth(id, text, speed).also { if (it.data.isNotEmpty()) cache.put(key, it) }
+                    } catch (_: Throwable) { null }
+                    cb(pcm, 1f) // tốc độ đã nằm trong âm thanh
+                } else {
+                    val key = p.aiVoice + "|" + p.ttsModel + "|" + style + "|" + text
+                    val pcm: Pcm? = cache.get(key) ?: try {
+                        AiSpeech.synth(p, text, style).also { cache.put(key, it) }
+                    } catch (_: Exception) { null }
+                    cb(pcm, speed)
+                }
             }
-        } catch (_: Exception) { cb(null) }
+        } catch (_: Exception) { cb(null, 1f) }
     }
 
     private fun fallback(text: String, e: Throwable) {

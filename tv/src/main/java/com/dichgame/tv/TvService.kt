@@ -133,6 +133,7 @@ class TvService : Service() {
         var len = 0
         var token = ""
         var rate = 22050
+        var speed = 1f
         while (true) {
             val h = line(i) ?: return
             if (h.isEmpty()) break
@@ -141,6 +142,7 @@ class TvService : Service() {
             if (k == "content-length") len = v.toIntOrNull() ?: 0
             if (k == "x-token") token = v
             if (k == "x-rate") rate = v.toIntOrNull() ?: 22050
+            if (k == "x-speed") speed = (v.toFloatOrNull() ?: 1f).coerceIn(0.5f, 2.5f)
         }
         var status = 404
         var out = ""
@@ -156,7 +158,7 @@ class TvService : Service() {
                     if (r < 0) break
                     got += r
                 }
-                if (got == len) { playPcm(pcm, rate); status = 200; out = "ok" } else status = 400
+                if (got == len) { playPcm(pcm, rate, speed); status = 200; out = "ok" } else status = 400
             }
             reply(s, status, out)
             return
@@ -204,7 +206,7 @@ class TvService : Service() {
 
     /** Phát một câu thoại có sẵn âm thanh; câu mới tới thì ngắt câu đang đọc. */
     @Synchronized
-    private fun playPcm(data: ByteArray, rate: Int) {
+    private fun playPcm(data: ByteArray, rate: Int, speed: Float) {
         try { tts?.stop() } catch (_: Exception) {}
         try { track?.stop(); track?.release() } catch (_: Exception) {}
         track = null
@@ -216,6 +218,7 @@ class TvService : Service() {
                 .setBufferSizeInBytes(data.size.coerceAtLeast(4096))
                 .build()
             t.write(data, 0, data.size)
+            if (speed != 1f) try { t.playbackParams = android.media.PlaybackParams().setSpeed(speed) } catch (_: Exception) {}
             track = t
             t.play()
         } catch (_: Exception) {}

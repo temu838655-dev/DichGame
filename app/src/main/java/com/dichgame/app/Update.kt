@@ -27,14 +27,18 @@ object Update {
                 val cur = best
                 if (cur != null && n <= cur.no) continue
                 var apk: String? = null
+                var apkArm: String? = null
                 val assets = r.optJSONArray("assets")
                 if (assets != null) {
                     for (k in 0 until assets.length()) {
                         val a = assets.getJSONObject(k)
                         if (a.optString("name") == "DichGame-phone-release.apk") apk = a.optString("browser_download_url")
+                        if (a.optString("name") == "DichGame-phone-arm64-release.apk") apkArm = a.optString("browser_download_url")
                     }
                 }
-                best = Info(n, r.optString("html_url"), apk)
+                // máy arm64 (hầu hết điện thoại hiện nay) tải bản riêng cho arm64, nhẹ hơn nhiều
+                val arm64 = android.os.Build.SUPPORTED_ABIS.firstOrNull() == "arm64-v8a"
+                best = Info(n, r.optString("html_url"), if (arm64 && apkArm != null) apkArm else apk)
             }
             return best
         } finally {
