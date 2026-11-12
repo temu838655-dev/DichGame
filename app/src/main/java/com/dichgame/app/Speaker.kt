@@ -39,6 +39,9 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     private val queued = AtomicInteger(0)
     private val utt = AtomicInteger(0)
     @Volatile private var aiPlayUntil = 0L
+    /** Số lần đã bắt đầu phát một đoạn âm thanh (giọng AI hoặc giọng offline); dùng cho bản tự kiểm tra. */
+    @Volatile var played = 0
+        private set
     private fun dec() { queued.updateAndGet { if (it > 0) it - 1 else 0 } }
 
     /** Được gọi (ở luồng chính) khi giọng AI lỗi; Speaker tự đọc bằng giọng máy thay thế. */
@@ -279,6 +282,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                 releaseLocked()
                 track = t
                 t.play()
+                played++
                 val bytesPerSec = (pcm.rate * 2 * (if (pcm.channels == 2) 2 else 1)).coerceAtLeast(1)
                 aiPlayUntil = System.currentTimeMillis() + (pcm.data.size * 1000L / bytesPerSec / speed).toLong()
             } catch (_: Exception) {}

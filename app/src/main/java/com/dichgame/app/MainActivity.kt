@@ -70,7 +70,11 @@ class MainActivity : Activity() {
     }
 
     private fun voiceLabel(): String {
-        val v = p.voice.ifEmpty { "Mặc định" }
+        val v = when {
+            p.voiceEngine == "offline" -> if (Voices.installed(this, p.offlineVoice)) "Offline" else "Chưa tải giọng"
+            p.aiVoiceOn -> "Giọng AI"
+            else -> p.voice.ifEmpty { "Mặc định" }
+        }
         return "$v · ${String.format("%.1f", p.rate10 / 10f).replace('.', ',')}x"
     }
 

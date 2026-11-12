@@ -45,6 +45,26 @@ object SelfTest {
                 ov.synth(ID, text, 1f)
                 val ms2 = System.currentTimeMillis() - t1
                 ov.close()
+                // Đường đọc thật của app: Speaker chọn giọng offline, tạo âm thanh và phát bằng AudioTrack
+                val pr = Prefs(ctx)
+                val oldEngine = pr.voiceEngine
+                pr.voiceEngine = "offline"
+                var spErr: String? = null
+                val holder = arrayOfNulls<Speaker>(1)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    holder[0] = Speaker(ctx, pr).also { it.onAiError = { m -> spErr = m } }
+                }
+                var waited = 0
+                while (holder[0] == null && waited < 50) { Thread.sleep(100); waited++ }
+                val sp = holder[0]
+                sp?.speak("Chúng ta phải rời khỏi đây ngay, trước khi quá muộn.")
+                waited = 0
+                while (sp != null && sp.played == 0 && spErr == null && waited < 100) { Thread.sleep(100); waited++ }
+                val spOk = sp != null && sp.played > 0 && spErr == null
+                Log.i(TAG, "speaker played=${sp?.played} err=$spErr ok=$spOk")
+                try { sp?.shutdown() } catch (_: Throwable) {}
+                pr.voiceEngine = oldEngine
+                if (!spOk) { Log.e(TAG, "FAIL Speaker khong phat duoc giong offline"); return@Thread }
                 if (pcm.data.isEmpty() || peak < 1000) Log.e(TAG, "FAIL audio rong hoac qua nho: bytes=${pcm.data.size} peak=$peak")
                 else Log.i(TAG, "OK audio=${"%.2f".format(secs)}s rate=${pcm.rate} peak=$peak first=${ms}ms second=${ms2}ms")
             } catch (e: Throwable) {
