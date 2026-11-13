@@ -13,6 +13,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -218,16 +219,28 @@ class CaptureService : Service() {
     }
 
     /** Dịch menu tự động: màn hình đứng yên với từ 2 đoạn chữ dài trở lên (ngoài khung phụ đề) thì tự dịch. */
+    /** Tạo bitmap từ ImageReader và giải phóng bitmap đệm có padding ngay sau khi crop. */
+    private fun bitmapFromImage(img: Image, x: Int = 0, y: Int = 0, width: Int = img.width, height: Int = img.height): Bitmap {
+        val plane = img.planes[0]
+        val full = Bitmap.createBitmap(plane.rowStride / plane.pixelStride, img.height, Bitmap.Config.ARGB_8888)
+        return try {
+            full.copyPixelsFromBuffer(plane.buffer)
+            val left = x.coerceIn(0, img.width - 1)
+            val top = y.coerceIn(0, img.height - 1)
+            val w = width.coerceIn(1, img.width - left)
+            val h = height.coerceIn(1, img.height - top)
+            Bitmap.createBitmap(full, left, top, w, h).also { if (it !== full) full.recycle() }
+        } catch (e: Exception) {
+            if (!full.isRecycled) full.recycle()
+            throw e
+        }
+    }
+
     private fun autoScan() {
         if (busy || !ready || editing || narrate || region != null || System.currentTimeMillis() < menuUntil) return
         ensureSize()
         val img = reader?.acquireLatestImage() ?: return
-        val bmp = try {
-            val p = img.planes[0]
-            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
-            Bitmap.createBitmap(full, 0, 0, img.width, img.height)
-        } finally { img.close() }
+        val bmp = try { bitmapFromImage(img) } finally { img.close() }
         busy = true
         val skip = listOfNotNull(rectOf(frame), rectOf(overlay))
         ocr!!.read(bmp, { m -> ocrFail(m) }) { r ->
@@ -456,12 +469,7 @@ class CaptureService : Service() {
         ensureSize()
         val img = reader?.acquireLatestImage()
         if (img == null) { busy = false; overlay?.visibility = View.VISIBLE; return }
-        val bmp = try {
-            val p = img.planes[0]
-            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
-            Bitmap.createBitmap(full, 0, 0, img.width, img.height)
-        } finally { img.close() }
+        val bmp = try { bitmapFromImage(img) } finally { img.close() }
         ocr!!.read(bmp, { m -> ocrFail(m) }) { r ->
                 val blocks = r.map { it.text.replace("\n", sep).trim() }.filter { it.length >= longLen }.take(4)
                 if (blocks.isEmpty()) {
@@ -618,16 +626,9 @@ class CaptureService : Service() {
         ensureSize()
         val img = reader?.acquireLatestImage() ?: return
         val crop = try {
-            val p = img.planes[0]
-            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
             val loc = IntArray(2)
             frame!!.getLocationOnScreen(loc)
-            val x = loc[0].coerceIn(0, img.width - 1)
-            val y = loc[1].coerceIn(0, img.height - 1)
-            val w = frame!!.width.coerceIn(1, img.width - x)
-            val h = frame!!.height.coerceIn(1, img.height - y)
-            Bitmap.createBitmap(full, x, y, w, h)
+            bitmapFromImage(img, loc[0], loc[1], frame!!.width, frame!!.height)
         } finally { img.close() }
 
         val o = ocr ?: return
