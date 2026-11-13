@@ -141,7 +141,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
             val pcm: Pcm = cached ?: try {
                 AiSpeech.synth(p, text, style).also { cache.put(key, it) }
             } catch (e: Exception) {
-                if (my == seq.get()) main.post { fallback(text, e) }
+                if (my == seq.get()) main.post { fallback(text, d, e) }
                 return@execute
             }
             if (my == seq.get()) play(pcm, speed)
@@ -170,7 +170,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
             val pcm: Pcm = cached ?: try {
                 offline.synth(id, text, speed).also { if (it.data.isNotEmpty()) cache.put(key, it) }
             } catch (e: Throwable) {
-                if (my == seq.get()) main.post { fallback(text, e) }
+                if (my == seq.get()) main.post { fallback(text, d, e) }
                 return@execute
             }
             if (my == seq.get()) play(pcm, 1f)
@@ -214,7 +214,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         } catch (_: Exception) { cb(null, 1f) }
     }
 
-    private fun fallback(text: String, e: Throwable) {
+    private fun fallback(text: String, d: Delivery?, e: Throwable) {
         if (!aiErrorShown) {
             aiErrorShown = true
             val m = when {
@@ -224,7 +224,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
             }
             onAiError?.invoke(m)
         }
-        speakSystem(text, false)
+        speakSystem(text, false, d)
     }
 
     private fun play(pcm: Pcm, speed: Float) {
