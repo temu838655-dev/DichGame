@@ -49,21 +49,39 @@ class Ocr(private val p: Prefs, private val lang: String) {
         val l = local
         if (l != null) {
             l.process(InputImage.fromBitmap(bmp, 0))
-                .addOnSuccessListener { r -> ok(r.textBlocks.map { Blk(it.text, it.boundingBox) }) }
-                .addOnFailureListener { fail("") }
+                .addOnSuccessListener { r ->
+                    val blocks = r.textBlocks.map { Blk(it.text, it.boundingBox) }
+                    if (!bmp.isRecycled) bmp.recycle()
+                    ok(blocks)
+                }
+                .addOnFailureListener {
+                    if (!bmp.isRecycled) bmp.recycle()
+                    fail("")
+                }
             return
         }
         val key = p.geminiKey
-        if (key.isEmpty()) { fail("Chữ ${Prefs.srcNameOf(lang)} cần khóa Google Gemini. Vào Cách dịch để nhập khóa."); return }
+        if (key.isEmpty()) {
+            if (!bmp.isRecycled) bmp.recycle()
+            fail("Chữ ${Prefs.srcNameOf(lang)} cần khóa Google Gemini. Vào Cách dịch để nhập khóa.")
+            return
+        }
         val model = p.geminiModel
-        io.execute {
-            try {
-                val blocks = cloudRead(bmp, key, model)
-                main.post { ok(blocks) }
-            } catch (e: Exception) {
-                val m = errorText(e)
-                main.post { fail(m) }
+        try {
+            io.execute {
+                try {
+                    val blocks = cloudRead(bmp, key, model)
+                    if (!bmp.isRecycled) bmp.recycle()
+                    main.post { ok(blocks) }
+                } catch (e: Exception) {
+                    if (!bmp.isRecycled) bmp.recycle()
+                    val m = errorText(e)
+                    main.post { fail(m) }
+                }
             }
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            if (!bmp.isRecycled) bmp.recycle()
+            fail("Dịch vụ OCR đã dừng. Hãy khởi động lại tính năng dịch.")
         }
     }
 
