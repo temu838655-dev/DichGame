@@ -349,14 +349,9 @@ class CaptureService : Service() {
         val img = reader?.acquireLatestImage()
         if (img == null || region == null) { img?.close(); busy = false; overlay?.visibility = View.VISIBLE; return }
         val crop = try {
-            val p = img.planes[0]
-            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
             val loc = IntArray(2)
             box.getLocationOnScreen(loc)
-            val x = loc[0].coerceIn(0, img.width - 1)
-            val y = loc[1].coerceIn(0, img.height - 1)
-            Bitmap.createBitmap(full, x, y, box.width.coerceIn(1, img.width - x), box.height.coerceIn(1, img.height - y))
+            bitmapFromImage(img, loc[0], loc[1], box.width, box.height)
         } finally { img.close() }
         ocr!!.read(crop, { m -> ocrFail(m) }) { r ->
                 val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
