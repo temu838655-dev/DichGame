@@ -2,7 +2,7 @@ name: Build APK
 
 # Chạy mỗi khi đẩy code lên, mở Pull Request, hoặc bấm tay ở tab Actions.
 # Tạo ra 4 file APK: điện thoại (release + debug) và TV (release + debug).
-# Đẩy lên nhánh main/master hoặc gắn tag v* thì tự tạo bản phát hành (Releases) kèm 4 file APK để tải thẳng.
+# Đẩy lên nhánh main/master/remote-play hoặc gắn tag v* thì tự tạo bản phát hành (Releases) kèm APK.
 on:
   push:
     branches: ["**", "!ci-shots"]
@@ -96,7 +96,7 @@ jobs:
           if-no-files-found: error
 
       - name: Tạo bản phát hành (Releases)
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/remote-play' || startsWith(github.ref, 'refs/tags/v'))
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('build-{0}', github.run_number) }}"
