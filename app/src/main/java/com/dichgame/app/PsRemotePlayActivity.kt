@@ -474,6 +474,12 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         trigger("L2", true)
         trigger("R2", false)
         add(controls)
+        var controlsVisible = true
+        add(action("⌄  ẨN / HIỆN TAY CẦM") {
+            controlsVisible = !controlsVisible
+            controls.visibility = if (controlsVisible) View.VISIBLE else View.GONE
+            status.text = if (controlsVisible) "Đã hiện tay cầm cảm ứng." else "Đã ẩn tay cầm để ưu tiên màn hình trò chơi."
+        })
         add(action(if (CaptureService.active) "■  Dừng dịch phụ đề" else "🌐  Bắt đầu dịch phụ đề") {
             if (CaptureService.active) {
                 startService(Intent(this, CaptureService::class.java).setAction(CaptureService.STOP))
