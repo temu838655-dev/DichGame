@@ -236,6 +236,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         reset("PlayStation đã ghép", "Thiết bị: ${prefs.getString("nickname", "PlayStation")}  ·  ${prefs.getString("host", "")}")
         add(text("Khóa ghép nối được lưu cục bộ trên điện thoại. Không chia sẻ dữ liệu khóa này."))
         add(action("▶  KẾT NỐI VÀ CHƠI") { startStream() })
+        add(action("Chất lượng hình & tốc độ mạng") { showVideoQualityInfo() })
         add(action("Ghép một máy khác") { showPairForm() })
         add(action("Xóa thiết bị đã lưu") {
             AlertDialog.Builder(this)
@@ -247,6 +248,30 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
                     showPairForm()
                 }.show()
         })
+    }
+
+    /**
+     * Hiển thị rõ cấu hình thực sự đang được engine dùng.
+     * Không đưa ra lựa chọn 1080p/bitrate giả khi API Chiaki tích hợp hiện
+     * mới được cấu hình bằng preset 720p60 H.264.
+     */
+    private fun showVideoQualityInfo() {
+        val details = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(8), dp(22), dp(4))
+        }
+        details.addView(text("ĐỘ PHÂN GIẢI", 13f))
+        details.addView(text("720p · 60 FPS · H.264", 20f))
+        details.addView(text("Đây là cấu hình Remote Play đang được bật trong engine hiện tại."))
+        details.addView(text("1080p", 13f).apply { setPadding(0, dp(14), 0, 0) })
+        details.addView(text("Chưa bật: cần xác minh preset và khả năng giải mã trên thiết bị trước khi cung cấp lựa chọn này."))
+        details.addView(text("TỐC ĐỘ MẠNG", 13f).apply { setPadding(0, dp(14), 0, 0) })
+        details.addView(text("Nên dùng Wi-Fi 5 GHz hoặc mạng LAN ổn định. Chất lượng thực tế còn phụ thuộc độ trễ, mất gói và khả năng tải lên của mạng tại nhà."))
+        AlertDialog.Builder(this)
+            .setTitle("Chất lượng hình")
+            .setView(details)
+            .setPositiveButton("Đã hiểu", null)
+            .show()
     }
 
     private fun startStream() {
