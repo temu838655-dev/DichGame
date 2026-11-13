@@ -95,9 +95,12 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         val host = field("IP của PS5/PS4 (ví dụ 192.168.1.20)")
         val account = field("PSN Account ID (Base64, đúng 8 byte)")
         val pin = field("Mã ghép nối 8 chữ số")
-        val type = action("Đang chọn: PS5  ·  Chạm để đổi sang PS4") {
-            isPs5 = !isPs5
-            (it as Button).text = if (isPs5) "Đang chọn: PS5  ·  Chạm để đổi sang PS4" else "Đang chọn: PS4  ·  Chạm để đổi sang PS5"
+        val type = Button(this).apply {
+            text = "Đang chọn: PS5  ·  Chạm để đổi sang PS4"
+            setOnClickListener {
+                isPs5 = !isPs5
+                text = if (isPs5) "Đang chọn: PS5  ·  Chạm để đổi sang PS4" else "Đang chọn: PS4  ·  Chạm để đổi sang PS5"
+            }
         }
         add(text("1. Địa chỉ IP máy PlayStation"))
         add(host)
@@ -165,7 +168,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
     private fun register(host: String, accountId: ByteArray, pin: Int) {
         regist?.dispose()
         status.text = "Đang ghép với PlayStation…"
-        val target = if (isPs5) Target.PS5_1 else Target.PS4_10
+        val target = if (isPs5) com.metallic.chiaki.lib.Target.PS5_1 else com.metallic.chiaki.lib.Target.PS4_10
         val info = RegistInfo(target, host, false, null, accountId, pin)
         val log = ChiakiLog(ChiakiLog.Level.ALL.value) { level, message ->
             android.util.Log.println(
@@ -305,7 +308,11 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
                         session?.setControllerState(controllerState)
                     }
                     override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                    override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                        seekBar?.progress = 0
+                        if (left) controllerState.l2State = 0U else controllerState.r2State = 0U
+                        session?.setControllerState(controllerState)
+                    }
                 })
             }
             col.addView(seek)
