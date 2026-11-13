@@ -398,7 +398,18 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         controls.addView(top)
         fun addButton(parent: LinearLayout, label: String, mask: UInt) {
-            val b = Button(this).apply { text = label; isAllCaps = false; minWidth = 0; minimumWidth = 0 }
+            val b = Button(this).apply {
+                text = label
+                isAllCaps = false
+                minWidth = 0
+                minimumWidth = 0
+                minHeight = dp(48)
+                minimumHeight = dp(48)
+                textSize = 14f
+                setTextColor(Color.WHITE)
+                backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(37, 49, 66))
+                setPadding(dp(4), dp(4), dp(4), dp(4))
+            }
             b.setOnTouchListener { _, event ->
                 if (event.action == android.view.MotionEvent.ACTION_DOWN ||
                     event.action == android.view.MotionEvent.ACTION_UP ||
