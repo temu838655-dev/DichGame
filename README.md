@@ -23,7 +23,7 @@ Dịch phụ đề game và phim sang tiếng Việt ngay trên màn hình, có 
 | Phụ đề trên TV | Chọn hãng TV, hướng dẫn 4 bước, tìm TV trong mạng, ghép bằng mã 8 số, gửi câu thử |
 | Dịch video trên web | Trình duyệt trong app, đọc phụ đề của trình phát (thẻ track, YouTube, video.js, JW Player, Plyr...) rồi hiện bản dịch, có thể đọc to |
 | Chơi trên điện thoại | Chọn **Chơi trên điện thoại** để mở app chơi từ xa đã cài (PS Remote Play, Chiaki, Moonlight, Steam Link, GeForce NOW, Xbox) và hiện bản dịch đè lên hình game. |
-| Remote Play tích hợp (thử nghiệm) | Ghép PS5/PS4 bằng IP + PSN Account ID dạng Base64 + mã ghép 8 số; tìm console trong LAN; lưu khóa ghép trên máy; phát hình 720p/60 FPS H.264; điều khiển ảo, cần analog, touchpad, L2/R2; thử kết nối lại và nhập PIN khi console yêu cầu. Engine Chiaki-ng hiện chỉ build cho arm64-v8a. Chưa xác nhận tương thích mọi firmware/router; cần thử trên PS4/PS5 thật. Không nhập mật khẩu PSN vào app. |
+| Remote Play tích hợp (thử nghiệm) | Chơi và dịch ngay trong app, không cần mở PS Remote Play. Trình ghép nối 3 bước (tìm máy trong LAN hoặc nhập IP, PSN Account ID dạng Base64, mã 8 số trên máy); nhiều người chơi cho mỗi máy, nên dùng người chơi phụ để vừa chơi trên TV vừa chơi trên điện thoại; đánh thức máy từ chế độ nghỉ; chất lượng 720p/1080p và tốc độ mạng chỉnh được; tay cầm ảo đa chạm (dọc và ngang) hoặc tay cầm thật nối điện thoại; nút bật/tắt dịch phụ đề ngay trên màn chơi; kết nối lại và nhập PIN khi máy yêu cầu. Engine Chiaki-ng hiện chỉ build cho arm64-v8a. Chưa xác nhận tương thích mọi firmware/router; cần thử trên PS4/PS5 thật. Không nhập mật khẩu PSN vào app. |
 | Cài đặt › Giới thiệu và hỗ trợ | Xem phiên bản, **Kiểm tra bản mới** (so với trang Releases), **Báo lỗi / yêu cầu game** (mở GitHub Issues điền sẵn thông tin máy) |
 | Hướng dẫn / Tính năng | Hướng dẫn 5 bước, danh sách tính năng |
 
@@ -77,6 +77,7 @@ Lần đầu dùng mỗi thứ tiếng, app tải mô hình dịch nên cần m�
 ## Giới hạn hiện tại
 
 - Chưa có app cho **TV LG (webOS)** và **TV Samsung (Tizen)**; chỉ Android TV / Google TV.
+- **Giấy phép Remote Play**: engine Chiaki-ng (`third_party/chiaki-ng`) theo **AGPL-3.0-only kèm ngoại lệ OpenSSL**. Bản APK có Remote Play vì vậy phải được phát hành theo AGPL-3.0 và giữ mã nguồn công khai; bản dựng với `-PnoNative` (dùng cho smoke test) không chứa engine này. Chưa có tệp LICENSE chung cho repo, chủ dự án cần chọn giấy phép AGPL-3.0 cho phần mã còn lại nếu muốn phát hành công khai.
 - Remote Play tích hợp PS4/PS5 hiện ở trạng thái **thử nghiệm**. Chưa kiểm thử kết nối, hình ảnh, âm thanh và điều khiển trên đầy đủ model/firmware console; cần người dùng thử với máy thật và gửi log khi gặp lỗi. Bản arm64 có engine Chiaki-ng; các ABI khác không có engine Remote Play.
 - Chưa có app cho **iOS, Windows, Mac**, và chưa có **kho Việt hoá tự cập nhật kèm bot gửi yêu cầu** (cần máy chủ). Thay vào đó có mục báo lỗi / yêu cầu game dẫn tới GitHub Issues.
 - Giao diện chỉ có tiếng Việt.

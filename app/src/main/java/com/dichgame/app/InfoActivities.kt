@@ -101,6 +101,7 @@ class LicensesActivity : Activity() {
             "CloudAPI (tùy chọn)" to "Dịch AI qua dịch vụ theo chuẩn OpenAI mà bạn tự nhập địa chỉ và khóa.",
             "Giọng đọc của máy" to "Dùng bộ đọc văn bản thành giọng nói có sẵn trong Android.",
             "Giọng đọc offline" to "Chạy bằng sherpa-onnx (Apache-2.0) và ONNX Runtime (MIT). Giọng Piper VAIS-1000 (CC BY 4.0) là gói tải thêm trong Cài đặt, lấy từ kho phát hành của sherpa-onnx trên GitHub. Bảng phiên âm tiếng Việt của app được tạo bằng eSpeak NG (GPL-3.0) ở máy của người làm app; trong app không có mã eSpeak.",
+            "Remote Play trong app" to "Dùng engine chiaki-ng (github.com/streetpea/chiaki-ng), giấy phép AGPL-3.0 kèm ngoại lệ OpenSSL, cùng OpenSSL, libcurl, json-c, miniupnpc, nanopb và Oboe (Apache-2.0). Vì có engine này, bản app có Remote Play phát hành theo AGPL-3.0; mã nguồn đầy đủ nằm ở github.com/temu838655-dev/DichGame. App không liên kết với Sony; PlayStation là nhãn hiệu của Sony Interactive Entertainment.",
             "App chơi từ xa" to "PS Remote Play, Chiaki, Moonlight, Steam Link... là app riêng của bên thứ ba. Dịch game chỉ mở chúng và hiện bản dịch đè lên."
         )
         screen("Giấy phép và ghi công") {
