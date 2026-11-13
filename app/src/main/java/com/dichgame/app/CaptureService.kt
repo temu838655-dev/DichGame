@@ -13,6 +13,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -76,6 +77,7 @@ class CaptureService : Service() {
     private var prevVi = ""
     private var menuUntil = 0L
     private val tvExec = java.util.concurrent.Executors.newSingleThreadExecutor()
+    @Volatile private var destroyed = false
     private var tvLast = ""
     private var autoMenu = false
     private var autoShown = false
@@ -99,7 +101,16 @@ class CaptureService : Service() {
     }
 
     private val tick = object : Runnable {
-        override fun run() { ensureSize(); capture(); handler.postDelayed(this, Prefs(this@CaptureService).scanMs.toLong()) }
+        override fun run() {
+            if (!running || destroyed) return
+            try {
+                ensureSize()
+                capture()
+            } catch (_: Exception) {
+                ocrFail("")
+            }
+            if (running && !destroyed) handler.postDelayed(this, Prefs(this@CaptureService).scanMs.toLong())
+        }
     }
 
     override fun onBind(i: Intent?): IBinder? = null
@@ -207,7 +218,15 @@ class CaptureService : Service() {
     }
 
     private val autoRun = object : Runnable {
-        override fun run() { autoScan(); handler.postDelayed(this, 2000) }
+        override fun run() {
+            if (!running || destroyed) return
+            try {
+                autoScan()
+            } catch (_: Exception) {
+                ocrFail("")
+            }
+            if (running && !destroyed) handler.postDelayed(this, 2000)
+        }
     }
 
     private fun rectOf(v: View?): android.graphics.Rect? {
@@ -218,16 +237,28 @@ class CaptureService : Service() {
     }
 
     /** Dịch menu tự động: màn hình đứng yên với từ 2 đoạn chữ dài trở lên (ngoài khung phụ đề) thì tự dịch. */
+    /** Tạo bitmap từ ImageReader và giải phóng bitmap đệm có padding ngay sau khi crop. */
+    private fun bitmapFromImage(img: Image, x: Int = 0, y: Int = 0, width: Int = img.width, height: Int = img.height): Bitmap {
+        val plane = img.planes[0]
+        val full = Bitmap.createBitmap(plane.rowStride / plane.pixelStride, img.height, Bitmap.Config.ARGB_8888)
+        return try {
+            full.copyPixelsFromBuffer(plane.buffer)
+            val left = x.coerceIn(0, img.width - 1)
+            val top = y.coerceIn(0, img.height - 1)
+            val w = width.coerceIn(1, img.width - left)
+            val h = height.coerceIn(1, img.height - top)
+            Bitmap.createBitmap(full, left, top, w, h).also { if (it !== full) full.recycle() }
+        } catch (e: Exception) {
+            if (!full.isRecycled) full.recycle()
+            throw e
+        }
+    }
+
     private fun autoScan() {
         if (busy || !ready || editing || narrate || region != null || System.currentTimeMillis() < menuUntil) return
         ensureSize()
         val img = reader?.acquireLatestImage() ?: return
-        val bmp = try {
-            val p = img.planes[0]
-            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
-            Bitmap.createBitmap(full, 0, 0, img.width, img.height)
-        } finally { img.close() }
+        val bmp = try { bitmapFromImage(img) } catch (_: Exception) { ocrFail(""); return } finally { img.close() }
         busy = true
         val skip = listOfNotNull(rectOf(frame), rectOf(overlay))
         ocr!!.read(bmp, { m -> ocrFail(m) }) { r ->
@@ -336,14 +367,12 @@ class CaptureService : Service() {
         val img = reader?.acquireLatestImage()
         if (img == null || region == null) { img?.close(); busy = false; overlay?.visibility = View.VISIBLE; return }
         val crop = try {
-            val p = img.planes[0]
-            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
             val loc = IntArray(2)
             box.getLocationOnScreen(loc)
-            val x = loc[0].coerceIn(0, img.width - 1)
-            val y = loc[1].coerceIn(0, img.height - 1)
-            Bitmap.createBitmap(full, x, y, box.width.coerceIn(1, img.width - x), box.height.coerceIn(1, img.height - y))
+            bitmapFromImage(img, loc[0], loc[1], box.width, box.height)
+        } catch (_: Exception) {
+            ocrFail("")
+            return
         } finally { img.close() }
         ocr!!.read(crop, { m -> ocrFail(m) }) { r ->
                 val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
@@ -402,21 +431,33 @@ class CaptureService : Service() {
         val p = getSharedPreferences("dg", MODE_PRIVATE)
         val ip = p.getString("tvip", "").orEmpty()
         val tok = p.getString("tvtoken", "").orEmpty()
-        if (p.getString("playon", "phone") != "tv" || ip.isEmpty() || tok.isEmpty()) return
+        if (destroyed || p.getString("playon", "phone") != "tv" || ip.isEmpty() || tok.isEmpty()) return
         val key = kind + ":" + text
         if (!force && key == tvLast) return
         tvLast = key
         val size = p.getInt("fs", 18) * p.getInt("subscale", 100) / 100 + 12
-        tvExec.execute {
-            try {
-                val c = URL("http://$ip:8765/sub").openConnection() as HttpURLConnection
-                c.requestMethod = "POST"; c.connectTimeout = 1500; c.readTimeout = 1500; c.doOutput = true
-                c.setRequestProperty("X-Token", tok)
-                val body = JSONObject().put("kind", kind).put("text", text).put("size", size).put("speak", speakIt).put("fg", styleFg()).put("bg", styleBg())
-                c.outputStream.use { it.write(body.toString().toByteArray()) }
-                c.responseCode
-                c.disconnect()
-            } catch (_: Exception) {}
+        try {
+            tvExec.execute {
+                var connection: HttpURLConnection? = null
+                try {
+                    if (destroyed) return@execute
+                    val c = URL("http://$ip:8765/sub").openConnection() as HttpURLConnection
+                    connection = c
+                    c.requestMethod = "POST"
+                    c.connectTimeout = 1500
+                    c.readTimeout = 1500
+                    c.doOutput = true
+                    c.setRequestProperty("X-Token", tok)
+                    val body = JSONObject().put("kind", kind).put("text", text).put("size", size).put("speak", speakIt).put("fg", styleFg()).put("bg", styleBg())
+                    c.outputStream.use { it.write(body.toString().toByteArray()) }
+                    c.responseCode
+                } catch (_: Exception) {
+                } finally {
+                    connection?.disconnect()
+                }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            // Service đã đóng trong lúc callback OCR/dịch đang hoàn tất.
         }
     }
 
@@ -456,12 +497,7 @@ class CaptureService : Service() {
         ensureSize()
         val img = reader?.acquireLatestImage()
         if (img == null) { busy = false; overlay?.visibility = View.VISIBLE; return }
-        val bmp = try {
-            val p = img.planes[0]
-            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
-            Bitmap.createBitmap(full, 0, 0, img.width, img.height)
-        } finally { img.close() }
+        val bmp = try { bitmapFromImage(img) } catch (_: Exception) { ocrFail(""); return } finally { img.close() }
         ocr!!.read(bmp, { m -> ocrFail(m) }) { r ->
                 val blocks = r.map { it.text.replace("\n", sep).trim() }.filter { it.length >= longLen }.take(4)
                 if (blocks.isEmpty()) {
@@ -618,23 +654,19 @@ class CaptureService : Service() {
         ensureSize()
         val img = reader?.acquireLatestImage() ?: return
         val crop = try {
-            val p = img.planes[0]
-            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
             val loc = IntArray(2)
             frame!!.getLocationOnScreen(loc)
-            val x = loc[0].coerceIn(0, img.width - 1)
-            val y = loc[1].coerceIn(0, img.height - 1)
-            val w = frame!!.width.coerceIn(1, img.width - x)
-            val h = frame!!.height.coerceIn(1, img.height - y)
-            Bitmap.createBitmap(full, x, y, w, h)
+            bitmapFromImage(img, loc[0], loc[1], frame!!.width, frame!!.height)
+        } catch (_: Exception) {
+            ocrFail("")
+            return
         } finally { img.close() }
 
-        val o = ocr ?: return
+        val o = ocr ?: run { crop.recycle(); return }
         if (o.isCloud) {
             // Gemini: chỉ gửi khi hình trong khung thật sự đổi, để khỏi tốn lượt dùng.
             val sig = Ocr.thumb(crop)
-            if (Ocr.same(sig, lastSig)) return
+            if (Ocr.same(sig, lastSig)) { crop.recycle(); return }
             lastSig = sig
         }
         busy = true
@@ -651,6 +683,7 @@ class CaptureService : Service() {
     }
 
     override fun onDestroy() {
+        destroyed = true
         running = false
         active = false
         handler.removeCallbacksAndMessages(null)
@@ -658,7 +691,7 @@ class CaptureService : Service() {
         display?.release(); reader?.close()
         projection?.stop()
         tt?.close(); ocr?.close()
-        speaker?.shutdown(); tvExec.shutdown()
+        speaker?.shutdown(); tvExec.shutdownNow()
         super.onDestroy()
     }
 }

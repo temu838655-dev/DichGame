@@ -49,21 +49,39 @@ class Ocr(private val p: Prefs, private val lang: String) {
         val l = local
         if (l != null) {
             l.process(InputImage.fromBitmap(bmp, 0))
-                .addOnSuccessListener { r -> ok(r.textBlocks.map { Blk(it.text, it.boundingBox) }) }
-                .addOnFailureListener { fail("") }
+                .addOnSuccessListener { r ->
+                    val blocks = r.textBlocks.map { Blk(it.text, it.boundingBox) }
+                    if (!bmp.isRecycled) bmp.recycle()
+                    ok(blocks)
+                }
+                .addOnFailureListener {
+                    if (!bmp.isRecycled) bmp.recycle()
+                    fail("")
+                }
             return
         }
         val key = p.geminiKey
-        if (key.isEmpty()) { fail("Chữ ${Prefs.srcNameOf(lang)} cần khóa Google Gemini. Vào Cách dịch để nhập khóa."); return }
+        if (key.isEmpty()) {
+            if (!bmp.isRecycled) bmp.recycle()
+            fail("Chữ ${Prefs.srcNameOf(lang)} cần khóa Google Gemini. Vào Cách dịch để nhập khóa.")
+            return
+        }
         val model = p.geminiModel
-        io.execute {
-            try {
-                val blocks = cloudRead(bmp, key, model)
-                main.post { ok(blocks) }
-            } catch (e: Exception) {
-                val m = errorText(e)
-                main.post { fail(m) }
+        try {
+            io.execute {
+                try {
+                    val blocks = cloudRead(bmp, key, model)
+                    if (!bmp.isRecycled) bmp.recycle()
+                    main.post { ok(blocks) }
+                } catch (e: Exception) {
+                    if (!bmp.isRecycled) bmp.recycle()
+                    val m = errorText(e)
+                    main.post { fail(m) }
+                }
             }
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            if (!bmp.isRecycled) bmp.recycle()
+            fail("Dịch vụ OCR đã dừng. Hãy khởi động lại tính năng dịch.")
         }
     }
 
@@ -84,8 +102,8 @@ class Ocr(private val p: Prefs, private val lang: String) {
         val prompt = "Đây là ảnh chụp màn hình game. Đọc toàn bộ chữ ${Prefs.srcNameOf(lang)} trong ảnh, " +
             "gộp mỗi câu thoại, mỗi đoạn văn thành một khối, xếp từ trên xuống dưới. " +
             "Không dịch, không sửa, bỏ qua chữ không phải ${Prefs.srcNameOf(lang)} nếu đó chỉ là biểu tượng hay số liệu. " +
-            "Chỉ trả về JSON dạng {\"blocks\":[{\"t\":\"nội dung\",\"b\":[ymin,xmin,ymax,xmax]}]} " +
-            "với b là khung bao chuẩn hóa từ 0 đến 1000. Không có chữ thì trả {\"blocks\":[]}."
+            """Chỉ trả về JSON dạng {"blocks":[{"t":"nội dung","b":[ymin,xmin,ymax,xmax]}]} """ +
+            """với b là khung bao chuẩn hóa từ 0 đến 1000. Không có chữ thì trả {"blocks":[]}."""
         val parts = JSONArray()
             .put(JSONObject().put("text", prompt))
             .put(JSONObject().put("inline_data", JSONObject().put("mime_type", "image/jpeg").put("data", b64)))
@@ -96,9 +114,15 @@ class Ocr(private val p: Prefs, private val lang: String) {
             "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent",
             body, mapOf("x-goog-api-key" to key)
         )
-        val txt = JSONObject(r).getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
-            .getJSONArray("parts").getJSONObject(0).getString("text")
-        return parse(txt, bmp.width, bmp.height)
+        val candidate = JSONObject(r).optJSONArray("candidates")
+            ?.optJSONObject(0)?.optJSONObject("content")
+            ?: throw IllegalStateException("Gemini không trả về nội dung OCR.")
+        val responseText = candidate.optJSONArray("parts")
+            ?.let { parts -> (0 until parts.length()).asSequence()
+                .mapNotNull { parts.optJSONObject(it)?.optString("text") }
+                .firstOrNull { it.isNotBlank() } }
+            ?: throw IllegalStateException("Gemini không trả về văn bản OCR.")
+        return parse(responseText, bmp.width, bmp.height)
     }
 
     private fun parse(raw: String, w: Int, h: Int): List<Blk> {
@@ -114,10 +138,14 @@ class Ocr(private val p: Prefs, private val lang: String) {
             val t = o.optString("t").trim()
             if (t.isEmpty()) continue
             val b = o.optJSONArray("b")
-            val box = if (b != null && b.length() == 4) Rect(
-                (b.optDouble(1) * w / 1000).toInt(), (b.optDouble(0) * h / 1000).toInt(),
-                (b.optDouble(3) * w / 1000).toInt(), (b.optDouble(2) * h / 1000).toInt()
-            ) else null
+            val box = if (b != null && b.length() == 4) {
+                // Gemini có thể trả tọa độ vượt miền hoặc đảo cạnh; luôn chặn trong ảnh.
+                val top = (b.optDouble(0, Double.NaN) * h / 1000.0).toInt().coerceIn(0, h)
+                val left = (b.optDouble(1, Double.NaN) * w / 1000.0).toInt().coerceIn(0, w)
+                val bottom = (b.optDouble(2, Double.NaN) * h / 1000.0).toInt().coerceIn(0, h)
+                val right = (b.optDouble(3, Double.NaN) * w / 1000.0).toInt().coerceIn(0, w)
+                if (top < bottom && left < right) Rect(left, top, right, bottom) else null
+            } else null
             out.add(Blk(t, box))
         }
         return out
