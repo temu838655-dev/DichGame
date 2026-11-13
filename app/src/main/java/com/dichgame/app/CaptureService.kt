@@ -240,7 +240,7 @@ class CaptureService : Service() {
         if (busy || !ready || editing || narrate || region != null || System.currentTimeMillis() < menuUntil) return
         ensureSize()
         val img = reader?.acquireLatestImage() ?: return
-        val bmp = try { bitmapFromImage(img) } finally { img.close() }
+        val bmp = try { bitmapFromImage(img) } catch (_: Exception) { ocrFail(""); return } finally { img.close() }
         busy = true
         val skip = listOfNotNull(rectOf(frame), rectOf(overlay))
         ocr!!.read(bmp, { m -> ocrFail(m) }) { r ->
@@ -352,6 +352,9 @@ class CaptureService : Service() {
             val loc = IntArray(2)
             box.getLocationOnScreen(loc)
             bitmapFromImage(img, loc[0], loc[1], box.width, box.height)
+        } catch (_: Exception) {
+            ocrFail("")
+            return
         } finally { img.close() }
         ocr!!.read(crop, { m -> ocrFail(m) }) { r ->
                 val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
@@ -624,6 +627,9 @@ class CaptureService : Service() {
             val loc = IntArray(2)
             frame!!.getLocationOnScreen(loc)
             bitmapFromImage(img, loc[0], loc[1], frame!!.width, frame!!.height)
+        } catch (_: Exception) {
+            ocrFail("")
+            return
         } finally { img.close() }
 
         val o = ocr ?: run { crop.recycle(); return }
