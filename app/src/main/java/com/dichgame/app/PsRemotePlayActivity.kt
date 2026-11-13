@@ -18,6 +18,7 @@ import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -235,7 +236,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
     private fun showSavedHost() {
         reset("PlayStation đã ghép", "Thiết bị: ${prefs.getString("nickname", "PlayStation")}  ·  ${prefs.getString("host", "")}")
         add(text("Khóa ghép nối được lưu cục bộ trên điện thoại. Không chia sẻ dữ liệu khóa này."))
-        add(action("▶  KẾT NỐI VÀ CHƠI") { startStream() })
+        add(action("▶  KẾT NỐI VÀ CHƠI") { showPlayQualityDialog() })
         add(action("Chất lượng hình & tốc độ mạng") { showVideoQualityInfo() })
         add(action("Ghép một máy khác") { showPairForm() })
         add(action("Xóa thiết bị đã lưu") {
@@ -248,6 +249,51 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
                     showPairForm()
                 }.show()
         })
+    }
+
+    /**
+     * Hộp thoại xác nhận chất lượng trước khi chơi.
+     * Tùy chọn "không hỏi lại" được lưu cục bộ; preset hiện tại là 720p60.
+     */
+    private fun showPlayQualityDialog() {
+        if (prefs.getBoolean("skip_quality_dialog", false)) {
+            startStream()
+            return
+        }
+
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(10), dp(20), dp(4))
+        }
+        panel.addView(text("ĐỘ PHÂN GIẢI", 13f))
+        val selected = TextView(this).apply {
+            text = "✓  720p · 60 FPS · H.264"
+            textSize = 17f
+            setTextColor(Color.WHITE)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            setBackgroundColor(Color.rgb(61, 55, 48))
+        }
+        panel.addView(selected)
+        panel.addView(text("Đây là cấu hình đang được engine sử dụng. 1080p chưa được bật trong phiên bản này."))
+        panel.addView(text("KẾT NỐI MẠNG", 13f).apply { setPadding(0, dp(12), 0, 0) })
+        panel.addView(text("Ưu tiên Wi‑Fi 5 GHz hoặc Ethernet. Nếu hình giật hoặc âm thanh ngắt quãng, hãy đưa điện thoại gần bộ định tuyến hơn và giảm tải mạng."))
+        val skip = CheckBox(this).apply {
+            text = "Không hỏi lại khi bấm Chơi"
+            setTextColor(Color.WHITE)
+            buttonTintList = android.content.res.ColorStateList.valueOf(Color.rgb(255, 190, 110))
+            setPadding(0, dp(8), 0, 0)
+        }
+        panel.addView(skip)
+
+        AlertDialog.Builder(this)
+            .setTitle("Chất lượng hình")
+            .setView(panel)
+            .setNegativeButton("Đóng", null)
+            .setPositiveButton("🎮  Chơi") { _, _ ->
+                prefs.edit().putBoolean("skip_quality_dialog", skip.isChecked).apply()
+                startStream()
+            }
+            .show()
     }
 
     /**
