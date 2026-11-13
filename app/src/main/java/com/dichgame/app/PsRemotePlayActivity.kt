@@ -26,6 +26,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.metallic.chiaki.lib.*
 import java.util.concurrent.atomic.AtomicBoolean
+import java.net.InetSocketAddress
 
 /**
  * Tích hợp Chiaki trực tiếp: ghép PS5/PS4 bằng IP + PSN Account ID + mã 8 số,
@@ -34,6 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
     private val prefs by lazy { getSharedPreferences("ps_remote_play", MODE_PRIVATE) }
     private var regist: Regist? = null
+    private var discovery: DiscoveryService? = null
     private var session: Session? = null
     private var surface: android.view.Surface? = null
     private var controllerState = ControllerState()
@@ -98,6 +100,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         }
         add(text("1. Địa chỉ IP máy PlayStation"))
         add(host)
+        add(action("⌕  TÌM PS5 / PS4 TRONG MẠNG WI‑FI") { scanConsoles(host) })
         add(text("2. PSN Account ID"))
         add(account)
         add(text("Có thể dùng công cụ tra Account ID PSN đáng tin cậy. Không nhập mật khẩu PSN hoặc mã đăng nhập tài khoản vào đây."))
@@ -120,6 +123,39 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
             register(ip, accountBytes, pinText.toInt())
         })
         if (prefs.contains("host")) add(action("Quay lại thiết bị đã ghép") { showSavedHost() })
+    }
+
+    private fun scanConsoles(hostField: EditText) {
+        try {
+            discovery?.dispose()
+            status.text = "Đang tìm máy PlayStation trong mạng nội bộ…"
+            discovery = DiscoveryService(DiscoveryServiceOptions(16U, 3U, 500U, InetSocketAddress("255.255.255.255", 987))) { hosts ->
+                runOnUiThread {
+                    if (hosts.isEmpty()) return@runOnUiThread
+                    val usable = hosts.filter { !it.hostAddr.isNullOrBlank() }
+                    if (usable.isEmpty()) return@runOnUiThread
+                    val labels = usable.map { h ->
+                        val kind = if (h.isPS5) "PS5" else "PS4"
+                        val state = if (h.state == DiscoveryHost.State.STANDBY) "Chế độ nghỉ" else "Sẵn sàng"
+                        kind + " · " + (h.hostName ?: "PlayStation") + " · " + h.hostAddr + " · " + state
+                    }.toTypedArray()
+                    AlertDialog.Builder(this).setTitle("Chọn máy PlayStation")
+                        .setItems(labels) { _, which ->
+                            val selected = usable[which]
+                            hostField.setText(selected.hostAddr)
+                            isPs5 = selected.isPS5
+                            status.text = "Đã tìm thấy " + (selected.hostName ?: "PlayStation")
+                            discovery?.dispose()
+                            discovery = null
+                        }
+                        .setNegativeButton("Đóng") { _, _ -> discovery?.dispose(); discovery = null }
+                        .show()
+                }
+            }
+            Toast.makeText(this, "Đang quét mạng. Có thể mất vài giây.", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            status.text = "Không thể khởi động quét mạng: " + (e.message ?: "lỗi không rõ")
+        }
     }
 
     private fun register(host: String, accountId: ByteArray, pin: Int) {
@@ -472,6 +508,8 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
 
     override fun onDestroy() {
         if (closing.compareAndSet(false, true)) {
+            try { discovery?.dispose() } catch (_: Exception) {}
+            discovery = null
             try { regist?.stop(); regist?.dispose() } catch (_: Exception) {}
             regist = null
             try { session?.stop(); session?.dispose() } catch (_: Exception) {}
