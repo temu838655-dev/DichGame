@@ -113,7 +113,8 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         add(action("⌕  TÌM PS5 / PS4 TRONG MẠNG WI‑FI") { scanConsoles(host) })
         add(text("2. PSN Account ID"))
         add(account)
-        add(text("Có thể dùng công cụ tra Account ID PSN đáng tin cậy. Không nhập mật khẩu PSN hoặc mã đăng nhập tài khoản vào đây."))
+        add(action("ⓘ  HƯỚNG DẪN LẤY PSN ACCOUNT ID") { showAccountIdGuide() })
+        add(text("Chỉ cần Account ID dạng Base64. Không nhập mật khẩu PSN hoặc mã đăng nhập tài khoản vào đây."))
         add(text("3. Mã ghép nối"))
         add(pin)
         add(type)
@@ -133,6 +134,31 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
             register(ip, accountBytes, pinText.toInt())
         })
         if (prefs.contains("host")) add(action("Quay lại thiết bị đã ghép") { showSavedHost() })
+    }
+
+    private fun showAccountIdGuide() {
+        val guide = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(4))
+        }
+        fun step(number: String, heading: String, body: String) {
+            guide.addView(text("$number  $heading", 17f))
+            guide.addView(text(body, 14f))
+        }
+        step("1.", "Chọn người chơi phụ trên PS5",
+            "Trên PS5, thêm hoặc chọn một người dùng phụ đã đăng nhập PSN. Không dùng tài khoản đang chơi game trên TV vì phiên Remote Play có thể làm gián đoạn người chơi đó.")
+        step("2.", "Tìm Online ID",
+            "Mở Hồ sơ của người dùng phụ. Online ID là tên công khai của tài khoản, không phải địa chỉ email và cũng không phải mật khẩu.")
+        step("3.", "Tra Account ID và mã hóa Base64",
+            "Dùng công cụ tra cứu Account ID PSN đáng tin cậy để lấy chuỗi Base64 tương ứng. Dán nguyên chuỗi vào ô PSN Account ID trong app.")
+        step("4.", "Lấy mã ghép nối trên console",
+            "Trên PS5: Cài đặt → Hệ thống → Chơi từ xa → Ghép thiết bị. Nhập mã 8 chữ số còn hiệu lực vào app. Với PS4, bật Chơi từ xa và mở chức năng thêm thiết bị để lấy mã.")
+        guide.addView(text("Bảo mật: không gửi mật khẩu, mã xác minh hai bước, cookie hoặc token đăng nhập cho bất kỳ ai.", 13f))
+        AlertDialog.Builder(this)
+            .setTitle("Hướng dẫn ghép PS5 / PS4")
+            .setView(guide)
+            .setPositiveButton("Đã hiểu", null)
+            .show()
     }
 
     private fun isValidHostAddress(value: String): Boolean {
