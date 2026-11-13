@@ -36,6 +36,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
     private val prefs by lazy { getSharedPreferences("ps_remote_play", MODE_PRIVATE) }
     private var regist: Regist? = null
     private var discovery: DiscoveryService? = null
+    private var scanDialogShown = false
     private var session: Session? = null
     private var surface: android.view.Surface? = null
     private var controllerState = ControllerState()
@@ -128,12 +129,14 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
     private fun scanConsoles(hostField: EditText) {
         try {
             discovery?.dispose()
+            scanDialogShown = false
             status.text = "Đang tìm máy PlayStation trong mạng nội bộ…"
             discovery = DiscoveryService(DiscoveryServiceOptions(16U, 3U, 500U, InetSocketAddress("255.255.255.255", 987))) { hosts ->
                 runOnUiThread {
-                    if (hosts.isEmpty()) return@runOnUiThread
+                    if (scanDialogShown || hosts.isEmpty()) return@runOnUiThread
                     val usable = hosts.filter { !it.hostAddr.isNullOrBlank() }
                     if (usable.isEmpty()) return@runOnUiThread
+                    scanDialogShown = true
                     val labels = usable.map { h ->
                         val kind = if (h.isPS5) "PS5" else "PS4"
                         val state = if (h.state == DiscoveryHost.State.STANDBY) "Chế độ nghỉ" else "Sẵn sàng"
@@ -147,8 +150,9 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
                             status.text = "Đã tìm thấy " + (selected.hostName ?: "PlayStation")
                             discovery?.dispose()
                             discovery = null
+                            scanDialogShown = false
                         }
-                        .setNegativeButton("Đóng") { _, _ -> discovery?.dispose(); discovery = null }
+                        .setNegativeButton("Đóng") { _, _ -> discovery?.dispose(); discovery = null; scanDialogShown = false }
                         .show()
                 }
             }
@@ -235,29 +239,6 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         video.layoutParams = (video.layoutParams as LinearLayout.LayoutParams).apply { height = 0; weight = 1f }
         video.holder.addCallback(this)
         val controls = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
-        fun button(label: String, mask: UInt, width: Int = 1) {
-            val b = Button(this).apply { text = label; isAllCaps = false; minWidth = 0; minimumWidth = 0 }
-            b.setOnTouchListener { _, event ->
-                if (event.action == android.view.MotionEvent.ACTION_DOWN ||
-                    event.action == android.view.MotionEvent.ACTION_UP ||
-                    event.action == android.view.MotionEvent.ACTION_CANCEL) {
-                    controllerState.buttons = if (event.action == android.view.MotionEvent.ACTION_DOWN)
-                        controllerState.buttons or mask else controllerState.buttons and mask.inv()
-                    session?.setControllerState(controllerState)
-                }
-                true
-            }
-            controls.addView(b, LinearLayout.LayoutParams(0, dp(46), width.toFloat()).apply {
-                setMargins(dp(3), dp(2), dp(3), dp(2))
-            })
-        }
-        fun row(block: () -> Unit) {
-            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-            controls.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            val old = controls
-            // Build each row in a temporary holder, then move its children into the visible control panel.
-            block()
-        }
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         controls.addView(top)
         fun addButton(parent: LinearLayout, label: String, mask: UInt) {
@@ -311,8 +292,6 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         val bottom = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         controls.addView(bottom)
         addButton(bottom, "L3", ControllerState.BUTTON_L3)
-        addButton(bottom, "L2", 0U)
-        addButton(bottom, "R2", 0U)
         addButton(bottom, "R3", ControllerState.BUTTON_R3)
         fun trigger(label: String, left: Boolean) {
             val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
