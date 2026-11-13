@@ -483,6 +483,18 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
                 requestTranslationCapture()
             }
         })
+        add(action("⏻  NGẮT KẾT NỐI PLAYSTATION") {
+            AlertDialog.Builder(this)
+                .setTitle("Ngắt phiên Remote Play?")
+                .setMessage("Phiên truyền hình ảnh và điều khiển sẽ dừng. Thiết bị đã ghép vẫn được lưu để kết nối lại nhanh.")
+                .setNegativeButton("Tiếp tục chơi", null)
+                .setPositiveButton("Ngắt kết nối") { _, _ ->
+                    releaseSession()
+                    status.text = "Đã ngắt kết nối. Thiết bị vẫn được lưu."
+                    showSavedHost()
+                }
+                .show()
+        })
         try {
             streamEnded.set(false)
             val profile = ConnectVideoProfile.preset(VideoResolutionPreset.RES_720P, VideoFPSPreset.FPS_60, Codec.CODEC_H264)
