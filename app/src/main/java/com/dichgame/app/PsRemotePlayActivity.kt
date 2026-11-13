@@ -700,6 +700,23 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) { surface = holder.surface; session?.setSurface(surface) }
     override fun surfaceDestroyed(holder: SurfaceHolder) { surface = null; session?.setSurface(null) }
 
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (session == null) {
+            super.onBackPressed()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Thoát phiên Remote Play?")
+            .setMessage("Phiên truyền hình và tay cầm sẽ dừng nếu bạn thoát. Thiết bị đã ghép vẫn được lưu.")
+            .setNegativeButton("Tiếp tục chơi", null)
+            .setPositiveButton("Thoát") { _, _ ->
+                releaseSession()
+                finish()
+            }
+            .show()
+    }
+
     override fun onDestroy() {
         if (closing.compareAndSet(false, true)) {
             try { discovery?.dispose() } catch (_: Exception) {}
