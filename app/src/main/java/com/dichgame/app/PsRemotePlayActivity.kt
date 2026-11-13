@@ -98,7 +98,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(4), dp(8), dp(4), dp(8))
         }
-        val steps = listOf("①\\nTìm máy", "②\\nAccount ID", "③\\nMã trên máy")
+        val steps = listOf("①\nTìm máy", "②\nAccount ID", "③\nMã trên máy")
         steps.forEachIndexed { index, label ->
             val item = TextView(this).apply {
                 text = label
