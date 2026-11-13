@@ -409,11 +409,15 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
                 setTextColor(Color.WHITE)
                 backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(37, 49, 66))
                 setPadding(dp(4), dp(4), dp(4), dp(4))
+                isHapticFeedbackEnabled = true
             }
-            b.setOnTouchListener { _, event ->
+            b.setOnTouchListener { view, event ->
                 if (event.action == android.view.MotionEvent.ACTION_DOWN ||
                     event.action == android.view.MotionEvent.ACTION_UP ||
                     event.action == android.view.MotionEvent.ACTION_CANCEL) {
+                    if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    }
                     controllerState.buttons = if (event.action == android.view.MotionEvent.ACTION_DOWN)
                         controllerState.buttons or mask else controllerState.buttons and mask.inv()
                     session?.setControllerState(controllerState)
