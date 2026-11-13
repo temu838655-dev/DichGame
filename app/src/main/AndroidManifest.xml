@@ -28,7 +28,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".PsRemotePlayActivity" android:exported="false" />
+        <activity android:name=".PsConnectActivity" android:exported="false" />
+        <activity
+            android:name=".PsPairActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".PsPlayActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation" />
         <activity android:name=".TranslateActivity" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".TvSetupActivity" android:exported="false" />

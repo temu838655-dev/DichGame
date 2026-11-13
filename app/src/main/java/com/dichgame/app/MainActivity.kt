@@ -55,7 +55,7 @@ class MainActivity : Activity() {
                 if (p.tvPaired) "Đã ghép TV ${p.tvIp}" else "Bật dịch hiện ngay trên hình game của TV",
                 if (p.tvPaired) "ĐÃ GHÉP" else "MIỄN PHÍ") { open(TvSetupActivity::class.java) }, 0, 12)
             put(navCard("🎮", "PS5 / PS4 Remote Play", "Ghép máy và chơi trực tiếp bằng engine Chiaki tích hợp", "BETA") {
-                open(PsRemotePlayActivity::class.java)
+                open(PsConnectActivity::class.java)
             }, 0, 12)
             put(navCard("▶", "Dịch video trên web", "Mở trang video, phụ đề tự sang tiếng Việt", "MIỄN PHÍ") {
                 open(WebTranslateActivity::class.java)
@@ -326,10 +326,15 @@ class MainActivity : Activity() {
     private fun remotePicker() {
         val installed = RemotePlay.ordered(Catalog.platformsOf(PackStore.gameName(p)).firstOrNull()).filter { packageManager.getLaunchIntentForPackage(it.pkg) != null }
         Ui.sheet(this) { d ->
-            addView(Ui.tv(this@MainActivity, "Mở app chơi từ xa?", 24f, Ui.TEXT, true))
+            addView(Ui.tv(this@MainActivity, "Chơi trên điện thoại bằng gì?", 24f, Ui.TEXT, true))
             addView(Ui.tv(this@MainActivity,
-                "Dịch game mở app chơi từ xa bạn đã cài rồi hiện bản dịch đè lên hình game. Việc điều khiển máy chơi game do app đó làm.",
+                "Chơi ngay trong Dịch game (ghép PS5/PS4 một lần, có tay cầm ảo), hoặc mở app chơi từ xa bạn đã cài rồi hiện bản dịch đè lên hình game.",
                 13f, Ui.SUB), Ui.lpm(this@MainActivity, 6, 0))
+            if (PsNative.available) {
+                addView(choice("🎮", "Chơi ngay trong Dịch game", "Ghép nối, chơi, tay cầm ảo và dịch trong một app. Không cần mở app khác.") {
+                    d.dismiss(); open(PsConnectActivity::class.java)
+                }, Ui.lpm(this@MainActivity, 12, 0))
+            }
             for (a in installed) {
                 addView(choice("🎮", a.name, a.desc) { d.dismiss(); pendingApp = a.pkg; capture() }, Ui.lpm(this@MainActivity, 12, 0))
             }
