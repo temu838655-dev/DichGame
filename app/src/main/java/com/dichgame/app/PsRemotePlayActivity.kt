@@ -4,6 +4,10 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.content.Intent
+import android.media.projection.MediaProjectionManager
+import android.net.Uri
+import android.provider.Settings
 import android.os.Bundle
 import android.util.Base64
 import android.view.Gravity
@@ -34,6 +38,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var status: TextView
     private lateinit var content: LinearLayout
     private val closing = AtomicBoolean(false)
+    private val translationRequestCode = 911
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -216,6 +221,15 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         control("□", ControllerState.BUTTON_BOX)
         control("△", ControllerState.BUTTON_PYRAMID)
         add(controls)
+        add(action(if (CaptureService.active) "■  Dừng dịch phụ đề" else "🌐  Bắt đầu dịch phụ đề") {
+            if (CaptureService.active) {
+                startService(Intent(this, CaptureService::class.java).setAction(CaptureService.STOP))
+                CaptureService.active = false
+                status.text = "Đã dừng dịch phụ đề."
+            } else {
+                requestTranslationCapture()
+            }
+        })
         try {
             val profile = ConnectVideoProfile.preset(VideoResolutionPreset.RES_720P, VideoFPSPreset.FPS_60, Codec.CODEC_H264)
             val info = ConnectInfo(prefs.getBoolean("ps5", true), host, key, morning, profile)
@@ -236,6 +250,42 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         } catch (e: Exception) {
             status.text = "Lỗi mở Remote Play: ${e.message ?: "không rõ nguyên nhân"}"
         }
+    }
+
+
+    private fun requestTranslationCapture() {
+        if (!Settings.canDrawOverlays(this)) {
+            AlertDialog.Builder(this)
+                .setTitle("Cần quyền hiển thị bản dịch")
+                .setMessage("Cho phép Dịch Game hiển thị phụ đề trên hình Remote Play.")
+                .setPositiveButton("Mở cài đặt") { _, _ ->
+                    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                }
+                .setNegativeButton("Để sau", null).show()
+            return
+        }
+        val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        @Suppress("DEPRECATION")
+        startActivityForResult(manager.createScreenCaptureIntent(), translationRequestCode)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != translationRequestCode || resultCode != RESULT_OK || data == null) return
+        val p = Prefs(this)
+        val intent = Intent(this, CaptureService::class.java)
+            .putExtra("code", resultCode)
+            .putExtra("data", data)
+            .putExtra("speak", p.speak)
+            .putExtra("lang", p.lang)
+            .putExtra("automenu", p.autoMenu)
+            .putExtra("slow", p.slow)
+            .putExtra("narrate", p.narrate)
+        startForegroundService(intent)
+        CaptureService.active = true
+        status.text = "Đang dịch phụ đề trực tiếp trên hình PlayStation."
+        Toast.makeText(this, "Đã bật dịch. Phụ đề sẽ nổi trên hình Remote Play.", Toast.LENGTH_LONG).show()
     }
 
     private fun requestLoginPin(incorrect: Boolean) {
