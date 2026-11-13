@@ -115,8 +115,8 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
             val ip = host.text.toString().trim()
             val pinText = pin.text.toString().trim()
             val accountBytes = try { Base64.decode(account.text.toString().trim(), Base64.DEFAULT) } catch (_: Exception) { byteArrayOf() }
-            if (ip.isBlank() || ip.contains(" ") || ip.length > 64) {
-                host.error = "Nhập IP hợp lệ"; return@action
+            if (!isValidHostAddress(ip)) {
+                host.error = "Nhập địa chỉ IP hợp lệ của PS5/PS4 (IPv4 hoặc IPv6), không nhập tên miền"; return@action
             }
             if (accountBytes.size != RegistInfo.ACCOUNT_ID_SIZE) {
                 account.error = "Account ID phải giải mã thành đúng 8 byte Base64"; return@action
@@ -127,6 +127,24 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
             register(ip, accountBytes, pinText.toInt())
         })
         if (prefs.contains("host")) add(action("Quay lại thiết bị đã ghép") { showSavedHost() })
+    }
+
+    private fun isValidHostAddress(value: String): Boolean {
+        if (value.isBlank() || value.length > 64 || value.any { it.isWhitespace() }) return false
+        if (value.contains(':')) {
+            // Chỉ phân tích IPv6 literal; không cho phép tra cứu hostname qua DNS.
+            return try {
+                java.net.InetAddress.getByName(value) is java.net.Inet6Address
+            } catch (_: Exception) {
+                false
+            }
+        }
+        val octets = value.split('.')
+        return octets.size == 4 && octets.all { part ->
+            part.isNotEmpty() && part.length <= 3 &&
+                part.all { it in '0'..'9' } &&
+                (part.toIntOrNull() ?: -1) in 0..255
+        }
     }
 
     private fun scanConsoles(hostField: EditText) {
