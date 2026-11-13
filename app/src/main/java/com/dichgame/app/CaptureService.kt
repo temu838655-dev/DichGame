@@ -77,6 +77,7 @@ class CaptureService : Service() {
     private var prevVi = ""
     private var menuUntil = 0L
     private val tvExec = java.util.concurrent.Executors.newSingleThreadExecutor()
+    @Volatile private var destroyed = false
     private var tvLast = ""
     private var autoMenu = false
     private var autoShown = false
@@ -413,21 +414,32 @@ class CaptureService : Service() {
         val p = getSharedPreferences("dg", MODE_PRIVATE)
         val ip = p.getString("tvip", "").orEmpty()
         val tok = p.getString("tvtoken", "").orEmpty()
-        if (p.getString("playon", "phone") != "tv" || ip.isEmpty() || tok.isEmpty()) return
+        if (destroyed || p.getString("playon", "phone") != "tv" || ip.isEmpty() || tok.isEmpty()) return
         val key = kind + ":" + text
         if (!force && key == tvLast) return
         tvLast = key
         val size = p.getInt("fs", 18) * p.getInt("subscale", 100) / 100 + 12
-        tvExec.execute {
-            try {
-                val c = URL("http://$ip:8765/sub").openConnection() as HttpURLConnection
-                c.requestMethod = "POST"; c.connectTimeout = 1500; c.readTimeout = 1500; c.doOutput = true
-                c.setRequestProperty("X-Token", tok)
-                val body = JSONObject().put("kind", kind).put("text", text).put("size", size).put("speak", speakIt).put("fg", styleFg()).put("bg", styleBg())
-                c.outputStream.use { it.write(body.toString().toByteArray()) }
-                c.responseCode
-                c.disconnect()
-            } catch (_: Exception) {}
+        try {
+            tvExec.execute {
+                var connection: HttpURLConnection? = null
+                try {
+                    if (destroyed) return@execute
+                    connection = URL("http://$ip:8765/sub").openConnection() as HttpURLConnection
+                    connection.requestMethod = "POST"
+                    connection.connectTimeout = 1500
+                    connection.readTimeout = 1500
+                    connection.doOutput = true
+                    connection.setRequestProperty("X-Token", tok)
+                    val body = JSONObject().put("kind", kind).put("text", text).put("size", size).put("speak", speakIt).put("fg", styleFg()).put("bg", styleBg())
+                    connection.outputStream.use { it.write(body.toString().toByteArray()) }
+                    connection.responseCode
+                } catch (_: Exception) {
+                } finally {
+                    connection?.disconnect()
+                }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            // Service đã đóng trong lúc callback OCR/dịch đang hoàn tất.
         }
     }
 
@@ -653,6 +665,7 @@ class CaptureService : Service() {
     }
 
     override fun onDestroy() {
+        destroyed = true
         running = false
         active = false
         handler.removeCallbacksAndMessages(null)
@@ -660,7 +673,7 @@ class CaptureService : Service() {
         display?.release(); reader?.close()
         projection?.stop()
         tt?.close(); ocr?.close()
-        speaker?.shutdown(); tvExec.shutdown()
+        speaker?.shutdown(); tvExec.shutdownNow()
         super.onDestroy()
     }
 }
