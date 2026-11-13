@@ -22,7 +22,8 @@ Dịch phụ đề game và phim sang tiếng Việt ngay trên màn hình, có 
 | Việt hoá cộng đồng | Trong Kho game và Gói Việt hoá có liên kết tới The Red Team, PS Việt Hóa, Tổ Mèo Cam, NSW Việt Hóa Hub, Vịt Việt Hóa, VuiKey, VietPatch... theo nền tảng. **Chỉ mở trang gốc**: app không tải hộ, không đăng lại bản vá (mỗi bản vá có điều khoản của tác giả) |
 | Phụ đề trên TV | Chọn hãng TV, hướng dẫn 4 bước, tìm TV trong mạng, ghép bằng mã 8 số, gửi câu thử |
 | Dịch video trên web | Trình duyệt trong app, đọc phụ đề của trình phát (thẻ track, YouTube, video.js, JW Player, Plyr...) rồi hiện bản dịch, có thể đọc to |
-| Chơi trên điện thoại | Chọn **Chơi trên điện thoại** thì app liệt kê các app chơi từ xa đã cài (PS Remote Play, Chiaki, Moonlight, Steam Link, GeForce NOW, Xbox), mở sẵn app bạn chọn rồi hiện bản dịch đè lên hình game. Chưa cài thì có nút mở trang cài PS Remote Play |
+| Chơi trên điện thoại | Chọn **Chơi trên điện thoại** để mở app chơi từ xa đã cài (PS Remote Play, Chiaki, Moonlight, Steam Link, GeForce NOW, Xbox) và hiện bản dịch đè lên hình game. |
+| Remote Play tích hợp (thử nghiệm) | Ghép PS5/PS4 bằng IP + PSN Account ID dạng Base64 + mã ghép 8 số; tìm console trong LAN; lưu khóa ghép trên máy; phát hình 720p/60 FPS H.264; điều khiển ảo, cần analog, touchpad, L2/R2; thử kết nối lại và nhập PIN khi console yêu cầu. Engine Chiaki-ng hiện chỉ build cho arm64-v8a. Chưa xác nhận tương thích mọi firmware/router; cần thử trên PS4/PS5 thật. Không nhập mật khẩu PSN vào app. |
 | Cài đặt › Giới thiệu và hỗ trợ | Xem phiên bản, **Kiểm tra bản mới** (so với trang Releases), **Báo lỗi / yêu cầu game** (mở GitHub Issues điền sẵn thông tin máy) |
 | Hướng dẫn / Tính năng | Hướng dẫn 5 bước, danh sách tính năng |
 
@@ -33,9 +34,9 @@ Trong lúc chạy, thông báo có 3 nút: **Chỉnh/Khóa khung**, **Dịch men
 1. Tạo repo mới trên GitHub, đẩy **toàn bộ** thư mục này lên (nhớ cả thư mục ẩn `.github` và thư mục `keystore`).
    Dùng dòng lệnh: `git init && git add -A && git commit -m "Dịch game" && git branch -M main && git remote add origin <địa chỉ repo> && git push -u origin main`
 2. Vào tab **Actions** › workflow **Build APK**. Nó chạy tự động mỗi lần đẩy code, hoặc bấm **Run workflow**.
-3. Khi xong có 5 file APK:
+3. Khi xong có các file APK:
    - mục **Artifacts** của lần chạy (`DichGame-APKs`), và
-   - mục **Releases** của repo (khi đẩy lên nhánh `main`/`master` hoặc gắn tag `v*`), tải thẳng được bằng điện thoại.
+   - mục **Releases** của repo (khi đẩy lên nhánh `main`/`master`/`remote-play` hoặc gắn tag `v*`), tải thẳng được bằng điện thoại.
 
 | File | Dùng cho |
 | --- | --- |
@@ -76,7 +77,7 @@ Lần đầu dùng mỗi thứ tiếng, app tải mô hình dịch nên cần m�
 ## Giới hạn hiện tại
 
 - Chưa có app cho **TV LG (webOS)** và **TV Samsung (Tizen)**; chỉ Android TV / Google TV.
-- Chưa có **điều khiển PS4/PS5 thẳng trong app** (giao thức Remote Play). Dịch game chỉ mở app chơi từ xa bạn đã cài (nút ở mục "Chơi trên điện thoại") rồi hiện bản dịch đè lên; việc kết nối và điều khiển máy chơi game do app đó làm.
+- Remote Play tích hợp PS4/PS5 hiện ở trạng thái **thử nghiệm**. Chưa kiểm thử kết nối, hình ảnh, âm thanh và điều khiển trên đầy đủ model/firmware console; cần người dùng thử với máy thật và gửi log khi gặp lỗi. Bản arm64 có engine Chiaki-ng; các ABI khác không có engine Remote Play.
 - Chưa có app cho **iOS, Windows, Mac**, và chưa có **kho Việt hoá tự cập nhật kèm bot gửi yêu cầu** (cần máy chủ). Thay vào đó có mục báo lỗi / yêu cầu game dẫn tới GitHub Issues.
 - Giao diện chỉ có tiếng Việt.
 - Chữ Nga, Ukraina, Thái, Ả Rập, Hy Lạp, Do Thái đọc chậm hơn (khoảng 1–3 giây mỗi câu) vì phải nhờ Gemini đọc ảnh; ở chế độ này tắt "Dịch menu tự động" (vẫn dùng được nút "Dịch menu" và "Vùng dịch").
