@@ -84,8 +84,8 @@ class Ocr(private val p: Prefs, private val lang: String) {
         val prompt = "Đây là ảnh chụp màn hình game. Đọc toàn bộ chữ ${Prefs.srcNameOf(lang)} trong ảnh, " +
             "gộp mỗi câu thoại, mỗi đoạn văn thành một khối, xếp từ trên xuống dưới. " +
             "Không dịch, không sửa, bỏ qua chữ không phải ${Prefs.srcNameOf(lang)} nếu đó chỉ là biểu tượng hay số liệu. " +
-            "Chỉ trả về JSON dạng {\\"blocks\\":[{\\"t\\":\\"nội dung\\",\\"b\\":[ymin,xmin,ymax,xmax]}]} " +
-            "với b là khung bao chuẩn hóa từ 0 đến 1000. Không có chữ thì trả {\\"blocks\\":[]}."
+            """Chỉ trả về JSON dạng {"blocks":[{"t":"nội dung","b":[ymin,xmin,ymax,xmax]}]} """ +
+            """với b là khung bao chuẩn hóa từ 0 đến 1000. Không có chữ thì trả {"blocks":[]}."""
         val parts = JSONArray()
             .put(JSONObject().put("text", prompt))
             .put(JSONObject().put("inline_data", JSONObject().put("mime_type", "image/jpeg").put("data", b64)))
