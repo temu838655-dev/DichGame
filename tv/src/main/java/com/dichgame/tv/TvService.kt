@@ -31,9 +31,33 @@ import java.util.Locale
 object TvState {
     @Volatile var code = "--------"
     @Volatile var prev = ""
-    @Volatile var fails = 0
     val tokens: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet<String>())
-    fun rotate() { prev = code; code = String.format("%08d", SecureRandom().nextInt(100_000_000)); fails = 0 }
+    private val pairAttempts = LinkedHashMap<String, Pair<Long, Int>>()
+
+    @Synchronized
+    fun rotate() {
+        prev = code
+        code = String.format("%08d", SecureRandom().nextInt(100_000_000))
+    }
+
+    /** Giới hạn thử mã theo từng địa chỉ IP, tránh một thiết bị làm khóa ghép nối của cả mạng. */
+    @Synchronized
+    fun allowPairAttempt(ip: String): Boolean {
+        val now = android.os.SystemClock.elapsedRealtime()
+        val previous = pairAttempts[ip]
+        if (previous == null || now - previous.first >= 60_000L) {
+            if (pairAttempts.size >= 256) {
+                val expired = pairAttempts.filterValues { now - it.first >= 60_000L }.keys
+                expired.forEach { pairAttempts.remove(it) }
+                if (pairAttempts.size >= 256) return false
+            }
+            pairAttempts[ip] = now to 1
+            return true
+        }
+        if (previous.second >= 10) return false
+        pairAttempts[ip] = previous.first to (previous.second + 1)
+        return true
+    }
 }
 
 private const val MAX_AUDIO = 6_000_000
@@ -172,12 +196,14 @@ class TvService : Service() {
         }
         val body = String(buf, 0, off, Charsets.UTF_8)
         if (path == "/pair") {
-            if (TvState.fails >= 10) status = 429
-            else if (body.length == 8 && (body == TvState.code || body == TvState.prev)) {
+            val peerIp = s.inetAddress?.hostAddress ?: "unknown"
+            if (!TvState.allowPairAttempt(peerIp)) status = 429
+            else if (len == 8 && body.length == 8 && body.all { it in '0'..'9' } &&
+                (body == TvState.code || body == TvState.prev)) {
                 val t = ByteArray(16).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
                 TvState.tokens.add(t); save()
                 status = 200; out = t
-            } else { TvState.fails++; status = 403 }
+            } else status = 403
         } else if (path == "/sub") {
             if (token.isEmpty() || !TvState.tokens.contains(token)) status = 403
             else {
