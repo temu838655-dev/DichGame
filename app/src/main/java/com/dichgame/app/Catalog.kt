@@ -1,6 +1,6 @@
 package com.dichgame.app
 
-/** Danh sách game phổ biến để chọn nhanh: (tên game, thể loại). Thể loại được đưa cho bộ dịch AI để dịch đúng giọng. */
+/** Kho game: danh sách game phổ biến để chọn nhanh: (tên game, thể loại), kèm nền tảng và gói thuật ngữ Việt hoá (xem VietHoa.kt). Thể loại được đưa cho bộ dịch AI để dịch đúng giọng. */
 object Catalog {
     val GAMES: List<Pair<String, String>> = listOf(
         "Alan Wake 2" to "kinh dị",
@@ -116,4 +116,162 @@ object Catalog {
     ).sortedBy { it.first.lowercase() }
 
     fun genreOf(name: String): String = GAMES.firstOrNull { it.first == name }?.second.orEmpty()
+
+    /** Chữ viết tắt hiện trên ô game. Tên dài thì lấy hai từ đầu và từ cuối để các phần của cùng một series không trùng nhau. */
+    fun initials(name: String): String {
+        val skip = setOf("the", "of", "a", "and", "&")
+        val words = name.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() && it.lowercase() !in skip }
+        val pick = if (words.size > 3) listOf(words[0], words[1], words.last()) else words
+        val s = pick.joinToString("") { it.take(1) }.uppercase()
+        return s.ifEmpty { name.take(2).uppercase() }
+    }
+
+    /** Sắc màu 0..359 của ô game, cố định theo tên. */
+    fun hue(name: String): Int = ((name.hashCode() % 360) + 360) % 360
+
+    /**
+     * Nền tảng của từng game, mỗi chữ là một nền tảng: 5 = PS5, 4 = PS4, X = Xbox, P = PC, S = có trên Steam, N = Switch.
+     * Chỉ để tham khảo, có thể đã thay đổi. Game PS4 chạy được trên PS5, game Xbox One chạy được trên Xbox Series nhờ tương thích ngược.
+     */
+    private val PLATFORM_CODES: Map<String, String> = mapOf(
+        "Alan Wake 2" to "5XP",
+        "Armored Core VI: Fires of Rubicon" to "45XPS",
+        "Assassin's Creed Mirage" to "45XP",
+        "Assassin's Creed Shadows" to "5XPS",
+        "Assassin's Creed Valhalla" to "45XP",
+        "Astro Bot" to "5",
+        "Atomic Heart" to "45XPS",
+        "Baldur's Gate 3" to "5XPS",
+        "Batman: Arkham Knight" to "45XPS",
+        "Black Myth: Wukong" to "5XPS",
+        "Bloodborne" to "4",
+        "Call of Duty: Modern Warfare III" to "45XP",
+        "Celeste" to "45XPSN",
+        "Control" to "45XPS",
+        "Crash Bandicoot N. Sane Trilogy" to "45XPSN",
+        "Cuphead" to "45XPSN",
+        "Cyberpunk 2077" to "45XPS",
+        "Dark Souls III" to "45XPS",
+        "Days Gone" to "45PS",
+        "Dead Space" to "5XPS",
+        "Death Stranding" to "45PS",
+        "Detroit: Become Human" to "4PS",
+        "Devil May Cry 5" to "45XPS",
+        "Diablo IV" to "45XPS",
+        "Disco Elysium" to "45XPSN",
+        "Dragon Age: The Veilguard" to "5XPS",
+        "Dragon Ball Z: Kakarot" to "45XPSN",
+        "Dragon Quest XI S" to "45XPSN",
+        "Dragon's Dogma 2" to "5XPS",
+        "Dying Light 2" to "45XPSN",
+        "EA Sports FC 25" to "45XPSN",
+        "Elden Ring" to "45XPS",
+        "Fallout 4" to "45XPS",
+        "Far Cry 6" to "45XP",
+        "Final Fantasy VII Rebirth" to "5PS",
+        "Final Fantasy VII Remake" to "45PS",
+        "Final Fantasy XVI" to "5PS",
+        "Forza Horizon 5" to "5XPS",
+        "Gears 5" to "XPS",
+        "Ghost of Tsushima" to "45PS",
+        "Ghostwire: Tokyo" to "5XPS",
+        "God of War" to "45PS",
+        "God of War Ragnarök" to "45PS",
+        "Gran Turismo 7" to "45",
+        "Grand Theft Auto V" to "45XPS",
+        "Hades" to "45XPSN",
+        "Halo Infinite" to "XPS",
+        "Hellblade: Senua's Sacrifice" to "45XPS",
+        "Hi-Fi Rush" to "5XPS",
+        "Hogwarts Legacy" to "45XPSN",
+        "Hollow Knight" to "45XPSN",
+        "Horizon Forbidden West" to "45PS",
+        "Horizon Zero Dawn" to "45PS",
+        "It Takes Two" to "45XPSN",
+        "Kingdom Come: Deliverance" to "4XPS",
+        "Kingdom Hearts III" to "4XPS",
+        "Lies of P" to "45XPS",
+        "Little Nightmares II" to "45XPSN",
+        "Lords of the Fallen" to "5XPS",
+        "Marvel's Guardians of the Galaxy" to "45XPSN",
+        "Marvel's Spider-Man 2" to "5PS",
+        "Marvel's Spider-Man: Miles Morales" to "45PS",
+        "Mass Effect Legendary Edition" to "45XPS",
+        "Metal Gear Solid Delta: Snake Eater" to "5XPS",
+        "Metro Exodus" to "45XPS",
+        "Monster Hunter Wilds" to "5XPS",
+        "Monster Hunter: World" to "45XPS",
+        "Mortal Kombat 1" to "5XPSN",
+        "NBA 2K25" to "45XPSN",
+        "Nier: Automata" to "45XPSN",
+        "Nioh 2" to "45PS",
+        "Octopath Traveler II" to "45PSN",
+        "Outlast" to "45XPSN",
+        "Persona 3 Reload" to "45XPS",
+        "Persona 5 Royal" to "45XPSN",
+        "Pokémon Scarlet & Violet" to "N",
+        "Prince of Persia: The Lost Crown" to "45XPSN",
+        "Ratchet & Clank: Rift Apart" to "5PS",
+        "Red Dead Redemption 2" to "45XPS",
+        "Remnant II" to "5XPS",
+        "Resident Evil 2" to "45XPS",
+        "Resident Evil 4" to "45XPS",
+        "Resident Evil Village" to "45XPS",
+        "Returnal" to "5PS",
+        "Sea of Thieves" to "5XPS",
+        "Sekiro: Shadows Die Twice" to "45XPS",
+        "Sifu" to "45XPSN",
+        "Silent Hill 2" to "5PS",
+        "Star Wars Jedi: Survivor" to "5XPS",
+        "Star Wars Outlaws" to "5XP",
+        "Stardew Valley" to "45XPSN",
+        "Starfield" to "XPS",
+        "Stellar Blade" to "5PS",
+        "Stray" to "45XPSN",
+        "Street Fighter 6" to "45XPS",
+        "Super Mario Odyssey" to "N",
+        "Tales of Arise" to "45XPS",
+        "Tekken 8" to "5XPS",
+        "The Callisto Protocol" to "45XPS",
+        "The Elder Scrolls V: Skyrim" to "45XPSN",
+        "The Last of Us Part I" to "5PS",
+        "The Last of Us Part II" to "45PS",
+        "The Legend of Zelda: Breath of the Wild" to "N",
+        "The Legend of Zelda: Tears of the Kingdom" to "N",
+        "The Outer Worlds" to "45XPSN",
+        "The Witcher 3: Wild Hunt" to "45XPSN",
+        "Uncharted 4: A Thief's End" to "45PS",
+        "Until Dawn" to "45PS",
+        "Wo Long: Fallen Dynasty" to "45XPS",
+        "Yakuza: Like a Dragon" to "45XPS",
+    )
+
+    /** Các nền tảng ghi trong danh sách (rỗng nếu game tự thêm, chưa có thông tin). */
+    fun platformsOf(name: String): Set<Plat> {
+        val c = PLATFORM_CODES[name] ?: return emptySet()
+        val out = LinkedHashSet<Plat>()
+        if ('5' in c) out.add(Plat.PS5)
+        if ('4' in c) out.add(Plat.PS4)
+        if ('X' in c) out.add(Plat.XBOX)
+        if ('P' in c || 'S' in c) out.add(Plat.PC)
+        if ('S' in c) out.add(Plat.STEAM)
+        if ('N' in c) out.add(Plat.SWITCH)
+        return out
+    }
+
+    /** Chạy được trên nền tảng này không (PS5 tính cả game PS4 nhờ tương thích ngược). Game chưa có thông tin thì coi là có. */
+    fun runsOn(name: String, p: Plat): Boolean {
+        val c = PLATFORM_CODES[name] ?: return true
+        return when (p) {
+            Plat.PS5 -> '5' in c || '4' in c
+            Plat.PS4 -> '4' in c
+            Plat.XBOX -> 'X' in c
+            Plat.PC -> 'P' in c || 'S' in c
+            Plat.STEAM -> 'S' in c
+            Plat.SWITCH -> 'N' in c
+        }
+    }
 }
+
+/** Nền tảng chơi game. */
+enum class Plat(val label: String) { PS5("PS5"), PS4("PS4"), XBOX("Xbox"), PC("PC"), STEAM("Steam"), SWITCH("Switch") }

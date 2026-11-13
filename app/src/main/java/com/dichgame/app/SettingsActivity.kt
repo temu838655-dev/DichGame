@@ -308,36 +308,36 @@ class SettingsActivity : Activity() {
         }
         c.addView(btns)
         c.addView(Ui.divider(this), Ui.lpm(this, 14, 0))
-        c.addView(Ui.dropRow(this, "Phong cách dịch", { Prefs.TR_STYLES[p.trStyle].first }, { Prefs.TR_STYLES.map { it.first } }) { p.trStyle = it })
-        c.addView(Ui.tv(this, "Phong cách áp dụng đầy đủ cho bộ dịch AI. Mỗi hồ sơ lưu vùng quét riêng.", 12.5f, Ui.SUB), Ui.lpm(this, 2, 10))
-        c.addView(Ui.tv(this, "Từ điển riêng: ${glossaryCount()}", 15f, Ui.TEXT, true), Ui.lpm(this, 12, 2))
-        c.addView(Ui.tv(this, "Ép bộ dịch AI luôn dịch đúng tên riêng, chiêu thức, địa danh của game này.", 12.5f, Ui.SUB), Ui.lpm(this, 2, 10))
+        c.addView(Ui.dropRow(this, "Phong cách dịch", { Prefs.TR_STYLES[p.trStyle].first }, { Prefs.TR_STYLES.map { it.first } }) { i ->
+            p.trStyle = i
+            if (i == Prefs.CUSTOM_STYLE) promptDialog() else render()
+        })
+        c.addView(Ui.tv(this, "Phong cách và prompt riêng áp dụng cho dịch AI; dịch trên máy không hỗ trợ prompt nhưng vẫn dùng gói Việt hoá. Mỗi hồ sơ lưu vùng quét riêng.", 12.5f, Ui.SUB), Ui.lpm(this, 2, 6))
+        if (p.trStyle == Prefs.CUSTOM_STYLE) c.addView(Ui.button(this, "Sửa prompt riêng") { promptDialog() }, Ui.lpm(this, 4, 6))
+        val terms = p.glossary.lines().count { it.contains("=") }
+        c.addView(Ui.tv(this, "Gói Việt hoá", 15f, Ui.TEXT, true), Ui.lpm(this, 12, 2))
+        c.addView(Ui.tv(this, (if (p.packOn) "Đang dùng gói có sẵn của game" else "Gói có sẵn đang tắt") + (if (terms > 0) " · $terms thuật ngữ của bạn" else "") +
+            ". Giữ đúng tên riêng, xưng hô, nhịp và cảm xúc nhân vật.", 12.5f, Ui.SUB), Ui.lpm(this, 2, 10))
         val row = Ui.hbox(this)
         row.addView(Ui.button(this, "＋  Thêm hồ sơ") { addProfile() }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT))
-        row.addView(Ui.button(this, "Sửa từ điển") { glossaryDialog() }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = Ui.dp(this@SettingsActivity, 10) })
+        row.addView(Ui.button(this, "📦  Gói Việt hoá") { startActivity(android.content.Intent(this, PackActivity::class.java)) }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = Ui.dp(this@SettingsActivity, 10) })
         c.addView(row)
         return c
     }
 
-    private fun glossaryCount(): String {
-        val n = p.glossary.lines().count { it.contains("=") }
-        return if (n == 0) "Chưa có từ nào" else "$n từ"
-    }
-
-    private fun glossaryDialog() {
-        val et = Ui.field(this, "Mỗi dòng một từ: gốc = tiếng Việt", p.glossary)
+    private fun promptDialog() {
+        val et = Ui.field(this, "Viết chỉ dẫn dịch của riêng bạn", p.customPrompt)
         et.minLines = 6
         et.gravity = android.view.Gravity.TOP
         et.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
         val box = Ui.vbox(this)
         val pad = Ui.dp(this, 20)
         box.setPadding(pad, pad / 2, pad, 0)
-        box.addView(Ui.tv(this, "Ví dụ:\nHollow Knight = Hiệp sĩ Rỗng\nBonfire = Lửa trại", 12.5f, Ui.SUB))
+        box.addView(Ui.tv(this, "Ví dụ: Dịch như lính đánh thuê lì lợm, xưng tao – mày với đồng đội, gọi sếp là ông chủ, câu cộc, không văn vẻ.", 12.5f, Ui.SUB))
         box.addView(et)
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Từ điển riêng · ${p.profile}")
-            .setView(box)
-            .setPositiveButton("Lưu") { _, _ -> p.glossary = et.text.toString().trim(); render() }
+            .setTitle("Prompt riêng").setView(box)
+            .setPositiveButton("Lưu") { _, _ -> p.customPrompt = et.text.toString(); render() }
             .setNegativeButton("Hủy", null).show()
     }
 

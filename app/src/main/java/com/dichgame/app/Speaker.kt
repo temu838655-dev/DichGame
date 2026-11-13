@@ -82,18 +82,8 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         } catch (_: Exception) {}
     }
 
-    /** Đoán cảm xúc từ chữ: angry, sad, scared, happy hoặc rỗng. Chỉ là luật đơn giản, không dùng AI. */
-    fun emotionOf(text: String): String {
-        val s = text.lowercase()
-        fun has(vararg w: String) = w.any { s.contains(it) }
-        return when {
-            has("khốn", "chết đi", "giết", "câm miệng", "biến đi", "tức", "điên rồi", "đồ ngu") || text.count { it == '!' } >= 2 -> "angry"
-            has("sợ", "cứu", "chạy đi", "trời ơi", "quái vật", "nguy hiểm", "đừng lại gần") -> "scared"
-            has("xin lỗi", "buồn", "khóc", "mất rồi", "đau", "nhớ", "tiếc", "chia tay", "cô đơn") -> "sad"
-            has("vui", "tuyệt", "cảm ơn", "haha", "yêu", "hay quá", "thành công", "chúc mừng") -> "happy"
-            else -> ""
-        }
-    }
+    /** Cách đọc: theo [d] (từ bước dịch) nếu có, không thì tự đoán từ chữ. Rỗng khi tắt "Đọc theo cảm xúc". */
+    private fun deliveryOf(text: String, d: Delivery?): Delivery? = if (p.emotion) (d ?: Emo.detect("", text)) else null
 
     private fun offlineOn() = p.voiceEngine == "offline" && Voices.installed(app, p.offlineVoice)
 
@@ -105,30 +95,23 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     /** Giải phóng giọng offline (trước khi xóa file giọng). */
     fun release() { try { offline.close() } catch (_: Throwable) {} }
 
-    fun speak(text: String, queue: Boolean = false) {
+    fun speak(text: String, queue: Boolean = false, d: Delivery? = null) {
         if (text.isBlank()) return
         when {
-            offlineOn() -> speakOffline(text)
-            p.aiVoiceOn -> speakAi(text)
-            else -> speakSystem(text, queue)
+            offlineOn() -> speakOffline(text, d)
+            p.aiVoiceOn -> speakAi(text, d)
+            else -> speakSystem(text, queue, d)
         }
     }
 
     // ---------------- Giọng máy ----------------
 
-    private fun speakSystem(text: String, queue: Boolean) {
+    private fun speakSystem(text: String, queue: Boolean, d: Delivery?) {
         val t = tts ?: return
         if (!ready) return
         var rate = p.rate10 / 10f
         var pitch = 1f
-        if (p.emotion) {
-            when (emotionOf(text)) {
-                "angry" -> { rate *= 1.12f; pitch = 1.1f }
-                "scared" -> { rate *= 1.2f; pitch = 1.2f }
-                "sad" -> { rate *= 0.85f; pitch = 0.85f }
-                "happy" -> { rate *= 1.05f; pitch = 1.15f }
-            }
-        }
+        deliveryOf(text, d)?.let { rate *= it.rate; pitch = it.pitch }
         // Tự đọc nhanh: câu mới tới lúc câu cũ chưa đọc xong thì để câu cũ đọc nốt, câu mới xếp hàng và đọc nhanh hơn.
         // Dồn quá 3 câu thì bỏ hàng cũ, đọc câu mới nhất.
         val backlog = queued.get()
@@ -143,22 +126,13 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     // ---------------- Giọng AI ----------------
 
-    private fun styleFor(text: String): String {
-        if (!p.emotion) return ""
-        return when (emotionOf(text)) {
-            "angry" -> "angry and intense"
-            "scared" -> "scared and trembling"
-            "sad" -> "sad and soft"
-            "happy" -> "cheerful"
-            else -> ""
-        }
-    }
+    private fun styleFor(text: String, d: Delivery?): String = deliveryOf(text, d)?.style.orEmpty()
 
-    private fun speakAi(text: String) {
+    private fun speakAi(text: String, d: Delivery?) {
         val my = seq.incrementAndGet()
         stopTrack()
         try { tts?.stop() } catch (_: Exception) {}
-        val style = styleFor(text)
+        val style = styleFor(text, d)
         val key = p.aiVoice + "|" + p.ttsModel + "|" + style + "|" + text
         val backlog = p.autoFast && System.currentTimeMillis() < aiPlayUntil
         val speed = ((p.rate10 / 10f) * (if (backlog) 1.35f else 1f)).coerceIn(0.5f, 2.5f)
@@ -176,21 +150,19 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     // ---------------- Giọng offline ----------------
 
-    private fun speedFor(text: String): Float {
+    private fun speedFor(text: String, d: Delivery?): Float {
         var v = p.rate10 / 10f
-        if (p.emotion) {
-            v *= when (emotionOf(text)) { "angry" -> 1.1f; "scared" -> 1.15f; "sad" -> 0.88f; "happy" -> 1.05f; else -> 1f }
-        }
+        deliveryOf(text, d)?.let { v *= it.rate }
         if (p.autoFast && System.currentTimeMillis() < aiPlayUntil) v *= 1.3f
         return v.coerceIn(0.5f, 2.2f)
     }
 
-    private fun speakOffline(text: String) {
+    private fun speakOffline(text: String, d: Delivery?) {
         val my = seq.incrementAndGet()
         stopTrack()
         try { tts?.stop() } catch (_: Exception) {}
         val id = p.offlineVoice
-        val speed = speedFor(text)
+        val speed = speedFor(text, d)
         exec.execute {
             if (my != seq.get()) return@execute // đã có câu mới hơn, bỏ câu này
             val key = "off|$id|${(speed * 10).toInt()}|$text"
@@ -215,13 +187,13 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
      * [cb] chạy ở luồng nền, nhận âm thanh và tốc độ cần phát; âm thanh null nếu giọng lỗi.
      * Câu cũ chưa kịp làm mà đã có câu mới thì bị bỏ (không gọi [cb]).
      */
-    fun synthForTv(text: String, cb: (Pcm?, Float) -> Unit) {
+    fun synthForTv(text: String, d: Delivery? = null, cb: (Pcm?, Float) -> Unit) {
         if (text.isBlank()) return
         val my = tvSeq.incrementAndGet()
         val useOffline = offlineOn()
         val id = p.offlineVoice
-        val speed = if (useOffline) speedFor(text) else ((p.rate10 / 10f)).coerceIn(0.5f, 2.5f)
-        val style = styleFor(text)
+        val speed = if (useOffline) speedFor(text, d) else ((p.rate10 / 10f) * (deliveryOf(text, d)?.rate ?: 1f)).coerceIn(0.5f, 2.5f)
+        val style = styleFor(text, d)
         try {
             exec.execute {
                 if (my != tvSeq.get()) return@execute

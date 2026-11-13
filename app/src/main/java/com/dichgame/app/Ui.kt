@@ -22,16 +22,16 @@ import android.widget.TextView
 
 /** Bộ dựng giao diện tối/vàng bằng View thuần, không cần thư viện ngoài. */
 object Ui {
-    val BG = Color.parseColor("#111113")
-    val CARD = Color.parseColor("#1E1E21")
-    val CARD2 = Color.parseColor("#2A2A2E")
-    val LINE = Color.parseColor("#33FFFFFF")
+    val BG = Color.parseColor("#070D09")
+    val CARD = Color.parseColor("#101912")
+    val CARD2 = Color.parseColor("#18251B")
+    val LINE = Color.parseColor("#55D9A62B")
     val TEXT = Color.WHITE
     val SUB = Color.parseColor("#B4B4BA")
-    val GOLD = Color.parseColor("#F4C38C")
-    val GOLD2 = Color.parseColor("#E8995A")
+    val GOLD = Color.parseColor("#FFD54A")
+    val GOLD2 = Color.parseColor("#F2A900")
     val DANGER = Color.parseColor("#FF6B6B")
-    val OK = Color.parseColor("#6FD08C")
+    val OK = Color.parseColor("#4CD964")
 
     fun dp(c: Context, n: Number): Int = (n.toFloat() * c.resources.displayMetrics.density).toInt()
 
@@ -195,7 +195,7 @@ object Ui {
         d.requestWindowFeature(Window.FEATURE_NO_TITLE)
         val box = vbox(a)
         box.background = GradientDrawable().apply {
-            setColor(Color.parseColor("#17171A"))
+            setColor(Color.parseColor("#0E1710"))
             val r = dp(a, 24).toFloat()
             cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
         }
@@ -224,7 +224,8 @@ fun Activity.screen(title: String, back: Boolean = true, build: LinearLayout.() 
     window.statusBarColor = Ui.BG
     window.navigationBarColor = Ui.BG
     val root = Ui.vbox(this)
-    root.setBackgroundColor(Ui.BG)
+    root.background = android.graphics.drawable.GradientDrawable(
+        android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(Color.parseColor("#0C2A18"), Ui.BG, Ui.BG))
     val bar = Ui.hbox(this)
     bar.setPadding(Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 8))
     if (back) {

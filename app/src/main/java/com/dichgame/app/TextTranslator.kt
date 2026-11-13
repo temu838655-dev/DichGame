@@ -85,12 +85,23 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             .addOnFailureListener { onDone(false) }
     }
 
-    fun translate(text: String, done: (String) -> Unit) {
+    fun translate(text: String, done: (String) -> Unit) = translateEx(text) { vi, _ -> done(vi) }
+
+    /**
+     * Dịch một đoạn chữ. Thứ tự: (1) bộ nhớ câu thoại Việt hoá chuẩn, khớp thì dùng luôn; (2) AI nếu đã bật,
+     * kèm thuật ngữ, thẻ nhân vật và chỉ dẫn cảm xúc; (3) dịch trên máy, vẫn ép đúng thuật ngữ.
+     * [done] nhận bản dịch và cách đọc (cảm xúc, nhịp) nếu có.
+     */
+    fun translateEx(text: String, done: (String, Delivery?) -> Unit) {
         val hist = history.takeLast(p.ctxCount)
         history.add(text)
         while (history.size > 10) history.removeAt(0)
+        PackStore.memory(ctx, p).lookup(text)?.let { done(it, null); return }
         if (!Ai.enabled(p)) { translateLocal(text, done); return }
-        val prompt = Ai.prompt(p, srcName(), p.game, hist, text)
+        val terms = PackStore.terms(p)
+        val cast = PackStore.cast(p)
+        val emo = p.emoTr
+        val prompt = Ai.prompt(p, srcName(), p.game, hist, text, terms, cast, emo)
         Thread {
             var out: String? = null
             try {
@@ -103,18 +114,37 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             val res = out
             main.post {
                 if (!closed) {
-                    if (res.isNullOrEmpty()) translateLocal(text, done) else done(res)
+                    if (res.isNullOrEmpty()) translateLocal(text, done)
+                    else {
+                        val parsed = if (emo) Emo.parse(res) else Emo.Parsed(res, null)
+                        val vi = terms.fixOutput(parsed.text)
+                        done(vi, if (emo) parsed.delivery ?: Emo.detect(text, vi, Cast.speakerOf(text, cast)?.pace) else null)
+                    }
                 }
             }
         }.start()
     }
 
-    private fun translateLocal(text: String, done: (String) -> Unit) {
+    private fun deliveryOf(text: String, vi: String): Delivery? =
+        if (p.emoTr) Emo.detect(text, vi, Cast.speakerOf(text, PackStore.cast(p))?.pace) else null
+
+    private fun translateLocal(text: String, done: (String, Delivery?) -> Unit) {
         val l = local
-        if (l == null) { done(text); return }
-        l.translate(text)
-            .addOnSuccessListener { done(it) }
-            .addOnFailureListener { done(text) }
+        if (l == null) { done(text, null); return }
+        val terms = PackStore.terms(p)
+        val prot = terms.protect(text)
+        l.translate(prot.text)
+            .addOnSuccessListener { out ->
+                val (r, lost) = terms.restore(out, prot)
+                if (prot.tokens.isEmpty() || lost == 0) done(r, deliveryOf(text, r))
+                else {
+                    // bộ dịch làm mất mã giữ chỗ: dịch lại nguyên câu rồi sửa tên theo từ điển
+                    l.translate(text)
+                        .addOnSuccessListener { o2 -> val f = terms.fixOutput(o2); done(f, deliveryOf(text, f)) }
+                        .addOnFailureListener { done(text, null) }
+                }
+            }
+            .addOnFailureListener { done(text, null) }
     }
 
     private fun warn(m: String) {

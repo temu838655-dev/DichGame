@@ -363,6 +363,11 @@ class CaptureService : Service() {
         if (t == null) done(text) else t.translate(text, done)
     }
 
+    private fun translateTextEx(text: String, done: (String, Delivery?) -> Unit) {
+        val t = tt
+        if (t == null) done(text, null) else t.translateEx(text, done)
+    }
+
     private fun tvSpeakOn(): Boolean {
         val p = getSharedPreferences("dg", MODE_PRIVATE)
         return p.getBoolean("tvspeak", false) && p.getString("playon", "phone") == "tv" && !p.getString("tvip", "").isNullOrEmpty() && !p.getString("tvtoken", "").isNullOrEmpty()
@@ -376,9 +381,9 @@ class CaptureService : Service() {
 
     private var tvVoiceWarned = false
 
-    private fun tvVoice(text: String) {
+    private fun tvVoice(text: String, d: Delivery? = null) {
         val sp = speaker ?: return
-        sp.synthForTv(text) { pcm, speed ->
+        sp.synthForTv(text, d) { pcm, speed ->
             val pf = getSharedPreferences("dg", MODE_PRIVATE)
             val err = if (pcm == null) "giọng đọc lỗi" else TvLink.postAudio(pf.getString("tvip", "").orEmpty(), pf.getString("tvtoken", "").orEmpty(), pcm, speed)
             if (err != null) {
@@ -416,7 +421,7 @@ class CaptureService : Service() {
     }
 
     /** Hộp dịch 3 tầng: câu trước (nhỏ), câu gốc, bản dịch (to). */
-    private fun showSub(orig: String, vi: String) {
+    private fun showSub(orig: String, vi: String, d: Delivery? = null) {
         val sb = SpannableStringBuilder()
         fun add(t: String, size: Float, color: Int) {
             if (t.isEmpty()) return
@@ -429,12 +434,13 @@ class CaptureService : Service() {
         val pr = Prefs(this)
         if (pr.showPrev) add(prevVi, 0.7f, (fg and 0x00FFFFFF) or 0x99000000.toInt())
         if (pr.showOrig) add(orig, 0.75f, (fg and 0x00FFFFFF) or 0xCC000000.toInt())
+        if (pr.emoTr && pr.emoLabel && d != null && d.label.isNotEmpty()) add("● " + d.label, 0.62f, d.mood.color)
         add(vi, 1.15f, fg)
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
         overlay?.apply { text = sb; visibility = View.VISIBLE }
         sendTv("sub", vi, speak && tvSpeakOn() && !tvVoiceOn())
-        if (speak && tvVoiceOn()) tvVoice(vi)
-        if (speak && ready && !editing && !tvSpeakOn()) speaker?.speak(vi)
+        if (speak && tvVoiceOn()) tvVoice(vi, d)
+        if (speak && ready && !editing && !tvSpeakOn()) speaker?.speak(vi, false, d)
         prevVi = vi; prevOrig = orig; autoShown = false
     }
 
@@ -640,7 +646,7 @@ class CaptureService : Service() {
                 if (stable < needStable) { busy = false; return@read }
                 last = text
                 if (narrate) { showSub("", text); busy = false; return@read }
-                translateText(text) { vi -> showSub(text, vi); busy = false }
+                translateTextEx(text) { vi, d -> showSub(text, vi, d); busy = false }
             }
     }
 

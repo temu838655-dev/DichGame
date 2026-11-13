@@ -2,7 +2,9 @@ package com.dichgame.app
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -10,19 +12,22 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 
 /**
- * Kho game: chọn nhanh game đang chơi. Có ô tìm kiếm, tab "Đã chơi" / "Tất cả" và nút thêm game khác.
- * Chọn một game sẽ chuyển sang (hoặc tạo) hồ sơ riêng tên game đó, để mỗi game nhớ khung phụ đề riêng,
- * và ghi tên game cùng thể loại để bộ dịch AI dịch đúng giọng.
+ * Kho game Việt hoá: chọn game đang chơi, lọc theo nền tảng (PS5, PS4, Xbox, PC, Steam, Switch), xem gói Việt hoá của game
+ * (thuật ngữ, nhân vật, câu thông báo chuẩn) và cách chơi trên từng nền tảng. Chọn một game sẽ chuyển sang (hoặc tạo) hồ sơ riêng
+ * tên game đó, nhớ khung phụ đề riêng, và gói Việt hoá của game được áp dụng khi dịch.
  */
 class KhoGameActivity : Activity() {
     private lateinit var p: Prefs
     private var tab = 0
     private var query = ""
+    private var plat: Plat? = null
+    private lateinit var chips: LinearLayout
     private lateinit var tabs: LinearLayout
     private lateinit var grid: LinearLayout
 
@@ -30,8 +35,12 @@ class KhoGameActivity : Activity() {
         super.onCreate(b)
         p = Prefs(this)
         tab = if (p.played.isEmpty()) 1 else 0
-        screen("Kho game") {
-            put(Ui.tv(this@KhoGameActivity, "Chọn game để bộ dịch AI dịch đúng giọng và xưng hô. Mỗi game có hồ sơ riêng, nhớ khung phụ đề riêng.", 13f, Ui.SUB), 0, 10)
+        // chỉ dùng cho bản debug: mở thẳng bộ lọc / chi tiết để chụp ảnh kiểm tra
+        if (BuildConfig.DEBUG) {
+            intent.getStringExtra("plat")?.let { k -> plat = Plat.values().firstOrNull { it.name.equals(k, true) }; tab = 1 }
+        }
+        screen("Kho game Việt hoá") {
+            put(Ui.tv(this@KhoGameActivity, "Chọn game để dịch đúng tên riêng, xưng hô và giọng nhân vật. Mỗi game có hồ sơ riêng, nhớ khung phụ đề riêng.", 13f, Ui.SUB), 0, 10)
             val search = Ui.field(this@KhoGameActivity, "Tìm game", "")
             search.addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) { query = s?.toString().orEmpty().trim(); fill() }
@@ -39,13 +48,40 @@ class KhoGameActivity : Activity() {
                 override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
             })
             put(search, 0, 10)
+            chips = Ui.hbox(this@KhoGameActivity)
+            val hs = HorizontalScrollView(this@KhoGameActivity).apply { isHorizontalScrollBarEnabled = false; addView(chips) }
+            put(hs, 0, 10)
             tabs = Ui.hbox(this@KhoGameActivity)
             put(tabs, 0, 10)
-            put(Ui.button(this@KhoGameActivity, "＋  Game khác") { custom() }, 0, 14)
+            val row = Ui.hbox(this@KhoGameActivity)
+            row.addView(Ui.button(this@KhoGameActivity, "＋  Game khác") { custom() }, Ui.lp(0, WRAP_CONTENT, 1f))
+            row.addView(Ui.button(this@KhoGameActivity, "📦  Gói Việt hoá") {
+                startActivity(Intent(this@KhoGameActivity, PackActivity::class.java))
+            }, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@KhoGameActivity, 10) })
+            put(row, 0, 14)
             grid = Ui.vbox(this@KhoGameActivity)
             put(grid, 0, 0)
+            drawChips()
             drawTabs()
             fill()
+        }
+        if (BuildConfig.DEBUG) intent.getStringExtra("detail")?.let { n -> Catalog.GAMES.firstOrNull { it.first.contains(n, true) }?.let { detail(it.first) } }
+    }
+
+    private fun drawChips() {
+        chips.removeAllViews()
+        val all = listOf<Plat?>(null) + Plat.values().toList()
+        for (pl in all) {
+            val on = pl == plat
+            chips.addView(TextView(this).apply {
+                text = pl?.label ?: "Tất cả"
+                textSize = 13.5f
+                gravity = Gravity.CENTER
+                setTextColor(if (on) Color.parseColor("#2A1A08") else Ui.TEXT)
+                background = if (on) Ui.goldBg(this@KhoGameActivity, 18) else Ui.bg(this@KhoGameActivity, Ui.CARD2, 18, Ui.LINE, 1)
+                setPadding(Ui.dp(this@KhoGameActivity, 16), Ui.dp(this@KhoGameActivity, 8), Ui.dp(this@KhoGameActivity, 16), Ui.dp(this@KhoGameActivity, 8))
+                setOnClickListener { plat = pl; drawChips(); fill() }
+            }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = Ui.dp(this@KhoGameActivity, 8) })
         }
     }
 
@@ -57,12 +93,16 @@ class KhoGameActivity : Activity() {
     private fun fill() {
         grid.removeAllViews()
         val q = query.lowercase()
+        val known = Catalog.GAMES.map { it.first }.toSet()
         val base = if (tab == 0) p.played else Catalog.GAMES.map { it.first }
-        val list = base.filter { q.isEmpty() || it.lowercase().contains(q) }
+        val list = base.filter { n ->
+            (q.isEmpty() || n.lowercase().contains(q)) &&
+                (plat == null || n !in known || Catalog.runsOn(n, plat!!)) // game tự thêm luôn hiện
+        }
         if (list.isEmpty()) {
             grid.addView(Ui.tv(this,
-                if (tab == 0 && q.isEmpty()) "Chưa có game nào. Chọn ở tab Tất cả, hoặc bấm Game khác để nhập tên game bạn đang chơi."
-                else "Không thấy game này. Bấm Game khác để nhập tên.", 14f, Ui.SUB), Ui.lpm(this, 12, 0))
+                if (tab == 0 && q.isEmpty() && plat == null) "Chưa có game nào. Chọn ở tab Tất cả, hoặc bấm Game khác để nhập tên game bạn đang chơi."
+                else "Không thấy game này. Thử bỏ bộ lọc nền tảng, hoặc bấm Game khác để nhập tên.", 14f, Ui.SUB), Ui.lpm(this, 12, 0))
             return
         }
         val cur = p.game
@@ -78,16 +118,21 @@ class KhoGameActivity : Activity() {
         }
     }
 
+    private fun platLine(name: String): String {
+        val ps = Catalog.platformsOf(name)
+        val s = if (ps.isEmpty()) "" else ps.joinToString(" · ") { it.label }
+        return if (VietHoa.hasSpecific(name)) (if (s.isEmpty()) "Việt hoá" else "$s\nViệt hoá") else s
+    }
+
     private fun cellOf(name: String, selected: Boolean): View {
         val col = Ui.vbox(this)
-        val hue = ((name.hashCode() % 360) + 360) % 360
         val tile = TextView(this).apply {
-            text = initials(name)
+            text = Catalog.initials(name)
             textSize = 24f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
-            background = Ui.bg(this@KhoGameActivity, Color.HSVToColor(floatArrayOf(hue.toFloat(), 0.45f, 0.42f)), 18,
+            background = Ui.bg(this@KhoGameActivity, Color.HSVToColor(floatArrayOf(Catalog.hue(name).toFloat(), 0.45f, 0.42f)), 18,
                 if (selected) Ui.GOLD else 0, if (selected) 3 else 0)
         }
         col.addView(tile, Ui.lp(MATCH_PARENT, Ui.dp(this, 96)))
@@ -96,26 +141,127 @@ class KhoGameActivity : Activity() {
             maxLines = 2
             setPadding(0, Ui.dp(this@KhoGameActivity, 6), 0, 0)
         })
-        col.setOnClickListener { choose(name) }
+        val pl = platLine(name)
+        if (pl.isNotEmpty()) col.addView(Ui.tv(this, pl, 10.5f, Ui.SUB).apply { gravity = Gravity.CENTER; maxLines = 2 })
+        col.setOnClickListener { detail(name) }
         return col
     }
 
-    private fun initials(name: String): String {
-        val skip = setOf("the", "of", "a", "and", "&")
-        val words = name.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() && it.lowercase() !in skip }
-        // Tên dài thì lấy chữ cái đầu của hai từ đầu và từ cuối, để các phần của cùng một series không trùng nhau (ACM, ACS, ACV).
-        val pick = if (words.size > 3) listOf(words[0], words[1], words.last()) else words
-        val s = pick.joinToString("") { it.take(1) }.uppercase()
-        return s.ifEmpty { name.take(2).uppercase() }
+    private fun genreOf(name: String) = Catalog.genreOf(name)
+
+    private fun detail(name: String) {
+        val g = genreOf(name)
+        val (sp, ge, co) = VietHoa.counts(name, g)
+        val cast = VietHoa.castFor(name)
+        val lines = VietHoa.linesFor(name).size
+        Ui.sheet(this) { d ->
+            addView(Ui.tv(this@KhoGameActivity, name, 22f, Ui.TEXT, true))
+            if (g.isNotEmpty()) addView(Ui.tv(this@KhoGameActivity, g.replaceFirstChar { it.uppercase() }, 13.5f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 2, 0))
+            val ps = Catalog.platformsOf(name)
+            if (ps.isNotEmpty()) {
+                val r = Ui.hbox(this@KhoGameActivity)
+                for (x in ps) r.addView(Ui.badge(this@KhoGameActivity, x.label), Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = Ui.dp(this@KhoGameActivity, 6) })
+                addView(r, Ui.lpm(this@KhoGameActivity, 10, 0))
+            }
+            // Gói Việt hoá
+            val c = Ui.card(this@KhoGameActivity, 14)
+            c.addView(Ui.tv(this@KhoGameActivity, "👑  Gói Việt hoá", 16f, Ui.GOLD, true))
+            c.addView(Ui.tv(this@KhoGameActivity,
+                "Thuật ngữ: ${sp + ge + co}" + (if (sp > 0) " ($sp riêng game, $ge theo thể loại, $co chung)" else " ($ge theo thể loại, $co chung)") +
+                    (if (cast.isNotEmpty()) "\nThẻ nhân vật: ${cast.size} người (xưng hô, giọng, nhịp nói)" else "\nChưa có thẻ nhân vật, bạn tự thêm được trong Gói Việt hoá") +
+                    "\nCâu thông báo chuẩn: $lines (YOU DIED, Quest complete...)",
+                13.5f, Ui.TEXT), Ui.lpm(this@KhoGameActivity, 6, 0))
+            c.addView(Ui.tv(this@KhoGameActivity,
+                "Áp dụng khi dịch bằng AI lẫn dịch trên máy: tên riêng, chiêu thức, địa danh luôn đúng một cách gọi. Gói do người làm app soạn theo cách gọi phổ biến của cộng đồng, " +
+                    "không phải bản dịch chính thức của nhà phát hành. Sửa hoặc nhập thêm gói trong mục Gói Việt hoá.", 12f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 6, 0))
+            addView(c, Ui.lpm(this@KhoGameActivity, 12, 0))
+            // Cách chơi theo nền tảng
+            val start = ps.firstOrNull() ?: Plat.PS5
+            val guide = Ui.tv(this@KhoGameActivity, RemotePlay.guide(start), 13f, Ui.TEXT)
+            val appsBox = Ui.vbox(this@KhoGameActivity)
+            val nguonBox = Ui.vbox(this@KhoGameActivity)
+            fun showNguon(pl: Plat, game: String) {
+                nguonBox.removeAllViews()
+                for (n in NguonVietHoa.forPlatform(pl)) {
+                    val row = Ui.vbox(this@KhoGameActivity)
+                    row.background = Ui.bg(this@KhoGameActivity, Ui.CARD2, 14, Ui.LINE, 1)
+                    val pd = Ui.dp(this@KhoGameActivity, 12)
+                    row.setPadding(pd, pd, pd, pd)
+                    row.addView(Ui.tv(this@KhoGameActivity, n.name, 14.5f, Ui.TEXT, true))
+                    row.addView(Ui.tv(this@KhoGameActivity, n.note, 12f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 2, 0))
+                    val br = Ui.hbox(this@KhoGameActivity)
+                    br.addView(Ui.button(this@KhoGameActivity, "Mở trang") { web(n.url) }, Ui.lp(0, WRAP_CONTENT, 1f))
+                    val su = NguonVietHoa.searchUrl(n, game)
+                    if (su != null) br.addView(Ui.button(this@KhoGameActivity, "Tìm game này") { web(su) },
+                        Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@KhoGameActivity, 8) })
+                    row.addView(br, Ui.lpm(this@KhoGameActivity, 8, 0))
+                    nguonBox.addView(row, Ui.lpm(this@KhoGameActivity, 6, 0))
+                }
+            }
+            fun showApps(pl: Plat) {
+                guide.text = RemotePlay.guide(pl)
+                appsBox.removeAllViews()
+                for (a in RemotePlay.forPlatform(pl)) appsBox.addView(Ui.button(this@KhoGameActivity, "${a.name}  ·  ${a.desc}") { openApp(a) }, Ui.lpm(this@KhoGameActivity, 6, 0))
+                showNguon(pl, name)
+            }
+            addView(Ui.tv(this@KhoGameActivity, "Cách chơi và dịch", 16f, Ui.TEXT, true), Ui.lpm(this@KhoGameActivity, 14, 6))
+            val pr = Ui.hbox(this@KhoGameActivity)
+            val hs = HorizontalScrollView(this@KhoGameActivity).apply { isHorizontalScrollBarEnabled = false; addView(pr) }
+            fun drawPlat(sel: Plat) {
+                pr.removeAllViews()
+                for (x in Plat.values()) {
+                    val on = x == sel
+                    pr.addView(TextView(this@KhoGameActivity).apply {
+                        text = x.label; textSize = 13f; gravity = Gravity.CENTER
+                        setTextColor(if (on) Color.parseColor("#2A1A08") else Ui.TEXT)
+                        background = if (on) Ui.goldBg(this@KhoGameActivity, 16) else Ui.bg(this@KhoGameActivity, Ui.CARD2, 16, Ui.LINE, 1)
+                        setPadding(Ui.dp(this@KhoGameActivity, 14), Ui.dp(this@KhoGameActivity, 6), Ui.dp(this@KhoGameActivity, 14), Ui.dp(this@KhoGameActivity, 6))
+                        setOnClickListener { drawPlat(x); showApps(x) }
+                    }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = Ui.dp(this@KhoGameActivity, 6) })
+                }
+            }
+            drawPlat(start)
+            addView(hs)
+            addView(guide, Ui.lpm(this@KhoGameActivity, 8, 0))
+            addView(appsBox)
+            showApps(start)
+            addView(Ui.tv(this@KhoGameActivity,
+                "Thông tin nền tảng chỉ để tham khảo, có thể đã thay đổi. Game PS4 chạy được trên PS5 và game Xbox One chạy được trên Xbox Series nhờ tương thích ngược.", 11.5f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 10, 0))
+            // Bản Việt hoá (mod) của cộng đồng: chỉ liên kết ra trang gốc, theo nền tảng đang chọn ở trên
+            addView(Ui.tv(this@KhoGameActivity, "Bản Việt hoá của cộng đồng", 16f, Ui.TEXT, true), Ui.lpm(this@KhoGameActivity, 14, 4))
+            addView(Ui.tv(this@KhoGameActivity,
+                "Các nhóm Việt hoá làm bản vá (mod) sửa chữ trong chính file game, cài vào game bạn đã có. Đó là việc khác với dịch phụ đề của app này; " +
+                    "dùng được cả hai cùng lúc. App chỉ mở trang gốc của họ, không tải hộ hay chép lại nội dung.", 12f, Ui.SUB))
+            addView(nguonBox, Ui.lpm(this@KhoGameActivity, 4, 0))
+            addView(Ui.tv(this@KhoGameActivity, NguonVietHoa.SAFETY, 11.5f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 8, 0))
+            // Chọn
+            addView(Ui.button(this@KhoGameActivity, "Chọn game này", true) { d.dismiss(); choose(name, false) }, Ui.lpm(this@KhoGameActivity, 16, 0))
+            addView(Ui.button(this@KhoGameActivity, "Chọn và dịch ngay") { d.dismiss(); choose(name, true) }, Ui.lpm(this@KhoGameActivity, 8, 0))
+        }
     }
 
-    private fun choose(name: String) {
-        val g = Catalog.genreOf(name)
+    private fun web(url: String) {
+        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: Exception) {
+            Toast.makeText(this, "Không mở được trình duyệt.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun openApp(a: RemoteApp) {
+        val li = packageManager.getLaunchIntentForPackage(a.pkg)
+        if (li != null) { startActivity(li); return }
+        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=${a.pkg}"))) } catch (_: Exception) {
+            web("https://play.google.com/store/apps/details?id=${a.pkg}")
+        }
+    }
+
+    private fun choose(name: String, go: Boolean) {
+        val g = genreOf(name)
         if (p.profiles.contains(name)) p.profile = name else p.addProfile(name)
         p.game = if (g.isEmpty()) name else "$name, $g"
         p.addPlayed(name)
-        Toast.makeText(this, "Đã chọn $name. Đang dùng hồ sơ \"$name\".", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Đã chọn $name. Gói Việt hoá của game đang được dùng.", Toast.LENGTH_SHORT).show()
         setResult(RESULT_OK)
+        if (go) startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("go", true))
         finish()
     }
 
@@ -130,7 +276,7 @@ class KhoGameActivity : Activity() {
             .setView(box)
             .setPositiveButton("Chọn") { _, _ ->
                 val n = et.text.toString().trim()
-                if (n.isEmpty()) Toast.makeText(this, "Hãy nhập tên game.", Toast.LENGTH_SHORT).show() else choose(n)
+                if (n.isEmpty()) Toast.makeText(this, "Hãy nhập tên game.", Toast.LENGTH_SHORT).show() else choose(n, false)
             }
             .setNegativeButton("Hủy", null).show()
     }

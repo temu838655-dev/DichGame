@@ -12,6 +12,7 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -30,6 +31,16 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         render()
+        // "Chọn và dịch ngay" trong Kho game: mở luôn bước bắt đầu
+        if (intent?.getBooleanExtra("go", false) == true) {
+            intent.removeExtra("go")
+            if (!CaptureService.active) begin()
+        }
+    }
+
+    override fun onNewIntent(i: Intent) {
+        super.onNewIntent(i)
+        setIntent(i)
     }
 
     private fun open(c: Class<*>) = startActivity(Intent(this, c))
@@ -38,11 +49,12 @@ class MainActivity : Activity() {
         p = Prefs(this)
         screen("", false) {
             put(header(), 4, 12)
-            put(modeCard(), 0, 12)
+            put(statusRow(), 0, 12)
+            put(gameCard(), 0, 12)
             put(navCard("📺", "Phụ đề trên TV",
-                if (p.tvPaired) "Đã ghép TV ${p.tvIp}" else "Bản dịch hiện ngay trên hình",
-                if (p.tvPaired) "ĐÃ GHÉP" else null) { open(TvSetupActivity::class.java) }, 0, 12)
-            put(navCard("▶", "Dịch video trên web", "Mở trang video, dịch phụ đề ngay khi xem", null) {
+                if (p.tvPaired) "Đã ghép TV ${p.tvIp}" else "Bật dịch hiện ngay trên hình game của TV",
+                if (p.tvPaired) "ĐÃ GHÉP" else "MIỄN PHÍ") { open(TvSetupActivity::class.java) }, 0, 12)
+            put(navCard("▶", "Dịch video trên web", "Mở trang video, phụ đề tự sang tiếng Việt", "MIỄN PHÍ") {
                 open(WebTranslateActivity::class.java)
             }, 0, 12)
             val row1 = Ui.hbox(this@MainActivity)
@@ -50,12 +62,15 @@ class MainActivity : Activity() {
             row1.addView(tile("🎙", "Giọng đọc", voiceLabel(), null) { open(SettingsActivity::class.java) }, tileLp())
             put(row1, 0, 12)
             val row2 = Ui.hbox(this@MainActivity)
-            row2.addView(tile("🕹", "Kho game", p.game.substringBefore(',').ifEmpty { "Chưa chọn game" }, "MỚI") {
-                open(KhoGameActivity::class.java)
-            }, Ui.lp(0, WRAP_CONTENT, 1f))
-            row2.addView(tile("💡", "Hướng dẫn", "Cách dùng từng bước", "1-5") { open(GuideActivity::class.java) }, tileLp())
+            row2.addView(tile("🕹", "Kho game", "PS5 · PS4 · Xbox · PC · Steam", "MỚI") { open(KhoGameActivity::class.java) }, Ui.lp(0, WRAP_CONTENT, 1f))
+            row2.addView(tile("📦", "Gói Việt hoá", if (p.packOn) "Đang bật" else "Đang tắt", null) { open(PackActivity::class.java) }, tileLp())
             put(row2, 0, 12)
-            put(Ui.tv(this@MainActivity, "Dịch game ${versionName()} · Chạy hoàn toàn trên máy bạn, chỉ gửi chữ ra ngoài khi bạn bật dịch AI.", 12f, Ui.SUB), 8, 0)
+            val row3 = Ui.hbox(this@MainActivity)
+            row3.addView(tile("💡", "Hướng dẫn", "Cách dùng từng bước", "1-5") { open(GuideActivity::class.java) }, Ui.lp(0, WRAP_CONTENT, 1f))
+            row3.addView(tile("👑", "Tính năng", "Tất cả đều miễn phí", null) { open(FeaturesActivity::class.java) }, tileLp())
+            put(row3, 0, 12)
+            put(footer(), 8, 4)
+            put(Ui.tv(this@MainActivity, "Dịch game ${versionName()} · Chạy hoàn toàn trên máy bạn, chỉ gửi chữ ra ngoài khi bạn bật dịch AI.", 12f, Ui.SUB).apply { gravity = Gravity.CENTER }, 8, 0)
         }
     }
 
@@ -80,16 +95,16 @@ class MainActivity : Activity() {
 
     private fun header(): View {
         val row = Ui.hbox(this)
-        val icon = TextView(this).apply {
-            text = "🎮"; textSize = 26f; gravity = Gravity.CENTER
-            background = Ui.goldBg(this@MainActivity, 14)
-        }
-        row.addView(icon, Ui.lp(Ui.dp(this, 52), Ui.dp(this, 52)))
+        row.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_logo)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }, Ui.lp(Ui.dp(this, 64), Ui.dp(this, 64)))
         val col = Ui.vbox(this)
-        col.addView(Ui.tv(this, "Dịch game", 22f, Ui.TEXT, true))
-        col.addView(Ui.tv(this, "Dịch game, hiểu mọi lời thoại", 13f, Ui.SUB))
+        col.addView(Ui.tv(this, "Dịch Game", 25f, Ui.GOLD, true).apply { setTypeface(typeface, android.graphics.Typeface.BOLD_ITALIC) })
+        col.addView(Ui.tv(this, "by Huyy Đâyy", 14f, Ui.TEXT, true).apply { setTypeface(typeface, android.graphics.Typeface.BOLD_ITALIC) })
+        col.addView(Ui.tv(this, "★ Dịch game mọi lúc, mọi nơi ★", 11.5f, Ui.SUB))
         row.addView(col, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@MainActivity, 12) })
-        row.addView(roundBtn("★") { open(FeaturesActivity::class.java) })
+        row.addView(roundBtn("👑") { open(FeaturesActivity::class.java) })
         row.addView(roundBtn("⚙") { open(SettingsActivity::class.java) }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = Ui.dp(this@MainActivity, 8) })
         return row
     }
@@ -101,48 +116,88 @@ class MainActivity : Activity() {
         setOnClickListener { onClick() }
     }
 
-    private fun modeCard(): View {
+    /** Dòng trạng thái: Sẵn sàng / Đang chạy, chọn Dịch hoặc Thuyết minh, nút trợ giúp. */
+    private fun statusRow(): View {
         val running = CaptureService.active
-        val c = Ui.card(this)
         val top = Ui.hbox(this)
         top.addView(Ui.tv(this, if (running) "● Đang chạy" else "● Sẵn sàng", 13f, if (running) Ui.OK else Ui.SUB, true).apply {
-            background = Ui.bg(this@MainActivity, Ui.CARD2, 16)
-            setPadding(Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 6), Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 6))
+            background = Ui.bg(this@MainActivity, Ui.CARD, 20, Ui.LINE, 1)
+            setPadding(Ui.dp(this@MainActivity, 14), Ui.dp(this@MainActivity, 9), Ui.dp(this@MainActivity, 14), Ui.dp(this@MainActivity, 9))
         })
         top.addView(View(this), Ui.lp(0, 1, 1f))
         top.addView(segment())
         top.addView(roundBtn("?") { help() }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = Ui.dp(this@MainActivity, 8) })
+        return top
+    }
+
+    /** Trạng thái gói Việt hoá của game đang chọn, hiện dưới tên game. */
+    private fun vietHoaLabel(): String {
+        val n = PackStore.gameName(p)
+        if (n.isEmpty()) return "Chọn game để dùng gói Việt hoá"
+        if (!p.packOn) return "Việt hoá: đang tắt"
+        val g = Catalog.genreOf(n).ifEmpty { p.game.substringAfter(',', "").trim() }
+        val c = PackStore.builtinCounts(n, g)
+        return "Việt hoá: " + (if (VietHoa.hasSpecific(n)) "gói riêng" else "gói thể loại") + " · ${c.first} thuật ngữ"
+    }
+
+    private fun gameCard(): View {
+        val running = CaptureService.active
+        val c = Ui.card(this)
+        val name = PackStore.gameName(p)
+        val narrate = p.narrate
+        val top = Ui.hbox(this)
+        if (name.isEmpty()) {
+            top.addView(ImageView(this).apply { setImageResource(R.drawable.ic_logo); scaleType = ImageView.ScaleType.FIT_CENTER }, Ui.lp(Ui.dp(this, 62), Ui.dp(this, 62)))
+        } else {
+            top.addView(TextView(this).apply {
+                text = Catalog.initials(name); textSize = 20f; gravity = Gravity.CENTER
+                setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD)
+                background = Ui.bg(this@MainActivity, Color.HSVToColor(floatArrayOf(Catalog.hue(name).toFloat(), 0.45f, 0.42f)), 14, Ui.LINE, 1)
+            }, Ui.lp(Ui.dp(this, 62), Ui.dp(this, 62)))
+        }
+        val col = Ui.vbox(this)
+        col.addView(Ui.tv(this, name.ifEmpty { "Chưa chọn game" }, 20f, Ui.TEXT, true).apply { maxLines = 2 })
+        col.addView(Ui.tv(this, if (narrate) "Thuyết minh: đọc to phụ đề tiếng Việt" else "${Prefs.langName(p.lang)} → Tiếng Việt", 13f, Ui.SUB))
+        col.addView(Ui.tv(this, "👑 " + vietHoaLabel(), 12f, Ui.GOLD, true).apply { setPadding(0, Ui.dp(this@MainActivity, 4), 0, 0) })
+        top.addView(col, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@MainActivity, 14) })
+        top.addView(Ui.tv(this, "›", 28f, Ui.SUB))
+        top.setOnClickListener { open(KhoGameActivity::class.java) }
         c.addView(top)
 
-        val narrate = p.narrate
-        val lang = Ui.hbox(this)
-        lang.setPadding(0, Ui.dp(this, 14), 0, Ui.dp(this, 14))
-        val col = Ui.vbox(this)
-        col.addView(Ui.tv(this, if (narrate) "Tiếng Việt" else "${Prefs.langName(p.lang)} → Tiếng Việt", 20f, Ui.TEXT, true))
-        col.addView(Ui.tv(this,
-            if (narrate) "Đọc to phụ đề có sẵn, không dịch. Hợp với phim Vietsub, game Việt hóa"
-            else "Đọc chữ trên màn hình rồi dịch sang tiếng Việt. Chạm để đổi ngôn ngữ game.", 13f, Ui.SUB).apply {
-            setPadding(0, Ui.dp(this@MainActivity, 4), 0, 0)
-        })
-        lang.addView(col, Ui.lp(0, WRAP_CONTENT, 1f))
         if (!narrate) {
-            lang.addView(Ui.tv(this, "›", 26f, Ui.SUB))
+            val lang = Ui.hbox(this)
+            lang.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 4))
+            lang.addView(Ui.tv(this, "Ngôn ngữ trong game: ${Prefs.langName(p.lang)}", 13.5f, Ui.TEXT), Ui.lp(0, WRAP_CONTENT, 1f))
+            lang.addView(Ui.tv(this, "Đổi ›", 13.5f, Ui.GOLD))
             lang.setOnClickListener {
                 Ui.pick(this, "Ngôn ngữ trong game", Prefs.LANGS.filter { it.first != "vi" }.map { Prefs.langLabel(it.first) }) { i ->
                     p.lang = Prefs.LANGS.filter { it.first != "vi" }[i].first
                     render()
                 }
             }
+            c.addView(lang)
         }
-        c.addView(lang)
-
         val btn = if (running) {
-            Ui.button(this, "■  Dừng") { stopService(); }
+            Ui.button(this, "■  Dừng") { stopService() }
         } else {
             Ui.button(this, if (narrate) "🎮  Bắt đầu thuyết minh" else "🎮  Bắt đầu dịch", true) { begin() }
         }
-        c.addView(btn)
+        c.addView(btn, Ui.lpm(this, 10, 0))
         return c
+    }
+
+    /** Dải trang trí cuối trang: nút tay cầm vàng ở giữa, bấm để bắt đầu. */
+    private fun footer(): View {
+        val row = Ui.hbox(this)
+        fun line() = View(this).apply { background = Ui.goldBg(this@MainActivity, 2) }
+        row.addView(line(), Ui.lp(0, Ui.dp(this, 3), 1f))
+        row.addView(Ui.tv(this, "🎮", 30f).apply {
+            gravity = Gravity.CENTER
+            background = Ui.goldBg(this@MainActivity, 36)
+            setOnClickListener { if (CaptureService.active) stopService() else begin() }
+        }, Ui.lp(Ui.dp(this, 64), Ui.dp(this, 64)).apply { leftMargin = Ui.dp(this@MainActivity, 14); rightMargin = Ui.dp(this@MainActivity, 14) })
+        row.addView(line(), Ui.lp(0, Ui.dp(this, 3), 1f))
+        return row
     }
 
     private fun segment(): View {
@@ -264,26 +319,16 @@ class MainActivity : Activity() {
 
     private var pendingApp: String? = null
 
-    /** (gói, tên, mô tả) các app chơi từ xa / chơi đám mây thường dùng. */
-    private val remoteApps = listOf(
-        Triple("com.playstation.remoteplay", "PS Remote Play", "Chơi PS4/PS5 từ xa (app chính thức của Sony)"),
-        Triple("com.metallic.chiaki", "Chiaki", "Chơi PS4/PS5 từ xa (mã nguồn mở)"),
-        Triple("com.limelight", "Moonlight", "Chơi game từ máy tính qua Sunshine hoặc GeForce"),
-        Triple("com.valvesoftware.steamlink", "Steam Link", "Chơi game Steam trên điện thoại"),
-        Triple("com.nvidia.geforcenow", "GeForce NOW", "Chơi game đám mây"),
-        Triple("com.microsoft.xboxone.smartglass", "Xbox", "Chơi Xbox từ xa, Game Pass")
-    )
-
     /** Chơi trên điện thoại: mở sẵn app chơi từ xa, bản dịch hiện đè lên hình game. Dịch game không tự điều khiển máy chơi game. */
     private fun remotePicker() {
-        val installed = remoteApps.filter { packageManager.getLaunchIntentForPackage(it.first) != null }
+        val installed = RemotePlay.ordered(Catalog.platformsOf(PackStore.gameName(p)).firstOrNull()).filter { packageManager.getLaunchIntentForPackage(it.pkg) != null }
         Ui.sheet(this) { d ->
             addView(Ui.tv(this@MainActivity, "Mở app chơi từ xa?", 24f, Ui.TEXT, true))
             addView(Ui.tv(this@MainActivity,
                 "Dịch game mở app chơi từ xa bạn đã cài rồi hiện bản dịch đè lên hình game. Việc điều khiển máy chơi game do app đó làm.",
                 13f, Ui.SUB), Ui.lpm(this@MainActivity, 6, 0))
             for (a in installed) {
-                addView(choice("🎮", a.second, a.third) { d.dismiss(); pendingApp = a.first; capture() }, Ui.lpm(this@MainActivity, 12, 0))
+                addView(choice("🎮", a.name, a.desc) { d.dismiss(); pendingApp = a.pkg; capture() }, Ui.lpm(this@MainActivity, 12, 0))
             }
             if (installed.isEmpty()) {
                 addView(choice("📥", "Cài PS Remote Play", "Chưa thấy app chơi từ xa nào trên máy. Mở trang cài đặt.") {

@@ -28,7 +28,7 @@ set_prefs() {  # $1 = tệp XML cài đặt, không truyền = xóa sạch (cài
 
 run_screens() {  # $1 = tiền tố tên ảnh
   start MainActivity; shot "$1-home"; swipe_up; shot "$1-home-2"
-  for a in TranslateActivity SettingsActivity TvSetupActivity GuideActivity FeaturesActivity KhoGameActivity LicensesActivity; do
+  for a in TranslateActivity SettingsActivity TvSetupActivity GuideActivity FeaturesActivity KhoGameActivity PackActivity LicensesActivity; do
     start "$a"; shot "$1-$a-1"; swipe_up; shot "$1-$a-2"; swipe_up; shot "$1-$a-3"
     adb shell am force-stop "$PKG"
   done
@@ -40,6 +40,14 @@ set_prefs ""
 run_screens a-default
 set_prefs ci/prefs-full.xml
 run_screens b-full
+
+# Kho game Việt hoá: lọc theo nền tảng và bảng chi tiết một game (extra chỉ có ở bản debug)
+adb shell am force-stop "$PKG"
+adb shell am start -W -n "$PKG/.KhoGameActivity" --es plat xbox >/dev/null 2>&1; sleep 3; shot kho-xbox
+adb shell am force-stop "$PKG"
+adb shell am start -W -n "$PKG/.KhoGameActivity" --es detail "Elden Ring" >/dev/null 2>&1; sleep 3; shot kho-detail-1
+swipe_up; shot kho-detail-2
+adb shell am force-stop "$PKG"
 
 # Thử giọng offline thật trên máy giả lập: app tự tải gói giọng, nạp sherpa-onnx và đọc thử một câu (SelfTest.kt)
 set_prefs ci/prefs-offline.xml

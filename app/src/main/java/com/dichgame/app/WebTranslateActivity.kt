@@ -178,10 +178,10 @@ class WebTranslateActivity : Activity() {
         }
         val t = translator ?: return
         val my = ++seq
-        t.translate(text) { vi ->
+        t.translateEx(text) { vi, d ->
             if (my == seq && enabled) {
                 show(vi, if (p.showOrig) text else "")
-                if (p.speak) speaker?.speak(vi)
+                if (p.speak) speaker?.speak(vi, false, d)
             }
         }
     }

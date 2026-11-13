@@ -15,19 +15,30 @@ object Ai {
         else -> false
     }
 
-    fun prompt(p: Prefs, srcName: String, game: String, history: List<String>, text: String): String =
+    /**
+     * Câu lệnh dịch một câu thoại. [terms] là bảng thuật ngữ (chỉ đưa các từ có trong câu, bắt buộc dùng đúng),
+     * [cast] là thẻ nhân vật, [emo] bật dịch theo cảm xúc và tiết tấu (AI mở đầu bằng thẻ [cảm xúc|nhịp]).
+     */
+    fun prompt(
+        p: Prefs, srcName: String, game: String, history: List<String>, text: String,
+        terms: TermMap? = null, cast: List<Character> = emptyList(), emo: Boolean = false,
+    ): String =
         "Bạn dịch phụ đề game từ $srcName sang tiếng Việt." +
             (if (game.isNotEmpty()) " Game / phong cách: $game." else "") +
-            " " + Prefs.TR_STYLES[p.trStyle].second +
-            glossaryLine(p) +
-            " Chọn xưng hô (tôi, anh, em, cậu, ông, bà...) hợp quan hệ và ngữ cảnh, sửa lỗi đọc chữ rõ ràng, giữ nguyên tên riêng. Chỉ trả về bản dịch." +
+            " " + p.styleText() +
+            glossaryLine(terms, p, text) +
+            Cast.promptLine(cast, history.joinToString(" ") + " " + text) +
+            (if (emo) Emo.instruction() else "") +
+            " Chọn xưng hô (tôi, anh, em, cậu, ông, bà...) hợp quan hệ và ngữ cảnh, sửa lỗi đọc chữ rõ ràng, giữ nguyên tên riêng." +
+            (if (emo) " Chỉ trả về thẻ rồi bản dịch." else " Chỉ trả về bản dịch.") +
             (if (history.isNotEmpty()) "\nCác câu trước (chỉ để hiểu mạch truyện, không dịch lại):\n" + history.joinToString("\n") else "") +
             "\nCần dịch: $text"
 
-    private fun glossaryLine(p: Prefs): String {
-        val lines = p.glossary.lines().map { it.trim() }.filter { it.contains("=") }.take(40)
-        if (lines.isEmpty()) return ""
-        return " Bắt buộc dùng đúng các thuật ngữ sau (gốc = tiếng Việt): " + lines.joinToString("; ") + "."
+    private fun glossaryLine(terms: TermMap?, p: Prefs, text: String): String {
+        val list = terms?.relevant(text, 30)
+            ?: p.glossary.lines().map { it.trim() }.filter { it.contains("=") }.take(40).map { it.substringBefore('=').trim() to it.substringAfter('=').trim() }
+        if (list.isEmpty()) return ""
+        return " Bắt buộc dùng đúng các thuật ngữ sau (gốc = tiếng Việt): " + list.joinToString("; ") { it.first + " = " + it.second } + "."
     }
 
     fun cloudEndpoint(base: String): String {

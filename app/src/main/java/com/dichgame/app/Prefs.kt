@@ -6,7 +6,8 @@ import org.json.JSONArray
 
 /** Toàn bộ cài đặt của app, lưu trong SharedPreferences "dg" (giữ nguyên các khóa cũ để CaptureService vẫn đọc được). */
 class Prefs(ctx: Context) {
-    val sp: SharedPreferences = ctx.applicationContext.getSharedPreferences("dg", Context.MODE_PRIVATE)
+    private val app: Context = ctx.applicationContext
+    val sp: SharedPreferences = app.getSharedPreferences("dg", Context.MODE_PRIVATE)
 
     companion object {
         const val ENGINE_LOCAL = "local"
@@ -39,8 +40,17 @@ class Prefs(ctx: Context) {
             "Tự nhiên" to "Dịch tự nhiên, trôi chảy như người Việt nói.",
             "Thuyết minh" to "Dịch theo giọng thuyết minh phim: câu gọn, rõ nghĩa, dễ nghe khi đọc to.",
             "Ngắn gọn" to "Dịch ngắn gọn nhất có thể, đủ ý, phù hợp phụ đề hiện nhanh.",
-            "Sát nghĩa" to "Dịch sát nghĩa nguyên văn, ít diễn đạt lại."
+            "Sát nghĩa" to "Dịch sát nghĩa nguyên văn, ít diễn đạt lại.",
+            "Anh – em" to "Dịch theo giọng gần gũi: nhân vật xưng hô anh – em, thân mật như người trong nhà.",
+            "Bụi bặm, đường phố" to "Dịch theo giọng đường phố bụi bặm: lóng, thô ráp, cộc; chỉ chửi thề khi bản gốc có chửi, không văn vẻ.",
+            "Cao bồi miền Tây" to "Dịch theo giọng cao bồi miền Tây: chậm rãi, khô, từng trải; hay dùng tôi, ông, chú mày, nhóc.",
+            "Podcast" to "Dịch theo giọng podcast: tự nhiên, thân mật, như đang kể chuyện cho người nghe.",
+            "Tin tức" to "Dịch theo giọng bản tin: trang trọng, mạch lạc, trung lập, câu đầy đủ.",
+            "Học tập" to "Dịch rõ nghĩa để học: giữ cấu trúc câu gốc, từ vựng chuẩn, dễ đối chiếu.",
+            "Prompt riêng" to ""
         )
+        /** Vị trí của "Prompt riêng" trong TR_STYLES: dùng chỉ dẫn do người dùng tự viết. */
+        val CUSTOM_STYLE = TR_STYLES.size - 1
         /** Giọng AI của Gemini: (mã giọng, mô tả). */
         val AI_VOICES = listOf(
             "Kore" to "Chắc chắn", "Puck" to "Vui tươi", "Charon" to "Rõ ràng, thông tin", "Zephyr" to "Sáng",
@@ -82,7 +92,7 @@ class Prefs(ctx: Context) {
         set(v) = sp.edit().putString("cmodel", v.trim()).apply()
 
     /** Số câu trước đưa cho AI để hiểu mạch truyện. */
-    /** Từ điển riêng của hồ sơ hiện tại, mỗi dòng "gốc = tiếng Việt". Chỉ dùng cho dịch AI. */
+    /** Từ điển riêng của hồ sơ hiện tại, mỗi dòng "gốc = tiếng Việt". Dùng cho cả dịch AI lẫn dịch trên máy. */
     var glossary: String
         get() = sp.getString("gloss_$profile", "").orEmpty()
         set(v) = sp.edit().putString("gloss_$profile", v).apply()
@@ -95,6 +105,34 @@ class Prefs(ctx: Context) {
     var trStyle: Int
         get() = sp.getInt("trstyle", 1).coerceIn(0, TR_STYLES.size - 1)
         set(v) = sp.edit().putInt("trstyle", v).apply()
+
+    /** Chỉ dẫn dịch đang dùng: phong cách đã chọn, hoặc prompt riêng. */
+    fun styleText(): String =
+        if (trStyle == CUSTOM_STYLE) customPrompt.ifBlank { TR_STYLES[0].second } else TR_STYLES[trStyle].second
+
+    /** Prompt riêng do người dùng viết, dùng khi chọn phong cách "Prompt riêng". */
+    var customPrompt: String
+        get() = sp.getString("customprompt", "").orEmpty()
+        set(v) = sp.edit().putString("customprompt", v.trim()).apply()
+
+    /** Dùng gói Việt hoá có sẵn của game (thuật ngữ, thẻ nhân vật, câu thoại chuẩn). */
+    var packOn: Boolean
+        get() = sp.getBoolean("packon", true)
+        set(v) = sp.edit().putBoolean("packon", v).apply()
+
+    /** Thẻ nhân vật của hồ sơ hiện tại, mỗi dòng "Tên = mô tả giọng, xưng hô; nhịp: chậm". */
+    var cast: String
+        get() = sp.getString("cast_$profile", "").orEmpty()
+        set(v) = sp.edit().putString("cast_$profile", v).apply()
+
+    /** Dịch theo cảm xúc và nhịp nhân vật (AI trả thẻ cảm xúc, app dùng để đổi giọng đọc). */
+    var emoTr: Boolean
+        get() = sp.getBoolean("emotr", true)
+        set(v) = sp.edit().putBoolean("emotr", v).apply()
+    /** Hiện nhãn cảm xúc nhỏ phía trên phụ đề (trên điện thoại). */
+    var emoLabel: Boolean
+        get() = sp.getBoolean("emolabel", true)
+        set(v) = sp.edit().putBoolean("emolabel", v).apply()
 
     /** Khoảng cách giữa hai lần quét khung phụ đề, mili giây. Nhỏ hơn đỡ sót câu, lớn hơn đỡ nóng máy. */
     var scanMs: Int
@@ -218,7 +256,8 @@ class Prefs(ctx: Context) {
         if (name == DEFAULT_PROFILE) return
         profiles = profiles.filter { it != name }
         if (profile == name) profile = DEFAULT_PROFILE
-        sp.edit().remove("game_$name").remove("gloss_$name").apply()
+        sp.edit().remove("game_$name").remove("gloss_$name").remove("cast_$name").apply()
+        PackStore.deleteLines(app, name)
     }
 
     var fontSize: Int
