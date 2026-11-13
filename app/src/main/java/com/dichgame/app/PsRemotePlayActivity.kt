@@ -205,6 +205,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         try {
             regist = Regist(info, log) { event ->
                 runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
                     when (event) {
                         is RegistEventSuccess -> {
                             val h = event.host
@@ -365,6 +366,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
             session = s
             s.eventCallback = { event ->
                 runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
                     when (event) {
                         is ConnectedEvent -> status.text = "Đã kết nối PlayStation · 720p / 60 FPS"
                         is LoginPinRequestEvent -> requestLoginPin(event.pinIncorrect)
@@ -540,6 +542,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         val input = EditText(this).apply {
             hint = "PIN đăng nhập Remote Play"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            filters = arrayOf(android.text.InputFilter.LengthFilter(8))
         }
         AlertDialog.Builder(this)
             .setTitle(if (incorrect) "PIN chưa đúng" else "Nhập PIN Remote Play")
@@ -547,7 +550,12 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
             .setNegativeButton("Hủy") { _, _ -> finish() }
             .setPositiveButton("Gửi") { _, _ ->
                 val value = input.text.toString().trim()
-                if (value.isNotEmpty()) session?.setLoginPin(value)
+                if (value.isEmpty() || value.length > 8 || !value.all { it in '0'..'9' }) {
+                    Toast.makeText(this, "PIN chỉ được gồm tối đa 8 chữ số.", Toast.LENGTH_LONG).show()
+                    requestLoginPin(incorrect)
+                } else {
+                    session?.setLoginPin(value)
+                }
             }.show()
     }
 
