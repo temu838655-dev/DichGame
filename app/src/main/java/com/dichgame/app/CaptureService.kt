@@ -101,7 +101,16 @@ class CaptureService : Service() {
     }
 
     private val tick = object : Runnable {
-        override fun run() { ensureSize(); capture(); handler.postDelayed(this, Prefs(this@CaptureService).scanMs.toLong()) }
+        override fun run() {
+            if (!running || destroyed) return
+            try {
+                ensureSize()
+                capture()
+            } catch (_: Exception) {
+                ocrFail("")
+            }
+            if (running && !destroyed) handler.postDelayed(this, Prefs(this@CaptureService).scanMs.toLong())
+        }
     }
 
     override fun onBind(i: Intent?): IBinder? = null
@@ -209,7 +218,15 @@ class CaptureService : Service() {
     }
 
     private val autoRun = object : Runnable {
-        override fun run() { autoScan(); handler.postDelayed(this, 2000) }
+        override fun run() {
+            if (!running || destroyed) return
+            try {
+                autoScan()
+            } catch (_: Exception) {
+                ocrFail("")
+            }
+            if (running && !destroyed) handler.postDelayed(this, 2000)
+        }
     }
 
     private fun rectOf(v: View?): android.graphics.Rect? {
