@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
@@ -19,6 +21,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import com.metallic.chiaki.lib.*
@@ -195,31 +198,106 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         add(video, 0)
         video.layoutParams = (video.layoutParams as LinearLayout.LayoutParams).apply { height = 0; weight = 1f }
         video.holder.addCallback(this)
-        val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-        fun control(label: String, mask: UInt) {
-            val b = Button(this).apply { text = label }
+        val controls = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
+        fun button(label: String, mask: UInt, width: Int = 1) {
+            val b = Button(this).apply { text = label; isAllCaps = false; minWidth = 0; minimumWidth = 0 }
             b.setOnTouchListener { _, event ->
-                val s = session
-                if (s != null && (event.action == android.view.MotionEvent.ACTION_DOWN || event.action == android.view.MotionEvent.ACTION_UP || event.action == android.view.MotionEvent.ACTION_CANCEL)) {
-                    controllerState.buttons = if (event.action == android.view.MotionEvent.ACTION_DOWN) {
-                        controllerState.buttons or mask
-                    } else {
-                        controllerState.buttons and mask.inv()
-                    }
-                    s.setControllerState(controllerState)
+                if (event.action == android.view.MotionEvent.ACTION_DOWN ||
+                    event.action == android.view.MotionEvent.ACTION_UP ||
+                    event.action == android.view.MotionEvent.ACTION_CANCEL) {
+                    controllerState.buttons = if (event.action == android.view.MotionEvent.ACTION_DOWN)
+                        controllerState.buttons or mask else controllerState.buttons and mask.inv()
+                    session?.setControllerState(controllerState)
                 }
                 true
             }
-            controls.addView(b, LinearLayout.LayoutParams(0, dp(54), 1f))
+            controls.addView(b, LinearLayout.LayoutParams(0, dp(46), width.toFloat()).apply {
+                setMargins(dp(3), dp(2), dp(3), dp(2))
+            })
         }
-        control("←", ControllerState.BUTTON_DPAD_LEFT)
-        control("↑", ControllerState.BUTTON_DPAD_UP)
-        control("↓", ControllerState.BUTTON_DPAD_DOWN)
-        control("→", ControllerState.BUTTON_DPAD_RIGHT)
-        control("✕", ControllerState.BUTTON_CROSS)
-        control("○", ControllerState.BUTTON_MOON)
-        control("□", ControllerState.BUTTON_BOX)
-        control("△", ControllerState.BUTTON_PYRAMID)
+        fun row(block: () -> Unit) {
+            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+            controls.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            val old = controls
+            // Build each row in a temporary holder, then move its children into the visible control panel.
+            block()
+        }
+        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+        controls.addView(top)
+        fun addButton(parent: LinearLayout, label: String, mask: UInt) {
+            val b = Button(this).apply { text = label; isAllCaps = false; minWidth = 0; minimumWidth = 0 }
+            b.setOnTouchListener { _, event ->
+                if (event.action == android.view.MotionEvent.ACTION_DOWN ||
+                    event.action == android.view.MotionEvent.ACTION_UP ||
+                    event.action == android.view.MotionEvent.ACTION_CANCEL) {
+                    controllerState.buttons = if (event.action == android.view.MotionEvent.ACTION_DOWN)
+                        controllerState.buttons or mask else controllerState.buttons and mask.inv()
+                    session?.setControllerState(controllerState)
+                }
+                true
+            }
+            parent.addView(b, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                setMargins(dp(2), dp(2), dp(2), dp(2))
+            })
+        }
+        addButton(top, "SHARE", ControllerState.BUTTON_SHARE)
+        addButton(top, "L1", ControllerState.BUTTON_L1)
+        addButton(top, "OPTIONS", ControllerState.BUTTON_OPTIONS)
+        addButton(top, "R1", ControllerState.BUTTON_R1)
+        addButton(top, "PS", ControllerState.BUTTON_PS)
+
+        val mid = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+        controls.addView(mid)
+        val dpad = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
+        mid.addView(dpad, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addButton(dpad, "↑", ControllerState.BUTTON_DPAD_UP)
+        val drow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+        dpad.addView(drow)
+        addButton(drow, "←", ControllerState.BUTTON_DPAD_LEFT)
+        addButton(drow, "↓", ControllerState.BUTTON_DPAD_DOWN)
+        addButton(drow, "→", ControllerState.BUTTON_DPAD_RIGHT)
+        val face = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
+        mid.addView(face, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addButton(face, "△", ControllerState.BUTTON_PYRAMID)
+        val faceRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+        face.addView(faceRow)
+        addButton(faceRow, "□", ControllerState.BUTTON_BOX)
+        addButton(faceRow, "○", ControllerState.BUTTON_MOON)
+        addButton(face, "✕", ControllerState.BUTTON_CROSS)
+
+        val sticks = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+        controls.addView(sticks)
+        sticks.addView(AnalogStickView(true), LinearLayout.LayoutParams(0, dp(112), 1f))
+        val touchpad = TouchpadView()
+        sticks.addView(touchpad, LinearLayout.LayoutParams(0, dp(84), 1f))
+        sticks.addView(AnalogStickView(false), LinearLayout.LayoutParams(0, dp(112), 1f))
+
+        val bottom = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+        controls.addView(bottom)
+        addButton(bottom, "L3", ControllerState.BUTTON_L3)
+        addButton(bottom, "L2", 0U)
+        addButton(bottom, "R2", 0U)
+        addButton(bottom, "R3", ControllerState.BUTTON_R3)
+        fun trigger(label: String, left: Boolean) {
+            val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            col.addView(text(label, 11f))
+            val seek = SeekBar(this).apply {
+                max = 255
+                progress = 0
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        if (left) controllerState.l2State = progress.toUByte() else controllerState.r2State = progress.toUByte()
+                        session?.setControllerState(controllerState)
+                    }
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+                })
+            }
+            col.addView(seek)
+            bottom.addView(col, LinearLayout.LayoutParams(0, dp(48), 1f))
+        }
+        trigger("L2", true)
+        trigger("R2", false)
         add(controls)
         add(action(if (CaptureService.active) "■  Dừng dịch phụ đề" else "🌐  Bắt đầu dịch phụ đề") {
             if (CaptureService.active) {
@@ -252,6 +330,94 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
+
+
+    private inner class AnalogStickView(private val left: Boolean) : View(this@PsRemotePlayActivity) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private var nx = 0f
+        private var ny = 0f
+        private var active = false
+        init { setLayerType(View.LAYER_TYPE_SOFTWARE, null) }
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val cx = width / 2f
+            val cy = height / 2f
+            val radius = (minOf(width, height) * 0.38f).coerceAtLeast(1f)
+            paint.color = 0x553F536B
+            canvas.drawCircle(cx, cy, radius, paint)
+            paint.color = 0xFF8295AA.toInt()
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = dp(2).toFloat()
+            canvas.drawCircle(cx, cy, radius, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = if (active) 0xFF00C8D7.toInt() else 0xFFB7C4D4.toInt()
+            canvas.drawCircle(cx + nx * radius * 0.72f, cy + ny * radius * 0.72f, radius * 0.32f, paint)
+        }
+        override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+            val radius = (minOf(width, height) * 0.38f).coerceAtLeast(1f)
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_MOVE -> {
+                    active = true
+                    nx = ((event.x - width / 2f) / radius).coerceIn(-1f, 1f)
+                    ny = ((event.y - height / 2f) / radius).coerceIn(-1f, 1f)
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    active = false; nx = 0f; ny = 0f
+                }
+                else -> return true
+            }
+            val dead = 0.08f
+            val x = if (kotlin.math.abs(nx) < dead) 0f else nx
+            val y = if (kotlin.math.abs(ny) < dead) 0f else ny
+            if (left) {
+                controllerState.leftX = (x * 32767).toInt().toShort()
+                controllerState.leftY = (y * 32767).toInt().toShort()
+            } else {
+                controllerState.rightX = (x * 32767).toInt().toShort()
+                controllerState.rightY = (y * 32767).toInt().toShort()
+            }
+            session?.setControllerState(controllerState)
+            invalidate()
+            return true
+        }
+    }
+
+    private inner class TouchpadView : View(this@PsRemotePlayActivity) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private var touchId: UByte? = null
+        init { setBackgroundColor(0x553F536B) }
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            paint.color = Color.WHITE
+            paint.textSize = dp(12).toFloat()
+            paint.textAlign = Paint.Align.CENTER
+            canvas.drawText("TOUCHPAD", width / 2f, height / 2f + dp(4), paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = dp(1).toFloat()
+            canvas.drawRoundRect(2f, 2f, width - 2f, height - 2f, dp(8).toFloat(), dp(8).toFloat(), paint)
+            paint.style = Paint.Style.FILL
+        }
+        override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+            val x = ((event.x / width.coerceAtLeast(1)) * ControllerState.TOUCHPAD_WIDTH.toInt()).toInt()
+                .coerceIn(0, ControllerState.TOUCHPAD_WIDTH.toInt()).toUShort()
+            val y = ((event.y / height.coerceAtLeast(1)) * ControllerState.TOUCHPAD_HEIGHT.toInt()).toInt()
+                .coerceIn(0, ControllerState.TOUCHPAD_HEIGHT.toInt()).toUShort()
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    controllerState.buttons = controllerState.buttons or ControllerState.BUTTON_TOUCHPAD
+                    touchId = controllerState.startTouch(x, y)
+                }
+                android.view.MotionEvent.ACTION_MOVE -> touchId?.let { controllerState.setTouchPos(it, x, y) }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    touchId?.let { controllerState.stopTouch(it) }
+                    touchId = null
+                    controllerState.buttons = controllerState.buttons and ControllerState.BUTTON_TOUCHPAD.inv()
+                }
+            }
+            session?.setControllerState(controllerState)
+            return true
+        }
+    }
 
     private fun requestTranslationCapture() {
         if (!Settings.canDrawOverlays(this)) {
