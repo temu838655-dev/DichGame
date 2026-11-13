@@ -455,10 +455,13 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
 
         val sticks = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         controls.addView(sticks)
-        sticks.addView(AnalogStickView(true), LinearLayout.LayoutParams(0, dp(112), 1f))
+        // Thu gọn cần analog theo chiều cao thực tế ở chế độ ngang, tránh đẩy video khỏi màn hình.
+        val stickSize = (resources.configuration.screenHeightDp * 0.24f).toInt().coerceIn(76, 112)
+        val touchpadSize = (stickSize * 0.75f).toInt()
+        sticks.addView(AnalogStickView(true), LinearLayout.LayoutParams(0, dp(stickSize), 1f))
         val touchpad = TouchpadView()
-        sticks.addView(touchpad, LinearLayout.LayoutParams(0, dp(84), 1f))
-        sticks.addView(AnalogStickView(false), LinearLayout.LayoutParams(0, dp(112), 1f))
+        sticks.addView(touchpad, LinearLayout.LayoutParams(0, dp(touchpadSize), 1f))
+        sticks.addView(AnalogStickView(false), LinearLayout.LayoutParams(0, dp(stickSize), 1f))
 
         val bottom = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         controls.addView(bottom)
