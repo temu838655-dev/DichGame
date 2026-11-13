@@ -20,9 +20,27 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
+
+      # Engine Remote Play (chiaki-ng) nằm trong third_party/chiaki-ng. Chỉ lấy đúng các thư viện con cần dùng, không lấy cả repo.
+      - name: Lấy engine Remote Play (chiaki-ng)
+        run: |
+          git submodule update --init --depth 1 third_party/chiaki-ng
+          cd third_party/chiaki-ng
+          git submodule update --init --depth 1 third-party/nanopb third-party/jerasure third-party/gf-complete third-party/curl
+
+      # Công cụ để sinh mã giao thức (nanopb cần protoc và gói Python protobuf).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Cài protoc và gói Python protobuf
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq protobuf-compiler
+          python -m pip install "protobuf>=4,<6"
+          protoc --version
 
       - uses: actions/setup-java@v4
         with:

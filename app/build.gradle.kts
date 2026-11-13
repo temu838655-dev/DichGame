@@ -1,10 +1,13 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("kotlin-parcelize")
 }
 
 // Số bản dựng do GitHub Actions truyền vào (-PbuildNo=<số lần chạy>), build ở máy thì là 0.
 val buildNo = (project.findProperty("buildNo") as String?)?.toIntOrNull() ?: 0
+// -PnoNative bỏ qua việc dựng engine Remote Play (nặng, mất vài chục phút): dùng cho bản thử giao diện trên máy ảo x86.
+val withNative = !project.hasProperty("noNative")
 
 // Thư viện đọc giọng offline (sherpa-onnx, Apache-2.0). File .aar khá nặng nên không để trong git:
 // Gradle tự tải về thư mục app/libs/ ở lần build đầu tiên.
@@ -33,6 +36,40 @@ android {
         versionCode = 20 + buildNo
         versionName = if (buildNo > 0) "2.0.$buildNo" else "2.0"
         buildConfigField("int", "BUILD_NO", "$buildNo")
+        // Engine Remote Play (chiaki-ng) chỉ dựng cho chip arm64 (gần như mọi điện thoại hiện nay).
+        // Bản armeabi-v7a và x86_64 vẫn chạy bình thường nhưng không có phần chơi PS5 trong app.
+        externalNativeBuild {
+            cmake {
+                abiFilters("arm64-v8a")
+                arguments(
+                    "-DCHIAKI_ENABLE_TESTS=OFF",
+                    "-DCHIAKI_ENABLE_CLI=OFF",
+                    "-DCHIAKI_ENABLE_GUI=OFF",
+                    "-DCHIAKI_ENABLE_SETSU=OFF",
+                    "-DCHIAKI_ENABLE_ANDROID=ON",
+                    "-DCHIAKI_ENABLE_FFMPEG_DECODER=OFF",
+                    "-DCHIAKI_ENABLE_PI_DECODER=OFF",
+                    "-DCHIAKI_LIB_ENABLE_OPUS=OFF",
+                    "-DCHIAKI_LIB_OPENSSL_EXTERNAL_PROJECT=ON",
+                    "-DCHIAKI_LIB_JSONC_EXTERNAL_PROJECT=ON",
+                    "-DCHIAKI_LIB_MINIUPNPC_EXTERNAL_PROJECT=ON",
+                    "-DCHIAKI_ENABLE_STEAM_SHORTCUT=OFF",
+                    "-DCHIAKI_ENABLE_STEAMDECK_NATIVE=OFF",
+                    "-DANDROID_STL=c++_shared",
+                    "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
+                    "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"
+                )
+            }
+        }
+    }
+    ndkVersion = "28.2.13676358"
+    if (withNative) {
+        externalNativeBuild {
+            cmake {
+                path = file("../third_party/chiaki-ng/CMakeLists.txt")
+                version = "3.22.1"
+            }
+        }
     }
     // Ngoài file APK đủ mọi loại máy (universal) còn có file riêng cho từng loại chip, nhẹ hơn nhiều.
     // Máy điện thoại đời mới dùng bản arm64-v8a. Không đóng gói x86 32-bit (gần như không còn máy nào).
@@ -71,10 +108,19 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
-    buildFeatures { buildConfig = true }
+    kotlinOptions {
+        jvmTarget = "17"
+        freeCompilerArgs += "-opt-in=kotlin.ExperimentalUnsignedTypes"
+    }
+    buildFeatures {
+        buildConfig = true
+        prefab = true
+    }
     packaging {
-        jniLibs { excludes += "lib/x86/**" }
+        jniLibs {
+            excludes += "lib/x86/**"
+            pickFirsts += "**/libc++_shared.so"
+        }
         resources {
             excludes += setOf("META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/DEPENDENCIES", "META-INF/AL2.0", "META-INF/LGPL2.1")
         }
@@ -93,4 +139,6 @@ dependencies {
     // Giọng đọc offline: sherpa-onnx (file .aar tải tự động ở trên) + giải nén gói giọng .tar.bz2
     implementation(files(sherpaAar).builtBy(downloadSherpa))
     implementation("org.apache.commons:commons-compress:1.26.2")
+    // Âm thanh độ trễ thấp cho Remote Play (engine chiaki-ng tìm thư viện này qua prefab)
+    implementation("com.google.oboe:oboe:1.10.0")
 }
