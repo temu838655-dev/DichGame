@@ -1,4 +1,4 @@
-        add(pairingProgress())\npackage com.dichgame.app
+package com.dichgame.app
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -121,6 +121,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
 
     private fun showPairForm() {
         reset("Ghép PlayStation", "Điện thoại và PS5/PS4 cần cùng mạng Wi‑Fi. Trên console mở Cài đặt → Hệ thống → Chơi từ xa → Ghép thiết bị để lấy mã 8 số.")
+        add(pairingProgress())
         val host = field("IP của PS5/PS4 (ví dụ 192.168.1.20)")
         val account = field("PSN Account ID (Base64, đúng 8 byte)").apply {
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
