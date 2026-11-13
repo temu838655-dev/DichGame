@@ -63,7 +63,7 @@ class FeaturesActivity : Activity() {
             Triple("Liên kết tới các trang Việt hoá cộng đồng", "The Red Team, PS Việt Hóa, Tổ Mèo Cam... mở trang gốc theo nền tảng. App không tải hộ hay chép lại bản vá.", true),
             Triple("Mở app chơi từ xa", "Mở PS Remote Play, Chiaki, Moonlight, Steam Link... rồi hiện bản dịch đè lên.", true),
             Triple("Kiểm tra bản mới, báo lỗi, yêu cầu game", "Ở cuối màn Cài đặt.", true),
-            Triple("Điều khiển PS4/PS5 ngay trong app", "Chưa có, hiện dùng app chơi từ xa riêng.", false),
+            Triple("Chơi PS4/PS5 ngay trong app (thử nghiệm)", "Ghép nối trong app, nhiều người chơi để vừa chơi trên TV vừa chơi trên điện thoại, tay cầm ảo, dịch phụ đề ngay trên màn chơi. Chỉ chạy trên điện thoại arm64; chưa kiểm thử trên mọi máy PS.", true),
             Triple("Tự tải và cài bản vá Việt hoá vào game", "Chưa có. Bản vá do từng nhóm giữ quyền, nên app chỉ dẫn tới trang gốc.", false),
             Triple("App cho TV LG, Samsung", "Chưa có trong bản này.", false),
             Triple("App iOS, Windows, Mac", "Chưa có, hiện chỉ có Android.", false)

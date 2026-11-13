@@ -253,12 +253,21 @@ class SettingsActivity : Activity() {
         c.addView(Ui.dropRow(this, "Kiểu chữ", { Prefs.STYLES[p.style] }, { Prefs.STYLES }) { p.style = it })
         c.addView(Ui.divider(this), Ui.lp(MATCH_PARENT, 1))
 
+        c.addView(Ui.tv(this, "Cách đọc chữ trên hình", 15f, Ui.TEXT, true), Ui.lpm(this, 12, 0))
+        c.addView(Ui.segmented(this, listOf("Kỹ", "Nhanh"), if (p.slow) 0 else 1) { p.slow = it == 0; render() }, Ui.lpm(this, 6, 0))
+        c.addView(Ui.tv(this, "Kỹ: chờ chữ hiện đủ rồi mới dịch, ít dịch nhầm câu đang hiện dở. Nhanh: dịch ngay khi thấy chữ.", 12.5f, Ui.SUB), Ui.lpm(this, 6, 0))
+        val rates = listOf(3, 4, 6, 8)
+        val rateSel = rates.indexOfFirst { kotlin.math.abs(1000 / it - p.scanMs) <= 20 }
+        c.addView(Ui.tv(this, "Mỗi giây đọc phụ đề mấy lần", 15f, Ui.TEXT, true), Ui.lpm(this, 14, 0))
+        c.addView(Ui.segmented(this, rates.map { it.toString() }, rateSel) { p.scanMs = 1000 / rates[it]; render() }, Ui.lpm(this, 6, 0))
+        c.addView(Ui.tv(this, "Đọc nhiều lần đỡ sót câu thoại nhưng máy nóng và hao pin hơn. Mặc định 1 lần mỗi giây.", 12.5f, Ui.SUB), Ui.lpm(this, 6, 8))
+        c.addView(Ui.divider(this), Ui.lp(MATCH_PARENT, 1))
+
         val adv = Ui.vbox(this)
         adv.visibility = View.GONE
-        adv.addView(Ui.seekRow(this, "Tần suất quét",
-            { v -> "${v * 100} ms" }, 4, 30, p.scanMs / 100) { p.scanMs = it * 100 }, Ui.lpm(this, 12, 0))
+        adv.addView(Ui.seekRow(this, "Tần suất quét (chỉnh tinh)",
+            { v -> "${v * 100} ms" }, 1, 30, (p.scanMs / 100).coerceIn(1, 30)) { p.scanMs = it * 100 }, Ui.lpm(this, 12, 0))
         adv.addView(Ui.tv(this, "Quét nhanh đỡ sót câu thoại, quét chậm đỡ nóng máy.", 12.5f, Ui.SUB), Ui.lpm(this, 2, 10))
-        adv.addView(Ui.switchRow(this, "Chữ hiện dần", "Chờ phụ đề hiện hết rồi mới dịch.", p.slow) { p.slow = it }, Ui.lpm(this, 0, 10))
         adv.addView(Ui.switchRow(this, "Dịch menu tự động", "Đứng yên ở menu là tự dịch, tốn pin hơn.", p.autoMenu) { p.autoMenu = it })
         val head = Ui.dropRow(this, "Nâng cao: máy nóng hoặc sót câu thoại", { "" }, { emptyList() }) {}
         head.setOnClickListener { adv.visibility = if (adv.visibility == View.GONE) View.VISIBLE else View.GONE }

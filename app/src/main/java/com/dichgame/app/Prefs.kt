@@ -136,8 +136,8 @@ class Prefs(ctx: Context) {
 
     /** Khoảng cách giữa hai lần quét khung phụ đề, mili giây. Nhỏ hơn đỡ sót câu, lớn hơn đỡ nóng máy. */
     var scanMs: Int
-        get() = sp.getInt("scanms", 1000).coerceIn(400, 3000)
-        set(v) = sp.edit().putInt("scanms", v.coerceIn(400, 3000)).apply()
+        get() = sp.getInt("scanms", 1000).coerceIn(100, 3000)
+        set(v) = sp.edit().putInt("scanms", v.coerceIn(100, 3000)).apply()
 
     /** "system" = giọng của máy, "ai" = giọng AI Gemini (cần khóa Gemini), "offline" = giọng đã tải về máy. AI và offline lỗi thì tự lùi về giọng máy. */
     var voiceEngine: String
