@@ -94,8 +94,12 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
     private fun showPairForm() {
         reset("Ghép PlayStation", "Điện thoại và PS5/PS4 cần cùng mạng Wi‑Fi. Trên console mở Cài đặt → Hệ thống → Chơi từ xa → Ghép thiết bị để lấy mã 8 số.")
         val host = field("IP của PS5/PS4 (ví dụ 192.168.1.20)")
-        val account = field("PSN Account ID (Base64, đúng 8 byte)")
-        val pin = field("Mã ghép nối 8 chữ số")
+        val account = field("PSN Account ID (Base64, đúng 8 byte)").apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        }
+        val pin = field("Mã ghép nối 8 chữ số").apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
         val type = Button(this).apply {
             text = "Đang chọn: PS5  ·  Chạm để đổi sang PS4"
             setOnClickListener {
@@ -122,7 +126,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
             if (accountBytes.size != RegistInfo.ACCOUNT_ID_SIZE) {
                 account.error = "Account ID phải giải mã thành đúng 8 byte Base64"; return@action
             }
-            if (pinText.length != 8 || !pinText.all { it.isDigit() }) {
+            if (pinText.length != 8 || !pinText.all { it in '0'..'9' }) {
                 pin.error = "Mã phải có đúng 8 chữ số"; return@action
             }
             register(ip, accountBytes, pinText.toInt())
@@ -389,6 +393,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun showStreamEnded(message: String) {
+        if (isFinishing || isDestroyed) return
         status.text = message
         add(action("↻  THỬ KẾT NỐI LẠI") {
             releaseSession()
@@ -532,7 +537,10 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun requestLoginPin(incorrect: Boolean) {
-        val input = EditText(this).apply { hint = "PIN đăng nhập Remote Play"; inputType = 2 }
+        val input = EditText(this).apply {
+            hint = "PIN đăng nhập Remote Play"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
         AlertDialog.Builder(this)
             .setTitle(if (incorrect) "PIN chưa đúng" else "Nhập PIN Remote Play")
             .setView(input)
