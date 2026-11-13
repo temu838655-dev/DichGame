@@ -44,6 +44,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var status: TextView
     private lateinit var content: LinearLayout
     private val closing = AtomicBoolean(false)
+    private val streamEnded = AtomicBoolean(false)
     private val translationRequestCode = 911
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -244,6 +245,10 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun startStream() {
+        if (session != null) {
+            status.text = "Phiên Remote Play đang được khởi tạo hoặc đang chạy."
+            return
+        }
         val host = prefs.getString("host", null) ?: run { showPairForm(); return }
         val key = try { Base64.decode(prefs.getString("regist_key", ""), Base64.DEFAULT) } catch (_: Exception) { byteArrayOf() }
         val morning = try { Base64.decode(prefs.getString("rp_key", ""), Base64.DEFAULT) } catch (_: Exception) { byteArrayOf() }
@@ -349,6 +354,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
             }
         })
         try {
+            streamEnded.set(false)
             val profile = ConnectVideoProfile.preset(VideoResolutionPreset.RES_720P, VideoFPSPreset.FPS_60, Codec.CODEC_H264)
             val info = ConnectInfo(prefs.getBoolean("ps5", true), host, key, morning, profile)
             val s = Session(info, null, false)
@@ -358,16 +364,47 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
                     when (event) {
                         is ConnectedEvent -> status.text = "Đã kết nối PlayStation · 720p / 60 FPS"
                         is LoginPinRequestEvent -> requestLoginPin(event.pinIncorrect)
-                        is QuitEvent -> status.text = "Phiên chơi kết thúc: ${event.reason} ${event.reasonString.orEmpty()}"
+                        is QuitEvent -> {
+                            if (streamEnded.compareAndSet(false, true)) {
+                                showStreamEnded("Phiên chơi kết thúc: ${event.reason} ${event.reasonString.orEmpty()}")
+                            }
+                        }
                         is RumbleEvent -> { }
                     }
                 }
             }
-            s.start().also { if (!it.isSuccess) status.text = "Không khởi động được phiên: $it" }
+            val startResult = s.start()
+            if (!startResult.isSuccess) {
+                if (streamEnded.compareAndSet(false, true)) {
+                    showStreamEnded("Không khởi động được phiên Remote Play: $startResult")
+                }
+                return
+            }
             surface?.let { s.setSurface(it) }
         } catch (e: Exception) {
-            status.text = "Lỗi mở Remote Play: ${e.message ?: "không rõ nguyên nhân"}"
+            if (streamEnded.compareAndSet(false, true)) {
+                showStreamEnded("Lỗi mở Remote Play: ${e.message ?: "không rõ nguyên nhân"}")
+            }
         }
+    }
+
+    private fun showStreamEnded(message: String) {
+        status.text = message
+        add(action("↻  THỬ KẾT NỐI LẠI") {
+            releaseSession()
+            startStream()
+        })
+        add(action("Ghép lại / chọn máy khác") {
+            releaseSession()
+            showPairForm()
+        })
+    }
+
+    private fun releaseSession() {
+        try { session?.stop() } catch (_: Exception) {}
+        try { session?.dispose() } catch (_: Exception) {}
+        session = null
+        controllerState = ControllerState()
     }
 
 
