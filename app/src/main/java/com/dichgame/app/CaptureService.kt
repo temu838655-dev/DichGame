@@ -631,11 +631,11 @@ class CaptureService : Service() {
             bitmapFromImage(img, loc[0], loc[1], frame!!.width, frame!!.height)
         } finally { img.close() }
 
-        val o = ocr ?: return
+        val o = ocr ?: run { crop.recycle(); return }
         if (o.isCloud) {
             // Gemini: chỉ gửi khi hình trong khung thật sự đổi, để khỏi tốn lượt dùng.
             val sig = Ocr.thumb(crop)
-            if (Ocr.same(sig, lastSig)) return
+            if (Ocr.same(sig, lastSig)) { crop.recycle(); return }
             lastSig = sig
         }
         busy = true
