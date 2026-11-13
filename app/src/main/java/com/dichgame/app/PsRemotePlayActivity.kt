@@ -1,4 +1,4 @@
-package com.dichgame.app
+        add(pairingProgress())\npackage com.dichgame.app
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -90,6 +90,33 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
         add(text(title, 23f))
         add(text(description, 13f))
         add(status)
+    }
+
+    private fun pairingProgress(): LinearLayout {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(8), dp(4), dp(8))
+        }
+        val steps = listOf("①\\nTìm máy", "②\\nAccount ID", "③\\nMã trên máy")
+        steps.forEachIndexed { index, label ->
+            val item = TextView(this).apply {
+                text = label
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setTextColor(if (index == 0) Color.WHITE else Color.LTGRAY)
+                setPadding(dp(8), dp(10), dp(8), dp(10))
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = dp(18).toFloat()
+                    setColor(if (index == 0) Color.rgb(78, 67, 55) else Color.rgb(35, 40, 50))
+                    setStroke(dp(1), if (index == 0) Color.rgb(255, 190, 110) else Color.rgb(75, 82, 94))
+                }
+            }
+            row.addView(item, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(dp(3), 0, dp(3), 0)
+            })
+        }
+        return row
     }
 
     private fun showPairForm() {
