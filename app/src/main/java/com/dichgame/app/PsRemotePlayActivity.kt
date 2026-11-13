@@ -29,6 +29,7 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
     private var regist: Regist? = null
     private var session: Session? = null
     private var surface: android.view.Surface? = null
+    private var controllerState = ControllerState()
     private var isPs5 = true
     private lateinit var status: TextView
     private lateinit var content: LinearLayout
@@ -182,11 +183,12 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
             return
         }
         content.removeAllViews()
+        controllerState = ControllerState()
         add(text("Đang mở Remote Play…", 18f))
         add(status)
         val video = SurfaceView(this)
         add(video, 0)
-        (video.layoutParams as LinearLayout.LayoutParams).apply { height = 0; weight = 1f }
+        video.layoutParams = (video.layoutParams as LinearLayout.LayoutParams).apply { height = 0; weight = 1f }
         video.holder.addCallback(this)
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         fun control(label: String, mask: UInt) {
@@ -194,9 +196,12 @@ class PsRemotePlayActivity : Activity(), SurfaceHolder.Callback {
             b.setOnTouchListener { _, event ->
                 val s = session
                 if (s != null && (event.action == android.view.MotionEvent.ACTION_DOWN || event.action == android.view.MotionEvent.ACTION_UP || event.action == android.view.MotionEvent.ACTION_CANCEL)) {
-                    val state = ControllerState()
-                    state.buttons = if (event.action == android.view.MotionEvent.ACTION_DOWN) mask else 0U
-                    s.setControllerState(state)
+                    controllerState.buttons = if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                        controllerState.buttons or mask
+                    } else {
+                        controllerState.buttons and mask.inv()
+                    }
+                    s.setControllerState(controllerState)
                 }
                 true
             }
