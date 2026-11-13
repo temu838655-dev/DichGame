@@ -467,7 +467,7 @@ class CaptureService : Service() {
         ensureSize()
         val img = reader?.acquireLatestImage()
         if (img == null) { busy = false; overlay?.visibility = View.VISIBLE; return }
-        val bmp = try { bitmapFromImage(img) } finally { img.close() }
+        val bmp = try { bitmapFromImage(img) } catch (_: Exception) { ocrFail(""); return } finally { img.close() }
         ocr!!.read(bmp, { m -> ocrFail(m) }) { r ->
                 val blocks = r.map { it.text.replace("\n", sep).trim() }.filter { it.length >= longLen }.take(4)
                 if (blocks.isEmpty()) {
