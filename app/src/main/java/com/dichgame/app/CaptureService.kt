@@ -424,15 +424,16 @@ class CaptureService : Service() {
                 var connection: HttpURLConnection? = null
                 try {
                     if (destroyed) return@execute
-                    connection = URL("http://$ip:8765/sub").openConnection() as HttpURLConnection
-                    connection.requestMethod = "POST"
-                    connection.connectTimeout = 1500
-                    connection.readTimeout = 1500
-                    connection.doOutput = true
-                    connection.setRequestProperty("X-Token", tok)
+                    val c = URL("http://$ip:8765/sub").openConnection() as HttpURLConnection
+                    connection = c
+                    c.requestMethod = "POST"
+                    c.connectTimeout = 1500
+                    c.readTimeout = 1500
+                    c.doOutput = true
+                    c.setRequestProperty("X-Token", tok)
                     val body = JSONObject().put("kind", kind).put("text", text).put("size", size).put("speak", speakIt).put("fg", styleFg()).put("bg", styleBg())
-                    connection.outputStream.use { it.write(body.toString().toByteArray()) }
-                    connection.responseCode
+                    c.outputStream.use { it.write(body.toString().toByteArray()) }
+                    c.responseCode
                 } catch (_: Exception) {
                 } finally {
                     connection?.disconnect()
