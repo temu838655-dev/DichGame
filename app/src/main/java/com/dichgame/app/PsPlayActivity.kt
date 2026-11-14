@@ -63,6 +63,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var surface: Surface? = null
     private var manual = false      // đã dừng hẳn, chờ người dùng bấm kết nối lại
     private var connected = false
+    private var stopping = false
+    private var activityStarted = false
+    private var reconnectPending = false
 
     private var padState = ControllerState()
     private var phys = ControllerState()
@@ -96,17 +99,25 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     override fun onStart() {
         super.onStart()
-        if (console != null && session == null && !manual) connect()
+        activityStarted = true
+        if (console != null && !manual) requestConnect()
     }
 
     override fun onStop() {
+        activityStarted = false
         super.onStop()
         // Rời màn hình thì dừng phiên: PS5 không cần giữ luồng hình cho một app đang ẩn.
         phys = ControllerState(); padState = ControllerState(); pad?.releaseAll()
-        if (session != null) { shutdownSession(); if (!isFinishing) manual = false }
+        reconnectPending = false
+        if (session != null) {
+            if (!isFinishing) manual = false
+            shutdownSession()
+        }
     }
 
     override fun onDestroy() {
+        activityStarted = false
+        reconnectPending = false
         shutdownSession()
         ui.removeCallbacksAndMessages(null)
         super.onDestroy()
@@ -253,8 +264,22 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     // ---------------- Kết nối ----------------
 
+    private fun requestConnect() {
+        if (console == null || manual || isFinishing || isDestroyed) return
+        if (stopping) {
+            reconnectPending = true
+            return
+        }
+        reconnectPending = false
+        connect()
+    }
+
     private fun connect() {
         val c = console ?: return
+        if (stopping) {
+            reconnectPending = true
+            return
+        }
         if (session != null) return
         val g = ++gen
         manual = false
@@ -312,17 +337,26 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         connected = false
         val s = session ?: return
         session = null
+        stopping = true
         Thread {
             try { s.stop() } catch (_: Throwable) {}
             try { s.dispose() } catch (_: Throwable) {}
+            ui.post {
+                stopping = false
+                // Chỉ tạo phiên mới sau khi stop() và dispose() của phiên cũ đã hoàn tất.
+                if (reconnectPending && activityStarted && !manual && !isFinishing && !isDestroyed) {
+                    requestConnect()
+                }
+            }
         }.start()
     }
 
     private fun reconnect() {
-        shutdownSession()
         manual = false
+        reconnectPending = true
         refreshStatus()
-        ui.postDelayed({ if (!isFinishing && !isDestroyed) connect() }, 1500)
+        if (stopping) return
+        if (session != null) shutdownSession() else requestConnect()
     }
 
     private fun leave() {
