@@ -8,7 +8,7 @@ import org.junit.Test
 class PairingPinTest {
     @Test fun acceptsExactlyEightAsciiDigits() {
         assertEquals(12345678, parsePairingPin("12345678"))
-        assertEquals(00000001, parsePairingPin("00000001"))
+        assertEquals(1, parsePairingPin("00000001"))
     }
 
     @Test fun validatesLoginPinWithoutDiscardingLeadingZeros() {
