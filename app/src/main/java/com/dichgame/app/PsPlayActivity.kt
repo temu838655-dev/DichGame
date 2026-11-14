@@ -77,7 +77,6 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var reconnectAttempt = 0
     private var pendingReconnectDelayMs = 0L
     private var reconnectRunnable: Runnable? = null
-    private val reconnectDelaysMs = longArrayOf(1_500L, 3_000L, 6_000L, 10_000L, 15_000L)
 
     private var padState = ControllerState()
     private var phys = ControllerState()
@@ -456,12 +455,13 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
      * với backoff tối đa 5 lần để tránh retry storm khi PS tắt hoặc không thể truy cập.
      */
     private fun retryAfterNetworkDrop(message: String) {
-        if (reconnectAttempt >= reconnectDelaysMs.size) {
+        val delay = RemotePlayRetryPolicy.delayForAttempt(reconnectAttempt)
+        if (delay == null) {
             shutdownSession()
-            ended(message + "\n\nĐã thử tự kết nối lại " + reconnectDelaysMs.size + " lần nhưng chưa thành công.", true)
+            ended(message + "\n\nĐã thử tự kết nối lại " + RemotePlayRetryPolicy.maxAttempts + " lần nhưng chưa thành công.", true)
             return
         }
-        val delay = reconnectDelaysMs[reconnectAttempt++]
+        reconnectAttempt++
         manual = false
         reconnectPending = true
         pendingReconnectDelayMs = delay
