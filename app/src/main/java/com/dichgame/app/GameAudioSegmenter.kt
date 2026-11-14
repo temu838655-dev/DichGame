@@ -21,8 +21,8 @@ class GameAudioSegmenter(
 ) {
     private val frameSamples = (sampleRate * frameDurationMs / 1000).coerceAtLeast(1)
     private val minSpeechSamples = sampleRate * minSpeechDurationMs / 1000
-    private val trailingSilenceFrames = (trailingSilenceMs / frameDurationMs).coerceAtLeast(1)
-    private val keptTrailingFrames = (keptTrailingSilenceMs / frameDurationMs).coerceAtLeast(0)
+    private val trailingSilenceSamples = (sampleRate * trailingSilenceMs / 1000).coerceAtLeast(frameSamples)
+    private val keptTrailingSamples = (sampleRate * keptTrailingSilenceMs / 1000).coerceAtLeast(0)
     private val preRollFrames = (preRollMs / frameDurationMs).coerceAtLeast(0)
     private val maxUtteranceSamples = sampleRate * maxUtteranceMs / 1000
 
@@ -33,7 +33,7 @@ class GameAudioSegmenter(
     private var utteranceSize = 0
     private var active = false
     private var voicedSamples = 0
-    private var silenceFrames = 0
+    private var silenceSamples = 0
 
     init {
         require(sampleRate > 0)
@@ -81,7 +81,7 @@ class GameAudioSegmenter(
         utteranceSize = 0
         active = false
         voicedSamples = 0
-        silenceFrames = 0
+        silenceSamples = 0
     }
 
     /** Returns whether this frame crossed the speech-energy threshold. */
@@ -98,7 +98,7 @@ class GameAudioSegmenter(
                 preRoll.forEach(::appendUtterance)
                 appendUtterance(frame)
                 voicedSamples += frame.size
-                silenceFrames = 0
+                silenceSamples = 0
                 preRoll.clear()
             } else {
                 rememberPreRoll(frame)
@@ -109,14 +109,14 @@ class GameAudioSegmenter(
         appendUtterance(frame)
         if (voiced) {
             voicedSamples += frame.size
-            silenceFrames = 0
+            silenceSamples = 0
         } else {
-            silenceFrames++
+            silenceSamples += frame.size
         }
 
         if (utteranceSize >= maxUtteranceSamples) {
             emit(keepTrailing = true)
-        } else if (silenceFrames >= trailingSilenceFrames) {
+        } else if (silenceSamples >= trailingSilenceSamples) {
             emit(keepTrailing = true)
         }
         return voiced
@@ -140,10 +140,11 @@ class GameAudioSegmenter(
     }
 
     private fun emit(keepTrailing: Boolean) {
+        // Count actual samples because flush() can process a partial final frame.
         val trailingToRemove = if (keepTrailing) {
-            (silenceFrames - keptTrailingFrames).coerceAtLeast(0) * frameSamples
+            (silenceSamples - keptTrailingSamples).coerceAtLeast(0)
         } else {
-            silenceFrames * frameSamples
+            silenceSamples
         }
         val end = (utteranceSize - trailingToRemove).coerceAtLeast(0)
         if (voicedSamples >= minSpeechSamples && end > 0) {
@@ -153,6 +154,6 @@ class GameAudioSegmenter(
         preRoll.clear()
         active = false
         voicedSamples = 0
-        silenceFrames = 0
+        silenceSamples = 0
     }
 }
