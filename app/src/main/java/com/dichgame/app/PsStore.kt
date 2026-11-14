@@ -135,7 +135,11 @@ object PsStore {
 
             // Dữ liệu cũ dạng JSON/HEX được nâng cấp tại chỗ sau khi mã hóa và ghi thành công.
             // Nếu Keystore hoặc commit gặp lỗi, vẫn trả dữ liệu đã đọc được và giữ nguyên bản cũ.
-            if (!encrypted) save(ctx, console)
+            if (!encrypted) {
+                // Nếu không thể tạo/ghi khóa Keystore, vẫn dùng bản cũ trong phiên này;
+                // lần mở sau sẽ thử nâng cấp lại, không làm mất dữ liệu đang lưu.
+                runCatching { save(ctx, console) }
+            }
             console
         } catch (_: Exception) { null }
     }
