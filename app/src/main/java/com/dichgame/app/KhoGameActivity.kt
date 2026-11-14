@@ -176,7 +176,7 @@ class KhoGameActivity : Activity() {
         Ui.sheet(this) { d ->
             val head = Ui.hbox(this@KhoGameActivity)
             head.gravity = Gravity.TOP
-            val big = CoverView(this@KhoGameActivity, name).apply { vietHoa = isViet(name) }
+            val big = CoverView(this@KhoGameActivity, name)
             Covers.get(this@KhoGameActivity, name) { b -> big.bmp = b }
             head.addView(big, Ui.lp(Ui.dp(this@KhoGameActivity, 108), WRAP_CONTENT))
             val info = Ui.vbox(this@KhoGameActivity)

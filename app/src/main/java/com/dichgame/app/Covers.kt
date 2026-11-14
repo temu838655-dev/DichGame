@@ -186,7 +186,7 @@ class CoverView(c: Context, private val title: String) : View(c) {
             tp.color = Color.parseColor("#2A1A08")
             val label = "VIỆT HÓA"
             val tw = tp.measureText(label)
-            tmp.set(6f * d, 6f * d, 6f * d + tw + 12f * d, 6f * d + 17f * d)
+            tmp.set(6f * d, h - 23f * d, 6f * d + tw + 12f * d, h - 6f * d)
             p.shader = LinearGradient(tmp.left, 0f, tmp.right, 0f, Ui.GOLD, Ui.GOLD2, Shader.TileMode.CLAMP)
             cv.drawRoundRect(tmp, 9f * d, 9f * d, p)
             p.shader = null
