@@ -13,6 +13,7 @@ import android.net.Uri
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -164,8 +165,13 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         }
         if (!networkCallbackRegistered) {
             runCatching {
+                val request = NetworkRequest.Builder()
+                    .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                    .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
+                    .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+                    .build()
                 (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
-                    .registerDefaultNetworkCallback(networkCallback)
+                    .registerNetworkCallback(request, networkCallback)
                 networkCallbackRegistered = true
             }
         }
@@ -352,11 +358,15 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     private fun hasUsableNetwork(): Boolean {
         val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
-        val network = cm.activeNetwork ?: return false
-        val caps = cm.getNetworkCapabilities(network) ?: return false
-        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+        // Không chỉ kiểm tra activeNetwork: Android có thể ưu tiên 4G/5G làm mạng mặc định
+        // khi Wi-Fi không có Internet, dù Wi-Fi nội bộ vẫn kết nối trực tiếp tới PS5/PS4.
+        // Remote Play trong LAN không cần Wi-Fi phải có Internet.
+        return cm.allNetworks.any { network ->
+            val caps = cm.getNetworkCapabilities(network) ?: return@any false
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+        }
     }
 
     private fun requestConnect() {
