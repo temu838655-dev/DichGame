@@ -256,11 +256,13 @@ class SettingsActivity : Activity() {
         c.addView(Ui.tv(this, "Cách đọc chữ trên hình", 15f, Ui.TEXT, true), Ui.lpm(this, 12, 0))
         c.addView(Ui.segmented(this, listOf("Kỹ", "Nhanh"), if (p.slow) 0 else 1) { p.slow = it == 0; render() }, Ui.lpm(this, 6, 0))
         c.addView(Ui.tv(this, "Kỹ: chờ chữ hiện đủ rồi mới dịch, ít dịch nhầm câu đang hiện dở. Nhanh: dịch ngay khi thấy chữ.", 12.5f, Ui.SUB), Ui.lpm(this, 6, 0))
-        val rates = listOf(3, 4, 6, 8)
-        val rateSel = rates.indexOfFirst { kotlin.math.abs(1000 / it - p.scanMs) <= 20 }
+        val rates = listOf(2.0, 2.5, 3.0, 4.0, 6.0, 8.0)
+        val rateSel = rates.indexOfFirst { kotlin.math.abs((1000.0 / it).toInt() - p.scanMs) <= 20 }
         c.addView(Ui.tv(this, "Mỗi giây đọc phụ đề mấy lần", 15f, Ui.TEXT, true), Ui.lpm(this, 14, 0))
-        c.addView(Ui.segmented(this, rates.map { it.toString() }, rateSel) { p.scanMs = 1000 / rates[it]; render() }, Ui.lpm(this, 6, 0))
-        c.addView(Ui.tv(this, "Đọc nhiều lần đỡ sót câu thoại nhưng máy nóng và hao pin hơn. Mặc định 1 lần mỗi giây.", 12.5f, Ui.SUB), Ui.lpm(this, 6, 8))
+        c.addView(Ui.segmented(this, rates.map { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString().replace(".", ",") }, rateSel) {
+            p.scanMs = (1000.0 / rates[it]).toInt(); render()
+        }, Ui.lpm(this, 6, 0))
+        c.addView(Ui.tv(this, "Đọc nhiều lần đỡ sót câu thoại nhưng máy nóng và hao pin hơn. Mặc định 2,5 lần mỗi giây (400 ms).", 12.5f, Ui.SUB), Ui.lpm(this, 6, 8))
         c.addView(Ui.divider(this), Ui.lp(MATCH_PARENT, 1))
 
         val adv = Ui.vbox(this)
