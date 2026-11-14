@@ -17,6 +17,15 @@ class GameAsrLanguageTest {
         assertEquals("ko", GameAsrLanguage.resolve(null, "ko"))
     }
 
+    @Test fun normalizesRegionalFallbackWhenDetectedLanguageIsUnavailable() {
+        assertEquals("zh", GameAsrLanguage.resolve(null, "zh-TW"))
+        assertEquals("en", GameAsrLanguage.resolve("xx", "EN-us"))
+    }
+
+    @Test fun preservesUnsupportedFallbackRatherThanInventingALanguage() {
+        assertEquals("auto", GameAsrLanguage.resolve(null, "auto"))
+    }
+
     @Test fun doesNotGuessUnsupportedLanguages() {
         assertEquals("en", GameAsrLanguage.resolve("xx", "en"))
     }
