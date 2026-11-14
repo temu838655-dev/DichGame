@@ -51,6 +51,7 @@ class WebTranslateActivity : Activity() {
     private var ocrStableFrames = 0
     private var lastOcrDelivered = ""
     private var lastOcrTextAt = 0L
+    private var ocrEmptyFrames = 0
     private var speechRecognizer: SpeechRecognizer? = null
     private var speechUsesOnDevice = false
     private var speechOfflineFallbackAttempted = false
@@ -251,8 +252,6 @@ class WebTranslateActivity : Activity() {
 
     private fun createSpeechRecognizer(forceSystemService: Boolean = false) {
         if (speechRecognizer != null) return
-        // Android 12+ có thể cung cấp bộ nhận dạng chạy trực tiếp trên thiết bị.
-        // Nếu gói ngôn ngữ offline không có, cho phép chuyển một lần sang dịch vụ hệ thống.
         val onDeviceAvailable = !forceSystemService && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
         speechUsesOnDevice = onDeviceAvailable
@@ -269,14 +268,11 @@ class WebTranslateActivity : Activity() {
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
-            override fun onPartialResults(partialResults: Bundle?) {
-                // Không dịch kết quả tạm: chờ kết quả cuối để tránh hiện chữ đoán rồi sửa liên tục.
-            }
+            override fun onPartialResults(partialResults: Bundle?) {}
             override fun onResults(results: Bundle?) {
                 val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     ?.firstOrNull()?.trim().orEmpty()
                 val now = System.currentTimeMillis()
-                // Cho phép cùng một câu ngắn xuất hiện lại trong video; chỉ chặn kết quả lặp sát nhau.
                 val duplicateImmediately = text.equals(lastAsrDelivered, ignoreCase = true) &&
                     now - lastAsrDeliveredAt < 1200L
                 if (text.isNotBlank() && !duplicateImmediately && !destroyed && micEnabled) {
@@ -293,7 +289,6 @@ class WebTranslateActivity : Activity() {
                     android.widget.Toast.makeText(this@WebTranslateActivity, "Chưa cấp quyền micro.", android.widget.Toast.LENGTH_LONG).show()
                 } else if (speechUsesOnDevice && !speechOfflineFallbackAttempted &&
                     (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)) {
-                    // Gói ngôn ngữ ngoại tuyến không có/không hỗ trợ: thử dịch vụ Android đúng một lần.
                     speechOfflineFallbackAttempted = true
                     try { speechRecognizer?.cancel() } catch (_: Exception) {}
                     try { speechRecognizer?.destroy() } catch (_: Exception) {}
@@ -302,14 +297,12 @@ class WebTranslateActivity : Activity() {
                     android.widget.Toast.makeText(this@WebTranslateActivity, "Ngôn ngữ này chưa dùng được offline trên máy; đang chuyển sang dịch vụ nhận dạng Android.", android.widget.Toast.LENGTH_LONG).show()
                     scheduleSpeechRestart(350L)
                 } else {
-                    // Các lỗi timeout/no-match là bình thường khi có khoảng lặng; tự nghe lượt kế tiếp.
                     scheduleSpeechRestart(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 900L else 500L)
                 }
             }
         })
     }
 
-    /** Chỉ giữ một lịch khởi động lại để tránh nhiều callback cùng gọi startListening(). */
     private fun scheduleSpeechRestart(delayMs: Long) {
         if (!micEnabled || destroyed) return
         main.removeCallbacks(speechRestart)
@@ -371,7 +364,6 @@ class WebTranslateActivity : Activity() {
     private fun onSub(text: String) {
         if (!enabled) return
         lastSubtitleAt = System.currentTimeMillis()
-        // Phụ đề thật vừa xuất hiện: xóa trạng thái OCR để không phát lại câu cũ.
         ocrCandidate = ""
         ocrStableFrames = 0
         if (p.narrate) {
@@ -389,10 +381,6 @@ class WebTranslateActivity : Activity() {
         }
     }
 
-    /**
-     * Chụp vùng 45% phía dưới WebView để tìm phụ đề đã được ghép cứng vào khung hình.
-     * Đây là lớp dự phòng; ưu tiên track/caption HTML vì chúng giữ được dấu câu và thời điểm tốt hơn.
-     */
     private fun captureSubtitleRegion() {
         if (web.width <= 0 || web.height <= 0) return
         lastOcrAt = System.currentTimeMillis()
@@ -422,25 +410,31 @@ class WebTranslateActivity : Activity() {
                     if (!destroyed && enabled && System.currentTimeMillis() - lastSubtitleAt > 1800L) {
                         val recognized = blocks.joinToString(" ") { it.text.trim() }
                             .replace(Regex("\\s+"), " ").trim()
-                        // Chỉ chấp nhận OCR khi cùng một câu xuất hiện ổn định ở ít nhất 2 lần quét.
-                        // Chống nhiễu và tránh gửi đi dịch lại cùng một câu ở mọi khung hình.
                         if (recognized.isNotEmpty()) {
+                            ocrEmptyFrames = 0
                             if (recognized == ocrCandidate) ocrStableFrames++
                             else { ocrCandidate = recognized; ocrStableFrames = 1 }
-                            // Một ký tự rất dễ là nhiễu; cần 3 khung ổn định. Hai ký tự cần ít nhất 2.
                             val requiredFrames = if (recognized.length == 1) 3 else 2
                             val nowText = System.currentTimeMillis()
-                            val sameCueReturned = recognized == lastOcrDelivered && nowText - lastOcrTextAt > 1800L
-                            if (ocrStableFrames >= requiredFrames && (recognized != lastOcrDelivered || sameCueReturned)) {
+                            val sameCueReturned = recognized == lastOcrDelivered &&
+                                lastOcrTextAt > 0L && nowText - lastOcrTextAt > 1800L
+                            if (ocrStableFrames >= requiredFrames && recognized != lastOcrDelivered) {
                                 lastOcrDelivered = recognized
                                 lastOcrTextAt = nowText
                                 onSub(recognized)
-                            } else if (recognized == lastOcrDelivered) {
+                            } else if (ocrStableFrames >= requiredFrames && sameCueReturned) {
                                 lastOcrTextAt = nowText
+                                onSub(recognized)
                             }
                         } else {
                             ocrCandidate = ""
                             ocrStableFrames = 0
+                            ocrEmptyFrames++
+                            // Chỉ mở khóa câu cũ sau 2 lần quét trống liên tiếp để tránh OCR hụt một khung.
+                            if (ocrEmptyFrames >= 2) {
+                                lastOcrDelivered = ""
+                                lastOcrTextAt = 0L
+                            }
                         }
                     }
                 } finally {
@@ -463,7 +457,7 @@ class WebTranslateActivity : Activity() {
         overlay.setBackgroundColor(bgc)
         overlay.setShadowLayer(6f, 0f, 0f, Color.BLACK)
         overlay.textSize = p.fontSize * p.subScale / 100f
-        overlay.text = if (orig.isEmpty()) vi else "$orig\n$vi"
+        overlay.text = if (orig.isEmpty()) vi else "$orig\\n$vi"
         overlay.visibility = android.view.View.VISIBLE
     }
 
