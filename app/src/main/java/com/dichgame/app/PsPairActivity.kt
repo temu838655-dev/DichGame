@@ -327,10 +327,13 @@ class PsPairActivity : Activity() {
     }
 
     private fun onRegistEvent(ev: RegistEvent) {
+        // Một số luồng native có thể phát callback muộn/lặp; chỉ xử lý kết quả đầu tiên
+        // của lần ghép nối đang chạy để tránh lưu hoặc điều hướng hai lần.
+        if (!running) return
+        running = false
         val r = regist
         regist = null
         if (r != null) Thread { try { r.dispose() } catch (_: Throwable) {} }.start()
-        running = false
         when (ev) {
             is RegistEventSuccess -> {
                 try {
