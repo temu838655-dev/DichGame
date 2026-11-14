@@ -34,8 +34,11 @@ class GameAudioAsrWorkerTest {
         assertTrue(worker.start())
         assertFalse(worker.start())
         repeat(10) { queue.offer(ShortArray(320) { 6_000 }, 16_000, 1) }
-        assertTrue(transcriptLatch.await(2, TimeUnit.SECONDS))
+
+        // A continuous voiced segment is emitted only when stop flushes the segmenter.
+        // Wait for the worker to drain and flush before expecting a transcript.
         assertTrue(worker.stopAndJoin())
+        assertTrue(transcriptLatch.await(2, TimeUnit.SECONDS))
         queue.close()
 
         synchronized(transcripts) { assertEquals(listOf("short line"), transcripts) }
