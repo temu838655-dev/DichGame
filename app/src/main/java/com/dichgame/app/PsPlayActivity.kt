@@ -395,22 +395,28 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         manual = false
         connected = false
         refreshStatus()
+        var candidate: Session? = null
         try {
             val info = PsStore.connectInfo(this, c, player)
             val s = Session(info, null, false)
+            candidate = s
             s.eventCallback = { ev -> runOnUiThread { if (g == gen && !isFinishing && !isDestroyed) onEvent(ev) } }
             val r = s.start()
             if (!r.isSuccess) {
                 try { s.dispose() } catch (_: Throwable) {}
+                candidate = null
                 val message = "Không khởi động được phiên Remote Play: $r"
                 if (activityStarted && !isFinishing && !isDestroyed) retryAfterNetworkDrop(message)
                 else ended(message, true)
                 return
             }
             session = s
+            candidate = null
             surface?.let { s.setSurface(it) }
             push()
         } catch (e: Throwable) {
+            // start() có thể ném lỗi trước khi Session được đưa vào biến session; giải phóng ứng viên để tránh rò tài nguyên native.
+            candidate?.let { try { it.stop() } catch (_: Throwable) {}; try { it.dispose() } catch (_: Throwable) {} }
             val message = "Lỗi mở Remote Play: ${e.message ?: e.javaClass.simpleName}"
             if (activityStarted && !isFinishing && !isDestroyed) retryAfterNetworkDrop(message)
             else ended(message, true)
