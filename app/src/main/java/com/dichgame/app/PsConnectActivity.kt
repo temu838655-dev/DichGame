@@ -232,9 +232,7 @@ class PsConnectActivity : Activity() {
                 .setMessage("${opts[i]}? Muốn dùng lại phải ghép nối lại. Nên xóa cả ghép nối cũ trong Cài đặt › Hệ thống › Chơi từ xa trên máy chơi game.")
                 .setPositiveButton("Xóa") { _, _ ->
                     if (i < con.players.size) {
-                        con.players.removeAt(i)
-                        con.tvPlayer = con.tvPlayer.coerceIn(0, (con.players.size - 1).coerceAtLeast(0))
-                        con.phonePlayer = con.phonePlayer.coerceIn(0, (con.players.size - 1).coerceAtLeast(0))
+                        PsStore.removePlayer(con, i)
                         PsStore.save(this, if (con.players.isEmpty()) null else con)
                     } else PsStore.save(this, null)
                     render()
