@@ -210,6 +210,19 @@ class CaptureService : Service() {
         override fun run() { autoScan(); handler.postDelayed(this, 2000) }
     }
 
+    /**
+     * Tạo ảnh cắt độc lập rồi giải phóng bitmap toàn màn hình tạm.
+     * Các luồng OCR chỉ cần giữ ảnh crop; giữ cả ảnh gốc ở mỗi lần quét
+     * sẽ làm tăng áp lực bộ nhớ khi game chạy liên tục.
+     */
+    private fun cropAndRecycle(full: Bitmap, x: Int, y: Int, width: Int, height: Int): Bitmap {
+        return try {
+            Bitmap.createBitmap(full, x, y, width, height)
+        } finally {
+            if (!full.isRecycled) runCatching { full.recycle() }
+        }
+    }
+
     private fun rectOf(v: View?): android.graphics.Rect? {
         if (v == null || v.visibility != View.VISIBLE) return null
         val l = IntArray(2)
@@ -226,7 +239,7 @@ class CaptureService : Service() {
             val p = img.planes[0]
             val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
             full.copyPixelsFromBuffer(p.buffer)
-            Bitmap.createBitmap(full, 0, 0, img.width, img.height)
+            cropAndRecycle(full, 0, 0, img.width, img.height)
         } finally { img.close() }
         busy = true
         val skip = listOfNotNull(rectOf(frame), rectOf(overlay))
@@ -343,7 +356,7 @@ class CaptureService : Service() {
             box.getLocationOnScreen(loc)
             val x = loc[0].coerceIn(0, img.width - 1)
             val y = loc[1].coerceIn(0, img.height - 1)
-            Bitmap.createBitmap(full, x, y, box.width.coerceIn(1, img.width - x), box.height.coerceIn(1, img.height - y))
+            cropAndRecycle(full, x, y, box.width.coerceIn(1, img.width - x), box.height.coerceIn(1, img.height - y))
         } finally { img.close() }
         ocr!!.read(crop, { m -> ocrFail(m) }) { r ->
                 val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
@@ -460,7 +473,7 @@ class CaptureService : Service() {
             val p = img.planes[0]
             val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
             full.copyPixelsFromBuffer(p.buffer)
-            Bitmap.createBitmap(full, 0, 0, img.width, img.height)
+            cropAndRecycle(full, 0, 0, img.width, img.height)
         } finally { img.close() }
         ocr!!.read(bmp, { m -> ocrFail(m) }) { r ->
                 val blocks = r.map { it.text.replace("\n", sep).trim() }.filter { it.length >= longLen }.take(4)
@@ -627,14 +640,23 @@ class CaptureService : Service() {
             val y = loc[1].coerceIn(0, img.height - 1)
             val w = frame!!.width.coerceIn(1, img.width - x)
             val h = frame!!.height.coerceIn(1, img.height - y)
-            Bitmap.createBitmap(full, x, y, w, h)
+            cropAndRecycle(full, x, y, w, h)
         } finally { img.close() }
 
-        val o = ocr ?: return
+        val o = ocr
+        if (o == null) {
+            if (!crop.isRecycled) runCatching { crop.recycle() }
+            return
+        }
         if (o.isCloud) {
             // Gemini: chỉ gửi khi hình trong khung thật sự đổi, để khỏi tốn lượt dùng.
             val sig = Ocr.thumb(crop)
-            if (Ocr.same(sig, lastSig)) return
+            if (Ocr.same(sig, lastSig)) {
+                // Không gửi ảnh trùng lên Gemini thì cũng phải giải phóng crop,
+                // vì nhánh này không chuyển quyền sở hữu cho Ocr.read().
+                if (!crop.isRecycled) runCatching { crop.recycle() }
+                return
+            }
             lastSig = sig
         }
         busy = true
