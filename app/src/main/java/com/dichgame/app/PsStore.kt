@@ -217,14 +217,15 @@ object PsStore {
     }
 
     // ---- chất lượng hình ----
-    /** 0 = tự động (720p), 1 = 720p, 2 = 1080p. Giá trị cũ/hỏng được đưa về mặc định an toàn. */
+    /** 0 = tự động (720p), 1 = 720p, 2 = 1080p, 3 = 540p, 4 = 360p.
+     * Giữ nguyên 0..2 để không làm đổi cài đặt đã lưu ở các phiên bản trước. */
     fun res(ctx: Context): Int {
         val stored = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(K_RES, 0)
-        return if (stored in 0..2) stored else 0
+        return if (stored in 0..4) stored else 0
     }
     fun setRes(ctx: Context, v: Int) {
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
-            .putInt(K_RES, if (v in 0..2) v else 0).apply()
+            .putInt(K_RES, if (v in 0..4) v else 0).apply()
     }
 
     /** Bitrate profile (Mbps), 0 = bitrate mặc định của engine. Chỉ nhận các mức có trong giao diện. */
@@ -248,7 +249,12 @@ object PsStore {
     fun setNoAsk(ctx: Context, v: Boolean) { ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(K_ASK, v).apply() }
 
     fun profile(ctx: Context): ConnectVideoProfile {
-        val preset = if (res(ctx) == 2) VideoResolutionPreset.RES_1080P else VideoResolutionPreset.RES_720P
+        val preset = when (res(ctx)) {
+            2 -> VideoResolutionPreset.RES_1080P
+            3 -> VideoResolutionPreset.RES_540P
+            4 -> VideoResolutionPreset.RES_360P
+            else -> VideoResolutionPreset.RES_720P
+        }
         val base = ConnectVideoProfile.preset(preset, VideoFPSPreset.FPS_60, Codec.CODEC_H264)
         val bitrate = bitrateKbps(rate(ctx))
         return if (bitrate > 0) base.copy(bitrate = bitrate) else base
