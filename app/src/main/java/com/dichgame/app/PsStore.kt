@@ -56,7 +56,7 @@ object PsStore {
     /** Máy đã ghép bằng màn Remote Play bản đầu (một máy, một người chơi) được chuyển sang kho mới, chỉ một lần. */
     private fun migrateOld(ctx: Context): PsConsole? {
         val old = ctx.getSharedPreferences("ps_remote_play", Context.MODE_PRIVATE)
-        val host = old.getString("host", null) ?: return null
+        val host = old.getString("host", null)?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         return try {
             val reg = android.util.Base64.decode(old.getString("regist_key", ""), android.util.Base64.DEFAULT)
             val key = android.util.Base64.decode(old.getString("rp_key", ""), android.util.Base64.DEFAULT)
@@ -65,8 +65,14 @@ object PsStore {
             val nick = old.getString("nickname", "") ?: ""
             val c = PsConsole(host, ps5, nick.ifBlank { if (ps5) "PS5" else "PS4" })
             c.players.add(PsPlayer("Người chơi 1", reg, old.getInt("rp_key_type", 0), key, ByteArray(0), nick))
-            save(ctx, c)
-            old.edit().clear().apply()
+
+            // Chỉ xóa dữ liệu cũ sau khi bản mới đã được ghi đồng bộ thành công.
+            // Nếu ghi thất bại, giữ nguyên dữ liệu cũ để lần mở sau có thể thử chuyển lại.
+            val encoded = encodeConsole(c)
+            val saved = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                .edit().putString(K_CONSOLE, encoded).commit()
+            if (!saved) return null
+            old.edit().clear().commit()
             c
         } catch (_: Exception) { null }
     }
@@ -97,16 +103,18 @@ object PsStore {
         } catch (_: Exception) { null }
     }
 
+    private fun encodeConsole(c: PsConsole): String {
+        val a = JSONArray()
+        for (p in c.players) a.put(JSONObject()
+            .put("label", p.label).put("regist", hex(p.registKey)).put("type", p.keyType)
+            .put("key", hex(p.key)).put("mac", hex(p.mac)).put("nick", p.nickname))
+        return JSONObject().put("host", c.host).put("ps5", c.ps5).put("name", c.name)
+            .put("players", a).put("tv", c.tvPlayer).put("phone", c.phonePlayer).toString()
+    }
+
     fun save(ctx: Context, c: PsConsole?) {
         val e = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
-        if (c == null) e.remove(K_CONSOLE) else {
-            val a = JSONArray()
-            for (p in c.players) a.put(JSONObject()
-                .put("label", p.label).put("regist", hex(p.registKey)).put("type", p.keyType)
-                .put("key", hex(p.key)).put("mac", hex(p.mac)).put("nick", p.nickname))
-            e.putString(K_CONSOLE, JSONObject().put("host", c.host).put("ps5", c.ps5).put("name", c.name)
-                .put("players", a).put("tv", c.tvPlayer).put("phone", c.phonePlayer).toString())
-        }
+        if (c == null) e.remove(K_CONSOLE) else e.putString(K_CONSOLE, encodeConsole(c))
         e.apply()
     }
 
