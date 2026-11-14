@@ -23,6 +23,7 @@ class AnalogAxisTest {
         assertEquals(0f, AnalogAxis.normalize(0.9f, 1f), 0.0001f)
         assertEquals(0.5f, AnalogAxis.normalize(0.55f, Float.NaN), 0.0001f)
     }
+
     @Test fun radialDeadZoneKeepsDirectionAndNormalizesDiagonalMagnitude() {
         val straight = AnalogAxis.normalizePair(0.55f, 0f, 0.1f, 0.1f)
         assertEquals(0.5f, straight.first, 0.0001f)
@@ -41,4 +42,14 @@ class AnalogAxisTest {
         assertEquals(0.7071f, clamped.second, 0.001f)
     }
 
+    @Test fun nonFiniteAxisSamplesCannotPropagateNanIntoControllerState() {
+        assertEquals(0f, AnalogAxis.normalize(Float.NaN, 0.1f), 0.0001f)
+        assertEquals(0f, AnalogAxis.normalize(Float.POSITIVE_INFINITY, 0.1f), 0.0001f)
+        assertEquals(0f, AnalogAxis.normalize(Float.NEGATIVE_INFINITY, 0.1f), 0.0001f)
+
+        assertEquals(0f to 0f, AnalogAxis.normalizePair(Float.NaN, Float.POSITIVE_INFINITY, 0.1f, 0.1f))
+        val partial = AnalogAxis.normalizePair(0.8f, Float.NaN, 0.1f, 0.1f)
+        assertEquals(0.7778f, partial.first, 0.001f)
+        assertEquals(0f, partial.second, 0.0001f)
+    }
 }
