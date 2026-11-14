@@ -80,6 +80,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     private var padState = ControllerState()
     private var phys = ControllerState()
+    // Không trộn trạng thái từ nhiều tay cầm cùng lúc; thiết bị đầu tiên điều khiển phiên.
+    private var activePhysicalDeviceId: Int? = null
     // Giữ riêng trạng thái cò nhấn bằng nút và cò analog để hai nguồn không ghi đè lẫn nhau.
     private var physicalL2Digital = false
     private var physicalR2Digital = false
@@ -122,12 +124,13 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         override fun onInputDeviceAdded(deviceId: Int) = Unit
         override fun onInputDeviceChanged(deviceId: Int) = Unit
         override fun onInputDeviceRemoved(deviceId: Int) {
-            // Khi tay cầm bị rút/mất Bluetooth, không giữ lại nút hoặc analog ở trạng thái đang nhấn.
-            resetPhysicalControllerState()
+            // Chỉ reset khi thiết bị đang điều khiển bị rút; không làm mất trạng thái của tay cầm đang dùng khác.
+            if (activePhysicalDeviceId == deviceId) resetPhysicalControllerState()
         }
     }
 
     private fun resetPhysicalControllerState() {
+        activePhysicalDeviceId = null
         phys = ControllerState()
         physicalL2Digital = false
         physicalR2Digital = false
@@ -627,8 +630,17 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         phys.r2State = (maxOf(if (physicalR2Digital) 1f else 0f, physicalR2Analog) * 255f).toInt().coerceIn(0, 255).toUByte()
     }
 
+    private fun acceptsPhysicalDevice(deviceId: Int): Boolean {
+        val active = activePhysicalDeviceId
+        if (active == null) {
+            activePhysicalDeviceId = deviceId
+            return true
+        }
+        return active == deviceId
+    }
+
     override fun dispatchKeyEvent(e: KeyEvent): Boolean {
-        if (e.keyCode != KeyEvent.KEYCODE_BACK && isPad(e.source)) {
+        if (e.keyCode != KeyEvent.KEYCODE_BACK && isPad(e.source) && acceptsPhysicalDevice(e.deviceId)) {
             val down = e.action == KeyEvent.ACTION_DOWN
             when (e.keyCode) {
                 KeyEvent.KEYCODE_BUTTON_L2 -> { physicalL2Digital = down; updatePhysicalTriggers(); push(); return true }
@@ -645,7 +657,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun dispatchGenericMotionEvent(e: MotionEvent): Boolean {
-        if (isPad(e.source) && e.actionMasked == MotionEvent.ACTION_MOVE) {
+        if (isPad(e.source) && e.actionMasked == MotionEvent.ACTION_MOVE && acceptsPhysicalDevice(e.deviceId)) {
             fun ax(a: Int): Float { val v = e.getAxisValue(a); return if (abs(v) < 0.1f) 0f else v }
             fun hasAxis(a: Int): Boolean = e.device?.getMotionRange(a, e.source) != null
             fun preferredAxis(primary: Int, fallback: Int): Int =
