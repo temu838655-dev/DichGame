@@ -122,7 +122,7 @@ class SettingsActivity : Activity() {
                     val percent = ((completedBefore + progressInfo.downloadedBytes) * 100L / total).toInt().coerceIn(0, 100)
                     runOnUiThread {
                         progress.progress = percent
-                        message.text = "Đang tải \${progressInfo.fileName}: $percent%"
+                        message.text = "Đang tải ${progressInfo.fileName}: $percent%"
                     }
                 }
             } catch (e: Throwable) {
