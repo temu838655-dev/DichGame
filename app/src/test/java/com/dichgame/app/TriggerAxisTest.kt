@@ -19,7 +19,8 @@ class TriggerAxisTest {
         assertEquals(0f, TriggerAxis.normalize(Float.NaN, 0f), 0.0001f)
         assertEquals(0f, TriggerAxis.normalize(Float.POSITIVE_INFINITY, 0f), 0.0001f)
         assertEquals(0f, TriggerAxis.normalize(Float.NEGATIVE_INFINITY, 0f), 0.0001f)
-        assertEquals(0f, TriggerAxis.normalize(0.5f, Float.NaN), 0.0001f)
-        assertEquals(0f, TriggerAxis.normalize(0.5f, Float.POSITIVE_INFINITY), 0.0001f)
+        // Flat lỗi dùng fallback 0f: tín hiệu hợp lệ vẫn được giữ, không bị triệt tiêu nhầm.
+        assertEquals(0.5f, TriggerAxis.normalize(0.5f, Float.NaN), 0.0001f)
+        assertEquals(0.5f, TriggerAxis.normalize(0.5f, Float.POSITIVE_INFINITY), 0.0001f)
     }
 }
