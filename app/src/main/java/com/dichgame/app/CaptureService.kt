@@ -50,6 +50,7 @@ class CaptureService : Service() {
     private var ocr: Ocr? = null
     private var lastSig: IntArray? = null
     private var lastErrAt = 0L
+    private var frameErrAt = 0L
     private var lang = "en"
     private var srcName = "tiếng Anh"
     private var sep = " "
@@ -99,7 +100,15 @@ class CaptureService : Service() {
     }
 
     private val tick = object : Runnable {
-        override fun run() { ensureSize(); capture(); handler.postDelayed(this, Prefs(this@CaptureService).scanMs.toLong()) }
+        override fun run() {
+            try {
+                capture()
+            } catch (_: Exception) {
+                reportFrameError()
+            } finally {
+                if (running) handler.postDelayed(this, Prefs(this@CaptureService).scanMs.toLong())
+            }
+        }
     }
 
     override fun onBind(i: Intent?): IBinder? = null
@@ -207,7 +216,25 @@ class CaptureService : Service() {
     }
 
     private val autoRun = object : Runnable {
-        override fun run() { autoScan(); handler.postDelayed(this, 2000) }
+        override fun run() {
+            try {
+                autoScan()
+            } catch (_: Exception) {
+                reportFrameError()
+            } finally {
+                if (running && autoMenu) handler.postDelayed(this, 2000)
+            }
+        }
+    }
+
+    /** Lỗi lấy khung hình chỉ bỏ qua lượt quét hiện tại, không làm chết vòng lặp OCR. */
+    private fun reportFrameError() {
+        busy = false
+        val now = System.currentTimeMillis()
+        if (now - frameErrAt > 8000) {
+            frameErrAt = now
+            show("Không lấy được khung hình để đọc chữ. Đang tự thử lại…")
+        }
     }
 
     /**
