@@ -80,7 +80,7 @@ class CaptureService : Service() {
     private var speaker: Speaker? = null
     private var speak = false
     private var ready = false
-    private var finishBusy()
+    private var busy = false
     private val pendingAudioTranscripts = java.util.ArrayDeque<String>()
     private val maxPendingAudioTranscripts = 6
     private var running = false
