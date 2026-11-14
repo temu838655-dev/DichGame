@@ -22,7 +22,7 @@ static void android_chiaki_audio_frame_cb(int16_t *buf, size_t samples_count, vo
 {
     AndroidChiakiSession *session = user;
     android_chiaki_audio_output_frame(buf, samples_count, session->audio_output);
-    if(!session->java_session || !session->java_session_audio_frame_meth || samples_count > INT32_MAX)
+    if(!session->java_session || !session->java_session_audio_frame_meth || samples_count > (size_t)0x7fffffff)
         return;
 
     JNIEnv *env = attach_thread_jni();
