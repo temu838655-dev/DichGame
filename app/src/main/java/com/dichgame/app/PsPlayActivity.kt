@@ -785,6 +785,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun downloadGameAsrModel() {
+        gameAsrStarting = true
         val cancel = java.util.concurrent.atomic.AtomicBoolean(false)
         val dialog = ProgressDialog(this).apply {
             setTitle("Đang tải Whisper")
@@ -802,6 +803,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             }
             runOnUiThread {
                 if (dialog.isShowing) dialog.dismiss()
+                gameAsrStarting = false
                 if (error == null) {
                     Toast.makeText(this, "Đã cài mô hình Whisper offline.", Toast.LENGTH_LONG).show()
                     startGameSpeech()
