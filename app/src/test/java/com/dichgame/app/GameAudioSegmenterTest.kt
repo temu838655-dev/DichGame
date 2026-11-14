@@ -25,6 +25,24 @@ class GameAudioSegmenterTest {
         assertTrue(result.isEmpty())
     }
 
+    @Test fun ignoresLowLevelBackgroundNoiseBelowSpeechThreshold() {
+        val result = mutableListOf<FloatArray>()
+        val segmenter = GameAudioSegmenter(onUtterance = result::add)
+        segmenter.accept(tone(1_000, amplitude = 0.004f))
+        segmenter.flush()
+        assertTrue("Low-level background should not become a transcript", result.isEmpty())
+    }
+
+    @Test fun acceptsAnEightyMillisecondQuietUtteranceAfterLowLevelBackground() {
+        val result = mutableListOf<FloatArray>()
+        val segmenter = GameAudioSegmenter(onUtterance = result::add)
+        segmenter.accept(tone(500, amplitude = 0.004f))
+        segmenter.accept(tone(80, amplitude = 0.02f))
+        segmenter.accept(silence(600))
+        assertEquals("The minimum-duration short utterance must be retained", 1, result.size)
+        assertTrue(result.single().size >= 80 * 16)
+    }
+
     @Test fun keepsBriefOneWordDialogue() {
         val result = mutableListOf<FloatArray>()
         val segmenter = GameAudioSegmenter(onUtterance = result::add)
