@@ -1,5 +1,7 @@
 package com.dichgame.app
 
+import com.metallic.chiaki.lib.ControllerState
+
 /** Kết hợp D-pad từ phím số và HAT axis mà không làm mất các nút khác. */
 internal object ControllerDpad {
     private val mask = ControllerState.BUTTON_DPAD_LEFT or ControllerState.BUTTON_DPAD_RIGHT or
