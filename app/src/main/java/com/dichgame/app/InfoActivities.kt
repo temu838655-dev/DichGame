@@ -53,7 +53,7 @@ class FeaturesActivity : Activity() {
             Triple("Dịch vùng hiện trên TV", "Bảng nhiệm vụ, vật phẩm, lựa chọn hội thoại.", true),
             Triple("Dịch AI", "CloudAPI hoặc Google Gemini: giữ đúng tên, xưng hô, nhớ mạch truyện.", true),
             Triple("Hồ sơ game không giới hạn", "Lưu khung quét, tên game và phong cách cho từng game.", true),
-            Triple("Dịch video trên web", "Mở trang video, dịch phụ đề ngay khi xem.", true),
+            Triple("Dịch video trên web", "Trình duyệt trong app, bảng dịch ở đáy. Nút dịch bắt đầu / tạm dừng, chọn ngôn ngữ, đọc phụ đề CC hoặc quét chữ (OCR) trong khung bạn kéo, ẩn phụ đề gốc, cỡ chữ, đọc to.", true),
             Triple("28 thứ tiếng trong game", "Chữ Latin, Nhật, Hàn, Trung, Hindi đọc trên máy; Nga, Thái, Ả Rập... nhờ Gemini.", true),
             Triple("Từ điển riêng cho từng game", "Ép tên nhân vật, chiêu thức, địa danh luôn đúng một cách gọi, cả khi dịch bằng AI lẫn dịch trên máy.", true),
             Triple("Kho game Việt hoá", "Hơn 100 game PS5, PS4, Xbox, PC, Steam, Switch. Chọn game là dùng ngay gói Việt hoá của game đó (thuật ngữ, nhân vật, câu thông báo).", true),

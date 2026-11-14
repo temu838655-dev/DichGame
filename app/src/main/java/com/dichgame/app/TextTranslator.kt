@@ -21,6 +21,9 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     private var warned = false
     @Volatile private var closed = false
 
+    /** Nếu đặt, mỗi lần dịch AI lỗi và phải dùng dịch trên máy thì gọi hàm này (thay vì hiện thông báo một lần). */
+    var onFallback: ((String) -> Unit)? = null
+
     private val local: Translator? = if (lang == "vi") null else Translation.getClient(
         TranslatorOptions.Builder()
             .setSourceLanguage(mlCode(lang))
@@ -148,6 +151,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     }
 
     private fun warn(m: String) {
+        val cb = onFallback
+        if (cb != null) { main.post { if (!closed) cb(m) }; return }
         if (warned) return
         warned = true
         main.post { Toast.makeText(ctx.applicationContext, m, Toast.LENGTH_LONG).show() }
