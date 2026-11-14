@@ -248,13 +248,16 @@ object PsStore {
     fun noAsk(ctx: Context): Boolean = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(K_ASK, false)
     fun setNoAsk(ctx: Context, v: Boolean) { ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(K_ASK, v).apply() }
 
+    /** Ánh xạ lựa chọn UI sang enum native; giữ chỉ số cũ 0/1/2 tương thích dữ liệu đã lưu. */
+    internal fun resolutionPreset(selection: Int): VideoResolutionPreset = when (selection) {
+        2 -> VideoResolutionPreset.RES_1080P
+        3 -> VideoResolutionPreset.RES_540P
+        4 -> VideoResolutionPreset.RES_360P
+        else -> VideoResolutionPreset.RES_720P
+    }
+
     fun profile(ctx: Context): ConnectVideoProfile {
-        val preset = when (res(ctx)) {
-            2 -> VideoResolutionPreset.RES_1080P
-            3 -> VideoResolutionPreset.RES_540P
-            4 -> VideoResolutionPreset.RES_360P
-            else -> VideoResolutionPreset.RES_720P
-        }
+        val preset = resolutionPreset(res(ctx))
         val base = ConnectVideoProfile.preset(preset, VideoFPSPreset.FPS_60, Codec.CODEC_H264)
         val bitrate = bitrateKbps(rate(ctx))
         return if (bitrate > 0) base.copy(bitrate = bitrate) else base
