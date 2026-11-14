@@ -53,6 +53,7 @@ class WebTranslateActivity : Activity() {
     private var lastOcrTextAt = 0L
     private var speechRecognizer: SpeechRecognizer? = null
     private var speechUsesOnDevice = false
+    private var speechOfflineFallbackAttempted = false
     private var micEnabled = false
     private var micButton: TextView? = null
     private var lastAsrDelivered = ""
@@ -231,6 +232,7 @@ class WebTranslateActivity : Activity() {
             return
         }
         micEnabled = true
+        speechOfflineFallbackAttempted = false
         micButton?.text = "Nghe mic: BẬT"
         createSpeechRecognizer()
         val mode = if (speechUsesOnDevice) "nhận dạng ngoại tuyến trên máy" else "dịch vụ nhận dạng của Android (có thể cần mạng)"
@@ -238,11 +240,11 @@ class WebTranslateActivity : Activity() {
         startSpeechRecognition()
     }
 
-    private fun createSpeechRecognizer() {
+    private fun createSpeechRecognizer(forceSystemService: Boolean = false) {
         if (speechRecognizer != null) return
         // Android 12+ có thể cung cấp bộ nhận dạng chạy trực tiếp trên thiết bị.
-        // Nếu không có, dùng dịch vụ mặc định; không giả vờ rằng mọi máy đều hỗ trợ offline.
-        val onDeviceAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+        // Nếu gói ngôn ngữ offline không có, cho phép chuyển một lần sang dịch vụ hệ thống.
+        val onDeviceAvailable = !forceSystemService && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
         speechUsesOnDevice = onDeviceAvailable
         val recognizer = if (onDeviceAvailable) {
@@ -280,6 +282,16 @@ class WebTranslateActivity : Activity() {
                 if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                     stopMicrophoneRecognition()
                     android.widget.Toast.makeText(this@WebTranslateActivity, "Chưa cấp quyền micro.", android.widget.Toast.LENGTH_LONG).show()
+                } else if (speechUsesOnDevice && !speechOfflineFallbackAttempted &&
+                    (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)) {
+                    // Gói ngôn ngữ ngoại tuyến không có/không hỗ trợ: thử dịch vụ Android đúng một lần.
+                    speechOfflineFallbackAttempted = true
+                    try { speechRecognizer?.cancel() } catch (_: Exception) {}
+                    try { speechRecognizer?.destroy() } catch (_: Exception) {}
+                    speechRecognizer = null
+                    createSpeechRecognizer(forceSystemService = true)
+                    android.widget.Toast.makeText(this@WebTranslateActivity, "Ngôn ngữ này chưa dùng được offline trên máy; đang chuyển sang dịch vụ nhận dạng Android.", android.widget.Toast.LENGTH_LONG).show()
+                    scheduleSpeechRestart(350L)
                 } else {
                     // Các lỗi timeout/no-match là bình thường khi có khoảng lặng; tự nghe lượt kế tiếp.
                     scheduleSpeechRestart(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 900L else 500L)
