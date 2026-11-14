@@ -35,9 +35,6 @@ class GameAudioPcmQueue(capacity: Int = DEFAULT_CAPACITY) : AutoCloseable {
     /** Number of chunks discarded because the ASR consumer could not keep up. */
     fun droppedChunks(): Long = dropped.get()
 
-    /** True when close was requested and every accepted chunk has been consumed. */
-    fun isDrained(): Boolean = closed.get() && queue.isEmpty()
-
     /**
      * Copies PCM data before returning because the native decoder may reuse its
      * output buffer immediately. Never waits for the consumer.
@@ -55,7 +52,7 @@ class GameAudioPcmQueue(capacity: Int = DEFAULT_CAPACITY) : AutoCloseable {
         )
         if (closed.get()) return false
         if (queue.offer(chunk)) {
-            // close() may race with the enqueue; remove a chunk offered after closure.
+            // close() may race with the enqueue; do not leave audio in a closed queue.
             if (closed.get()) {
                 queue.remove(chunk)
                 return false
@@ -75,7 +72,7 @@ class GameAudioPcmQueue(capacity: Int = DEFAULT_CAPACITY) : AutoCloseable {
         return true
     }
 
-    /** Returns the next chunk, or null when the timeout expires / queue is drained. */
+    /** Returns the next chunk, or null when the timeout expires / queue is closed. */
     fun poll(timeoutMs: Long = 0): Chunk? {
         if (closed.get() && queue.isEmpty()) return null
         return if (timeoutMs <= 0) queue.poll()
@@ -87,12 +84,8 @@ class GameAudioPcmQueue(capacity: Int = DEFAULT_CAPACITY) : AutoCloseable {
         queue.clear()
     }
 
-    /**
-     * Stops accepting new PCM but preserves already accepted chunks for the
-     * consumer to drain before it flushes the final speech segment.
-     */
     override fun close() {
-        closed.set(true)
+        if (closed.compareAndSet(false, true)) queue.clear()
     }
 
     companion object {
