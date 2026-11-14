@@ -87,6 +87,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var physicalR2Digital = false
     private var physicalL2Analog = 0f
     private var physicalR2Analog = 0f
+    // D-pad có thể đến từ KeyEvent hoặc HAT axis; giữ riêng hai nguồn để không ghi đè nhau.
+    private var physicalDpadKeys = 0u
+    private var physicalDpadHat = 0u
     private var pad: PadView? = null
     private var padOn = true
     private var statusView: TextView? = null
@@ -140,7 +143,15 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         physicalR2Digital = false
         physicalL2Analog = 0f
         physicalR2Analog = 0f
+        physicalDpadKeys = 0u
+        physicalDpadHat = 0u
         push()
+    }
+
+    private fun updatePhysicalDpad() {
+        val mask = ControllerState.BUTTON_DPAD_LEFT or ControllerState.BUTTON_DPAD_RIGHT or
+            ControllerState.BUTTON_DPAD_UP or ControllerState.BUTTON_DPAD_DOWN
+        phys.buttons = (phys.buttons and mask.inv()) or physicalDpadKeys or physicalDpadHat
     }
 
     override fun onCreate(b: Bundle?) {
@@ -652,7 +663,14 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             }
             val m = keyMask(e.keyCode)
             if (m != 0u) {
-                phys.buttons = if (down) phys.buttons or m else phys.buttons and m.inv()
+                val dpadMask = ControllerState.BUTTON_DPAD_LEFT or ControllerState.BUTTON_DPAD_RIGHT or
+                    ControllerState.BUTTON_DPAD_UP or ControllerState.BUTTON_DPAD_DOWN
+                if ((m and dpadMask) != 0u) {
+                    physicalDpadKeys = if (down) physicalDpadKeys or m else physicalDpadKeys and m.inv()
+                    updatePhysicalDpad()
+                } else {
+                    phys.buttons = if (down) phys.buttons or m else phys.buttons and m.inv()
+                }
                 push()
                 return true
             }
@@ -696,12 +714,13 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             updatePhysicalTriggers()
             val hx = e.getAxisValue(MotionEvent.AXIS_HAT_X)
             val hy = e.getAxisValue(MotionEvent.AXIS_HAT_Y)
-            var b = phys.buttons and (ControllerState.BUTTON_DPAD_LEFT or ControllerState.BUTTON_DPAD_RIGHT or ControllerState.BUTTON_DPAD_UP or ControllerState.BUTTON_DPAD_DOWN).inv()
-            if (hx < -0.5f) b = b or ControllerState.BUTTON_DPAD_LEFT
-            if (hx > 0.5f) b = b or ControllerState.BUTTON_DPAD_RIGHT
-            if (hy < -0.5f) b = b or ControllerState.BUTTON_DPAD_UP
-            if (hy > 0.5f) b = b or ControllerState.BUTTON_DPAD_DOWN
-            phys.buttons = b
+            var hat = 0u
+            if (hx < -0.5f) hat = hat or ControllerState.BUTTON_DPAD_LEFT
+            if (hx > 0.5f) hat = hat or ControllerState.BUTTON_DPAD_RIGHT
+            if (hy < -0.5f) hat = hat or ControllerState.BUTTON_DPAD_UP
+            if (hy > 0.5f) hat = hat or ControllerState.BUTTON_DPAD_DOWN
+            physicalDpadHat = hat
+            updatePhysicalDpad()
             push()
             return true
         }
