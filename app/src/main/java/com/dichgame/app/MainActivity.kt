@@ -10,10 +10,17 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
+import android.graphics.drawable.GradientDrawable
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.view.View
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 
@@ -47,16 +54,19 @@ class MainActivity : Activity() {
 
     private fun render() {
         p = Prefs(this)
-        screen("", false) {
-            put(header(), 4, 12)
-            put(statusRow(), 0, 12)
-            put(gameCard(), 0, 12)
+        window.statusBarColor = Ui.BG
+        window.navigationBarColor = Ui.BG
+        val con = PsStore.load(this)?.takeIf { it.players.isNotEmpty() }
+        val content = Ui.vbox(this)
+        val pad = Ui.dp(this, 16)
+        content.setPadding(pad, Ui.dp(this, 10), pad, Ui.dp(this, 118))
+        content.apply {
+            put(header(con != null), 4, 14)
+            put(statusRow(con != null), 0, 12)
+            put(consoleCard(con), 0, 12)
             put(navCard("📺", "Phụ đề trên TV",
                 if (p.tvPaired) "Đã ghép TV ${p.tvIp}" else "Bật dịch hiện ngay trên hình game của TV",
                 if (p.tvPaired) "ĐÃ GHÉP" else "MIỄN PHÍ") { open(TvSetupActivity::class.java) }, 0, 12)
-            put(navCard("🎮", "PS5 / PS4 Remote Play", "Ghép máy và chơi trực tiếp bằng engine Chiaki tích hợp", "BETA") {
-                open(PsConnectActivity::class.java)
-            }, 0, 12)
             put(navCard("▶", "Dịch video trên web", "Mở trang video, phụ đề tự sang tiếng Việt", "MIỄN PHÍ") {
                 open(WebTranslateActivity::class.java)
             }, 0, 12)
@@ -64,17 +74,31 @@ class MainActivity : Activity() {
             row1.addView(tile("🌐", "Cách dịch", engineLabel(), "AI") { open(TranslateActivity::class.java) }, Ui.lp(0, WRAP_CONTENT, 1f))
             row1.addView(tile("🎙", "Giọng đọc", voiceLabel(), null) { open(SettingsActivity::class.java) }, tileLp())
             put(row1, 0, 12)
+            val gameName = PackStore.gameName(p)
             val row2 = Ui.hbox(this@MainActivity)
-            row2.addView(tile("🕹", "Kho game", "PS5 · PS4 · Xbox · PC · Steam", "MỚI") { open(KhoGameActivity::class.java) }, Ui.lp(0, WRAP_CONTENT, 1f))
-            row2.addView(tile("📦", "Gói Việt hoá", if (p.packOn) "Đang bật" else "Đang tắt", null) { open(PackActivity::class.java) }, tileLp())
-            put(row2, 0, 12)
-            val row3 = Ui.hbox(this@MainActivity)
-            row3.addView(tile("💡", "Hướng dẫn", "Cách dùng từng bước", "1-5") { open(GuideActivity::class.java) }, Ui.lp(0, WRAP_CONTENT, 1f))
-            row3.addView(tile("👑", "Tính năng", "Tất cả đều miễn phí", null) { open(FeaturesActivity::class.java) }, tileLp())
-            put(row3, 0, 12)
-            put(footer(), 8, 4)
+            row2.addView(tile("🕹", "Kho game", gameName.ifEmpty { "PS5 · PS4 · Xbox · PC · Steam" }, "MỚI") { open(KhoGameActivity::class.java) }, Ui.lp(0, WRAP_CONTENT, 1f))
+            row2.addView(tile("🔗", "Ghép nối", if (con != null) "${con.name} · ${con.players.size} người chơi" else "Chưa ghép nối",
+                null, statusBadge(if (con != null) "ĐÃ GHÉP" else "CHƯA", con != null)) { open(PsConnectActivity::class.java) }, tileLp())
+            put(row2, 0, 14)
+            put(Ui.hbox(this@MainActivity).apply {
+                addView(Ui.tv(this@MainActivity, "✨", 18f))
+                addView(Ui.tv(this@MainActivity, "Thêm", 16f, Ui.TEXT, true).apply { setPadding(Ui.dp(this@MainActivity, 10), 0, 0, 0) })
+            }, 4, 8)
+            val more = Ui.hbox(this@MainActivity)
+            more.addView(chip("📦", "Gói Việt hoá") { open(PackActivity::class.java) }, Ui.lp(0, WRAP_CONTENT, 1f))
+            more.addView(chip("💡", "Hướng dẫn") { open(GuideActivity::class.java) }, tileLp())
+            more.addView(chip("👑", "Tính năng") { open(FeaturesActivity::class.java) }, tileLp())
+            put(more, 0, 12)
             put(Ui.tv(this@MainActivity, "Dịch game ${versionName()} · Chạy hoàn toàn trên máy bạn, chỉ gửi chữ ra ngoài khi bạn bật dịch AI.", 12f, Ui.SUB).apply { gravity = Gravity.CENTER }, 8, 0)
         }
+        val root = FrameLayout(this)
+        root.addView(GlowBackground(this), FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        val sv = ScrollView(this)
+        sv.isVerticalScrollBarEnabled = false
+        sv.addView(content)
+        root.addView(sv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        root.addView(dock(), FrameLayout.LayoutParams(MATCH_PARENT, Ui.dp(this, 104), Gravity.BOTTOM))
+        setContentView(root)
     }
 
     private fun versionName(): String = try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (_: Exception) { "" }
@@ -96,7 +120,7 @@ class MainActivity : Activity() {
         return "$v · ${String.format("%.1f", p.rate10 / 10f).replace('.', ',')}x"
     }
 
-    private fun header(): View {
+    private fun header(connected: Boolean): View {
         val row = Ui.hbox(this)
         row.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_logo)
@@ -105,31 +129,52 @@ class MainActivity : Activity() {
         val col = Ui.vbox(this)
         col.addView(Ui.tv(this, "Dịch Game", 25f, Ui.GOLD, true).apply { setTypeface(typeface, android.graphics.Typeface.BOLD_ITALIC) })
         col.addView(Ui.tv(this, "by Huyy Đâyy", 14f, Ui.TEXT, true).apply { setTypeface(typeface, android.graphics.Typeface.BOLD_ITALIC) })
-        col.addView(Ui.tv(this, "★ Dịch game mọi lúc, mọi nơi ★", 11.5f, Ui.SUB))
+        col.addView(Ui.tv(this, "★ Dịch game mọi lúc, mọi nơi ★", 11.5f, Ui.SUB).apply { maxLines = 1 })
         row.addView(col, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@MainActivity, 12) })
-        row.addView(roundBtn("👑") { open(FeaturesActivity::class.java) })
-        row.addView(roundBtn("⚙") { open(SettingsActivity::class.java) }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = Ui.dp(this@MainActivity, 8) })
+        row.addView(TextView(this).apply {
+            text = "👑"; textSize = 20f; gravity = Gravity.CENTER
+            background = Ui.bg(this@MainActivity, Color.parseColor("#1A1405"), 26, Ui.GOLD, 2)
+            setOnClickListener { open(FeaturesActivity::class.java) }
+        }, Ui.lp(Ui.dp(this, 52), Ui.dp(this, 52)))
+        row.addView(Ui.tv(this, "⚙", 28f, Ui.TEXT).apply {
+            gravity = Gravity.CENTER
+            setOnClickListener { open(SettingsActivity::class.java) }
+        }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 52)).apply { leftMargin = Ui.dp(this@MainActivity, 6) })
+        row.addView(View(this).apply {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (connected || CaptureService.active) Ui.OK else Color.parseColor("#6B6B73")) }
+        }, Ui.lp(Ui.dp(this, 9), Ui.dp(this, 9)))
         return row
     }
 
-    private fun roundBtn(s: String, onClick: () -> Unit): View = TextView(this).apply {
-        text = s; textSize = 20f; gravity = Gravity.CENTER; setTextColor(Ui.GOLD)
-        background = Ui.bg(this@MainActivity, Ui.CARD2, 24, Ui.LINE, 1)
-        minimumWidth = Ui.dp(this@MainActivity, 46); minimumHeight = Ui.dp(this@MainActivity, 46)
-        setOnClickListener { onClick() }
+    /** Nhãn nhỏ kiểu "● CHƯA" / "● ĐÃ GHÉP": chấm màu và chữ trên nền tối. */
+    private fun statusBadge(text: String, ok: Boolean): TextView {
+        val dot = if (ok) Ui.OK else Color.parseColor("#8E8E96")
+        val sp = SpannableString("● $text")
+        sp.setSpan(ForegroundColorSpan(dot), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        return Ui.tv(this, sp, 11f, Ui.TEXT, true).apply {
+            background = Ui.bg(this@MainActivity, Ui.CARD2, 12, Ui.LINE, 1)
+            setPadding(Ui.dp(this@MainActivity, 8), Ui.dp(this@MainActivity, 3), Ui.dp(this@MainActivity, 8), Ui.dp(this@MainActivity, 3))
+        }
     }
 
-    /** Dòng trạng thái: Sẵn sàng / Đang chạy, chọn Dịch hoặc Thuyết minh, nút trợ giúp. */
-    private fun statusRow(): View {
+    /** Dòng trạng thái: ghép nối / đang chạy, chọn Dịch hoặc Thuyết minh, nút trợ giúp. */
+    private fun statusRow(paired: Boolean): View {
         val running = CaptureService.active
+        val label = if (running) "Đang chạy" else if (paired) "Đã ghép nối" else "Chưa ghép nối"
+        val sp = SpannableString("● $label")
+        sp.setSpan(ForegroundColorSpan(if (running || paired) Ui.OK else Color.parseColor("#8E8E96")), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         val top = Ui.hbox(this)
-        top.addView(Ui.tv(this, if (running) "● Đang chạy" else "● Sẵn sàng", 13f, if (running) Ui.OK else Ui.SUB, true).apply {
+        top.addView(Ui.tv(this, sp, 13f, if (running) Ui.OK else Ui.TEXT, true).apply {
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
             background = Ui.bg(this@MainActivity, Ui.CARD, 20, Ui.LINE, 1)
-            setPadding(Ui.dp(this@MainActivity, 14), Ui.dp(this@MainActivity, 9), Ui.dp(this@MainActivity, 14), Ui.dp(this@MainActivity, 9))
-        })
-        top.addView(View(this), Ui.lp(0, 1, 1f))
-        top.addView(segment())
-        top.addView(roundBtn("?") { help() }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = Ui.dp(this@MainActivity, 8) })
+            setPadding(Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 9), Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 9))
+        }, Ui.lp(0, WRAP_CONTENT, 1f))
+        top.addView(segment(), Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = Ui.dp(this@MainActivity, 8) })
+        top.addView(Ui.tv(this, "?", 20f, Ui.TEXT, true).apply {
+            gravity = Gravity.CENTER
+            background = Ui.bg(this@MainActivity, Ui.CARD2, 22, Ui.LINE, 1)
+            setOnClickListener { help() }
+        }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 44)).apply { leftMargin = Ui.dp(this@MainActivity, 8) })
         return top
     }
 
@@ -143,33 +188,43 @@ class MainActivity : Activity() {
         return "Việt hoá: " + (if (VietHoa.hasSpecific(n)) "gói riêng" else "gói thể loại") + " · ${c.first} thuật ngữ"
     }
 
-    private fun gameCard(): View {
+    /** Thẻ máy chơi game: tên máy, trạng thái ghép nối, game đang dịch, ngôn ngữ và nút ghép nối / chơi. */
+    private fun consoleCard(con: PsConsole?): View {
         val running = CaptureService.active
-        val c = Ui.card(this)
         val name = PackStore.gameName(p)
         val narrate = p.narrate
+        val c = Ui.card(this, 14)
         val top = Ui.hbox(this)
         if (name.isEmpty()) {
-            top.addView(ImageView(this).apply { setImageResource(R.drawable.ic_logo); scaleType = ImageView.ScaleType.FIT_CENTER }, Ui.lp(Ui.dp(this, 62), Ui.dp(this, 62)))
+            top.addView(ImageView(this).apply { setImageResource(R.drawable.ic_logo); scaleType = ImageView.ScaleType.FIT_CENTER }, Ui.lp(Ui.dp(this, 72), Ui.dp(this, 72)))
         } else {
             top.addView(TextView(this).apply {
-                text = Catalog.initials(name); textSize = 20f; gravity = Gravity.CENTER
+                text = Catalog.initials(name); textSize = 22f; gravity = Gravity.CENTER
                 setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD)
-                background = Ui.bg(this@MainActivity, Color.HSVToColor(floatArrayOf(Catalog.hue(name).toFloat(), 0.45f, 0.42f)), 14, Ui.LINE, 1)
-            }, Ui.lp(Ui.dp(this, 62), Ui.dp(this, 62)))
+                background = Ui.bg(this@MainActivity, Color.HSVToColor(floatArrayOf(Catalog.hue(name).toFloat(), 0.45f, 0.42f)), 16, Ui.LINE, 1)
+            }, Ui.lp(Ui.dp(this, 72), Ui.dp(this, 72)))
         }
         val col = Ui.vbox(this)
-        col.addView(Ui.tv(this, name.ifEmpty { "Chưa chọn game" }, 20f, Ui.TEXT, true).apply { maxLines = 2 })
-        col.addView(Ui.tv(this, if (narrate) "Thuyết minh: đọc to phụ đề tiếng Việt" else "${Prefs.langName(p.lang)} → Tiếng Việt", 13f, Ui.SUB))
-        col.addView(Ui.tv(this, "👑 " + vietHoaLabel(), 12f, Ui.GOLD, true).apply { setPadding(0, Ui.dp(this@MainActivity, 4), 0, 0) })
+        col.addView(Ui.tv(this, con?.name ?: "PS5", 28f, Ui.TEXT, true).apply { maxLines = 1 })
+        col.addView(Ui.tv(this, if (con != null) "Đã ghép nối · ${con.host}" else "Chưa ghép nối", 15f, if (con != null) Ui.OK else Ui.SUB))
         top.addView(col, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@MainActivity, 14) })
-        top.addView(Ui.tv(this, "›", 28f, Ui.SUB))
-        top.setOnClickListener { open(KhoGameActivity::class.java) }
+        top.addView(Ui.tv(this, "›", 30f, Ui.SUB))
+        top.setOnClickListener { open(PsConnectActivity::class.java) }
         c.addView(top)
+
+        val game = Ui.hbox(this)
+        game.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 4))
+        val gcol = Ui.vbox(this)
+        gcol.addView(Ui.tv(this, name.ifEmpty { "Chưa chọn game" }, 15f, Ui.TEXT, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        gcol.addView(Ui.tv(this, "👑 " + vietHoaLabel(), 12.5f, Ui.GOLD, true))
+        game.addView(gcol, Ui.lp(0, WRAP_CONTENT, 1f))
+        game.addView(Ui.tv(this, "Chọn ›", 13.5f, Ui.GOLD))
+        game.setOnClickListener { open(KhoGameActivity::class.java) }
+        c.addView(game)
 
         if (!narrate) {
             val lang = Ui.hbox(this)
-            lang.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 4))
+            lang.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4))
             lang.addView(Ui.tv(this, "Ngôn ngữ trong game: ${Prefs.langName(p.lang)}", 13.5f, Ui.TEXT), Ui.lp(0, WRAP_CONTENT, 1f))
             lang.addView(Ui.tv(this, "Đổi ›", 13.5f, Ui.GOLD))
             lang.setOnClickListener {
@@ -179,42 +234,66 @@ class MainActivity : Activity() {
                 }
             }
             c.addView(lang)
-        }
-        val btn = if (running) {
-            Ui.button(this, "■  Dừng") { stopService() }
         } else {
-            Ui.button(this, if (narrate) "🎮  Bắt đầu thuyết minh" else "🎮  Bắt đầu dịch", true) { begin() }
+            c.addView(Ui.tv(this, "Thuyết minh: đọc to phụ đề tiếng Việt của game", 13.5f, Ui.SUB).apply { setPadding(0, Ui.dp(this@MainActivity, 8), 0, Ui.dp(this@MainActivity, 4)) })
         }
-        c.addView(btn, Ui.lpm(this, 10, 0))
+
+        val dark = Color.parseColor("#2A1A08")
+        val act = Ui.hbox(this)
+        act.gravity = Gravity.CENTER
+        act.background = Ui.goldBg(this, 30)
+        act.setPadding(Ui.dp(this, 16), Ui.dp(this, 14), Ui.dp(this, 16), Ui.dp(this, 14))
+        act.addView(GamepadGlyph(this, dark, Ui.GOLD), Ui.lp(Ui.dp(this, 30), Ui.dp(this, 22)))
+        act.addView(Ui.tv(this, if (con != null) "Chơi và dịch trên ${con.name}" else "Ghép nối máy chơi game (làm 1 lần)", 16f, dark, true).apply {
+            setPadding(Ui.dp(this@MainActivity, 10), 0, Ui.dp(this@MainActivity, 6), 0)
+        })
+        act.addView(Ui.tv(this, "›", 24f, dark, true))
+        act.setOnClickListener { open(if (con != null) PsConnectActivity::class.java else PsPairActivity::class.java) }
+        c.addView(act, Ui.lpm(this, 10, 0))
+        if (running) c.addView(Ui.button(this, "■  Dừng dịch") { stopService() }, Ui.lpm(this, 10, 0))
         return c
     }
 
-    /** Dải trang trí cuối trang: nút tay cầm vàng ở giữa, bấm để bắt đầu. */
-    private fun footer(): View {
-        val row = Ui.hbox(this)
-        fun line() = View(this).apply { background = Ui.goldBg(this@MainActivity, 2) }
-        row.addView(line(), Ui.lp(0, Ui.dp(this, 3), 1f))
-        row.addView(Ui.tv(this, "🎮", 30f).apply {
-            gravity = Gravity.CENTER
-            background = Ui.goldBg(this@MainActivity, 36)
-            setOnClickListener { if (CaptureService.active) stopService() else begin() }
-        }, Ui.lp(Ui.dp(this, 64), Ui.dp(this, 64)).apply { leftMargin = Ui.dp(this@MainActivity, 14); rightMargin = Ui.dp(this@MainActivity, 14) })
-        row.addView(line(), Ui.lp(0, Ui.dp(this, 3), 1f))
-        return row
+    /** Đáy màn hình chính: cánh vàng và nút tay cầm tròn, bấm để bắt đầu hoặc dừng dịch. */
+    private fun dock(): View {
+        val running = CaptureService.active
+        val box = FrameLayout(this)
+        box.addView(DockWings(this), FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        val btn = FrameLayout(this)
+        btn.background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Color.parseColor("#FFE27A"), Ui.GOLD2)).apply {
+            shape = GradientDrawable.OVAL
+            setStroke(Ui.dp(this@MainActivity, 3), Color.parseColor("#FFF3B0"))
+        }
+        btn.elevation = Ui.dp(this, 8).toFloat()
+        if (running) {
+            btn.addView(View(this).apply { background = Ui.bg(this@MainActivity, Color.parseColor("#2A1A08"), 4) },
+                FrameLayout.LayoutParams(Ui.dp(this, 24), Ui.dp(this, 24), Gravity.CENTER))
+        } else {
+            btn.addView(GamepadGlyph(this, Color.parseColor("#2A1A08"), Color.parseColor("#F2B600")), FrameLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 30), Gravity.CENTER))
+        }
+        btn.setOnClickListener { if (CaptureService.active) stopService() else begin() }
+        box.addView(btn, FrameLayout.LayoutParams(Ui.dp(this, 70), Ui.dp(this, 70), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = Ui.dp(this@MainActivity, 6) })
+        box.addView(Ui.tv(this, if (running) "Dừng" else if (p.narrate) "Bắt đầu thuyết minh" else "Bắt đầu dịch", 11.5f, Ui.GOLD, true),
+            FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = Ui.dp(this@MainActivity, 6) })
+        return box
     }
 
     private fun segment(): View {
         val seg = Ui.hbox(this)
         seg.background = Ui.bg(this, Ui.CARD2, 22)
-        fun item(label: String, on: Boolean, click: () -> Unit) = TextView(this).apply {
-            text = label; textSize = 14f; gravity = Gravity.CENTER
-            setTextColor(if (on) Color.parseColor("#2A1A08") else Ui.TEXT)
-            if (on) background = Ui.goldBg(this@MainActivity, 20)
-            setPadding(Ui.dp(this@MainActivity, 14), Ui.dp(this@MainActivity, 8), Ui.dp(this@MainActivity, 14), Ui.dp(this@MainActivity, 8))
-            setOnClickListener { click() }
+        fun item(label: String, on: Boolean, glyph: Boolean, click: () -> Unit): View {
+            val b = Ui.hbox(this)
+            b.gravity = Gravity.CENTER
+            val fg = if (on) Color.parseColor("#2A1A08") else Ui.TEXT
+            if (on) b.background = Ui.goldBg(this, 20)
+            b.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8))
+            if (glyph) b.addView(GamepadGlyph(this, fg, Ui.GOLD), Ui.lp(Ui.dp(this, 20), Ui.dp(this, 14)).apply { rightMargin = Ui.dp(this@MainActivity, 6) })
+            b.addView(Ui.tv(this, label, 14f, fg).apply { maxLines = 1 })
+            b.setOnClickListener { click() }
+            return b
         }
-        seg.addView(item("Dịch", !p.narrate) { if (!CaptureService.active) { p.narrate = false; render() } else busyToast() })
-        seg.addView(item("Thuyết minh", p.narrate) { if (!CaptureService.active) { p.narrate = true; render() } else busyToast() })
+        seg.addView(item("Dịch", !p.narrate, !p.narrate) { if (!CaptureService.active) { p.narrate = false; render() } else busyToast() })
+        seg.addView(item("Thuyết minh", p.narrate, false) { if (!CaptureService.active) { p.narrate = true; render() } else busyToast() })
         return seg
     }
 
@@ -244,15 +323,26 @@ class MainActivity : Activity() {
         return c
     }
 
-    private fun tile(icon: String, title: String, sub: String, badge: String?, onClick: () -> Unit): View {
+    private fun tile(icon: String, title: String, sub: String, badge: String?, custom: View? = null, onClick: () -> Unit): View {
         val c = Ui.card(this, 14)
         val top = Ui.hbox(this)
         top.addView(Ui.tv(this, icon, 22f))
         top.addView(View(this), Ui.lp(0, 1, 1f))
-        if (badge != null) top.addView(Ui.badge(this, badge))
+        if (custom != null) top.addView(custom) else if (badge != null) top.addView(Ui.badge(this, badge))
         c.addView(top)
         c.addView(Ui.tv(this, title, 17f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(this@MainActivity, 18), 0, 0) })
-        c.addView(Ui.tv(this, sub, 13f, Ui.SUB).apply { maxLines = 2 })
+        c.addView(Ui.tv(this, sub, 13f, Ui.SUB).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+        c.setOnClickListener { onClick() }
+        return c
+    }
+
+    private fun chip(icon: String, label: String, onClick: () -> Unit): View {
+        val c = Ui.vbox(this)
+        c.gravity = Gravity.CENTER
+        c.background = Ui.bg(this, Ui.CARD, 20, Ui.LINE, 1)
+        c.setPadding(Ui.dp(this, 6), Ui.dp(this, 12), Ui.dp(this, 6), Ui.dp(this, 12))
+        c.addView(Ui.tv(this, icon, 22f).apply { gravity = Gravity.CENTER })
+        c.addView(Ui.tv(this, label, 12.5f, Ui.TEXT, true).apply { gravity = Gravity.CENTER; maxLines = 1; setPadding(0, Ui.dp(this@MainActivity, 4), 0, 0) })
         c.setOnClickListener { onClick() }
         return c
     }
