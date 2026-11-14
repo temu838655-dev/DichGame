@@ -42,7 +42,16 @@ object PsStore {
     private const val K_ASK = "noask"
 
     private fun hex(b: ByteArray) = b.joinToString("") { "%02x".format(it) }
-    private fun unhex(s: String): ByteArray = ByteArray(s.length / 2) { s.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+
+    /** Decode dữ liệu hex từ SharedPreferences; không chấp nhận chuỗi lẻ hoặc ký tự ngoài hex. */
+    internal fun parseHex(value: String): ByteArray? {
+        if (value.length % 2 != 0 || value.any { it !in '0'..'9' && it !in 'a'..'f' && it !in 'A'..'F' }) return null
+        return try {
+            ByteArray(value.length / 2) { index ->
+                value.substring(index * 2, index * 2 + 2).toInt(16).toByte()
+            }
+        } catch (_: NumberFormatException) { null }
+    }
 
     /** Máy đã ghép bằng màn Remote Play bản đầu (một máy, một người chơi) được chuyển sang kho mới, chỉ một lần. */
     private fun migrateOld(ctx: Context): PsConsole? {
@@ -66,16 +75,22 @@ object PsStore {
         val raw = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(K_CONSOLE, null) ?: return migrateOld(ctx)
         return try {
             val o = JSONObject(raw)
-            val c = PsConsole(o.getString("host"), o.optBoolean("ps5", true), o.optString("name", "PS5"))
+            val host = o.getString("host").trim()
+            if (host.isEmpty()) return null
+            val c = PsConsole(host, o.optBoolean("ps5", true), o.optString("name", "PS5"))
             val a = o.optJSONArray("players") ?: JSONArray()
             for (i in 0 until a.length()) {
                 val p = a.getJSONObject(i)
+                val regist = parseHex(p.getString("regist")) ?: return null
+                val key = parseHex(p.getString("key")) ?: return null
+                val mac = parseHex(p.optString("mac", "")) ?: return null
+                if (regist.isEmpty() || key.isEmpty()) return null
                 c.players.add(PsPlayer(
                     p.optString("label", "Người chơi ${i + 1}"),
-                    unhex(p.getString("regist")), p.optInt("type", 0), unhex(p.getString("key")),
-                    unhex(p.optString("mac", "")), p.optString("nick", ""),
+                    regist, p.optInt("type", 0), key, mac, p.optString("nick", ""),
                 ))
             }
+            if (c.players.isEmpty()) return null
             c.tvPlayer = o.optInt("tv", 0).coerceIn(0, (c.players.size - 1).coerceAtLeast(0))
             c.phonePlayer = o.optInt("phone", 0).coerceIn(0, (c.players.size - 1).coerceAtLeast(0))
             c
@@ -130,6 +145,7 @@ object PsStore {
     }
 
     fun connectInfo(ctx: Context, c: PsConsole, player: Int): ConnectInfo {
+        require(c.players.isNotEmpty()) { "Chưa có người chơi được ghép nối." }
         val p = c.players[player.coerceIn(0, c.players.size - 1)]
         return ConnectInfo(c.ps5, c.host, p.registKey, p.key, profile(ctx))
     }
