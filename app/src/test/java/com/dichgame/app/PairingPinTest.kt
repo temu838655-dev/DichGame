@@ -33,4 +33,14 @@ class PairingPinTest {
         assertNull(parsePairingPin("1234abcd"))
         assertNull(parsePairingPin("-1234567"))
     }
+    @Test fun convertsMbpsToChiakiKbpsAndRejectsUnsupportedValues() {
+        assertEquals(0, PsStore.bitrateKbps(0))
+        assertEquals(2_000, PsStore.bitrateKbps(2))
+        assertEquals(3_000, PsStore.bitrateKbps(3))
+        assertEquals(15_000, PsStore.bitrateKbps(15))
+        assertEquals(30_000, PsStore.bitrateKbps(30))
+        assertEquals(0, PsStore.bitrateKbps(4))
+        assertEquals(0, PsStore.bitrateKbps(-1))
+    }
+
 }
