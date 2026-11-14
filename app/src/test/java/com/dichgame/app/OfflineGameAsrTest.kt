@@ -41,6 +41,13 @@ class OfflineGameAsrTest {
     }
 
     @Test
+    fun resamplesEightKhzShortDialogueBeforeApplyingWhisperMinimum() {
+        val source = FloatArray(960) { 0.1f } // 120 ms at 8 kHz
+        val actual = OfflineGameAsr.resample(source, 8_000, OfflineGameAsr.TARGET_SAMPLE_RATE)
+        assertEquals(OfflineGameAsr.MIN_SAMPLES, actual.size)
+    }
+
+    @Test
     fun resamplingKeepsVeryShortNonEmptyUtterance() {
         val actual = OfflineGameAsr.resample(floatArrayOf(0.1f, 0.2f), 48000, 16000)
         assertEquals(1, actual.size)
