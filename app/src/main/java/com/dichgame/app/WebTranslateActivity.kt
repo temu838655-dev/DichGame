@@ -233,8 +233,9 @@ class WebTranslateActivity : Activity() {
             crop = Bitmap.createBitmap(full, 0, top, w, h - top)
             full.recycle()
             full = null
-            val shot = crop
-            ocr?.read(shot, { _ ->
+            val shot = crop ?: throw IllegalStateException("Không tạo được ảnh OCR")
+            val reader = ocr ?: throw IllegalStateException("OCR chưa sẵn sàng")
+            reader.read(shot, { _ ->
                 shot.recycle()
                 ocrBusy = false
             }) { blocks ->
