@@ -575,7 +575,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             .setCancelable(false)
             .setNegativeButton("Hủy") { _, _ -> finish() }
             .setPositiveButton("Gửi") { _, _ ->
-                val v = et.text.toString().trim()
+                val v = et.text.toString()
                 if (!isValidPairingPin(v)) { Toast.makeText(this, "Mã đăng nhập phải gồm đúng 8 chữ số (0–9).", Toast.LENGTH_LONG).show(); askPin(incorrect) }
                 else session?.setLoginPin(v)
             }.show()
