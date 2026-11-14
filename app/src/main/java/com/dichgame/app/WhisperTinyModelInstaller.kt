@@ -42,6 +42,8 @@ internal class WhisperTinyModelInstaller(
         cancelled.set(true)
     }
 
+    fun isInstalled(): Boolean = assets().all { isValid(File(modelDirectory, it.localName), it) }
+
     fun install(onProgress: (Progress) -> Unit = {}): Result {
         cancelled.set(false)
         modelDirectory.mkdirs()
