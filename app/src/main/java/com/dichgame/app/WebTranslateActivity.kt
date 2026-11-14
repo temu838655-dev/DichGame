@@ -133,7 +133,7 @@ class WebTranslateActivity : Activity() {
         bar.addView(Ui.tv(this, "Dịch video trên web", 18f, Ui.TEXT, true), Ui.lp(0, WRAP_CONTENT, 1f))
         toggle = Ui.tv(this, "", 13f, Color.parseColor("#2A1A08"), true)
         toggle.setPadding(Ui.dp(this, 12), Ui.dp(this, 7), Ui.dp(this, 12), Ui.dp(this, 7))
-        toggle.setOnClickListener { enabled = !enabled; refreshToggle(); if (!enabled) overlay.visibility = android.view.View.GONE }
+        toggle.setOnClickListener { enabled = !enabled; refreshToggle(); if (!enabled) { overlay.visibility = android.view.View.GONE; try { speechRecognizer?.cancel() } catch (_: Exception) {} } else if (micEnabled) { main.postDelayed(speechRestart, 150L) } }
         micButton = Ui.tv(this, "Nghe mic: TẮT", 12f, Color.parseColor("#2A1A08"), true).also { button ->
             button.setPadding(Ui.dp(this, 10), Ui.dp(this, 7), Ui.dp(this, 10), Ui.dp(this, 7))
             button.setOnClickListener { toggleMicrophoneRecognition() }
