@@ -217,13 +217,26 @@ object PsStore {
     }
 
     // ---- chất lượng hình ----
-    /** 0 = tự động (720p), 1 = 720p, 2 = 1080p. */
-    fun res(ctx: Context): Int = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(K_RES, 0)
-    fun setRes(ctx: Context, v: Int) { ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putInt(K_RES, v.coerceIn(0, 2)).apply() }
+    /** 0 = tự động (720p), 1 = 720p, 2 = 1080p. Giá trị cũ/hỏng được đưa về mặc định an toàn. */
+    fun res(ctx: Context): Int {
+        val stored = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(K_RES, 0)
+        return if (stored in 0..2) stored else 0
+    }
+    fun setRes(ctx: Context, v: Int) {
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putInt(K_RES, if (v in 0..2) v else 0).apply()
+    }
 
-    /** Tốc độ mạng tối đa (Mbps), 0 = tự động. */
-    fun rate(ctx: Context): Int = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(K_RATE, 0)
-    fun setRate(ctx: Context, v: Int) { ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putInt(K_RATE, v.coerceIn(0, 30)).apply() }
+    /** Bitrate profile (Mbps), 0 = bitrate mặc định của engine. Chỉ nhận các mức có trong giao diện. */
+    private val RATE_PRESETS = setOf(0, 2, 3, 5, 8, 10, 15, 20, 30)
+    fun rate(ctx: Context): Int {
+        val stored = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(K_RATE, 0)
+        return if (stored in RATE_PRESETS) stored else 0
+    }
+    fun setRate(ctx: Context, v: Int) {
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putInt(K_RATE, if (v in RATE_PRESETS) v else 0).apply()
+    }
 
     /** Không hỏi lại bảng chất lượng khi bấm Chơi. */
     fun noAsk(ctx: Context): Boolean = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(K_ASK, false)
