@@ -75,7 +75,8 @@ class OfflineGameAsr(
             samples.size % channels != 0
         ) return ""
         val mono = toMonoFloat(samples, channels)
-        if (mono.size < MIN_SAMPLES) return ""
+        if (mono.isEmpty()) return ""
+        // MIN_SAMPLES is measured at the 16 kHz Whisper rate, never against source-rate PCM.
         val resampled = resample(mono, sampleRate, TARGET_SAMPLE_RATE)
         if (resampled.size < MIN_SAMPLES) return ""
         require(resampled.size <= MAX_SAMPLES) { "Speech segment exceeds 30 seconds; split it before ASR." }
