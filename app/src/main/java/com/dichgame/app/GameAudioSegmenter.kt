@@ -126,7 +126,7 @@ class GameAudioSegmenter(
         val required = utteranceSize + values.size
         if (required > utterance.size) {
             var capacity = utterance.size.coerceAtLeast(1)
-            while (capacity < required) capacity = (capacity * 2).coerceAtLeast(required)
+            while (capacity < required) capacity *= 2
             utterance = utterance.copyOf(capacity)
         }
         values.copyInto(utterance, destinationOffset = utteranceSize)
