@@ -71,7 +71,11 @@ class PsPairActivity : Activity() {
         super.onDestroy()
         val r = regist
         regist = null
-        if (r != null) Thread { try { r.stop(); r.dispose() } catch (_: Throwable) {} }.start()
+        if (r != null) Thread {
+            // stop() có thể ném lỗi; vẫn phải gọi dispose() để giải phóng tài nguyên native.
+            try { r.stop() } catch (_: Throwable) {}
+            try { r.dispose() } catch (_: Throwable) {}
+        }.start()
     }
 
     // ---------------- Tìm máy trong mạng ----------------
