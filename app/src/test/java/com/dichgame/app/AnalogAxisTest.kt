@@ -42,6 +42,20 @@ class AnalogAxisTest {
         assertEquals(0.7071f, clamped.second, 0.001f)
     }
 
+    @Test fun radialDeadZoneUsesSafeFallbackForInvalidDriverFlatValues() {
+        // Driver báo flat NaN/vô cực: dùng dead zone mặc định 0.1 thay vì làm hỏng cần.
+        val nanFlat = AnalogAxis.normalizePair(0.55f, 0f, Float.NaN, 0.1f)
+        assertEquals(0.5f, nanFlat.first, 0.0001f)
+        assertEquals(0f, nanFlat.second, 0.0001f)
+
+        val infiniteFlat = AnalogAxis.normalizePair(0.55f, 0f, Float.POSITIVE_INFINITY, 0.1f)
+        assertEquals(0.5f, infiniteFlat.first, 0.0001f)
+        assertEquals(0f, infiniteFlat.second, 0.0001f)
+
+        val negativeFlat = AnalogAxis.normalizePair(0.55f, 0f, -1f, 0.1f)
+        assertEquals(0.5f, negativeFlat.first, 0.0001f)
+    }
+
     @Test fun nonFiniteAxisSamplesCannotPropagateNanIntoControllerState() {
         assertEquals(0f, AnalogAxis.normalize(Float.NaN, 0.1f), 0.0001f)
         assertEquals(0f, AnalogAxis.normalize(Float.POSITIVE_INFINITY, 0.1f), 0.0001f)
