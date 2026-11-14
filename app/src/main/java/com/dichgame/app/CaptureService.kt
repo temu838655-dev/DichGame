@@ -529,39 +529,69 @@ class CaptureService : Service() {
     }
 
     private fun menuGrab() {
-        ensureSize()
-        val img = reader?.acquireLatestImage()
-        if (img == null) { busy = false; overlay?.visibility = View.VISIBLE; return }
+        val img = try {
+            ensureSize()
+            reader?.acquireLatestImage()
+        } catch (_: Exception) {
+            reportFrameError()
+            overlay?.visibility = View.VISIBLE
+            return
+        }
+        if (img == null) {
+            busy = false
+            overlay?.visibility = View.VISIBLE
+            return
+        }
         val bmp = try {
             val p = img.planes[0]
             val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
-            cropAndRecycle(full, 0, 0, img.width, img.height)
-        } finally { img.close() }
-        ocr!!.read(bmp, { m -> ocrFail(m) }) { r ->
-                val blocks = r.map { it.text.replace("\n", sep).trim() }.filter { it.length >= longLen }.take(4)
-                if (blocks.isEmpty()) {
-                    menuUntil = System.currentTimeMillis() + 3000
-                    show("Không thấy đoạn chữ dài nào để dịch.")
-                    handler.postDelayed({ if (!editing) show("") }, 3000)
-                    busy = false; return@read
-                }
-                val parts = arrayOfNulls<String>(blocks.size)
-                var left = blocks.size
-                blocks.forEachIndexed { i, b ->
-                    translateText(b) { vi ->
-                        parts[i] = vi
-                        if (--left == 0) {
-                            menuUntil = System.currentTimeMillis() + 15000
-                            show(parts.joinToString("\n\n")); sendTv("region", parts.joinToString("\n\n"))
-                            busy = false
-                            handler.postDelayed({
-                                if (!editing && System.currentTimeMillis() >= menuUntil) show("")
-                            }, 15000)
-                        }
+            try {
+                full.copyPixelsFromBuffer(p.buffer)
+                cropAndRecycle(full, 0, 0, img.width, img.height)
+            } finally {
+                if (!full.isRecycled) runCatching { full.recycle() }
+            }
+        } catch (_: Exception) {
+            reportFrameError()
+            overlay?.visibility = View.VISIBLE
+            return
+        } finally {
+            img.close()
+        }
+        val reader = ocr
+        if (reader == null) {
+            if (!bmp.isRecycled) runCatching { bmp.recycle() }
+            busy = false
+            overlay?.visibility = View.VISIBLE
+            return
+        }
+        reader.read(bmp, { m -> ocrFail(m) }) { r ->
+            val blocks = r.map { it.text.replace("\n", sep).trim() }.filter { it.length >= longLen }.take(4)
+            if (blocks.isEmpty()) {
+                menuUntil = System.currentTimeMillis() + 3000
+                show("Không thấy đoạn chữ dài nào để dịch.")
+                handler.postDelayed({ if (!editing) show("") }, 3000)
+                busy = false
+                return@read
+            }
+            val parts = arrayOfNulls<String>(blocks.size)
+            var left = blocks.size
+            blocks.forEachIndexed { i, b ->
+                translateText(b) { vi ->
+                    parts[i] = vi
+                    if (--left == 0) {
+                        menuUntil = System.currentTimeMillis() + 15000
+                        val translated = parts.joinToString("\n\n")
+                        show(translated)
+                        sendTv("region", translated)
+                        busy = false
+                        handler.postDelayed({
+                            if (!editing && System.currentTimeMillis() >= menuUntil) show("")
+                        }, 15000)
                     }
                 }
             }
+        }
     }
 
     /** Mỗi hướng màn hình (dọc/ngang) nhớ vị trí khung riêng. */
