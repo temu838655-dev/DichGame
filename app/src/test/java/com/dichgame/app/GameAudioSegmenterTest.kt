@@ -53,6 +53,16 @@ class GameAudioSegmenterTest {
         assertTrue("Short utterance should retain audio context", result.single().size >= 120 * 16)
     }
 
+    @Test fun doesNotJoinSpeechAcrossAnAudioGapReset() {
+        val result = mutableListOf<FloatArray>()
+        val segmenter = GameAudioSegmenter(onUtterance = result::add)
+        segmenter.accept(tone(40))
+        segmenter.reset()
+        segmenter.accept(tone(40))
+        segmenter.accept(silence(600))
+        assertEquals("Two partial phrases on opposite sides of a dropped-audio gap must not be joined", 0, result.size)
+    }
+
     @Test fun separatesUtterancesAfterSilence() {
         val result = mutableListOf<FloatArray>()
         val segmenter = GameAudioSegmenter(onUtterance = result::add)
