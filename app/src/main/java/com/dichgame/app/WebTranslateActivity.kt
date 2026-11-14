@@ -3,6 +3,10 @@ package com.dichgame.app
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.os.Handler
+import android.os.Looper
 import android.os.Bundle
 import android.view.Gravity
 import android.view.KeyEvent
@@ -30,6 +34,23 @@ class WebTranslateActivity : Activity() {
     private var speaker: Speaker? = null
     private var enabled = true
     private var seq = 0
+    private var ocr: Ocr? = null
+    private val main = Handler(Looper.getMainLooper())
+    private var lastSubtitleAt = 0L
+    private var lastOcrAt = 0L
+    private var ocrBusy = false
+    private var destroyed = false
+    private val ocrLoop = object : Runnable {
+        override fun run() {
+            if (destroyed || !::web.isInitialized) return
+            val now = System.currentTimeMillis()
+            // Chỉ quét ảnh khi phụ đề HTML không xuất hiện; tránh OCR đè lên phụ đề thật.
+            if (enabled && !ocrBusy && now - lastSubtitleAt > 2200L && now - lastOcrAt > 1800L) {
+                captureSubtitleRegion()
+            }
+            main.postDelayed(this, 1800L)
+        }
+    }
 
     private val js = """
 (function(){
@@ -140,6 +161,9 @@ class WebTranslateActivity : Activity() {
 
         refreshToggle()
         speaker = Speaker(this, p)
+        // OCR dự phòng cho phụ đề được đốt trực tiếp vào hình video (không có track HTML).
+        ocr = Ocr(p, p.lang)
+        main.postDelayed(ocrLoop, 1800L)
         speaker?.onAiError = { m -> android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_LONG).show() }
         if (!p.narrate) {
             val t = TextTranslator(this, p, p.lang)
@@ -171,6 +195,7 @@ class WebTranslateActivity : Activity() {
 
     private fun onSub(text: String) {
         if (!enabled) return
+        lastSubtitleAt = System.currentTimeMillis()
         if (p.narrate) {
             show(text, "")
             speaker?.speak(text)
@@ -183,6 +208,53 @@ class WebTranslateActivity : Activity() {
                 show(vi, if (p.showOrig) text else "")
                 if (p.speak) speaker?.speak(vi, false, d)
             }
+        }
+    }
+
+    /**
+     * Chụp vùng 45% phía dưới WebView để tìm phụ đề đã được ghép cứng vào khung hình.
+     * Đây là lớp dự phòng; ưu tiên track/caption HTML vì chúng giữ được dấu câu và thời điểm tốt hơn.
+     */
+    private fun captureSubtitleRegion() {
+        if (web.width <= 0 || web.height <= 0) return
+        lastOcrAt = System.currentTimeMillis()
+        ocrBusy = true
+        var full: Bitmap? = null
+        var crop: Bitmap? = null
+        try {
+            val scale = minOf(1f, 1280f / maxOf(web.width, web.height).toFloat())
+            val w = (web.width * scale).toInt().coerceAtLeast(1)
+            val h = (web.height * scale).toInt().coerceAtLeast(1)
+            full = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(full)
+            canvas.scale(scale, scale)
+            web.draw(canvas)
+            val top = (h * 0.55f).toInt().coerceIn(0, h - 1)
+            crop = Bitmap.createBitmap(full, 0, top, w, h - top)
+            full.recycle()
+            full = null
+            val shot = crop
+            ocr?.read(shot, { _ ->
+                shot.recycle()
+                ocrBusy = false
+            }) { blocks ->
+                try {
+                    if (!destroyed && enabled && System.currentTimeMillis() - lastSubtitleAt > 1800L) {
+                        val recognized = blocks.joinToString(" ") { it.text.trim() }
+                            .replace(Regex("\\s+"), " ").trim()
+                        // Không dịch chuỗi rỗng hoặc ký tự nhiễu đơn lẻ.
+                        if (recognized.length >= 2) onSub(recognized)
+                    }
+                } finally {
+                    shot.recycle()
+                    ocrBusy = false
+                }
+            }
+            crop = null
+        } catch (_: Exception) {
+            try { full?.recycle() } catch (_: Exception) {}
+            try { crop?.recycle() } catch (_: Exception) {}
+            ocrBusy = false
         }
     }
 
@@ -203,7 +275,10 @@ class WebTranslateActivity : Activity() {
     }
 
     override fun onDestroy() {
+        destroyed = true
+        main.removeCallbacks(ocrLoop)
         try { web.destroy() } catch (_: Exception) {}
+        ocr?.close()
         translator?.close()
         speaker?.shutdown()
         super.onDestroy()
