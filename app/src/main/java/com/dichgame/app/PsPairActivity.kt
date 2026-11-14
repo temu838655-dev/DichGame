@@ -42,6 +42,7 @@ class PsPairActivity : Activity() {
     private var pin = ""
 
     private var discovery: DiscoveryService? = null
+    private var discoveryGeneration = 0
     private var foundBox: LinearLayout? = null
     private var found: List<DiscoveryHost> = emptyList()
 
@@ -77,14 +78,23 @@ class PsPairActivity : Activity() {
 
     private fun startDiscovery() {
         if (discovery != null || !PsNative.available) return
+        val generation = ++discoveryGeneration
         try {
             discovery = DiscoveryService(DiscoveryServiceOptions(16UL, 3UL, 500UL, InetSocketAddress("255.255.255.255", 987))) { hosts ->
-                runOnUiThread { found = hosts; drawFound() }
+                runOnUiThread {
+                    // Bỏ qua callback của dịch vụ cũ sau onPause(), onDestroy() hoặc khi đã tạo lượt tìm mới.
+                    if (isFinishing || isDestroyed || step != 1 ||
+                        generation != discoveryGeneration || discovery == null) return@runOnUiThread
+                    found = hosts
+                    drawFound()
+                }
             }
         } catch (_: CreateError) { discovery = null } catch (_: Throwable) { discovery = null }
     }
 
     private fun stopDiscovery() {
+        // Tăng thế hệ trước khi dispose để callback đang nằm trong hàng đợi không cập nhật UI.
+        discoveryGeneration++
         val d = discovery ?: return
         discovery = null
         Thread { try { d.dispose() } catch (_: Throwable) {} }.start()
