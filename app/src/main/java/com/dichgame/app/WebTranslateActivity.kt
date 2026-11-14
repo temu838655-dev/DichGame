@@ -53,6 +53,7 @@ class WebTranslateActivity : Activity() {
     private var micEnabled = false
     private var micButton: TextView? = null
     private var lastAsrDelivered = ""
+    private var lastAsrDeliveredAt = 0L
     private val speechRestart = Runnable { startSpeechRecognition() }
     private val ocrLoop = object : Runnable {
         override fun run() {
@@ -202,6 +203,10 @@ class WebTranslateActivity : Activity() {
      * Đây là nghe âm thanh môi trường/loa bằng micro, KHÔNG phải thu PCM nội bộ từ WebView.
      */
     private fun toggleMicrophoneRecognition() {
+        if (!micEnabled && !enabled) {
+            android.widget.Toast.makeText(this, "Hãy bật Dịch trước khi bật nghe micro.", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
         if (micEnabled) {
             stopMicrophoneRecognition()
             return
@@ -238,8 +243,13 @@ class WebTranslateActivity : Activity() {
             override fun onResults(results: Bundle?) {
                 val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     ?.firstOrNull()?.trim().orEmpty()
-                if (text.length >= 1 && text != lastAsrDelivered && !destroyed && micEnabled) {
+                val now = System.currentTimeMillis()
+                // Cho phép cùng một câu ngắn xuất hiện lại trong video; chỉ chặn kết quả lặp sát nhau.
+                val duplicateImmediately = text.equals(lastAsrDelivered, ignoreCase = true) &&
+                    now - lastAsrDeliveredAt < 1200L
+                if (text.isNotBlank() && !duplicateImmediately && !destroyed && micEnabled) {
                     lastAsrDelivered = text
+                    lastAsrDeliveredAt = now
                     runOnUiThread { if (micEnabled && enabled) onSub(text) }
                 }
                 if (micEnabled && !destroyed) main.postDelayed(speechRestart, 250L)
