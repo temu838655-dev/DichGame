@@ -871,7 +871,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 if (gameTranslator === translator) gameTranslator = null
                 engine.close()
                 translator.close()
-                Toast.makeText(this, "Không bật được nhận dạng: \${e.message ?: "lỗi không xác định"}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Không bật được nhận dạng: ${e.message ?: "lỗi không xác định"}", Toast.LENGTH_LONG).show()
             }
         }
     }
