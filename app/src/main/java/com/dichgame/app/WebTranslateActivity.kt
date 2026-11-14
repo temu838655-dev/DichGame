@@ -3,6 +3,17 @@ package com.dichgame.app
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.os.Handler
+import android.os.Build
+import android.os.Looper
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.os.Bundle
 import android.view.Gravity
 import android.view.KeyEvent
@@ -30,14 +41,58 @@ class WebTranslateActivity : Activity() {
     private var speaker: Speaker? = null
     private var enabled = true
     private var seq = 0
+    private var ocr: Ocr? = null
+    private val main = Handler(Looper.getMainLooper())
+    private var lastSubtitleAt = 0L
+    private var lastOcrAt = 0L
+    private var ocrBusy = false
+    private var destroyed = false
+    private var ocrCandidate = ""
+    private var ocrStableFrames = 0
+    private var lastOcrDelivered = ""
+    private var lastOcrTextAt = 0L
+    private var ocrEmptyFrames = 0
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var speechUsesOnDevice = false
+    private var speechOfflineFallbackAttempted = false
+    private var micEnabled = false
+    private var micButton: TextView? = null
+    private var lastAsrDelivered = ""
+    private var lastAsrDeliveredAt = 0L
+    private val speechRestart = Runnable { startSpeechRecognition() }
+    private val ocrLoop = object : Runnable {
+        override fun run() {
+            if (destroyed || !::web.isInitialized) return
+            val now = System.currentTimeMillis()
+            // Chỉ quét ảnh khi phụ đề HTML không xuất hiện; tránh OCR đè lên phụ đề thật.
+            val reader = ocr
+            // OCR local peut être rapide; OCR cloud est ralenti pour limiter latence et quota Gemini.
+            val scanInterval = if (reader?.isCloud == true) 1800L else 500L
+            if (enabled && !ocrBusy && now - lastSubtitleAt > 1400L && now - lastOcrAt >= scanInterval) {
+                captureSubtitleRegion()
+            }
+            main.postDelayed(this, scanInterval)
+        }
+    }
 
     private val js = """
 (function(){
   if (window.__dg) return; window.__dg = true;
   var last = '';
-  function send(t){
-    t = (t || '').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
-    if (t && t.length < 400 && t !== last) { last = t; DG.sub(t); }
+  var activeSource = { track: false, dom: false };
+  function send(t, source){
+    t = (t || '').replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').trim();
+    // Track và DOM có thể cùng tồn tại: một nguồn trống không được mở khóa khi nguồn kia vẫn có phụ đề.
+    if (!t) {
+      if (source) activeSource[source] = false;
+      if (!activeSource.track && !activeSource.dom) last = '';
+      return;
+    }
+    if (source) activeSource[source] = true;
+    if (t.length < 400 && t !== last) {
+      last = t;
+      DG.sub(t);
+    }
   }
   function tracks(){
     var vs = document.querySelectorAll('video');
@@ -52,22 +107,31 @@ class WebTranslateActivity : Activity() {
           t.addEventListener('cuechange', function(){
             var a = this.activeCues, s = '';
             if (a) for (var k = 0; k < a.length; k++) s += (a[k].text || '') + ' ';
-            send(s);
+            send(s, 'track');
           });
         }
       }
     }
   }
   var sel = ['.ytp-caption-segment', '.captions-text', '.vjs-text-track-display', '.jw-text-track-cue', '.plyr__captions', '.player-timedtext', '.fp-subtitle'];
+  var domHadText = false;
   function dom(){
+    var current = '';
     for (var i = 0; i < sel.length; i++) {
       var els = document.querySelectorAll(sel[i]);
-      if (els.length) {
-        var s = '';
-        for (var k = 0; k < els.length; k++) s += (els[k].innerText || '') + ' ';
-        s = s.trim();
-        if (s) { send(s); return; }
-      }
+      if (!els.length) continue;
+      var s = '';
+      for (var k = 0; k < els.length; k++) s += (els[k].innerText || '') + ' ';
+      s = s.trim();
+      if (s) { current = s; break; }
+    }
+    if (current) {
+      domHadText = true;
+      send(current, 'dom');
+    } else if (domHadText) {
+      // DOM caption đã biến mất: mở khóa để câu giống hệt ở cảnh sau vẫn được gửi.
+      domHadText = false;
+      send('', 'dom');
     }
   }
   setInterval(function(){ try { tracks(); dom(); } catch (e) {} }, 500);
@@ -98,7 +162,12 @@ class WebTranslateActivity : Activity() {
         bar.addView(Ui.tv(this, "Dịch video trên web", 18f, Ui.TEXT, true), Ui.lp(0, WRAP_CONTENT, 1f))
         toggle = Ui.tv(this, "", 13f, Color.parseColor("#2A1A08"), true)
         toggle.setPadding(Ui.dp(this, 12), Ui.dp(this, 7), Ui.dp(this, 12), Ui.dp(this, 7))
-        toggle.setOnClickListener { enabled = !enabled; refreshToggle(); if (!enabled) overlay.visibility = android.view.View.GONE }
+        toggle.setOnClickListener { enabled = !enabled; refreshToggle(); if (!enabled) { overlay.visibility = android.view.View.GONE; try { speechRecognizer?.cancel() } catch (_: Exception) {} } else if (micEnabled) { scheduleSpeechRestart(150L) } }
+        micButton = Ui.tv(this, "Nghe mic: TẮT", 12f, Color.parseColor("#2A1A08"), true).also { button ->
+            button.setPadding(Ui.dp(this, 10), Ui.dp(this, 7), Ui.dp(this, 10), Ui.dp(this, 7))
+            button.setOnClickListener { toggleMicrophoneRecognition() }
+        }
+        bar.addView(micButton)
         bar.addView(toggle)
         root.addView(bar)
 
@@ -140,6 +209,9 @@ class WebTranslateActivity : Activity() {
 
         refreshToggle()
         speaker = Speaker(this, p)
+        // OCR dự phòng cho phụ đề được đốt trực tiếp vào hình video (không có track HTML).
+        ocr = Ocr(p, p.lang)
+        main.postDelayed(ocrLoop, 1800L)
         speaker?.onAiError = { m -> android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_LONG).show() }
         if (!p.narrate) {
             val t = TextTranslator(this, p, p.lang)
@@ -151,6 +223,132 @@ class WebTranslateActivity : Activity() {
             }
         }
         load(url.text.toString())
+    }
+
+
+    /**
+     * ASR dự phòng qua micro, chỉ chạy khi người dùng chủ động bật.
+     * Đây là nghe âm thanh môi trường/loa bằng micro, KHÔNG phải thu PCM nội bộ từ WebView.
+     */
+    private fun toggleMicrophoneRecognition() {
+        if (!micEnabled && !enabled) {
+            android.widget.Toast.makeText(this, "Hãy bật Dịch trước khi bật nghe micro.", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (micEnabled) {
+            stopMicrophoneRecognition()
+            return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            android.widget.Toast.makeText(this, "Máy chưa có dịch vụ nhận dạng giọng nói.", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 7401)
+            return
+        }
+        micEnabled = true
+        speechOfflineFallbackAttempted = false
+        micButton?.text = "Nghe mic: BẬT"
+        createSpeechRecognizer()
+        val mode = if (speechUsesOnDevice) "nhận dạng ngoại tuyến trên máy" else "dịch vụ nhận dạng của Android (có thể cần mạng)"
+        android.widget.Toast.makeText(this, "Đang nghe qua micro bằng $mode. Hãy phát âm thanh qua loa ngoài để micro nghe được.", android.widget.Toast.LENGTH_LONG).show()
+        startSpeechRecognition()
+    }
+
+    private fun createSpeechRecognizer(forceSystemService: Boolean = false) {
+        if (speechRecognizer != null) return
+        val onDeviceAvailable = !forceSystemService && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
+        speechUsesOnDevice = onDeviceAvailable
+        val recognizer = if (onDeviceAvailable) {
+            SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+        } else {
+            SpeechRecognizer.createSpeechRecognizer(this)
+        }
+        speechRecognizer = recognizer
+        recognizer.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onResults(results: Bundle?) {
+                val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()?.trim().orEmpty()
+                val now = System.currentTimeMillis()
+                val duplicateImmediately = text.equals(lastAsrDelivered, ignoreCase = true) &&
+                    now - lastAsrDeliveredAt < 1200L
+                if (text.isNotBlank() && !duplicateImmediately && !destroyed && micEnabled) {
+                    lastAsrDelivered = text
+                    lastAsrDeliveredAt = now
+                    runOnUiThread { if (micEnabled && enabled) onSub(text) }
+                }
+                if (micEnabled && !destroyed) scheduleSpeechRestart(250L)
+            }
+            override fun onError(error: Int) {
+                if (!micEnabled || destroyed) return
+                if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                    stopMicrophoneRecognition()
+                    android.widget.Toast.makeText(this@WebTranslateActivity, "Chưa cấp quyền micro.", android.widget.Toast.LENGTH_LONG).show()
+                } else if (speechUsesOnDevice && !speechOfflineFallbackAttempted &&
+                    (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)) {
+                    speechOfflineFallbackAttempted = true
+                    try { speechRecognizer?.cancel() } catch (_: Exception) {}
+                    try { speechRecognizer?.destroy() } catch (_: Exception) {}
+                    speechRecognizer = null
+                    createSpeechRecognizer(forceSystemService = true)
+                    android.widget.Toast.makeText(this@WebTranslateActivity, "Ngôn ngữ này chưa dùng được offline trên máy; đang chuyển sang dịch vụ nhận dạng Android.", android.widget.Toast.LENGTH_LONG).show()
+                    scheduleSpeechRestart(350L)
+                } else {
+                    scheduleSpeechRestart(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 900L else 500L)
+                }
+            }
+        })
+    }
+
+    private fun scheduleSpeechRestart(delayMs: Long) {
+        if (!micEnabled || destroyed) return
+        main.removeCallbacks(speechRestart)
+        main.postDelayed(speechRestart, delayMs)
+    }
+
+    private fun startSpeechRecognition() {
+        main.removeCallbacks(speechRestart)
+        if (!micEnabled || destroyed || !enabled) return
+        val recognizer = speechRecognizer ?: return
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.forLanguageTag(p.lang).toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, java.util.Locale.forLanguageTag(p.lang).toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 450L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 250L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 250L)
+        }
+        try { recognizer.startListening(intent) }
+        catch (_: Exception) { scheduleSpeechRestart(900L) }
+    }
+
+    private fun stopMicrophoneRecognition() {
+        micEnabled = false
+        main.removeCallbacks(speechRestart)
+        try { speechRecognizer?.cancel() } catch (_: Exception) {}
+        try { speechRecognizer?.destroy() } catch (_: Exception) {}
+        speechRecognizer = null
+        micButton?.text = "Nghe mic: TẮT"
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 7401) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) toggleMicrophoneRecognition()
+            else android.widget.Toast.makeText(this, "Cần quyền micro để nhận dạng lời thoại.", android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun refreshToggle() {
@@ -171,6 +369,9 @@ class WebTranslateActivity : Activity() {
 
     private fun onSub(text: String) {
         if (!enabled) return
+        lastSubtitleAt = System.currentTimeMillis()
+        ocrCandidate = ""
+        ocrStableFrames = 0
         if (p.narrate) {
             show(text, "")
             speaker?.speak(text)
@@ -183,6 +384,75 @@ class WebTranslateActivity : Activity() {
                 show(vi, if (p.showOrig) text else "")
                 if (p.speak) speaker?.speak(vi, false, d)
             }
+        }
+    }
+
+    private fun captureSubtitleRegion() {
+        if (web.width <= 0 || web.height <= 0) return
+        lastOcrAt = System.currentTimeMillis()
+        ocrBusy = true
+        var full: Bitmap? = null
+        var crop: Bitmap? = null
+        try {
+            val scale = minOf(1f, 1280f / maxOf(web.width, web.height).toFloat())
+            val w = (web.width * scale).toInt().coerceAtLeast(1)
+            val h = (web.height * scale).toInt().coerceAtLeast(1)
+            val frameBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            full = frameBitmap
+            val canvas = Canvas(frameBitmap)
+            canvas.scale(scale, scale)
+            web.draw(canvas)
+            val top = (h * 0.55f).toInt().coerceIn(0, h - 1)
+            crop = Bitmap.createBitmap(frameBitmap, 0, top, w, h - top)
+            full.recycle()
+            full = null
+            val shot = crop ?: throw IllegalStateException("Không tạo được ảnh OCR")
+            val reader = ocr ?: throw IllegalStateException("OCR chưa sẵn sàng")
+            reader.read(shot, { _ ->
+                shot.recycle()
+                ocrBusy = false
+            }) { blocks ->
+                try {
+                    if (!destroyed && enabled && System.currentTimeMillis() - lastSubtitleAt > 1800L) {
+                        val recognized = blocks.joinToString(" ") { it.text.trim() }
+                            .replace(Regex("\\s+"), " ").trim()
+                        if (recognized.isNotEmpty()) {
+                            ocrEmptyFrames = 0
+                            if (recognized == ocrCandidate) ocrStableFrames++
+                            else { ocrCandidate = recognized; ocrStableFrames = 1 }
+                            val requiredFrames = if (recognized.length == 1) 3 else 2
+                            val nowText = System.currentTimeMillis()
+                            val sameCueReturned = recognized == lastOcrDelivered &&
+                                lastOcrTextAt > 0L && nowText - lastOcrTextAt > 1800L
+                            if (ocrStableFrames >= requiredFrames && recognized != lastOcrDelivered) {
+                                lastOcrDelivered = recognized
+                                lastOcrTextAt = nowText
+                                onSub(recognized)
+                            } else if (ocrStableFrames >= requiredFrames && sameCueReturned) {
+                                lastOcrTextAt = nowText
+                                onSub(recognized)
+                            }
+                        } else {
+                            ocrCandidate = ""
+                            ocrStableFrames = 0
+                            ocrEmptyFrames++
+                            // Chỉ mở khóa câu cũ sau 2 lần quét trống liên tiếp để tránh OCR hụt một khung.
+                            if (ocrEmptyFrames >= 2) {
+                                lastOcrDelivered = ""
+                                lastOcrTextAt = 0L
+                            }
+                        }
+                    }
+                } finally {
+                    shot.recycle()
+                    ocrBusy = false
+                }
+            }
+            crop = null
+        } catch (_: Exception) {
+            try { full?.recycle() } catch (_: Exception) {}
+            try { crop?.recycle() } catch (_: Exception) {}
+            ocrBusy = false
         }
     }
 
@@ -203,7 +473,11 @@ class WebTranslateActivity : Activity() {
     }
 
     override fun onDestroy() {
+        destroyed = true
+        stopMicrophoneRecognition()
+        main.removeCallbacks(ocrLoop)
         try { web.destroy() } catch (_: Exception) {}
+        ocr?.close()
         translator?.close()
         speaker?.shutdown()
         super.onDestroy()
