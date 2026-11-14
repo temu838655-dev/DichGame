@@ -66,6 +66,9 @@ class PsConnectActivity : Activity() {
         try {
             discovery = DiscoveryService(DiscoveryServiceOptions(16UL, 3UL, 500UL, InetSocketAddress("255.255.255.255", 987))) { hosts ->
                 runOnUiThread {
+                    // Discovery có thể gửi callback muộn sau onPause()/onDestroy().
+                    // Chỉ cập nhật UI khi màn hình còn sống và dịch vụ này vẫn là dịch vụ hiện tại.
+                    if (isFinishing || isDestroyed || discovery == null) return@runOnUiThread
                     val h = hosts.firstOrNull { it.hostAddr == c?.host }
                     hostSeen = h != null
                     hostState = h?.state
