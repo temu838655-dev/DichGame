@@ -22,8 +22,20 @@ class ControllerDpadTest {
         assertEquals(cross or right, ControllerDpad.combine(cross, 0u, right))
     }
 
-    @Test fun releasedDigitalDirectionIsRemovedWithoutClearingHatDirection() {
+    @Test fun releasedDigitalDirectionDoesNotClearHatDirection() {
         val down = ControllerState.BUTTON_DPAD_DOWN
         assertEquals(down, ControllerDpad.combine(down, 0u, down))
+    }
+
+    @Test fun releasedDirectionIsRemovedWhenBothSourcesAreNeutral() {
+        val down = ControllerState.BUTTON_DPAD_DOWN
+        val cross = ControllerState.BUTTON_CROSS
+        assertEquals(cross, ControllerDpad.combine(cross or down, 0u, 0u))
+    }
+
+    @Test fun releasingOneSourceKeepsDirectionStillHeldByTheOther() {
+        val right = ControllerState.BUTTON_DPAD_RIGHT
+        assertEquals(right, ControllerDpad.combine(right, 0u, right))
+        assertEquals(right, ControllerDpad.combine(right, right, 0u))
     }
 }
