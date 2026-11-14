@@ -1,5 +1,6 @@
 package com.dichgame.app
 
+import com.metallic.chiaki.lib.ControllerState
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
