@@ -323,7 +323,6 @@ class WebTranslateActivity : Activity() {
         // Phụ đề thật vừa xuất hiện: xóa trạng thái OCR để không phát lại câu cũ.
         ocrCandidate = ""
         ocrStableFrames = 0
-        lastOcrDelivered = ""
         if (p.narrate) {
             show(text, "")
             speaker?.speak(text)
