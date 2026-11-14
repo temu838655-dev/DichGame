@@ -24,7 +24,7 @@ private class OfflineGameAudioTranscriber(
     override fun close() = engine.close()
 }
 
-class GameAudioAsrWorker(
+internal class GameAudioAsrWorker(
     private val queue: GameAudioPcmQueue,
     private val modelDirectory: File,
     private val language: String = "auto",
