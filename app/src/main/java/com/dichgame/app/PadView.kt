@@ -215,8 +215,11 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
                     if (pressed.add(k)) performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
-                if (act == MotionEvent.ACTION_CANCEL) { owner.clear() } else owner.remove(e.getPointerId(e.actionIndex))
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_OUTSIDE -> {
+                // ACTION_OUTSIDE có thể xuất hiện khi cửa sổ nhận chạm ngoài vùng view;
+                // xóa toàn bộ owner để không giữ nút nếu hệ thống không gửi UP tương ứng.
+                if (act == MotionEvent.ACTION_CANCEL || act == MotionEvent.ACTION_OUTSIDE) owner.clear()
+                else owner.remove(e.getPointerId(e.actionIndex))
             }
         }
         // Tính lại điều khiển nào đang được giữ từ các ngón còn lại.
@@ -225,7 +228,7 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
         pressed.addAll(held)
         dpadBits = 0u; lx = 0f; ly = 0f; rx = 0f; ry = 0f
         for (i in 0 until e.pointerCount) {
-            if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL) break
+            if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL || act == MotionEvent.ACTION_OUTSIDE) break
             if ((act == MotionEvent.ACTION_POINTER_UP) && i == e.actionIndex) continue
             when (owner[e.getPointerId(i)]) {
                 // Nhiều ngón chạm D-pad cùng lúc phải hợp nhất hướng, không ghi đè nhau.
@@ -234,7 +237,7 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
                 "RS" -> { val v = axis(e.getX(i) - rsCx, e.getY(i) - rsCy, rsR); rx = v.first; ry = v.second }
             }
         }
-        if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL) { pressed.clear(); dpadBits = 0u }
+        if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL || act == MotionEvent.ACTION_OUTSIDE) { pressed.clear(); dpadBits = 0u }
         publish()
         invalidate()
         return true
