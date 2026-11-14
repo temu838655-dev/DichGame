@@ -71,9 +71,16 @@ class WebTranslateActivity : Activity() {
 (function(){
   if (window.__dg) return; window.__dg = true;
   var last = '';
+  var lastAt = 0;
   function send(t){
-    t = (t || '').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
-    if (t && t.length < 400 && t !== last) { last = t; DG.sub(t); }
+    t = (t || '').replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').trim();
+    var now = Date.now();
+    // Cho phép câu thoại giống hệt xuất hiện lại ở cảnh sau; chỉ chặn poll lặp sát nhau.
+    if (t && t.length < 400 && (t !== last || now - lastAt > 1200)) {
+      last = t;
+      lastAt = now;
+      DG.sub(t);
+    }
   }
   function tracks(){
     var vs = document.querySelectorAll('video');
