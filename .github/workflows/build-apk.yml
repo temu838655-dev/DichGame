@@ -31,6 +31,10 @@ jobs:
           cd third_party/chiaki-ng
           git submodule update --init --depth 1 third-party/nanopb third-party/jerasure third-party/gf-complete third-party/curl
 
+      # Nối PCM đã giải mã từ Chiaki sang callback Kotlin để đưa vào hàng đợi ASR.
+      - name: Áp dụng cầu nối âm thanh PCM cho Chiaki
+        run: python3 tools/patch-chiaki-audio-pcm.py
+
       # Công cụ để sinh mã giao thức (nanopb cần protoc và gói Python protobuf).
       - uses: actions/setup-python@v5
         with:
