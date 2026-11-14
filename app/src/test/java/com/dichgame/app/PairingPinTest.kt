@@ -1,5 +1,6 @@
 package com.dichgame.app
 
+import com.metallic.chiaki.lib.VideoResolutionPreset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -41,6 +42,15 @@ class PairingPinTest {
         assertEquals(30_000, PsStore.bitrateKbps(30))
         assertEquals(0, PsStore.bitrateKbps(4))
         assertEquals(0, PsStore.bitrateKbps(-1))
+    }
+
+    @Test fun mapsResolutionChoicesWithoutBreakingSavedIndexes() {
+        assertEquals(VideoResolutionPreset.RES_720P, PsStore.resolutionPreset(0))
+        assertEquals(VideoResolutionPreset.RES_720P, PsStore.resolutionPreset(1))
+        assertEquals(VideoResolutionPreset.RES_1080P, PsStore.resolutionPreset(2))
+        assertEquals(VideoResolutionPreset.RES_540P, PsStore.resolutionPreset(3))
+        assertEquals(VideoResolutionPreset.RES_360P, PsStore.resolutionPreset(4))
+        assertEquals(VideoResolutionPreset.RES_720P, PsStore.resolutionPreset(99))
     }
 
 }
