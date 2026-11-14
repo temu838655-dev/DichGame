@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Remote Play secrets are encrypted with a device-bound Android Keystore key. -->
+    <exclude domain="sharedpref" path="ps.xml" />
+    <!-- Legacy preferences may still contain unencrypted pairing keys before migration. -->
+    <exclude domain="sharedpref" path="ps_remote_play.xml" />
+</full-backup-content>

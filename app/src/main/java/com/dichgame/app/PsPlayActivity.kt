@@ -4,11 +4,16 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.hardware.input.InputManager
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Color
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -61,17 +66,91 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var session: Session? = null
     private var gen = 0
     private var surface: Surface? = null
+    // SurfaceView có thể bị thay khi xoay màn hình; chỉ holder hiện tại được phép điều khiển surface. 
+    private var activeSurfaceHolder: SurfaceHolder? = null
     private var manual = false      // đã dừng hẳn, chờ người dùng bấm kết nối lại
     private var connected = false
+    private var stopping = false
+    private var activityStarted = false
+    private var reconnectPending = false
+    // Mạng chập chờn: thử khôi phục phiên theo backoff, không bật hộp thoại ngay lần rớt đầu.
+    private var reconnectAttempt = 0
+    private var pendingReconnectDelayMs = 0L
+    private var reconnectRunnable: Runnable? = null
 
     private var padState = ControllerState()
     private var phys = ControllerState()
+    // Không trộn trạng thái từ nhiều tay cầm cùng lúc; thiết bị đầu tiên điều khiển phiên.
+    private var activePhysicalDeviceId: Int? = null
+    // Giữ riêng trạng thái cò nhấn bằng nút và cò analog để hai nguồn không ghi đè lẫn nhau.
+    private var physicalL2Digital = false
+    private var physicalR2Digital = false
+    private var physicalL2Analog = 0f
+    private var physicalR2Analog = 0f
+    // D-pad có thể đến từ KeyEvent hoặc HAT axis; giữ riêng hai nguồn để không ghi đè nhau.
+    private var physicalDpadKeys = 0u
+    private var physicalDpadHat = 0u
     private var pad: PadView? = null
     private var padOn = true
     private var statusView: TextView? = null
     private var chipView: TextView? = null
     private var transBtn: TextView? = null
     private val ui = Handler(Looper.getMainLooper())
+    private var inputListenerRegistered = false
+    private var networkCallbackRegistered = false
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            // NetworkCallback không đảm bảo chạy trên main thread; mọi thay đổi UI/session phải về main.
+            ui.post {
+                // Chỉ bỏ trạng thái chờ khi chưa có lịch retry. Một callback mạng
+                // khác (ví dụ 4G xuất hiện trong lúc Wi-Fi vẫn hoạt động) không được
+                // hủy backoff đã đặt sau lỗi stream, tránh retry dồn dập.
+                if (reconnectPending && reconnectRunnable == null &&
+                    activityStarted && !manual && session == null && !stopping) {
+                    pendingReconnectDelayMs = 0L
+                    requestConnect()
+                }
+            }
+        }
+
+        override fun onLost(network: Network) {
+            ui.post {
+                // Android có thể báo mất một mạng cũ sau khi Wi-Fi/Ethernet khác đã hoạt động.
+                // Chỉ cảnh báo khi thiết bị thực sự không còn transport mạng dùng được.
+                if (connected && !hasUsableNetwork()) {
+                    setStatus("Mất kết nối mạng · đang chờ mạng trở lại…", true)
+                }
+            }
+        }
+    }
+    private val inputDeviceListener = object : InputManager.InputDeviceListener {
+        override fun onInputDeviceAdded(deviceId: Int) = Unit
+        override fun onInputDeviceChanged(deviceId: Int) {
+            // Android có thể thay đổi cấu hình trục/nút khi tay cầm reconnect.
+            // Reset để không giữ nút/cò cũ trong lúc driver phát lại trạng thái mới.
+            if (activePhysicalDeviceId == deviceId) resetPhysicalControllerState()
+        }
+        override fun onInputDeviceRemoved(deviceId: Int) {
+            // Chỉ reset khi thiết bị đang điều khiển bị rút; không làm mất trạng thái của tay cầm đang dùng khác.
+            if (activePhysicalDeviceId == deviceId) resetPhysicalControllerState()
+        }
+    }
+
+    private fun resetPhysicalControllerState() {
+        activePhysicalDeviceId = null
+        phys = ControllerState()
+        physicalL2Digital = false
+        physicalR2Digital = false
+        physicalL2Analog = 0f
+        physicalR2Analog = 0f
+        physicalDpadKeys = 0u
+        physicalDpadHat = 0u
+        push()
+    }
+
+    private fun updatePhysicalDpad() {
+        phys.buttons = ControllerDpad.combine(phys.buttons, physicalDpadKeys, physicalDpadHat)
+    }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -96,20 +175,66 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     override fun onStart() {
         super.onStart()
-        if (console != null && session == null && !manual) connect()
+        activityStarted = true
+        if (!inputListenerRegistered) {
+            (getSystemService(Context.INPUT_SERVICE) as? InputManager)?.registerInputDeviceListener(inputDeviceListener, ui)
+            inputListenerRegistered = true
+        }
+        if (!networkCallbackRegistered) {
+            runCatching {
+                val request = NetworkRequest.Builder()
+                    .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                    .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
+                    .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+                    .build()
+                (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
+                    .registerNetworkCallback(request, networkCallback)
+                networkCallbackRegistered = true
+            }
+        }
+        if (console != null && !manual) requestConnect()
     }
 
     override fun onStop() {
+        activityStarted = false
+        if (inputListenerRegistered) {
+            (getSystemService(Context.INPUT_SERVICE) as? InputManager)?.unregisterInputDeviceListener(inputDeviceListener)
+            inputListenerRegistered = false
+        }
+        if (networkCallbackRegistered) {
+            runCatching { (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(networkCallback) }
+            networkCallbackRegistered = false
+        }
         super.onStop()
         // Rời màn hình thì dừng phiên: PS5 không cần giữ luồng hình cho một app đang ẩn.
-        phys = ControllerState(); padState = ControllerState(); pad?.releaseAll()
-        if (session != null) { shutdownSession(); if (!isFinishing) manual = false }
+        resetPhysicalControllerState()
+        padState = ControllerState(); pad?.releaseAll()
+        reconnectPending = false
+        reconnectRunnable?.let(ui::removeCallbacks)
+        reconnectRunnable = null
+        pendingReconnectDelayMs = 0L
+        if (session != null) {
+            if (!isFinishing) manual = false
+            shutdownSession()
+        }
     }
 
     override fun onDestroy() {
+        activityStarted = false
+        reconnectPending = false
         shutdownSession()
         ui.removeCallbacksAndMessages(null)
         super.onDestroy()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus) {
+            // Dialog, màn hình hệ thống hoặc app khác có thể lấy focus mà không
+            // gửi đủ ACTION_UP cho các ngón đang giữ trên tay cầm ảo.
+            resetPhysicalControllerState()
+            pad?.releaseAll()
+        }
     }
 
     override fun onConfigurationChanged(n: Configuration) {
@@ -253,42 +378,119 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     // ---------------- Kết nối ----------------
 
+    private fun hasUsableNetwork(): Boolean {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+        // Không chỉ kiểm tra activeNetwork: Android có thể ưu tiên 4G/5G làm mạng mặc định
+        // khi Wi-Fi không có Internet, dù Wi-Fi nội bộ vẫn kết nối trực tiếp tới PS5/PS4.
+        // Remote Play trong LAN không cần Wi-Fi phải có Internet.
+        return cm.allNetworks.any { network ->
+            val caps = cm.getNetworkCapabilities(network) ?: return@any false
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+        }
+    }
+
+    private fun requestConnect() {
+        if (console == null || manual || isFinishing || isDestroyed) return
+        if (!hasUsableNetwork()) {
+            reconnectPending = true
+            setStatus("Đang chờ Wi-Fi hoặc mạng di động…", true)
+            return
+        }
+        if (stopping) {
+            reconnectPending = true
+            return
+        }
+        reconnectPending = false
+        connect()
+    }
+
     private fun connect() {
         val c = console ?: return
+        if (stopping) {
+            reconnectPending = true
+            return
+        }
         if (session != null) return
         val g = ++gen
         manual = false
         connected = false
         refreshStatus()
+        var candidate: Session? = null
         try {
             val info = PsStore.connectInfo(this, c, player)
             val s = Session(info, null, false)
+            candidate = s
             s.eventCallback = { ev -> runOnUiThread { if (g == gen && !isFinishing && !isDestroyed) onEvent(ev) } }
             val r = s.start()
             if (!r.isSuccess) {
+                // start() thất bại vẫn phải dừng native session trước khi giải phóng,
+                // giống cùng thứ tự stop -> dispose dùng cho phiên đang chạy.
+                try { s.stop() } catch (_: Throwable) {}
                 try { s.dispose() } catch (_: Throwable) {}
-                ended("Không khởi động được phiên Remote Play: $r", true)
+                candidate = null
+                val message = "Không khởi động được phiên Remote Play: $r"
+                if (activityStarted && !isFinishing && !isDestroyed) retryAfterNetworkDrop(message)
+                else ended(message, true)
                 return
             }
             session = s
+            candidate = null
             surface?.let { s.setSurface(it) }
             push()
         } catch (e: Throwable) {
-            ended("Lỗi mở Remote Play: ${e.message ?: e.javaClass.simpleName}", true)
+            // start() có thể ném lỗi trước khi Session được đưa vào biến session; giải phóng ứng viên để tránh rò tài nguyên native.
+            candidate?.let { try { it.stop() } catch (_: Throwable) {}; try { it.dispose() } catch (_: Throwable) {} }
+            val message = "Lỗi mở Remote Play: ${e.message ?: e.javaClass.simpleName}"
+            if (activityStarted && !isFinishing && !isDestroyed) retryAfterNetworkDrop(message)
+            else ended(message, true)
         }
     }
 
     private fun onEvent(ev: Event) {
         when (ev) {
-            is ConnectedEvent -> { connected = true; setStatus("", false); push() }
+            is ConnectedEvent -> {
+                connected = true
+                reconnectAttempt = 0
+                reconnectPending = false
+                reconnectRunnable?.let(ui::removeCallbacks)
+                reconnectRunnable = null
+                setStatus("", false)
+                push()
+            }
             is LoginPinRequestEvent -> askPin(ev.pinIncorrect)
             is QuitEvent -> {
-                shutdownSession()
                 val why = ev.reason.toString() + (ev.reasonString?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: "")
-                ended(if (ev.reason.isError) "Mất kết nối: $why" else "Phiên đã kết thúc: $why", ev.reason.isError)
+                val message = if (ev.reason.isError) "Mất kết nối: $why" else "Phiên đã kết thúc: $why"
+                if (ev.reason.isError && activityStarted && !isFinishing && !isDestroyed) {
+                    retryAfterNetworkDrop(message)
+                } else {
+                    shutdownSession()
+                    ended(message, ev.reason.isError)
+                }
             }
             is RumbleEvent -> {}
         }
+    }
+
+    /**
+     * Transport đã đóng thì không thể giữ nguyên luồng video; tạo lại phiên Remote Play
+     * với backoff tối đa 5 lần để tránh retry storm khi PS tắt hoặc không thể truy cập.
+     */
+    private fun retryAfterNetworkDrop(message: String) {
+        val delay = RemotePlayRetryPolicy.delayForAttempt(reconnectAttempt)
+        if (delay == null) {
+            shutdownSession()
+            ended(message + "\n\nĐã thử tự kết nối lại " + RemotePlayRetryPolicy.maxAttempts + " lần nhưng chưa thành công.", true)
+            return
+        }
+        reconnectAttempt++
+        manual = false
+        reconnectPending = true
+        pendingReconnectDelayMs = delay
+        setStatus("Mạng bị gián đoạn · thử lại lần " + reconnectAttempt + "/" + RemotePlayRetryPolicy.maxAttempts + " sau " + (delay / 1000) + " giây…", true)
+        shutdownSession()
     }
 
     private fun ended(message: String, error: Boolean) {
@@ -307,22 +509,56 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             .show()
     }
 
+    /** Lên lịch kết nối lại sau khi phiên cũ đã dừng, hoặc ngay nếu chưa tạo được phiên. */
+    private fun schedulePendingReconnect() {
+        if (!reconnectPending || !activityStarted || manual || isFinishing || isDestroyed) return
+        val delay = pendingReconnectDelayMs
+        pendingReconnectDelayMs = 0L
+        reconnectRunnable?.let(ui::removeCallbacks)
+        val retry = Runnable {
+            reconnectRunnable = null
+            if (reconnectPending && activityStarted && !manual && !isFinishing && !isDestroyed) {
+                if (hasUsableNetwork()) requestConnect()
+                else setStatus("Đang chờ mạng trở lại…", true)
+            }
+        }
+        reconnectRunnable = retry
+        if (delay > 0L) ui.postDelayed(retry, delay) else ui.post(retry)
+    }
+
     private fun shutdownSession() {
         gen++
         connected = false
-        val s = session ?: return
+        val s = session
+        if (s == null) {
+            // Lỗi xảy ra trước khi Session được gán (ví dụ start() trả lỗi):
+            // vẫn phải chạy lịch retry thay vì mắc kẹt ở trạng thái chờ.
+            schedulePendingReconnect()
+            return
+        }
         session = null
+        stopping = true
         Thread {
             try { s.stop() } catch (_: Throwable) {}
             try { s.dispose() } catch (_: Throwable) {}
+            ui.post {
+                stopping = false
+                // Không tạo phiên mới cho tới khi stop() và dispose() cũ hoàn tất.
+                schedulePendingReconnect()
+            }
         }.start()
     }
 
     private fun reconnect() {
-        shutdownSession()
         manual = false
+        reconnectAttempt = 0
+        reconnectRunnable?.let(ui::removeCallbacks)
+        reconnectRunnable = null
+        pendingReconnectDelayMs = 0L
+        reconnectPending = true
         refreshStatus()
-        ui.postDelayed({ if (!isFinishing && !isDestroyed) connect() }, 1500)
+        if (stopping) return
+        if (session != null) shutdownSession() else requestConnect()
     }
 
     private fun leave() {
@@ -353,17 +589,34 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             .setCancelable(false)
             .setNegativeButton("Hủy") { _, _ -> finish() }
             .setPositiveButton("Gửi") { _, _ ->
-                val v = et.text.toString().trim()
-                if (v.isEmpty() || !v.all { it in '0'..'9' }) { Toast.makeText(this, "Mã chỉ gồm chữ số.", Toast.LENGTH_LONG).show(); askPin(incorrect) }
+                val v = et.text.toString()
+                if (!isValidPairingPin(v)) { Toast.makeText(this, "Mã đăng nhập phải gồm đúng 8 chữ số (0–9).", Toast.LENGTH_LONG).show(); askPin(incorrect) }
                 else session?.setLoginPin(v)
             }.show()
     }
 
     // ---------------- Hình và điều khiển ----------------
 
-    override fun surfaceCreated(holder: SurfaceHolder) { surface = holder.surface; session?.setSurface(holder.surface) }
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) { surface = holder.surface; session?.setSurface(holder.surface) }
-    override fun surfaceDestroyed(holder: SurfaceHolder) { surface = null; session?.setSurface(null) }
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        activeSurfaceHolder = holder
+        surface = holder.surface
+        session?.setSurface(holder.surface)
+    }
+
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        // Callback từ SurfaceView cũ có thể đến trễ sau khi build() thay giao diện lúc xoay màn hình.
+        if (activeSurfaceHolder !== holder) return
+        surface = holder.surface
+        session?.setSurface(holder.surface)
+    }
+
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        // Không để holder cũ tháo surface mới đã được gắn vào phiên Remote Play.
+        if (activeSurfaceHolder !== holder) return
+        activeSurfaceHolder = null
+        surface = null
+        session?.setSurface(null)
+    }
 
     private fun push() {
         try { session?.setControllerState(padState or phys) } catch (_: Throwable) {}
@@ -390,16 +643,37 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         else -> 0u
     }
 
+    private fun updatePhysicalTriggers() {
+        phys.l2State = (maxOf(if (physicalL2Digital) 1f else 0f, physicalL2Analog) * 255f).toInt().coerceIn(0, 255).toUByte()
+        phys.r2State = (maxOf(if (physicalR2Digital) 1f else 0f, physicalR2Analog) * 255f).toInt().coerceIn(0, 255).toUByte()
+    }
+
+    private fun acceptsPhysicalDevice(deviceId: Int): Boolean {
+        val active = activePhysicalDeviceId
+        if (active == null) {
+            activePhysicalDeviceId = deviceId
+            return true
+        }
+        return active == deviceId
+    }
+
     override fun dispatchKeyEvent(e: KeyEvent): Boolean {
-        if (e.keyCode != KeyEvent.KEYCODE_BACK && isPad(e.source)) {
+        if (e.keyCode != KeyEvent.KEYCODE_BACK && isPad(e.source) && acceptsPhysicalDevice(e.deviceId)) {
             val down = e.action == KeyEvent.ACTION_DOWN
             when (e.keyCode) {
-                KeyEvent.KEYCODE_BUTTON_L2 -> { phys.l2State = if (down) UByte.MAX_VALUE else 0u.toUByte(); push(); return true }
-                KeyEvent.KEYCODE_BUTTON_R2 -> { phys.r2State = if (down) UByte.MAX_VALUE else 0u.toUByte(); push(); return true }
+                KeyEvent.KEYCODE_BUTTON_L2 -> { physicalL2Digital = down; updatePhysicalTriggers(); push(); return true }
+                KeyEvent.KEYCODE_BUTTON_R2 -> { physicalR2Digital = down; updatePhysicalTriggers(); push(); return true }
             }
             val m = keyMask(e.keyCode)
             if (m != 0u) {
-                phys.buttons = if (down) phys.buttons or m else phys.buttons and m.inv()
+                val dpadMask = ControllerState.BUTTON_DPAD_LEFT or ControllerState.BUTTON_DPAD_RIGHT or
+                    ControllerState.BUTTON_DPAD_UP or ControllerState.BUTTON_DPAD_DOWN
+                if ((m and dpadMask) != 0u) {
+                    physicalDpadKeys = if (down) physicalDpadKeys or m else physicalDpadKeys and m.inv()
+                    updatePhysicalDpad()
+                } else {
+                    phys.buttons = if (down) phys.buttons or m else phys.buttons and m.inv()
+                }
                 push()
                 return true
             }
@@ -408,24 +682,48 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun dispatchGenericMotionEvent(e: MotionEvent): Boolean {
-        if (isPad(e.source) && e.actionMasked == MotionEvent.ACTION_MOVE) {
-            fun ax(a: Int): Float { val v = e.getAxisValue(a); return if (abs(v) < 0.1f) 0f else v }
-            phys.leftX = (ax(MotionEvent.AXIS_X) * Short.MAX_VALUE).toInt().toShort()
-            phys.leftY = (ax(MotionEvent.AXIS_Y) * Short.MAX_VALUE).toInt().toShort()
-            phys.rightX = (ax(MotionEvent.AXIS_Z) * Short.MAX_VALUE).toInt().toShort()
-            phys.rightY = (ax(MotionEvent.AXIS_RZ) * Short.MAX_VALUE).toInt().toShort()
-            val lt = maxOf(e.getAxisValue(MotionEvent.AXIS_LTRIGGER), e.getAxisValue(MotionEvent.AXIS_BRAKE)).coerceIn(0f, 1f)
-            val rt = maxOf(e.getAxisValue(MotionEvent.AXIS_RTRIGGER), e.getAxisValue(MotionEvent.AXIS_GAS)).coerceIn(0f, 1f)
-            if (lt > 0.02f || phys.l2State != 0u.toUByte()) phys.l2State = (lt * 255f).toInt().toUByte()
-            if (rt > 0.02f || phys.r2State != 0u.toUByte()) phys.r2State = (rt * 255f).toInt().toUByte()
+        if (isPad(e.source) && e.actionMasked == MotionEvent.ACTION_MOVE && acceptsPhysicalDevice(e.deviceId)) {
+            // Dead zone tròn cho mỗi cần giúp hướng chéo không bị tăng lực quá mức.
+            fun flat(a: Int): Float = e.device?.getMotionRange(a, e.source)?.flat ?: 0.1f
+            fun hasAxis(a: Int): Boolean = e.device?.getMotionRange(a, e.source) != null
+            fun preferredAxis(primary: Int, fallback: Int): Int =
+                if (hasAxis(primary)) primary else fallback
+            val left = AnalogAxis.normalizePair(
+                e.getAxisValue(MotionEvent.AXIS_X), e.getAxisValue(MotionEvent.AXIS_Y),
+                flat(MotionEvent.AXIS_X), flat(MotionEvent.AXIS_Y)
+            )
+            phys.leftX = (left.first * Short.MAX_VALUE).toInt().toShort()
+            phys.leftY = (left.second * Short.MAX_VALUE).toInt().toShort()
+            // Android có tay cầm xuất cần phải qua Z/RZ, có loại lại dùng RX/RY.
+            val rightX = preferredAxis(MotionEvent.AXIS_Z, MotionEvent.AXIS_RX)
+            val rightY = preferredAxis(MotionEvent.AXIS_RZ, MotionEvent.AXIS_RY)
+            val right = AnalogAxis.normalizePair(
+                e.getAxisValue(rightX), e.getAxisValue(rightY),
+                flat(rightX), flat(rightY)
+            )
+            phys.rightX = (right.first * Short.MAX_VALUE).toInt().toShort()
+            phys.rightY = (right.second * Short.MAX_VALUE).toInt().toShort()
+            fun trigger(a: Int): Float {
+                val range = e.device?.getMotionRange(a, e.source)
+                return TriggerAxis.normalize(
+                    e.getAxisValue(a),
+                    range?.flat ?: 0f,
+                    range?.min ?: 0f,
+                    range?.max ?: 1f
+                )
+            }
+            physicalL2Analog = maxOf(trigger(MotionEvent.AXIS_LTRIGGER), trigger(MotionEvent.AXIS_BRAKE))
+            physicalR2Analog = maxOf(trigger(MotionEvent.AXIS_RTRIGGER), trigger(MotionEvent.AXIS_GAS))
+            updatePhysicalTriggers()
             val hx = e.getAxisValue(MotionEvent.AXIS_HAT_X)
             val hy = e.getAxisValue(MotionEvent.AXIS_HAT_Y)
-            var b = phys.buttons and (ControllerState.BUTTON_DPAD_LEFT or ControllerState.BUTTON_DPAD_RIGHT or ControllerState.BUTTON_DPAD_UP or ControllerState.BUTTON_DPAD_DOWN).inv()
-            if (hx < -0.5f) b = b or ControllerState.BUTTON_DPAD_LEFT
-            if (hx > 0.5f) b = b or ControllerState.BUTTON_DPAD_RIGHT
-            if (hy < -0.5f) b = b or ControllerState.BUTTON_DPAD_UP
-            if (hy > 0.5f) b = b or ControllerState.BUTTON_DPAD_DOWN
-            phys.buttons = b
+            var hat = 0u
+            if (hx < -0.5f) hat = hat or ControllerState.BUTTON_DPAD_LEFT
+            if (hx > 0.5f) hat = hat or ControllerState.BUTTON_DPAD_RIGHT
+            if (hy < -0.5f) hat = hat or ControllerState.BUTTON_DPAD_UP
+            if (hy > 0.5f) hat = hat or ControllerState.BUTTON_DPAD_DOWN
+            physicalDpadHat = hat
+            updatePhysicalDpad()
             push()
             return true
         }

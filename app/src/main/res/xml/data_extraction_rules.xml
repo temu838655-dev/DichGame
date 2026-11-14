@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Keystore keys are device-bound and cannot decrypt a restored preferences file. -->
+        <exclude domain="sharedpref" path="ps.xml" />
+        <exclude domain="sharedpref" path="ps_remote_play.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <!-- Do not transfer credentials without their original Keystore key. -->
+        <exclude domain="sharedpref" path="ps.xml" />
+        <exclude domain="sharedpref" path="ps_remote_play.xml" />
+    </device-transfer>
+</data-extraction-rules>

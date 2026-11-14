@@ -31,6 +31,8 @@ class PsConnectActivity : Activity() {
     private lateinit var p: Prefs
     private var c: PsConsole? = null
     private var discovery: DiscoveryService? = null
+    // Mỗi lượt dò có một thế hệ riêng để loại callback đến muộn từ dịch vụ cũ.
+    private var discoveryGeneration = 0
     private var hostState: DiscoveryHost.State? = null
     private var hostSeen = false
     private var statusView: TextView? = null
@@ -61,11 +63,14 @@ class PsConnectActivity : Activity() {
 
     private fun startDiscovery() {
         if (discovery != null || c == null || !PsNative.available) return
+        val generation = ++discoveryGeneration
         hostState = null
         hostSeen = false
         try {
             discovery = DiscoveryService(DiscoveryServiceOptions(16UL, 3UL, 500UL, InetSocketAddress("255.255.255.255", 987))) { hosts ->
                 runOnUiThread {
+                    // Không nhận callback của lượt dò trước sau pause/resume hoặc đổi địa chỉ máy.
+                    if (isFinishing || isDestroyed || generation != discoveryGeneration || discovery == null) return@runOnUiThread
                     val h = hosts.firstOrNull { it.hostAddr == c?.host }
                     hostSeen = h != null
                     hostState = h?.state
@@ -76,6 +81,8 @@ class PsConnectActivity : Activity() {
     }
 
     private fun stopDiscovery() {
+        // Vô hiệu hóa callback trước khi dispose bất đồng bộ dịch vụ hiện tại.
+        discoveryGeneration++
         val d = discovery ?: return
         discovery = null
         Thread { try { d.dispose() } catch (_: Throwable) {} }.start()
@@ -149,11 +156,11 @@ class PsConnectActivity : Activity() {
             pc.addView(top)
             val labels = { con.players.map { it.label } }
             pc.addView(Ui.dropRow(this@PsConnectActivity, "Khi dịch (chơi trên TV)", { con.players.getOrNull(con.tvPlayer)?.label ?: "-" }, labels) {
-                con.tvPlayer = it; PsStore.save(this@PsConnectActivity, con)
+                con.tvPlayer = it; saveConsoleOrRestore(con)
             })
             pc.addView(Ui.divider(this@PsConnectActivity), Ui.lp(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 1))
             pc.addView(Ui.dropRow(this@PsConnectActivity, "Khi chơi trên điện thoại", { con.players.getOrNull(con.phonePlayer)?.label ?: "-" }, labels) {
-                con.phonePlayer = it; PsStore.save(this@PsConnectActivity, con)
+                con.phonePlayer = it; saveConsoleOrRestore(con)
             })
             pc.addView(Ui.tv(this@PsConnectActivity,
                 "Nên chọn người chơi phụ khi dịch, để tay cầm của bạn trên TV không bị ngắt. Muốn điều khiển nhân vật chính của game 1 người từ điện thoại thì chọn người chơi chính (người đang chơi trên TV sẽ bị ngắt).",
@@ -183,9 +190,13 @@ class PsConnectActivity : Activity() {
 
     private fun empty(root: LinearLayout) {
         val k = Ui.card(this)
-        k.addView(Ui.tv(this, "Chưa ghép nối máy chơi game", 18f, Ui.TEXT, true))
+        val unreadable = PsStore.hasStoredConsole(this)
         k.addView(Ui.tv(this,
-            "Ghép nối một lần để chơi và dịch ngay trong app, không cần mở app Remote Play khác. Bạn cần máy PS5 hoặc PS4 cùng mạng Wi-Fi, và nên có một người chơi phụ trên máy.",
+            if (unreadable) "Không đọc được dữ liệu ghép nối đã lưu" else "Chưa ghép nối máy chơi game",
+            18f, if (unreadable) Ui.DANGER else Ui.TEXT, true))
+        k.addView(Ui.tv(this,
+            if (unreadable) "App phát hiện vẫn còn dữ liệu ghép nối nhưng không giải mã được bằng khóa bảo mật trên thiết bị này. Dữ liệu cũ chưa bị xóa hoặc ghi đè. Hãy mở lại trên đúng điện thoại đã ghép nối; nếu đã đổi máy/cài lại app, bạn có thể cần ghép nối lại sau khi chủ động xử lý dữ liệu cũ."
+            else "Ghép nối một lần để chơi và dịch ngay trong app, không cần mở app Remote Play khác. Bạn cần máy PS5 hoặc PS4 cùng mạng Wi-Fi, và nên có một người chơi phụ trên máy.",
             13.5f, Ui.SUB), Ui.lpm(this, 6, 12))
         k.addView(Ui.button(this, "Ghép nối PS5 / PS4", true) { startActivity(Intent(this, PsPairActivity::class.java)) })
         root.put(k, 0, 0)
@@ -204,11 +215,21 @@ class PsConnectActivity : Activity() {
             .setPositiveButton("Lưu") { _, _ ->
                 val h = et.text.toString().trim()
                 if (Regex("^[0-9A-Za-z.:-]{3,80}$").matches(h)) {
-                    con.host = h; PsStore.save(this, con)
-                    stopDiscovery(); render(); startDiscovery()
+                    con.host = h
+                    if (saveConsoleOrRestore(con)) { stopDiscovery(); render(); startDiscovery() } else render()
                 } else toast("Địa chỉ chưa đúng.")
             }
             .setNegativeButton("Hủy", null).show()
+    }
+
+    /** Khôi phục cấu hình đã lưu nếu Keystore hoặc ghi đĩa gặp lỗi. */
+    private fun saveConsoleOrRestore(value: PsConsole?): Boolean {
+        val saved = runCatching { PsStore.save(this, value) }.getOrDefault(false)
+        if (!saved) {
+            c = runCatching { PsStore.load(this) }.getOrNull()
+            toast("Không thể lưu thay đổi ghép nối an toàn. Đã tải lại cấu hình đã lưu.")
+        } else c = value
+        return saved
     }
 
     private fun manage() {
@@ -221,11 +242,9 @@ class PsConnectActivity : Activity() {
                 .setMessage("${opts[i]}? Muốn dùng lại phải ghép nối lại. Nên xóa cả ghép nối cũ trong Cài đặt › Hệ thống › Chơi từ xa trên máy chơi game.")
                 .setPositiveButton("Xóa") { _, _ ->
                     if (i < con.players.size) {
-                        con.players.removeAt(i)
-                        con.tvPlayer = con.tvPlayer.coerceIn(0, (con.players.size - 1).coerceAtLeast(0))
-                        con.phonePlayer = con.phonePlayer.coerceIn(0, (con.players.size - 1).coerceAtLeast(0))
-                        PsStore.save(this, if (con.players.isEmpty()) null else con)
-                    } else PsStore.save(this, null)
+                        PsStore.removePlayer(con, i)
+                        saveConsoleOrRestore(if (con.players.isEmpty()) null else con)
+                    } else saveConsoleOrRestore(null)
                     render()
                 }
                 .setNegativeButton("Hủy", null).show()
@@ -320,10 +339,16 @@ class PsConnectActivity : Activity() {
 
 /** Bảng "Chất lượng hình": độ phân giải và tốc độ mạng tối đa cho luồng Remote Play. */
 object PsQuality {
-    private val RATES = listOf(0, 5, 10, 15, 20, 30)
+    // Thêm mức 2–3 Mbps để ưu tiên giữ hình khi đường truyền rất yếu.
+    private val RATES = listOf(0, 2, 3, 5, 8, 10, 15, 20, 30)
 
     fun summary(a: Activity): String {
-        val r = when (PsStore.res(a)) { 1 -> "720p"; 2 -> "1080p"; else -> "720p" }
+        val r = when (PsStore.res(a)) {
+            2 -> "1080p"
+            3 -> "540p"
+            4 -> "360p"
+            else -> "720p"
+        }
         val m = PsStore.rate(a)
         return r + " · " + if (m == 0) "tự động" else "$m Mbps"
     }
@@ -339,16 +364,20 @@ object PsQuality {
             val desc1 = Ui.tv(a, "", 12.5f, Ui.SUB)
             fun drawRes() {
                 h1.removeAllViews()
-                h1.addView(Ui.segmented(a, listOf("Tự động", "720p", "1080p"), PsStore.res(a)) { PsStore.setRes(a, it); drawRes() })
+                // Thứ tự giữ nguyên ba lựa chọn cũ; 540p/360p dùng các chỉ số mới để không đổi cài đặt đã lưu.
+                h1.addView(Ui.segmented(a, listOf("Tự động · 720p", "720p", "1080p", "540p", "360p"), PsStore.res(a)) { PsStore.setRes(a, it); drawRes() })
                 desc1.text = when (PsStore.res(a)) {
-                    2 -> "1080p: nét hơn, tốn mạng và nóng máy hơn. Hợp với máy mạnh, mạng 5 GHz tốt."
-                    1 -> "720p: mượt, mát máy, hợp với hầu hết điện thoại."
-                    else -> "720p: mượt, mát máy, hợp với hầu hết điện thoại. Tự động dùng 720p."
+                    2 -> "1080p: hình nét nhất trong các mức hiện có, cần mạng ổn định và thiết bị giải mã tốt."
+                    3 -> "540p: giảm đáng kể lượng dữ liệu hình, phù hợp khi mạng yếu hoặc độ trễ dao động."
+                    4 -> "360p: ưu tiên khả năng duy trì luồng trên mạng rất yếu; hình sẽ ít chi tiết hơn."
+                    1 -> "720p: cân bằng độ nét và tải mạng, phù hợp với đa số thiết bị."
+                    else -> "Tự động hiện dùng profile 720p mặc định; chưa tự đổi độ phân giải theo tốc độ mạng."
                 }
             }
             drawRes()
             c1.addView(h1, Ui.lpm(a, 8, 0))
             c1.addView(desc1, Ui.lpm(a, 8, 0))
+            c1.addView(Ui.tv(a, "Giới hạn engine Remote Play hiện tại: stream gốc tối đa 1080p. Màn hình 4K chỉ có thể phóng to hình, không tạo video 4K thật.", 12f, Ui.SUB), Ui.lpm(a, 8, 4))
             addView(c1, Ui.lpm(a, 14, 0))
 
             val c2 = Ui.card(a)
@@ -359,8 +388,9 @@ object PsQuality {
                 h2.removeAllViews()
                 val sel = RATES.indexOf(PsStore.rate(a)).coerceAtLeast(0)
                 h2.addView(Ui.segmented(a, RATES.map { if (it == 0) "Tự động" else "$it" }, sel) { PsStore.setRate(a, RATES[it]); drawRate() })
-                desc2.text = if (RATES[sel] == 0) "Tự động: 10 Mbps cho 720p, 15 Mbps cho 1080p. Nếu hình giật, thử hạ xuống 5 hoặc 10."
-                else "Tối đa ${RATES[sel]} Mbps. Mạng yếu thì chọn thấp hơn để đỡ giật."
+                desc2.text = if (RATES[sel] == 0) "Dùng bitrate mặc định của engine. Nếu hình giật hoặc hay đứng, thử 2–5 Mbps để giảm tải đường truyền."
+                else if (RATES[sel] <= 3) "Mức rất thấp ${RATES[sel]} Mbps: ưu tiên giảm tải đường truyền, hình có thể mềm và giảm chi tiết."
+                else "Tối đa ${RATES[sel]} Mbps. Mạng yếu thì chọn thấp hơn để giảm nghẽn và rớt khung hình."
             }
             drawRate()
             c2.addView(h2, Ui.lpm(a, 8, 0))
