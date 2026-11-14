@@ -34,16 +34,16 @@ Trong lúc chạy, thông báo có 3 nút: **Chỉnh/Khóa khung**, **Dịch men
 1. Tạo repo mới trên GitHub, đẩy **toàn bộ** thư mục này lên (nhớ cả thư mục ẩn `.github` và thư mục `keystore`).
    Dùng dòng lệnh: `git init && git add -A && git commit -m "Dịch game" && git branch -M main && git remote add origin <địa chỉ repo> && git push -u origin main`
 2. Vào tab **Actions** › workflow **Build APK**. Nó chạy tự động mỗi lần đẩy code, hoặc bấm **Run workflow**.
-3. Khi xong có các file APK:
+3. Khi xong có 2 file APK:
    - mục **Artifacts** của lần chạy (`DichGame-APKs`), và
-   - mục **Releases** của repo (khi đẩy lên nhánh `main`/`master`/`remote-play` hoặc gắn tag `v*`), tải thẳng được bằng điện thoại.
+   - mục **Releases** của repo (khi đẩy lên nhánh `main`/`master` hoặc gắn tag `v*`), tải thẳng được bằng điện thoại.
 
 | File | Dùng cho |
 | --- | --- |
-| `DichGame-phone-arm64-release.apk` | Cài lên điện thoại (nhẹ hơn nhiều, hợp với hầu hết điện thoại đời mới dùng chip arm64) |
-| `DichGame-phone-release.apk` | Cài lên điện thoại, chạy được mọi loại chip (nặng hơn). Nút "Kiểm tra bản mới" trong app tự chọn bản arm64 nếu máy dùng được |
-| `DichGame-TV-release.apk` | Cài lên Android TV |
-| `*-debug.apk` | Bản gỡ lỗi, cùng khóa ký nên cài đè lên nhau được |
+| `DichGame.apk` | Cài lên điện thoại Android (chip arm64, tức hầu hết điện thoại từ Android 8 trở lên). Đây là bản chính, có cả Remote Play trong app |
+| `DichGame-TV.apk` | Cài lên Android TV |
+
+Mỗi lần phát hành chỉ có hai file trên. Workflow tự xóa các bản `build-N` cũ, chỉ giữ 2 bản mới nhất. Cần bản debug hay bản cho chip 32-bit thì build tay bằng `gradle :app:assembleDebug` hoặc `:app:assembleRelease` (file nằm trong `app/build/outputs/apk/`).
 
 Phát hành bản có số phiên bản: `git tag v2.0 && git push origin v2.0`.
 Mỗi bản dựng trên nhánh `main` có số thứ tự (`build-N`), số này được ghi vào app (versionCode = 20 + N) để app biết có bản mới hơn khi bấm **Kiểm tra bản mới**. Cài đè lên bản cũ được vì cùng khóa ký.
@@ -56,7 +56,7 @@ Lưu ý: đổi khóa thì phải gỡ app cũ rồi cài lại.
 
 ## Ghép TV
 
-1. Cài `DichGame-TV-release.apk` lên TV (app **Downloader** trên TV, nhập đường dẫn tải file trong Releases; hoặc USB).
+1. Cài `DichGame-TV.apk` lên TV (app **Downloader** trên TV, nhập đường dẫn tải file trong Releases; hoặc USB).
 2. Mở **Dịch game TV**, cấp quyền "Hiển thị trên ứng dụng khác".
    Nếu TV không có menu này: `adb shell appops set com.dichgame.tv SYSTEM_ALERT_WINDOW allow`.
 3. TV hiện địa chỉ IP và mã 8 số (đổi mỗi 60 giây).

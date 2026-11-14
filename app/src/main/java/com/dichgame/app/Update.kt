@@ -26,19 +26,24 @@ object Update {
                 val n = re.find(r.optString("tag_name"))?.groupValues?.get(1)?.toIntOrNull() ?: continue
                 val cur = best
                 if (cur != null && n <= cur.no) continue
-                var apk: String? = null
-                var apkArm: String? = null
+                var apk: String? = null      // DichGame.apk: bản chính (arm64)
+                var oldUni: String? = null   // tên cũ của các bản dựng trước đây
+                var oldArm: String? = null
                 val assets = r.optJSONArray("assets")
                 if (assets != null) {
                     for (k in 0 until assets.length()) {
                         val a = assets.getJSONObject(k)
-                        if (a.optString("name") == "DichGame-phone-release.apk") apk = a.optString("browser_download_url")
-                        if (a.optString("name") == "DichGame-phone-arm64-release.apk") apkArm = a.optString("browser_download_url")
+                        when (a.optString("name")) {
+                            "DichGame.apk" -> apk = a.optString("browser_download_url")
+                            "DichGame-phone-release.apk" -> oldUni = a.optString("browser_download_url")
+                            "DichGame-phone-arm64-release.apk" -> oldArm = a.optString("browser_download_url")
+                        }
                     }
                 }
-                // máy arm64 (hầu hết điện thoại hiện nay) tải bản riêng cho arm64, nhẹ hơn nhiều
+                // Bản chính chỉ dành cho chip arm64 (hầu hết điện thoại hiện nay). Máy khác thì mở trang Releases để tự chọn.
                 val arm64 = android.os.Build.SUPPORTED_ABIS.firstOrNull() == "arm64-v8a"
-                best = Info(n, r.optString("html_url"), if (arm64 && apkArm != null) apkArm else apk)
+                val pick = if (apk != null) (if (arm64) apk else null) else if (arm64 && oldArm != null) oldArm else oldUni
+                best = Info(n, r.optString("html_url"), pick)
             }
             return best
         } finally {

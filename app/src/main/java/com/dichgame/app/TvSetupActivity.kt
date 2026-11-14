@@ -88,7 +88,7 @@ class TvSetupActivity : Activity() {
     private fun stepsCard(): View {
         val c = Ui.card(this)
         c.addView(Ui.section(this, "📋", "Cách dùng"))
-        c.addView(step(1, "Trên TV, mở app Downloader (hoặc cài bằng USB), tải file tv-release.apk trong mục Releases của dự án này trên GitHub để cài app Dịch game TV."))
+        c.addView(step(1, "Trên TV, mở app Downloader (hoặc cài bằng USB), tải file DichGame-TV.apk trong mục Releases của dự án này trên GitHub để cài app Dịch game TV."))
         val urlRow = Ui.hbox(this)
         val url = Ui.field(this, "Dán đường dẫn tải APK TV để lưu lại", p.sp.getString("tvapkurl", "").orEmpty())
         urlRow.addView(url, Ui.lp(0, WRAP_CONTENT, 1f))

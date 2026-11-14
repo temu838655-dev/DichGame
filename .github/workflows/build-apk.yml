@@ -1,8 +1,8 @@
 name: Build APK
 
 # Chạy mỗi khi đẩy code lên, mở Pull Request, hoặc bấm tay ở tab Actions.
-# Tạo ra 4 file APK: điện thoại (release + debug) và TV (release + debug).
-# Đẩy lên nhánh main/master/remote-play hoặc gắn tag v* thì tự tạo bản phát hành (Releases) kèm APK.
+# Mỗi lần phát hành chỉ có 2 file APK: DichGame.apk (điện thoại) và DichGame-TV.apk (TV).
+# Đẩy lên nhánh main/master hoặc gắn tag v* thì tự tạo bản phát hành (Releases) và dọn bớt bản dựng cũ.
 on:
   push:
     branches: ["**", "!ci-shots"]
@@ -69,17 +69,14 @@ jobs:
           fi
 
       - name: Build điện thoại và TV
-        run: gradle :app:assembleDebug :app:assembleRelease :tv:assembleDebug :tv:assembleRelease -PbuildNo=${{ github.run_number }} --no-daemon --stacktrace
+        run: gradle :app:assembleRelease :tv:assembleRelease -PbuildNo=${{ github.run_number }} --no-daemon --stacktrace
 
       - name: Gom file APK
         run: |
           mkdir -p dist
-          ls -la app/build/outputs/apk/release app/build/outputs/apk/debug
-          cp app/build/outputs/apk/release/app-universal-release.apk dist/DichGame-phone-release.apk
-          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk dist/DichGame-phone-arm64-release.apk
-          cp app/build/outputs/apk/debug/app-universal-debug.apk dist/DichGame-phone-debug.apk
-          cp tv/build/outputs/apk/release/tv-release.apk dist/DichGame-TV-release.apk
-          cp tv/build/outputs/apk/debug/tv-debug.apk dist/DichGame-TV-debug.apk
+          ls -la app/build/outputs/apk/release
+          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk dist/DichGame.apk
+          cp tv/build/outputs/apk/release/tv-release.apk dist/DichGame-TV.apk
           ls -la dist
           {
             echo "### File APK"
@@ -96,12 +93,25 @@ jobs:
           if-no-files-found: error
 
       - name: Tạo bản phát hành (Releases)
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/remote-play' || startsWith(github.ref, 'refs/tags/v'))
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('build-{0}', github.run_number) }}"
           name: "${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('Bản dựng {0}', github.run_number) }}"
           target_commitish: "${{ github.sha }}"
-          prerelease: "${{ !startsWith(github.ref, 'refs/tags/') }}"
+          prerelease: false
+          make_latest: true
           generate_release_notes: true
           files: dist/*.apk
+
+      # Chỉ giữ 2 bản dựng mới nhất (bản mới và bản trước đó để quay lại khi cần), xóa các bản build-N cũ hơn.
+      - name: Dọn bản dựng cũ
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 300 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | test("^build-[0-9]+$"))] | sort_by(.createdAt) | reverse | .[2:] | .[].tagName' |
+          while read -r t; do
+            [ -n "$t" ] && gh release delete "$t" --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
+          done
