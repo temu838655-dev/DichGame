@@ -10,6 +10,9 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -89,6 +92,22 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var transBtn: TextView? = null
     private val ui = Handler(Looper.getMainLooper())
     private var inputListenerRegistered = false
+    private var networkCallbackRegistered = false
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            // Khi Wi-Fi/di động trở lại, đánh thức hàng đợi khôi phục ngay thay vì chờ hết backoff.
+            if (reconnectPending && activityStarted && !manual && session == null && !stopping) {
+                reconnectRunnable?.let(ui::removeCallbacks)
+                reconnectRunnable = null
+                pendingReconnectDelayMs = 0L
+                requestConnect()
+            }
+        }
+
+        override fun onLost(network: Network) {
+            if (connected) setStatus("Mạng vừa thay đổi · đang chờ kết nối ổn định…", true)
+        }
+    }
     private val inputDeviceListener = object : InputManager.InputDeviceListener {
         override fun onInputDeviceAdded(deviceId: Int) = Unit
         override fun onInputDeviceChanged(deviceId: Int) = Unit
@@ -135,6 +154,13 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             (getSystemService(Context.INPUT_SERVICE) as? InputManager)?.registerInputDeviceListener(inputDeviceListener, ui)
             inputListenerRegistered = true
         }
+        if (!networkCallbackRegistered) {
+            runCatching {
+                (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
+                    .registerDefaultNetworkCallback(networkCallback)
+                networkCallbackRegistered = true
+            }
+        }
         if (console != null && !manual) requestConnect()
     }
 
@@ -143,6 +169,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         if (inputListenerRegistered) {
             (getSystemService(Context.INPUT_SERVICE) as? InputManager)?.unregisterInputDeviceListener(inputDeviceListener)
             inputListenerRegistered = false
+        }
+        if (networkCallbackRegistered) {
+            runCatching { (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(networkCallback) }
+            networkCallbackRegistered = false
         }
         super.onStop()
         // Rời màn hình thì dừng phiên: PS5 không cần giữ luồng hình cho một app đang ẩn.
@@ -312,8 +342,22 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     // ---------------- Kết nối ----------------
 
+    private fun hasUsableNetwork(): Boolean {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+    }
+
     private fun requestConnect() {
         if (console == null || manual || isFinishing || isDestroyed) return
+        if (!hasUsableNetwork()) {
+            reconnectPending = true
+            setStatus("Đang chờ Wi-Fi hoặc mạng di động…", true)
+            return
+        }
         if (stopping) {
             reconnectPending = true
             return
@@ -430,7 +474,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     val retry = Runnable {
                         reconnectRunnable = null
                         if (reconnectPending && activityStarted && !manual && !isFinishing && !isDestroyed) {
-                            requestConnect()
+                            if (hasUsableNetwork()) requestConnect()
+                            else setStatus("Đang chờ mạng trở lại…", true)
                         }
                     }
                     reconnectRunnable = retry
