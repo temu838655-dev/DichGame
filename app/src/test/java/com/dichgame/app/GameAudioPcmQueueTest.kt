@@ -39,6 +39,18 @@ class GameAudioPcmQueueTest {
         assertNull(queue.poll())
     }
 
+    @Test fun closeClearsQueuedAudioAndCanBeCalledMoreThanOnce() {
+        val queue = GameAudioPcmQueue(2)
+        assertTrue(queue.offer(shortArrayOf(1, 2), 48_000, 1))
+        assertTrue(queue.offer(shortArrayOf(3, 4), 48_000, 1))
+
+        queue.close()
+        queue.close()
+
+        assertNull(queue.poll())
+        assertFalse(queue.offer(shortArrayOf(5, 6), 48_000, 1))
+    }
+
     @Test fun clearRemovesStaleAudio() {
         val queue = GameAudioPcmQueue(2)
         assertTrue(queue.offer(shortArrayOf(1, 2), 48_000, 1))
