@@ -79,10 +79,16 @@ class WebTranslateActivity : Activity() {
 (function(){
   if (window.__dg) return; window.__dg = true;
   var last = '';
-  function send(t){
+  var activeSource = { track: false, dom: false };
+  function send(t, source){
     t = (t || '').replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').trim();
-    // Chỉ gửi khi nội dung đổi; khi caption biến mất thì mở khóa để câu giống hệt ở cảnh sau được gửi lại.
-    if (!t) { last = ''; return; }
+    // Track và DOM có thể cùng tồn tại: một nguồn trống không được mở khóa khi nguồn kia vẫn có phụ đề.
+    if (!t) {
+      if (source) activeSource[source] = false;
+      if (!activeSource.track && !activeSource.dom) last = '';
+      return;
+    }
+    if (source) activeSource[source] = true;
     if (t.length < 400 && t !== last) {
       last = t;
       DG.sub(t);
@@ -101,7 +107,7 @@ class WebTranslateActivity : Activity() {
           t.addEventListener('cuechange', function(){
             var a = this.activeCues, s = '';
             if (a) for (var k = 0; k < a.length; k++) s += (a[k].text || '') + ' ';
-            send(s);
+            send(s, 'track');
           });
         }
       }
@@ -121,11 +127,11 @@ class WebTranslateActivity : Activity() {
     }
     if (current) {
       domHadText = true;
-      send(current);
+      send(current, 'dom');
     } else if (domHadText) {
       // DOM caption đã biến mất: mở khóa để câu giống hệt ở cảnh sau vẫn được gửi.
       domHadText = false;
-      send('');
+      send('', 'dom');
     }
   }
   setInterval(function(){ try { tracks(); dom(); } catch (e) {} }, 500);
