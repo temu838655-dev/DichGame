@@ -377,29 +377,60 @@ class CaptureService : Service() {
     }
 
     private fun regionGrab(box: FrameLayout) {
-        ensureSize()
-        val img = reader?.acquireLatestImage()
-        if (img == null || region == null) { img?.close(); busy = false; overlay?.visibility = View.VISIBLE; return }
+        val img = try {
+            ensureSize()
+            reader?.acquireLatestImage()
+        } catch (_: Exception) {
+            reportFrameError()
+            busy = false
+            overlay?.visibility = View.VISIBLE
+            return
+        }
+        if (img == null || region == null) {
+            img?.close()
+            busy = false
+            overlay?.visibility = View.VISIBLE
+            return
+        }
         val crop = try {
             val p = img.planes[0]
             val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
-            val loc = IntArray(2)
-            box.getLocationOnScreen(loc)
-            val x = loc[0].coerceIn(0, img.width - 1)
-            val y = loc[1].coerceIn(0, img.height - 1)
-            cropAndRecycle(full, x, y, box.width.coerceIn(1, img.width - x), box.height.coerceIn(1, img.height - y))
-        } finally { img.close() }
-        ocr!!.read(crop, { m -> ocrFail(m) }) { r ->
-                val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
-                if (text.length < minLen) { show("Không thấy chữ trong khung."); busy = false; return@read }
-                translateText(text) { vi ->
-                    show(vi)
-                    sendTv("region", vi, speak && tvSpeakOn() && !tvVoiceOn())
-                    if (speak && tvVoiceOn()) tvVoice(vi)
-                    busy = false
-                }
+            try {
+                full.copyPixelsFromBuffer(p.buffer)
+                val loc = IntArray(2)
+                box.getLocationOnScreen(loc)
+                val x = loc[0].coerceIn(0, img.width - 1)
+                val y = loc[1].coerceIn(0, img.height - 1)
+                cropAndRecycle(full, x, y, box.width.coerceIn(1, img.width - x), box.height.coerceIn(1, img.height - y))
+            } finally {
+                // Kể cả copy pixel hoặc lấy tọa độ lỗi, không giữ bitmap toàn màn hình.
+                if (!full.isRecycled) runCatching { full.recycle() }
             }
+        } catch (_: Exception) {
+            reportFrameError()
+            busy = false
+            overlay?.visibility = View.VISIBLE
+            return
+        } finally {
+            img.close()
+        }
+        val reader = ocr
+        if (reader == null) {
+            if (!crop.isRecycled) runCatching { crop.recycle() }
+            busy = false
+            overlay?.visibility = View.VISIBLE
+            return
+        }
+        reader.read(crop, { m -> ocrFail(m) }) { r ->
+            val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
+            if (text.length < minLen) { show("Không thấy chữ trong khung."); busy = false; return@read }
+            translateText(text) { vi ->
+                show(vi)
+                sendTv("region", vi, speak && tvSpeakOn() && !tvVoiceOn())
+                if (speak && tvVoiceOn()) tvVoice(vi)
+                busy = false
+            }
+        }
     }
 
     /** Dịch bằng AI nếu đã bật (CloudAPI / Gemini, có nhớ vài câu trước), lỗi thì quay về dịch trên máy. */
