@@ -358,9 +358,4 @@ class PsPairActivity : Activity() {
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
 }
 
- 
-/** Chỉ chấp nhận đúng 8 chữ số ASCII; tránh NumberFormatException khi dán mã không hợp lệ. */
-internal fun parsePairingPin(value: String): Int? {
-    if (value.length != 8 || value.any { it !in '0'..'9' }) return null
-    return value.toIntOrNull()
-}
+
