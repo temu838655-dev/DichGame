@@ -364,6 +364,9 @@ class Session(connectInfo: ConnectInfo, logFile: String?, logVerbose: Boolean)
 		eventCallback?.let { it(event) }
 	}
 
+	/** Native side checks this before allocating/copying PCM when nobody is listening. */
+	private fun hasAudioFrameCallback(): Boolean = audioFrameCallback != null
+
 	private fun eventAudioFrame(samples: ShortArray, sampleRate: Int, channels: Int)
 	{
 		audioFrameCallback?.invoke(samples, sampleRate, channels)
