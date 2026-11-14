@@ -2,6 +2,9 @@ package com.dichgame.app
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -30,6 +33,12 @@ class KhoGameActivity : Activity() {
     private lateinit var chips: LinearLayout
     private lateinit var tabs: LinearLayout
     private lateinit var grid: LinearLayout
+    private lateinit var statusRow: LinearLayout
+    private var status = 0 // 0 tất cả, 1 có gói Việt hoá riêng, 2 dịch AI theo thể loại
+    private val vietMemo = HashMap<String, Boolean>()
+
+    /** Game có gói Việt hoá riêng không (nhớ kết quả vì tra khá nặng). */
+    private fun isViet(name: String): Boolean = vietMemo.getOrPut(name) { VietHoa.hasSpecific(name) }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -53,6 +62,8 @@ class KhoGameActivity : Activity() {
             put(hs, 0, 10)
             tabs = Ui.hbox(this@KhoGameActivity)
             put(tabs, 0, 10)
+            statusRow = Ui.hbox(this@KhoGameActivity)
+            put(statusRow, 0, 10)
             val row = Ui.hbox(this@KhoGameActivity)
             row.addView(Ui.button(this@KhoGameActivity, "＋  Game khác") { custom() }, Ui.lp(0, WRAP_CONTENT, 1f))
             row.addView(Ui.button(this@KhoGameActivity, "📦  Gói Việt hoá") {
@@ -61,6 +72,8 @@ class KhoGameActivity : Activity() {
             put(row, 0, 14)
             grid = Ui.vbox(this@KhoGameActivity)
             put(grid, 0, 0)
+            put(Ui.switchRow(this@KhoGameActivity, "Tải ảnh bìa từ Steam",
+                "Chỉ gửi tên game tới Steam để lấy ảnh bìa, rồi lưu trên máy. Game không có trên Steam dùng ảnh vẽ sẵn. Ảnh bìa thuộc về nhà phát hành.", p.covers) { p.covers = it; fill() }, 14, 0)
             drawChips()
             drawTabs()
             fill()
@@ -90,14 +103,27 @@ class KhoGameActivity : Activity() {
         tabs.addView(Ui.segmented(this, listOf("Đã chơi", "Tất cả"), tab) { tab = it; drawTabs(); fill() }, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
     }
 
+    /** Ba tab trạng thái có số đếm: Tất cả / Việt hoá (gói riêng của game) / Dịch AI (theo thể loại). */
+    private fun drawStatus(all: Int, viet: Int, ai: Int) {
+        statusRow.removeAllViews()
+        statusRow.addView(Ui.segmented(this, listOf("Tất cả $all", "Việt hoá $viet", "Dịch AI $ai"), status) { status = it; fill() }, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
+    }
+
     private fun fill() {
         grid.removeAllViews()
         val q = query.lowercase()
         val known = Catalog.GAMES.map { it.first }.toSet()
         val base = if (tab == 0) p.played else Catalog.GAMES.map { it.first }
-        val list = base.filter { n ->
+        val pool = base.filter { n ->
             (q.isEmpty() || n.lowercase().contains(q)) &&
                 (plat == null || n !in known || Catalog.runsOn(n, plat!!)) // game tự thêm luôn hiện
+        }
+        val viet = pool.count { isViet(it) }
+        drawStatus(pool.size, viet, pool.size - viet)
+        val list = when (status) {
+            1 -> pool.filter { isViet(it) }
+            2 -> pool.filter { !isViet(it) }
+            else -> pool
         }
         if (list.isEmpty()) {
             grid.addView(Ui.tv(this,
@@ -121,21 +147,14 @@ class KhoGameActivity : Activity() {
     private fun platLine(name: String): String {
         val ps = Catalog.platformsOf(name)
         val s = if (ps.isEmpty()) "" else ps.joinToString(" · ") { it.label }
-        return if (VietHoa.hasSpecific(name)) (if (s.isEmpty()) "Việt hoá" else "$s\nViệt hoá") else s
+        return s
     }
 
     private fun cellOf(name: String, selected: Boolean): View {
         val col = Ui.vbox(this)
-        val tile = TextView(this).apply {
-            text = Catalog.initials(name)
-            textSize = 24f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            background = Ui.bg(this@KhoGameActivity, Color.HSVToColor(floatArrayOf(Catalog.hue(name).toFloat(), 0.45f, 0.42f)), 18,
-                if (selected) Ui.GOLD else 0, if (selected) 3 else 0)
-        }
-        col.addView(tile, Ui.lp(MATCH_PARENT, Ui.dp(this, 96)))
+        val cover = CoverView(this, name).apply { this.selected = selected; vietHoa = isViet(name) }
+        col.addView(cover, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
+        Covers.get(this, name) { b -> cover.bmp = b }
         col.addView(Ui.tv(this, name, 12.5f, if (selected) Ui.GOLD else Ui.TEXT).apply {
             gravity = Gravity.CENTER
             maxLines = 2
@@ -155,14 +174,25 @@ class KhoGameActivity : Activity() {
         val cast = VietHoa.castFor(name)
         val lines = VietHoa.linesFor(name).size
         Ui.sheet(this) { d ->
-            addView(Ui.tv(this@KhoGameActivity, name, 22f, Ui.TEXT, true))
-            if (g.isNotEmpty()) addView(Ui.tv(this@KhoGameActivity, g.replaceFirstChar { it.uppercase() }, 13.5f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 2, 0))
+            val head = Ui.hbox(this@KhoGameActivity)
+            head.gravity = Gravity.TOP
+            val big = CoverView(this@KhoGameActivity, name).apply { vietHoa = isViet(name) }
+            Covers.get(this@KhoGameActivity, name) { b -> big.bmp = b }
+            head.addView(big, Ui.lp(Ui.dp(this@KhoGameActivity, 108), WRAP_CONTENT))
+            val info = Ui.vbox(this@KhoGameActivity)
+            info.addView(Ui.tv(this@KhoGameActivity, name, 21f, Ui.TEXT, true))
+            if (g.isNotEmpty()) info.addView(Ui.tv(this@KhoGameActivity, g.replaceFirstChar { it.uppercase() }, 13.5f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 2, 0))
             val ps = Catalog.platformsOf(name)
             if (ps.isNotEmpty()) {
                 val r = Ui.hbox(this@KhoGameActivity)
                 for (x in ps) r.addView(Ui.badge(this@KhoGameActivity, x.label), Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = Ui.dp(this@KhoGameActivity, 6) })
-                addView(r, Ui.lpm(this@KhoGameActivity, 10, 0))
+                info.addView(r, Ui.lpm(this@KhoGameActivity, 10, 0))
             }
+            info.addView(Ui.tv(this@KhoGameActivity,
+                if (isViet(name)) "Việt hoá riêng của game" else "Dịch AI theo thể loại",
+                13f, if (isViet(name)) Ui.GOLD else Ui.OK, true), Ui.lpm(this@KhoGameActivity, 10, 0))
+            head.addView(info, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@KhoGameActivity, 14) })
+            addView(head)
             // Gói Việt hoá
             val c = Ui.card(this@KhoGameActivity, 14)
             c.addView(Ui.tv(this@KhoGameActivity, "👑  Gói Việt hoá", 16f, Ui.GOLD, true))
@@ -237,6 +267,10 @@ class KhoGameActivity : Activity() {
             // Chọn
             addView(Ui.button(this@KhoGameActivity, "Chọn game này", true) { d.dismiss(); choose(name, false) }, Ui.lpm(this@KhoGameActivity, 16, 0))
             addView(Ui.button(this@KhoGameActivity, "Chọn và dịch ngay") { d.dismiss(); choose(name, true) }, Ui.lpm(this@KhoGameActivity, 8, 0))
+            addView(Ui.button(this@KhoGameActivity, "Sao chép tên game") {
+                (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("game", name))
+                Toast.makeText(this@KhoGameActivity, "Đã sao chép: $name", Toast.LENGTH_SHORT).show()
+            }, Ui.lpm(this@KhoGameActivity, 8, 0))
         }
     }
 

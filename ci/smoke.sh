@@ -48,9 +48,13 @@ run_screens b-full
 
 # Kho game Việt hoá: lọc theo nền tảng và bảng chi tiết một game (extra chỉ có ở bản debug)
 adb shell am force-stop "$PKG"
-adb shell am start -W -n "$PKG/.KhoGameActivity" --es plat xbox >/dev/null 2>&1; sleep 3; shot kho-xbox
+# ảnh bìa tải từ Steam: chờ lâu hơn lần đầu, các lần sau lấy từ bộ nhớ đệm
+adb shell am start -W -n "$PKG/.KhoGameActivity" --es plat steam >/dev/null 2>&1; sleep 30; shot kho-steam
+swipe_up; sleep 12; shot kho-steam-2
 adb shell am force-stop "$PKG"
-adb shell am start -W -n "$PKG/.KhoGameActivity" --es detail "Elden Ring" >/dev/null 2>&1; sleep 3; shot kho-detail-1
+adb shell am start -W -n "$PKG/.KhoGameActivity" --es plat xbox >/dev/null 2>&1; sleep 8; shot kho-xbox
+adb shell am force-stop "$PKG"
+adb shell am start -W -n "$PKG/.KhoGameActivity" --es detail "Elden Ring" >/dev/null 2>&1; sleep 8; shot kho-detail-1
 swipe_up; shot kho-detail-2
 adb shell am force-stop "$PKG"
 

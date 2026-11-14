@@ -98,6 +98,7 @@ class LicensesActivity : Activity() {
             "Google Gemini API" to "Dịch AI, giọng đọc AI và đọc chữ Nga, Thái, Ả Rập... Chỉ chạy khi bạn nhập khóa của riêng bạn, theo điều khoản Google AI.",
             "Gói Việt hoá" to "Thuật ngữ, thẻ nhân vật và câu thông báo có sẵn do người làm app soạn theo cách gọi phổ biến của cộng đồng, không chép từ trang nào và không phải bản dịch chính thức. Tên game và nhân vật thuộc về chủ sở hữu của chúng, chỉ dùng để gọi tên.",
             "Trang Việt hoá cộng đồng" to "The Red Team, PS Việt Hóa, Tổ Mèo Cam, NSW Việt Hóa Hub, Vịt Việt Hóa, VuiKey, VietPatch và các kho GitHub thuộc về tác giả của họ. App chỉ có liên kết ra trang gốc, không tải hộ và không chép lại bản vá.",
+            "Ảnh bìa game" to "Không đóng gói sẵn trong app. Khi có mạng, app hỏi Steam (Valve) bằng tên game để lấy ảnh bìa rồi lưu trên máy; tắt được trong Kho game. Ảnh bìa và nhãn hiệu thuộc về nhà phát hành và Valve. Game không có trên Steam dùng ảnh vẽ sẵn của app.",
             "CloudAPI (tùy chọn)" to "Dịch AI qua dịch vụ theo chuẩn OpenAI mà bạn tự nhập địa chỉ và khóa.",
             "Giọng đọc của máy" to "Dùng bộ đọc văn bản thành giọng nói có sẵn trong Android.",
             "Giọng đọc offline" to "Chạy bằng sherpa-onnx (Apache-2.0) và ONNX Runtime (MIT). Giọng Piper VAIS-1000 (CC BY 4.0) là gói tải thêm trong Cài đặt, lấy từ kho phát hành của sherpa-onnx trên GitHub. Bảng phiên âm tiếng Việt của app được tạo bằng eSpeak NG (GPL-3.0) ở máy của người làm app; trong app không có mã eSpeak.",
