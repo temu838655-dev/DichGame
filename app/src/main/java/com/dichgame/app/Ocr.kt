@@ -108,10 +108,17 @@ class Ocr(private val p: Prefs, private val lang: String) {
         val small = if (sc < 1f)
             Bitmap.createScaledBitmap(bmp, (bmp.width * sc).toInt().coerceAtLeast(1), (bmp.height * sc).toInt().coerceAtLeast(1), true)
         else bmp
-        val bos = ByteArrayOutputStream()
-        small.compress(Bitmap.CompressFormat.JPEG, 80, bos)
-        if (small !== bmp) small.recycle()
-        val b64 = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
+        val b64 = try {
+            val bos = ByteArrayOutputStream()
+            try {
+                check(small.compress(Bitmap.CompressFormat.JPEG, 80, bos)) { "Không mã hóa được ảnh OCR." }
+                Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
+            } finally {
+                bos.close()
+            }
+        } finally {
+            if (small !== bmp && !small.isRecycled) runCatching { small.recycle() }
+        }
         val prompt = "Đây là ảnh chụp màn hình game. Đọc toàn bộ chữ ${Prefs.srcNameOf(lang)} trong ảnh, " +
             "gộp mỗi câu thoại, mỗi đoạn văn thành một khối, xếp từ trên xuống dưới. " +
             "Không dịch, không sửa, bỏ qua chữ không phải ${Prefs.srcNameOf(lang)} nếu đó chỉ là biểu tượng hay số liệu. " +
