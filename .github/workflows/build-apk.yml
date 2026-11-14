@@ -72,6 +72,9 @@ jobs:
             echo "Đang ký bằng khóa mặc định trong keystore/."
           fi
 
+      - name: Chạy unit test Android (bao gồm kiểm thử ASR)
+        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
+
       - name: Build điện thoại và TV
         run: gradle :app:assembleRelease :tv:assembleRelease -PbuildNo=${{ github.run_number }} --no-daemon --stacktrace
 
