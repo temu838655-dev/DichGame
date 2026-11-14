@@ -643,11 +643,20 @@ class CaptureService : Service() {
             cropAndRecycle(full, x, y, w, h)
         } finally { img.close() }
 
-        val o = ocr ?: return
+        val o = ocr
+        if (o == null) {
+            if (!crop.isRecycled) runCatching { crop.recycle() }
+            return
+        }
         if (o.isCloud) {
             // Gemini: chỉ gửi khi hình trong khung thật sự đổi, để khỏi tốn lượt dùng.
             val sig = Ocr.thumb(crop)
-            if (Ocr.same(sig, lastSig)) return
+            if (Ocr.same(sig, lastSig)) {
+                // Không gửi ảnh trùng lên Gemini thì cũng phải giải phóng crop,
+                // vì nhánh này không chuyển quyền sở hữu cho Ocr.read().
+                if (!crop.isRecycled) runCatching { crop.recycle() }
+                return
+            }
             lastSig = sig
         }
         busy = true
