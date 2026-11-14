@@ -246,7 +246,9 @@ object PsStore {
         val preset = if (res(ctx) == 2) VideoResolutionPreset.RES_1080P else VideoResolutionPreset.RES_720P
         val base = ConnectVideoProfile.preset(preset, VideoFPSPreset.FPS_60, Codec.CODEC_H264)
         val mbps = rate(ctx)
-        return if (mbps > 0) base.copy(bitrate = mbps * 1000) else base
+        // ChiakiConnectVideoProfile.bitrate dùng đơn vị bit/giây (bps), không phải kbps.
+        // UI lưu Mbps nên phải đổi 1 Mbps = 1.000.000 bps.
+        return if (mbps > 0) base.copy(bitrate = mbps * 1_000_000) else base
     }
 
     fun connectInfo(ctx: Context, c: PsConsole, player: Int): ConnectInfo {
