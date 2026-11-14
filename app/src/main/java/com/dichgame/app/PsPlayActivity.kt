@@ -64,6 +64,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var ratio = 16f / 9f
 
     private var session: Session? = null
+    // PCM game audio is handed off through a bounded queue; the native callback never waits.
+    private var gameAudioPcmQueue: GameAudioPcmQueue? = null
     private var gen = 0
     private var surface: Surface? = null
     // SurfaceView có thể bị thay khi xoay màn hình; chỉ holder hiện tại được phép điều khiển surface. 
@@ -418,17 +420,28 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         connected = false
         refreshStatus()
         var candidate: Session? = null
+        var candidateAudioQueue: GameAudioPcmQueue? = null
         try {
             val info = PsStore.connectInfo(this, c, player)
             val s = Session(info, null, false)
             candidate = s
+            // Native Chiaki invokes this on its decoder thread. offer() only copies into
+            // a bounded queue and never performs ASR, translation, or UI work here.
+            val audioQueue = GameAudioPcmQueue()
+            candidateAudioQueue = audioQueue
+            s.audioFrameCallback = { samples, sampleRate, channels ->
+                audioQueue.offer(samples, sampleRate, channels)
+            }
             s.eventCallback = { ev -> runOnUiThread { if (g == gen && !isFinishing && !isDestroyed) onEvent(ev) } }
             val r = s.start()
             if (!r.isSuccess) {
                 // start() thất bại vẫn phải dừng native session trước khi giải phóng,
                 // giống cùng thứ tự stop -> dispose dùng cho phiên đang chạy.
+                s.audioFrameCallback = null
                 try { s.stop() } catch (_: Throwable) {}
                 try { s.dispose() } catch (_: Throwable) {}
+                candidateAudioQueue?.close()
+                candidateAudioQueue = null
                 candidate = null
                 val message = "Không khởi động được phiên Remote Play: $r"
                 if (activityStarted && !isFinishing && !isDestroyed) retryAfterNetworkDrop(message)
@@ -436,12 +449,16 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 return
             }
             session = s
+            gameAudioPcmQueue = candidateAudioQueue
+            candidateAudioQueue = null
             candidate = null
             surface?.let { s.setSurface(it) }
             push()
         } catch (e: Throwable) {
             // start() có thể ném lỗi trước khi Session được đưa vào biến session; giải phóng ứng viên để tránh rò tài nguyên native.
-            candidate?.let { try { it.stop() } catch (_: Throwable) {}; try { it.dispose() } catch (_: Throwable) {} }
+            candidate?.let { it.audioFrameCallback = null; try { it.stop() } catch (_: Throwable) {}; try { it.dispose() } catch (_: Throwable) {} }
+            candidateAudioQueue?.close()
+            candidateAudioQueue = null
             val message = "Lỗi mở Remote Play: ${e.message ?: e.javaClass.simpleName}"
             if (activityStarted && !isFinishing && !isDestroyed) retryAfterNetworkDrop(message)
             else ended(message, true)
@@ -538,9 +555,14 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         }
         session = null
         stopping = true
+        // Detach first so no new PCM chunks enter while the native session is stopping.
+        s.audioFrameCallback = null
+        val audioQueue = gameAudioPcmQueue
+        gameAudioPcmQueue = null
         Thread {
             try { s.stop() } catch (_: Throwable) {}
             try { s.dispose() } catch (_: Throwable) {}
+            try { audioQueue?.close() } catch (_: Throwable) {}
             ui.post {
                 stopping = false
                 // Không tạo phiên mới cho tới khi stop() và dispose() cũ hoàn tất.
