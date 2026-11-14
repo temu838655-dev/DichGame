@@ -183,9 +183,13 @@ class PsConnectActivity : Activity() {
 
     private fun empty(root: LinearLayout) {
         val k = Ui.card(this)
-        k.addView(Ui.tv(this, "Chưa ghép nối máy chơi game", 18f, Ui.TEXT, true))
+        val unreadable = PsStore.hasStoredConsole(this)
         k.addView(Ui.tv(this,
-            "Ghép nối một lần để chơi và dịch ngay trong app, không cần mở app Remote Play khác. Bạn cần máy PS5 hoặc PS4 cùng mạng Wi-Fi, và nên có một người chơi phụ trên máy.",
+            if (unreadable) "Không đọc được dữ liệu ghép nối đã lưu" else "Chưa ghép nối máy chơi game",
+            18f, if (unreadable) Ui.DANGER else Ui.TEXT, true))
+        k.addView(Ui.tv(this,
+            if (unreadable) "App phát hiện vẫn còn dữ liệu ghép nối nhưng không giải mã được bằng khóa bảo mật trên thiết bị này. Dữ liệu cũ chưa bị xóa hoặc ghi đè. Hãy mở lại trên đúng điện thoại đã ghép nối; nếu đã đổi máy/cài lại app, bạn có thể cần ghép nối lại sau khi chủ động xử lý dữ liệu cũ."
+            else "Ghép nối một lần để chơi và dịch ngay trong app, không cần mở app Remote Play khác. Bạn cần máy PS5 hoặc PS4 cùng mạng Wi-Fi, và nên có một người chơi phụ trên máy.",
             13.5f, Ui.SUB), Ui.lpm(this, 6, 12))
         k.addView(Ui.button(this, "Ghép nối PS5 / PS4", true) { startActivity(Intent(this, PsPairActivity::class.java)) })
         root.put(k, 0, 0)
