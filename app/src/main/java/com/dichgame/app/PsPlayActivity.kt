@@ -95,17 +95,21 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var networkCallbackRegistered = false
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            // Khi Wi-Fi/di động trở lại, đánh thức hàng đợi khôi phục ngay thay vì chờ hết backoff.
-            if (reconnectPending && activityStarted && !manual && session == null && !stopping) {
-                reconnectRunnable?.let(ui::removeCallbacks)
-                reconnectRunnable = null
-                pendingReconnectDelayMs = 0L
-                requestConnect()
+            // NetworkCallback không đảm bảo chạy trên main thread; mọi thay đổi UI/session phải về main.
+            ui.post {
+                if (reconnectPending && activityStarted && !manual && session == null && !stopping) {
+                    reconnectRunnable?.let(ui::removeCallbacks)
+                    reconnectRunnable = null
+                    pendingReconnectDelayMs = 0L
+                    requestConnect()
+                }
             }
         }
 
         override fun onLost(network: Network) {
-            if (connected) setStatus("Mạng vừa thay đổi · đang chờ kết nối ổn định…", true)
+            ui.post {
+                if (connected) setStatus("Mạng vừa thay đổi · đang chờ kết nối ổn định…", true)
+            }
         }
     }
     private val inputDeviceListener = object : InputManager.InputDeviceListener {
