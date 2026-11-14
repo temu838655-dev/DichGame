@@ -662,7 +662,16 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     override fun dispatchGenericMotionEvent(e: MotionEvent): Boolean {
         if (isPad(e.source) && e.actionMasked == MotionEvent.ACTION_MOVE && acceptsPhysicalDevice(e.deviceId)) {
-            fun ax(a: Int): Float { val v = e.getAxisValue(a); return if (abs(v) < 0.1f) 0f else v }
+            // Dùng dead zone do driver của tay cầm khai báo; mỗi mẫu tay cầm có thể có
+            // độ lệch tâm khác nhau nên ngưỡng cố định 0.1 chưa phù hợp tất cả thiết bị.
+            fun ax(a: Int): Float {
+                val v = e.getAxisValue(a).coerceIn(-1f, 1f)
+                val flat = (e.device?.getMotionRange(a, e.source)?.flat ?: 0.1f).coerceIn(0f, 0.95f)
+                val magnitude = abs(v)
+                if (magnitude <= flat) return 0f
+                val adjusted = ((magnitude - flat) / (1f - flat)).coerceIn(0f, 1f)
+                return if (v < 0f) -adjusted else adjusted
+            }
             fun hasAxis(a: Int): Boolean = e.device?.getMotionRange(a, e.source) != null
             fun preferredAxis(primary: Int, fallback: Int): Int =
                 if (hasAxis(primary)) primary else fallback
