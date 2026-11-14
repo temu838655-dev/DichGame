@@ -53,6 +53,31 @@ class PairingPinTest {
         assertEquals(VideoResolutionPreset.RES_720P, PsStore.resolutionPreset(99))
     }
 
+    @Test fun removingPlayerKeepsTvAndPhoneSelectionsOnSamePlayers() {
+        fun player(label: String) = PsPlayer(label, byteArrayOf(1), 0, byteArrayOf(2), byteArrayOf(3), "")
+        val console = PsConsole("192.168.1.2", true, "PS5", mutableListOf(
+            player("A"), player("B"), player("C")
+        ), tvPlayer = 1, phonePlayer = 2)
+
+        assertEquals(true, PsStore.removePlayer(console, 0))
+        assertEquals(listOf("B", "C"), console.players.map { it.label })
+        assertEquals(0, console.tvPlayer)
+        assertEquals(1, console.phonePlayer)
+    }
+
+    @Test fun removingSelectedPlayerChoosesNearestRemainingSlot() {
+        fun player(label: String) = PsPlayer(label, byteArrayOf(1), 0, byteArrayOf(2), byteArrayOf(3), "")
+        val console = PsConsole("192.168.1.2", true, "PS5", mutableListOf(
+            player("A"), player("B"), player("C")
+        ), tvPlayer = 1, phonePlayer = 1)
+
+        assertEquals(true, PsStore.removePlayer(console, 1))
+        assertEquals(listOf("A", "C"), console.players.map { it.label })
+        assertEquals(1, console.tvPlayer)
+        assertEquals(1, console.phonePlayer)
+        assertEquals(false, PsStore.removePlayer(console, 9))
+    }
+
     @Test fun retriesUseBoundedBackoffAndStopAfterFiveAttempts() {
         assertEquals(1_500L, RemotePlayRetryPolicy.delayForAttempt(0))
         assertEquals(3_000L, RemotePlayRetryPolicy.delayForAttempt(1))
