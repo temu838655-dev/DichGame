@@ -2,6 +2,7 @@ package com.dichgame.app
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.ProgressDialog
 import android.content.Context
 import android.content.Intent
 import android.hardware.input.InputManager
@@ -95,6 +96,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var statusView: TextView? = null
     private var chipView: TextView? = null
     private var transBtn: TextView? = null
+    private var gameAsrBtn: TextView? = null
+    private var gameAsrSubtitle: TextView? = null
+    private var gameAsr: GameAudioAsr? = null
+    private var gameTranslator: TextTranslator? = null
     private val ui = Handler(Looper.getMainLooper())
     private var inputListenerRegistered = false
     private var networkCallbackRegistered = false
@@ -222,6 +227,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     override fun onDestroy() {
         activityStarted = false
         reconnectPending = false
+        stopGameSpeech()
         shutdownSession()
         ui.removeCallbacksAndMessages(null)
         super.onDestroy()
@@ -273,6 +279,18 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         vid.setBackgroundColor(Color.BLACK)
         vid.addView(sv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         vid.addView(st, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        gameAsrSubtitle = Ui.tv(this, "", 18f, Color.WHITE, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(Ui.dp(this@PsPlayActivity, 16), Ui.dp(this@PsPlayActivity, 10), Ui.dp(this@PsPlayActivity, 16), Ui.dp(this@PsPlayActivity, 10))
+            background = Ui.bg(this@PsPlayActivity, Color.parseColor("#D9000000"), 12)
+            visibility = View.GONE
+            maxLines = 4
+        }
+        vid.addView(gameAsrSubtitle, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.BOTTOM).apply {
+            leftMargin = Ui.dp(this@PsPlayActivity, 14)
+            rightMargin = Ui.dp(this@PsPlayActivity, 14)
+            bottomMargin = Ui.dp(this@PsPlayActivity, 14)
+        })
 
         val padV = PadView(this) { s -> padState = s; push() }
         pad = padV
@@ -338,6 +356,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             return t
         }
         transBtn = item(if (CaptureService.active) "💬" else "🌐") { toggleTranslate() }
+        gameAsrBtn = item(if (gameAsr != null) "🎙✓" else "🎙") { toggleGameSpeech() }
         item("🎮") { padOn = !padOn; pad?.visibility = if (padOn) View.VISIBLE else View.GONE; if (!padOn) pad?.releaseAll() }
         item("⟳") {
             requestedOrientation = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
@@ -358,6 +377,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private fun refreshStatus() {
         if (connected) setStatus("", false) else setStatus(if (manual) "Đã ngắt kết nối" else "Đang vào game…", true)
         transBtn?.text = if (CaptureService.active) "💬" else "🌐"
+        gameAsrBtn?.text = if (gameAsr != null) "🎙✓" else "🎙"
     }
 
     private fun help() {
@@ -529,6 +549,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private fun shutdownSession() {
         gen++
         connected = false
+        stopGameSpeech()
         val s = session
         if (s == null) {
             // Lỗi xảy ra trước khi Session được gán (ví dụ start() trả lỗi):
@@ -728,6 +749,127 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             return true
         }
         return super.dispatchGenericMotionEvent(e)
+    }
+
+    // ---------------- Nhận dạng và dịch giọng nói PS5 ----------------
+
+    private fun toggleGameSpeech() {
+        if (gameAsr != null) {
+            stopGameSpeech()
+            Toast.makeText(this, "Đã tắt nhận dạng giọng nói PS5.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!connected || session == null) {
+            Toast.makeText(this, "Hãy kết nối Remote Play với PS5 trước.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (GameAsrModel.installed(this)) {
+            startGameSpeech()
+            return
+        }
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Tải nhận dạng giọng nói offline")
+            .setMessage(
+                "DichGame cần tải mô hình Whisper đa ngôn ngữ khoảng 111 MB (cần tối thiểu khoảng 222 MB bộ nhớ trống). " +
+                    "Sau khi tải, nhận dạng âm thanh PS5 chạy trên điện thoại và không cần gửi âm thanh lên máy chủ. " +
+                    "Tốc độ phụ thuộc cấu hình điện thoại."
+            )
+            .setNegativeButton("Để sau", null)
+            .setPositiveButton("Tải mô hình") { _, _ -> downloadGameAsrModel() }
+            .show()
+    }
+
+    private fun downloadGameAsrModel() {
+        val cancel = java.util.concurrent.atomic.AtomicBoolean(false)
+        val progress = ProgressDialog(this).apply {
+            setTitle("Đang tải Whisper")
+            setMessage("Chuẩn bị tải mô hình…")
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            max = 100
+            progress = 0
+            setCancelable(true)
+            setOnCancelListener { cancel.set(true) }
+            show()
+        }
+        Thread {
+            val error = GameAsrModel.download(this, cancel) { value ->
+                runOnUiThread { if (!isFinishing && progress.isShowing) progress.progress = value }
+            }
+            runOnUiThread {
+                if (progress.isShowing) progress.dismiss()
+                if (error == null) {
+                    Toast.makeText(this, "Đã cài mô hình Whisper offline.", Toast.LENGTH_LONG).show()
+                    startGameSpeech()
+                } else if (error != "Đã hủy tải mô hình.") {
+                    AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        .setTitle("Không tải được mô hình")
+                        .setMessage(error)
+                        .setPositiveButton("Đóng", null)
+                        .show()
+                }
+            }
+        }.start()
+    }
+
+    private fun startGameSpeech() {
+        val activeSession = session
+        if (activeSession == null || !connected || isFinishing || isDestroyed) return
+        val prefs = Prefs(this)
+        val translator = TextTranslator(this, prefs, prefs.lang)
+        translator.prepare { ready ->
+            if (!ready) {
+                translator.close()
+                if (!isFinishing) Toast.makeText(this, "Không tải được dữ liệu dịch offline. Kiểm tra mạng rồi thử lại.", Toast.LENGTH_LONG).show()
+                return@prepare
+            }
+            if (isFinishing || isDestroyed || session !== activeSession || !connected) {
+                translator.close()
+                return@prepare
+            }
+            val engine = GameAudioAsr(
+                this,
+                onTranscript = { recognized ->
+                    ui.post {
+                        if (gameAsr == null || gameTranslator !== translator || isFinishing || isDestroyed) return@post
+                        translator.translate(recognized) { vietnamese ->
+                            if (gameTranslator === translator && gameAsr != null) {
+                                gameAsrSubtitle?.text = "$vietnamese\n$recognized"
+                                gameAsrSubtitle?.visibility = View.VISIBLE
+                            }
+                        }
+                    }
+                },
+                onError = { message ->
+                    ui.post {
+                        if (gameTranslator === translator) {
+                            stopGameSpeech()
+                            Toast.makeText(this, "Whisper gặp lỗi: $message", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            )
+            try {
+                engine.start(activeSession)
+                gameTranslator = translator
+                gameAsr = engine
+                gameAsrBtn?.text = "🎙✓"
+                Toast.makeText(this, "Đang nghe âm thanh trực tiếp từ PS5 bằng Whisper offline.", Toast.LENGTH_LONG).show()
+            } catch (e: Throwable) {
+                engine.close()
+                translator.close()
+                Toast.makeText(this, "Không bật được nhận dạng: \${e.message ?: "lỗi không xác định"}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun stopGameSpeech() {
+        gameAsr?.close()
+        gameAsr = null
+        gameTranslator?.close()
+        gameTranslator = null
+        gameAsrSubtitle?.text = ""
+        gameAsrSubtitle?.visibility = View.GONE
+        gameAsrBtn?.text = "🎙"
     }
 
     // ---------------- Dịch ----------------
