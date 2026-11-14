@@ -35,6 +35,7 @@ class PsConnectActivity : Activity() {
     private var discoveryGeneration = 0
     private var hostState: DiscoveryHost.State? = null
     private var hostSeen = false
+    private var discoveryStartFailed = false
     private var statusView: TextView? = null
     private var pendingMode = ""
     private var pendingPlayer = 0
@@ -66,6 +67,7 @@ class PsConnectActivity : Activity() {
         val generation = ++discoveryGeneration
         hostState = null
         hostSeen = false
+        discoveryStartFailed = false
         try {
             discovery = DiscoveryService(DiscoveryServiceOptions(16UL, 3UL, 500UL, InetSocketAddress("255.255.255.255", 987))) { hosts ->
                 runOnUiThread {
@@ -77,7 +79,15 @@ class PsConnectActivity : Activity() {
                     drawStatus()
                 }
             }
-        } catch (_: CreateError) { discovery = null } catch (_: Throwable) { discovery = null }
+        } catch (_: CreateError) {
+            discovery = null
+            discoveryStartFailed = true
+            drawStatus()
+        } catch (_: Throwable) {
+            discovery = null
+            discoveryStartFailed = true
+            drawStatus()
+        }
     }
 
     private fun stopDiscovery() {
@@ -93,6 +103,7 @@ class PsConnectActivity : Activity() {
         val con = c ?: return
         val (txt, col) = when {
             !PsNative.available -> "Máy này chưa hỗ trợ chơi PS5 trong app" to Ui.DANGER
+            discoveryStartFailed -> "Không thể khởi động dò mạng · vẫn có thể thử kết nối bằng địa chỉ đã lưu" to Ui.GOLD
             hostSeen && hostState == DiscoveryHost.State.READY -> "Sẵn sàng · ${con.host}" to Ui.OK
             hostSeen && hostState == DiscoveryHost.State.STANDBY -> "Đang nghỉ · sẽ tự bật khi bấm kết nối" to Ui.GOLD
             else -> "Đang tìm kiếm ${if (con.ps5) "PS5" else "PS4"} tại ${con.host}…" to Ui.SUB
@@ -319,10 +330,17 @@ class PsConnectActivity : Activity() {
         if (req == 100 && res == RESULT_OK && data != null) {
             val q = Prefs(this)
             q.playOn = pendingMode
-            startForegroundService(Intent(this, CaptureService::class.java)
-                .putExtra("code", res).putExtra("data", data)
-                .putExtra("speak", q.speak).putExtra("lang", q.lang)
-                .putExtra("automenu", q.autoMenu).putExtra("slow", q.slow).putExtra("narrate", q.narrate))
+            val started = runCatching {
+                startForegroundService(Intent(this, CaptureService::class.java)
+                    .putExtra("code", res).putExtra("data", data)
+                    .putExtra("speak", q.speak).putExtra("lang", q.lang)
+                    .putExtra("automenu", q.autoMenu).putExtra("slow", q.slow).putExtra("narrate", q.narrate))
+            }.isSuccess
+            if (!started) {
+                CaptureService.active = false
+                toast("Không thể khởi động dịch nền. Hãy kiểm tra quyền thông báo, quyền ghi màn hình và thử lại.")
+                return
+            }
             CaptureService.active = true
             openPlay()
         }
