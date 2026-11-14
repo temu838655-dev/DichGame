@@ -100,6 +100,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var gameAsrSubtitle: TextView? = null
     private var gameAsr: GameAudioAsr? = null
     private var gameTranslator: TextTranslator? = null
+    private var gameAsrStarting = false
     private val ui = Handler(Looper.getMainLooper())
     private var inputListenerRegistered = false
     private var networkCallbackRegistered = false
@@ -759,6 +760,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             Toast.makeText(this, "Đã tắt nhận dạng giọng nói PS5.", Toast.LENGTH_SHORT).show()
             return
         }
+        if (gameAsrStarting) {
+            Toast.makeText(this, "Đang chuẩn bị bộ dịch giọng nói…", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (!connected || session == null) {
             Toast.makeText(this, "Hãy kết nối Remote Play với PS5 trước.", Toast.LENGTH_SHORT).show()
             return
@@ -781,22 +786,22 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     private fun downloadGameAsrModel() {
         val cancel = java.util.concurrent.atomic.AtomicBoolean(false)
-        val progress = ProgressDialog(this).apply {
+        val dialog = ProgressDialog(this).apply {
             setTitle("Đang tải Whisper")
             setMessage("Chuẩn bị tải mô hình…")
             setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
             max = 100
-            progress = 0
+            this.progress = 0
             setCancelable(true)
             setOnCancelListener { cancel.set(true) }
             show()
         }
         Thread {
             val error = GameAsrModel.download(this, cancel) { value ->
-                runOnUiThread { if (!isFinishing && progress.isShowing) progress.progress = value }
+                runOnUiThread { if (!isFinishing && dialog.isShowing) dialog.progress = value }
             }
             runOnUiThread {
-                if (progress.isShowing) progress.dismiss()
+                if (dialog.isShowing) dialog.dismiss()
                 if (error == null) {
                     Toast.makeText(this, "Đã cài mô hình Whisper offline.", Toast.LENGTH_LONG).show()
                     startGameSpeech()
@@ -814,15 +819,18 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private fun startGameSpeech() {
         val activeSession = session
         if (activeSession == null || !connected || isFinishing || isDestroyed) return
+        gameAsrStarting = true
         val prefs = Prefs(this)
         val translator = TextTranslator(this, prefs, prefs.lang)
         translator.prepare { ready ->
             if (!ready) {
+                gameAsrStarting = false
                 translator.close()
                 if (!isFinishing) Toast.makeText(this, "Không tải được dữ liệu dịch offline. Kiểm tra mạng rồi thử lại.", Toast.LENGTH_LONG).show()
                 return@prepare
             }
             if (isFinishing || isDestroyed || session !== activeSession || !connected) {
+                gameAsrStarting = false
                 translator.close()
                 return@prepare
             }
@@ -849,12 +857,16 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 }
             )
             try {
-                engine.start(activeSession)
                 gameTranslator = translator
                 gameAsr = engine
+                gameAsrStarting = false
                 gameAsrBtn?.text = "🎙✓"
+                engine.start(activeSession)
                 Toast.makeText(this, "Đang nghe âm thanh trực tiếp từ PS5 bằng Whisper offline.", Toast.LENGTH_LONG).show()
             } catch (e: Throwable) {
+                gameAsrStarting = false
+                if (gameAsr === engine) gameAsr = null
+                if (gameTranslator === translator) gameTranslator = null
                 engine.close()
                 translator.close()
                 Toast.makeText(this, "Không bật được nhận dạng: \${e.message ?: "lỗi không xác định"}", Toast.LENGTH_LONG).show()
@@ -863,6 +875,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun stopGameSpeech() {
+        gameAsrStarting = false
         gameAsr?.close()
         gameAsr = null
         gameTranslator?.close()
