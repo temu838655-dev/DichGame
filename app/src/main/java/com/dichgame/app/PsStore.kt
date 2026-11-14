@@ -238,6 +238,11 @@ object PsStore {
             .putInt(K_RATE, if (v in RATE_PRESETS) v else 0).apply()
     }
 
+    /** Chiaki-NG nhận bitrate theo kbps; UI lưu Mbps. Giá trị ngoài preset dùng bitrate mặc định. */
+    internal fun bitrateKbps(mbps: Int): Int =
+        if (mbps in RATE_PRESETS) mbps * 1_000 else 0
+
+
     /** Không hỏi lại bảng chất lượng khi bấm Chơi. */
     fun noAsk(ctx: Context): Boolean = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(K_ASK, false)
     fun setNoAsk(ctx: Context, v: Boolean) { ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(K_ASK, v).apply() }
@@ -245,10 +250,8 @@ object PsStore {
     fun profile(ctx: Context): ConnectVideoProfile {
         val preset = if (res(ctx) == 2) VideoResolutionPreset.RES_1080P else VideoResolutionPreset.RES_720P
         val base = ConnectVideoProfile.preset(preset, VideoFPSPreset.FPS_60, Codec.CODEC_H264)
-        val mbps = rate(ctx)
-        // Chiaki-NG lưu bitrate theo kilobit/giây (kbps): 15 Mbps = 15.000.
-        // UI lưu Mbps nên đổi 1 Mbps = 1.000 kbps.
-        return if (mbps > 0) base.copy(bitrate = mbps * 1_000) else base
+        val bitrate = bitrateKbps(rate(ctx))
+        return if (bitrate > 0) base.copy(bitrate = bitrate) else base
     }
 
     fun connectInfo(ctx: Context, c: PsConsole, player: Int): ConnectInfo {
