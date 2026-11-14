@@ -61,6 +61,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var session: Session? = null
     private var gen = 0
     private var surface: Surface? = null
+    // SurfaceView có thể bị thay khi xoay màn hình; chỉ holder hiện tại được phép điều khiển surface. 
+    private var activeSurfaceHolder: SurfaceHolder? = null
     private var manual = false      // đã dừng hẳn, chờ người dùng bấm kết nối lại
     private var connected = false
     private var stopping = false
@@ -395,9 +397,26 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     // ---------------- Hình và điều khiển ----------------
 
-    override fun surfaceCreated(holder: SurfaceHolder) { surface = holder.surface; session?.setSurface(holder.surface) }
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) { surface = holder.surface; session?.setSurface(holder.surface) }
-    override fun surfaceDestroyed(holder: SurfaceHolder) { surface = null; session?.setSurface(null) }
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        activeSurfaceHolder = holder
+        surface = holder.surface
+        session?.setSurface(holder.surface)
+    }
+
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        // Callback từ SurfaceView cũ có thể đến trễ sau khi build() thay giao diện lúc xoay màn hình.
+        if (activeSurfaceHolder !== holder) return
+        surface = holder.surface
+        session?.setSurface(holder.surface)
+    }
+
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        // Không để holder cũ tháo surface mới đã được gắn vào phiên Remote Play.
+        if (activeSurfaceHolder !== holder) return
+        activeSurfaceHolder = null
+        surface = null
+        session?.setSurface(null)
+    }
 
     private fun push() {
         try { session?.setControllerState(padState or phys) } catch (_: Throwable) {}
