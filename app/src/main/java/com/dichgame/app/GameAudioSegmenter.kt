@@ -6,8 +6,7 @@ import kotlin.math.sqrt
  * Splits normalized 16 kHz mono PCM into speech-like utterances.
  *
  * Feed this only from a dedicated worker thread, never from Chiaki's decoder callback.
- * The detector deliberately keeps pre-roll and accepts short voiced segments so brief
- * dialogue such as "No!", "Stop!" or "Help!" is not discarded by a long minimum duration.
+ * Primitive FloatArray buffers avoid boxing every sample into Float objects on low-memory TVs.
  */
 class GameAudioSegmenter(
     private val sampleRate: Int = GamePcmAudio.ASR_SAMPLE_RATE,
@@ -27,9 +26,11 @@ class GameAudioSegmenter(
     private val preRollFrames = (preRollMs / frameDurationMs).coerceAtLeast(0)
     private val maxUtteranceSamples = sampleRate * maxUtteranceMs / 1000
 
-    private val pending = ArrayList<Float>(frameSamples * 2)
+    private val pending = FloatArray(frameSamples)
+    private var pendingSize = 0
     private val preRoll = ArrayDeque<FloatArray>()
-    private val utterance = ArrayList<Float>()
+    private var utterance = FloatArray(frameSamples * 4)
+    private var utteranceSize = 0
     private var active = false
     private var voicedSamples = 0
     private var silenceFrames = 0
@@ -45,37 +46,39 @@ class GameAudioSegmenter(
     @Synchronized
     fun accept(samples: FloatArray) {
         if (samples.isEmpty()) return
-        samples.forEach { pending.add(it.coerceIn(-1f, 1f)) }
-        while (pending.size >= frameSamples) {
-            val frame = FloatArray(frameSamples) { pending[it] }
-            pending.subList(0, frameSamples).clear()
-            processFrame(frame)
+        var offset = 0
+        while (offset < samples.size) {
+            val count = minOf(frameSamples - pendingSize, samples.size - offset)
+            for (i in 0 until count) pending[pendingSize + i] = samples[offset + i].coerceIn(-1f, 1f)
+            pendingSize += count
+            offset += count
+            if (pendingSize == frameSamples) {
+                processFrame(pending)
+                pendingSize = 0
+            }
         }
     }
 
-    /**
-     * Processes the final incomplete frame instead of silently discarding it.
-     * This matters when the audio stream stops between the normal 20 ms frame boundaries.
-     */
+    /** Processes the final incomplete frame instead of silently discarding it. */
     @Synchronized
     fun flush() {
-        val finalFrameWasUnvoiced = if (pending.isNotEmpty()) {
-            val finalFrame = pending.toFloatArray()
-            pending.clear()
+        val finalFrameWasUnvoiced = if (pendingSize > 0) {
+            val finalFrame = pending.copyOf(pendingSize)
+            pendingSize = 0
             !processFrame(finalFrame)
         } else {
             false
         }
         if (active) emit(keepTrailing = finalFrameWasUnvoiced)
-        pending.clear()
+        pendingSize = 0
         preRoll.clear()
     }
 
     @Synchronized
     fun reset() {
-        pending.clear()
+        pendingSize = 0
         preRoll.clear()
-        utterance.clear()
+        utteranceSize = 0
         active = false
         voicedSamples = 0
         silenceFrames = 0
@@ -83,14 +86,17 @@ class GameAudioSegmenter(
 
     /** Returns whether this frame crossed the speech-energy threshold. */
     private fun processFrame(frame: FloatArray): Boolean {
-        val rms = sqrt(frame.sumOf { (it * it).toDouble() } / frame.size).toFloat()
+        if (frame.isEmpty()) return false
+        var energy = 0.0
+        for (sample in frame) energy += sample.toDouble() * sample.toDouble()
+        val rms = sqrt(energy / frame.size).toFloat()
         val voiced = rms >= speechRmsThreshold
 
         if (!active) {
             if (voiced) {
                 active = true
-                preRoll.forEach { utterance.addAll(it.toList()) }
-                utterance.addAll(frame.toList())
+                preRoll.forEach(::appendUtterance)
+                appendUtterance(frame)
                 voicedSamples += frame.size
                 silenceFrames = 0
                 preRoll.clear()
@@ -100,7 +106,7 @@ class GameAudioSegmenter(
             return voiced
         }
 
-        utterance.addAll(frame.toList())
+        appendUtterance(frame)
         if (voiced) {
             voicedSamples += frame.size
             silenceFrames = 0
@@ -108,7 +114,7 @@ class GameAudioSegmenter(
             silenceFrames++
         }
 
-        if (utterance.size >= maxUtteranceSamples) {
+        if (utteranceSize >= maxUtteranceSamples) {
             emit(keepTrailing = true)
         } else if (silenceFrames >= trailingSilenceFrames) {
             emit(keepTrailing = true)
@@ -116,9 +122,20 @@ class GameAudioSegmenter(
         return voiced
     }
 
+    private fun appendUtterance(values: FloatArray) {
+        val required = utteranceSize + values.size
+        if (required > utterance.size) {
+            var capacity = utterance.size.coerceAtLeast(1)
+            while (capacity < required) capacity = (capacity * 2).coerceAtLeast(required)
+            utterance = utterance.copyOf(capacity)
+        }
+        values.copyInto(utterance, destinationOffset = utteranceSize)
+        utteranceSize = required
+    }
+
     private fun rememberPreRoll(frame: FloatArray) {
         if (preRollFrames == 0) return
-        preRoll.addLast(frame)
+        preRoll.addLast(frame.copyOf())
         while (preRoll.size > preRollFrames) preRoll.removeFirst()
     }
 
@@ -128,11 +145,11 @@ class GameAudioSegmenter(
         } else {
             silenceFrames * frameSamples
         }
-        val end = (utterance.size - trailingToRemove).coerceAtLeast(0)
+        val end = (utteranceSize - trailingToRemove).coerceAtLeast(0)
         if (voicedSamples >= minSpeechSamples && end > 0) {
-            onUtterance(utterance.take(end).toFloatArray())
+            onUtterance(utterance.copyOf(end))
         }
-        utterance.clear()
+        utteranceSize = 0
         preRoll.clear()
         active = false
         voicedSamples = 0
