@@ -7,6 +7,12 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Handler
 import android.os.Looper
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.os.Bundle
 import android.view.Gravity
 import android.view.KeyEvent
@@ -43,6 +49,11 @@ class WebTranslateActivity : Activity() {
     private var ocrCandidate = ""
     private var ocrStableFrames = 0
     private var lastOcrDelivered = ""
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var micEnabled = false
+    private var micButton: TextView? = null
+    private var lastAsrDelivered = ""
+    private val speechRestart = Runnable { startSpeechRecognition() }
     private val ocrLoop = object : Runnable {
         override fun run() {
             if (destroyed || !::web.isInitialized) return
@@ -123,6 +134,11 @@ class WebTranslateActivity : Activity() {
         toggle = Ui.tv(this, "", 13f, Color.parseColor("#2A1A08"), true)
         toggle.setPadding(Ui.dp(this, 12), Ui.dp(this, 7), Ui.dp(this, 12), Ui.dp(this, 7))
         toggle.setOnClickListener { enabled = !enabled; refreshToggle(); if (!enabled) overlay.visibility = android.view.View.GONE }
+        micButton = Ui.tv(this, "Nghe mic: TẮT", 12f, Color.parseColor("#2A1A08"), true).also { button ->
+            button.setPadding(Ui.dp(this, 10), Ui.dp(this, 7), Ui.dp(this, 10), Ui.dp(this, 7))
+            button.setOnClickListener { toggleMicrophoneRecognition() }
+        }
+        bar.addView(micButton)
         bar.addView(toggle)
         root.addView(bar)
 
@@ -178,6 +194,101 @@ class WebTranslateActivity : Activity() {
             }
         }
         load(url.text.toString())
+    }
+
+
+    /**
+     * ASR dự phòng qua micro, chỉ chạy khi người dùng chủ động bật.
+     * Đây là nghe âm thanh môi trường/loa bằng micro, KHÔNG phải thu PCM nội bộ từ WebView.
+     */
+    private fun toggleMicrophoneRecognition() {
+        if (micEnabled) {
+            stopMicrophoneRecognition()
+            return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            android.widget.Toast.makeText(this, "Máy chưa có dịch vụ nhận dạng giọng nói.", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 7401)
+            return
+        }
+        micEnabled = true
+        micButton?.text = "Nghe mic: BẬT"
+        android.widget.Toast.makeText(this, "Đang nghe qua micro. Hãy phát âm thanh qua loa ngoài để micro nghe được.", android.widget.Toast.LENGTH_LONG).show()
+        createSpeechRecognizer()
+        startSpeechRecognition()
+    }
+
+    private fun createSpeechRecognizer() {
+        if (speechRecognizer != null) return
+        val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        speechRecognizer = recognizer
+        recognizer.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+            override fun onPartialResults(partialResults: Bundle?) {
+                // Không dịch kết quả tạm: chờ kết quả cuối để tránh hiện chữ đoán rồi sửa liên tục.
+            }
+            override fun onResults(results: Bundle?) {
+                val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()?.trim().orEmpty()
+                if (text.length >= 1 && text != lastAsrDelivered && !destroyed && micEnabled) {
+                    lastAsrDelivered = text
+                    runOnUiThread { if (micEnabled && enabled) onSub(text) }
+                }
+                if (micEnabled && !destroyed) main.postDelayed(speechRestart, 250L)
+            }
+            override fun onError(error: Int) {
+                if (!micEnabled || destroyed) return
+                if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                    stopMicrophoneRecognition()
+                    android.widget.Toast.makeText(this@WebTranslateActivity, "Chưa cấp quyền micro.", android.widget.Toast.LENGTH_LONG).show()
+                } else {
+                    // Các lỗi timeout/no-match là bình thường khi có khoảng lặng; tự nghe lượt kế tiếp.
+                    main.postDelayed(speechRestart, if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 700L else 350L)
+                }
+            }
+        })
+    }
+
+    private fun startSpeechRecognition() {
+        if (!micEnabled || destroyed || !enabled) return
+        val recognizer = speechRecognizer ?: return
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.forLanguageTag(p.lang).toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, java.util.Locale.forLanguageTag(p.lang).toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 450L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 250L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 250L)
+        }
+        try { recognizer.startListening(intent) }
+        catch (_: Exception) { main.postDelayed(speechRestart, 700L) }
+    }
+
+    private fun stopMicrophoneRecognition() {
+        micEnabled = false
+        main.removeCallbacks(speechRestart)
+        try { speechRecognizer?.cancel() } catch (_: Exception) {}
+        try { speechRecognizer?.destroy() } catch (_: Exception) {}
+        speechRecognizer = null
+        micButton?.text = "Nghe mic: TẮT"
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 7401) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) toggleMicrophoneRecognition()
+            else android.widget.Toast.makeText(this, "Cần quyền micro để nhận dạng lời thoại.", android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun refreshToggle() {
@@ -296,6 +407,7 @@ class WebTranslateActivity : Activity() {
 
     override fun onDestroy() {
         destroyed = true
+        stopMicrophoneRecognition()
         main.removeCallbacks(ocrLoop)
         try { web.destroy() } catch (_: Exception) {}
         ocr?.close()
