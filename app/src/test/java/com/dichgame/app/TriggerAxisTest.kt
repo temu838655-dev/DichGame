@@ -18,6 +18,8 @@ class TriggerAxisTest {
     @Test fun invalidValuesCannotCreatePhantomTriggerPresses() {
         assertEquals(0f, TriggerAxis.normalize(Float.NaN, 0f), 0.0001f)
         assertEquals(0f, TriggerAxis.normalize(Float.POSITIVE_INFINITY, 0f), 0.0001f)
+        assertEquals(0f, TriggerAxis.normalize(Float.NEGATIVE_INFINITY, 0f), 0.0001f)
         assertEquals(0f, TriggerAxis.normalize(0.5f, Float.NaN), 0.0001f)
+        assertEquals(0f, TriggerAxis.normalize(0.5f, Float.POSITIVE_INFINITY), 0.0001f)
     }
 }
