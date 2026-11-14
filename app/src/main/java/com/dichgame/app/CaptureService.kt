@@ -761,6 +761,7 @@ class CaptureService : Service() {
         wm.updateViewLayout(f, flp)
         last = ""
         show(if (on) "Kéo khung xanh tới dòng phụ đề, kéo ô vuông góc dưới phải để đổi cỡ. Xong thì kéo thông báo xuống, bấm \"Chỉnh/Khóa khung\"." else "")
+        if (!on) drainPendingAudioTranscript()
     }
 
     /** Bản dịch hiện ở phía đối diện khung để không bị đọc lại chính nó. */
