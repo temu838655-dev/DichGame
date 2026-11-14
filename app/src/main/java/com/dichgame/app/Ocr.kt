@@ -45,25 +45,56 @@ class Ocr(private val p: Prefs, private val lang: String) {
     /** true nếu mỗi lần đọc phải gửi ảnh lên Gemini (chậm hơn và tốn lượt dùng). */
     val isCloud: Boolean get() = local == null
 
+    /**
+     * Ocr.read nhận quyền sở hữu bitmap đầu vào: chỉ giải phóng sau khi ML Kit/Gemini
+     * đã đọc xong. CaptureService tạo ảnh mới ở mỗi khung hình nên không giải phóng
+     * ở đây sẽ làm bộ nhớ native tăng dần trong phiên chơi dài.
+     */
+    private fun recycleInput(bmp: Bitmap) {
+        if (!bmp.isRecycled) runCatching { bmp.recycle() }
+    }
+
     fun read(bmp: Bitmap, fail: (String) -> Unit, ok: (List<Blk>) -> Unit) {
         val l = local
         if (l != null) {
-            l.process(InputImage.fromBitmap(bmp, 0))
-                .addOnSuccessListener { r -> ok(r.textBlocks.map { Blk(it.text, it.boundingBox) }) }
-                .addOnFailureListener { fail("") }
+            try {
+                l.process(InputImage.fromBitmap(bmp, 0))
+                    .addOnSuccessListener { r ->
+                        recycleInput(bmp)
+                        ok(r.textBlocks.map { Blk(it.text, it.boundingBox) })
+                    }
+                    .addOnFailureListener {
+                        recycleInput(bmp)
+                        fail("")
+                    }
+            } catch (e: Exception) {
+                recycleInput(bmp)
+                fail("")
+            }
             return
         }
         val key = p.geminiKey
-        if (key.isEmpty()) { fail("Chữ ${Prefs.srcNameOf(lang)} cần khóa Google Gemini. Vào Cách dịch để nhập khóa."); return }
+        if (key.isEmpty()) {
+            recycleInput(bmp)
+            fail("Chữ ${Prefs.srcNameOf(lang)} cần khóa Google Gemini. Vào Cách dịch để nhập khóa.")
+            return
+        }
         val model = p.geminiModel
-        io.execute {
-            try {
-                val blocks = cloudRead(bmp, key, model)
-                main.post { ok(blocks) }
-            } catch (e: Exception) {
-                val m = errorText(e)
-                main.post { fail(m) }
+        try {
+            io.execute {
+                try {
+                    val blocks = cloudRead(bmp, key, model)
+                    recycleInput(bmp)
+                    main.post { ok(blocks) }
+                } catch (e: Exception) {
+                    recycleInput(bmp)
+                    val m = errorText(e)
+                    main.post { fail(m) }
+                }
             }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            recycleInput(bmp)
+            main.post { fail("Bộ đọc chữ đã dừng. Hãy khởi động lại dịch game.") }
         }
     }
 
