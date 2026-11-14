@@ -74,6 +74,27 @@ class GameAudioSegmenterTest {
         assertTrue("Only post-gap speech should be emitted", result.single().size <= 100 * 16 + 120 * 16)
     }
 
+    @Test fun producesSameUtteranceWhenPcmArrivesInIrregularChunkSizes() {
+        val audio = tone(180) + silence(600)
+        val wholeResult = mutableListOf<FloatArray>()
+        GameAudioSegmenter(onUtterance = wholeResult::add).accept(audio)
+        val wholeSegmenter = GameAudioSegmenter(onUtterance = wholeResult::add)
+        // Re-run as irregular decoder chunks that do not align to 20 ms frames.
+        val chunkedResult = mutableListOf<FloatArray>()
+        val chunkedSegmenter = GameAudioSegmenter(onUtterance = chunkedResult::add)
+        var offset = 0
+        val sizes = intArrayOf(137, 911, 53, 2048, 317, 29)
+        var index = 0
+        while (offset < audio.size) {
+            val end = minOf(audio.size, offset + sizes[index++ % sizes.size])
+            chunkedSegmenter.accept(audio.copyOfRange(offset, end))
+            offset = end
+        }
+        assertEquals(1, chunkedResult.size)
+        assertEquals(1, wholeResult.size)
+        assertArrayEquals(wholeResult.single(), chunkedResult.single(), 0.000001f)
+    }
+
     @Test fun separatesUtterancesAfterSilence() {
         val result = mutableListOf<FloatArray>()
         val segmenter = GameAudioSegmenter(onUtterance = result::add)
