@@ -682,10 +682,15 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             )
             phys.rightX = (right.first * Short.MAX_VALUE).toInt().toShort()
             phys.rightY = (right.second * Short.MAX_VALUE).toInt().toShort()
-            fun trigger(a: Int): Float = TriggerAxis.normalize(
-                e.getAxisValue(a),
-                e.device?.getMotionRange(a, e.source)?.flat ?: 0f
-            )
+            fun trigger(a: Int): Float {
+                val range = e.device?.getMotionRange(a, e.source)
+                return TriggerAxis.normalize(
+                    e.getAxisValue(a),
+                    range?.flat ?: 0f,
+                    range?.min ?: 0f,
+                    range?.max ?: 1f
+                )
+            }
             physicalL2Analog = maxOf(trigger(MotionEvent.AXIS_LTRIGGER), trigger(MotionEvent.AXIS_BRAKE))
             physicalR2Analog = maxOf(trigger(MotionEvent.AXIS_RTRIGGER), trigger(MotionEvent.AXIS_GAS))
             updatePhysicalTriggers()
