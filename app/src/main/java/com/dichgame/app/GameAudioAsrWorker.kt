@@ -17,10 +17,8 @@ private class OfflineGameAudioTranscriber(
     language: String,
 ) : GameAudioTranscriber {
     private val engine = OfflineGameAsr(modelDirectory, language)
-
     override fun transcribe(samples: ShortArray, sampleRate: Int, channels: Int): String =
         engine.transcribe(samples, sampleRate, channels)
-
     override fun close() = engine.close()
 }
 
@@ -37,7 +35,6 @@ internal class GameAudioAsrWorker(
     private val running = AtomicBoolean(false)
     @Volatile private var workerThread: Thread? = null
 
-    /** Starts one dedicated consumer thread. Returns false if already started. */
     @Synchronized
     fun start(): Boolean {
         if (!started.compareAndSet(false, true)) return false
@@ -49,10 +46,7 @@ internal class GameAudioAsrWorker(
         return true
     }
 
-    /**
-     * Requests a graceful stop, drains already queued PCM, flushes the final speech
-     * segment, and closes the recognizer on its owning worker thread.
-     */
+    /** Stop, drain queued frames, flush the last speech segment, and close the model. */
     fun stopAndJoin(timeoutMs: Long = 5_000L): Boolean {
         require(timeoutMs >= 0L)
         running.set(false)
@@ -66,11 +60,11 @@ internal class GameAudioAsrWorker(
     }
 
     private fun runWorker() {
-        var transcriber: GameAudioTranscriber? = null
+        var ownedTranscriber: GameAudioTranscriber? = null
         val segmenter = GameAudioSpeechSegmenter()
         try {
-            transcriber = try {
-                engineFactory(modelDirectory, language)
+            val activeTranscriber = try {
+                engineFactory(modelDirectory, language).also { ownedTranscriber = it }
             } catch (error: Throwable) {
                 reportError("Chưa thể khởi động dịch giọng nói: ${error.message ?: error.javaClass.simpleName}")
                 return
@@ -85,20 +79,20 @@ internal class GameAudioAsrWorker(
                     reportError("Luồng nhận âm thanh bị gián đoạn.")
                     break
                 } ?: continue
-                processSegments(segmenter.accept(chunk), transcriber)
+                processSegments(segmenter.accept(chunk), activeTranscriber)
             }
 
-            // Drain PCM that arrived just before the native callback was detached.
+            // Drain PCM queued just before the native callback was detached.
             while (true) {
                 val pending = queue.poll() ?: break
-                processSegments(segmenter.accept(pending), transcriber)
+                processSegments(segmenter.accept(pending), activeTranscriber)
             }
-            segmenter.flush()?.let { processSegment(it, transcriber) }
+            segmenter.flush()?.let { processSegment(it, activeTranscriber) }
         } catch (error: Throwable) {
             reportError("Worker dịch giọng nói gặp lỗi: ${error.message ?: error.javaClass.simpleName}")
         } finally {
             try {
-                transcriber?.close()
+                ownedTranscriber?.close()
             } catch (error: Throwable) {
                 reportError("Không thể giải phóng model giọng nói: ${error.message ?: error.javaClass.simpleName}")
             }
@@ -117,11 +111,10 @@ internal class GameAudioAsrWorker(
         transcriber: GameAudioTranscriber,
     ) {
         try {
-            val text = transcriber.transcribe(segment.samples, segment.sampleRate, segment.channels)
-                .trim()
+            val text = transcriber.transcribe(segment.samples, segment.sampleRate, segment.channels).trim()
             if (text.isNotEmpty()) {
                 try { onTranscript(text) } catch (_: Throwable) {
-                    // Consumer/UI callback failures must not kill audio recognition.
+                    // UI/consumer callback failures must not kill audio recognition.
                 }
             }
         } catch (error: Throwable) {
