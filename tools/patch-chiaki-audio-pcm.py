@@ -14,7 +14,7 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
     return source.replace(old, new, 1)
 
 jni = replace_once(jni, "\tjmethodID java_session_event_rumble_meth;\n",
-    "\tjmethodID java_session_event_rumble_meth;\n\tjmethodID java_session_audio_frame_meth;\n",
+    "\tjmethodID java_session_event_rumble_meth;\n\tjmethodID java_session_audio_frame_meth;\n\tjmethodID java_session_has_audio_frame_callback_meth;\n",
     "session audio callback field")
 callback = """
 /* Forward decoded game PCM without blocking the decoder output thread. */
@@ -22,15 +22,26 @@ static void android_chiaki_audio_frame_cb(int16_t *buf, size_t samples_count, vo
 {
     AndroidChiakiSession *session = user;
     android_chiaki_audio_output_frame(buf, samples_count, session->audio_output);
-    if(!session->java_session || !session->java_session_audio_frame_meth || samples_count > (size_t)0x7fffffff)
+    if(!session->java_session || !session->java_session_audio_frame_meth ||
+       !session->java_session_has_audio_frame_callback_meth || samples_count > (size_t)0x7fffffff)
         return;
 
     JNIEnv *env = attach_thread_jni();
     if(!env)
         return;
-    jshortArray samples = E->NewShortArray(env, (jsize)samples_count);
-    if(!samples)
+    jboolean listening = E->CallBooleanMethod(env, session->java_session,
+                                               session->java_session_has_audio_frame_callback_meth);
+    if(E->ExceptionCheck(env)) {
+        E->ExceptionClear(env);
         return;
+    }
+    if(!listening)
+        return;
+    jshortArray samples = E->NewShortArray(env, (jsize)samples_count);
+    if(!samples) {
+        if(E->ExceptionCheck(env)) E->ExceptionClear(env);
+        return;
+    }
     E->SetShortArrayRegion(env, samples, 0, (jsize)samples_count, (const jshort *)buf);
     if(!E->ExceptionCheck(env))
         E->CallVoidMethod(env, session->java_session, session->java_session_audio_frame_meth,
@@ -52,7 +63,8 @@ jni = replace_once(jni,
 jni = replace_once(jni,
     'session->java_session_event_rumble_meth = E->GetMethodID(env, session->java_session_class, "eventRumble", "(II)V");\n',
     'session->java_session_event_rumble_meth = E->GetMethodID(env, session->java_session_class, "eventRumble", "(II)V");\n'
-    'session->java_session_audio_frame_meth = E->GetMethodID(env, session->java_session_class, "eventAudioFrame", "([SII)V");\n',
+    'session->java_session_audio_frame_meth = E->GetMethodID(env, session->java_session_class, "eventAudioFrame", "([SII)V");\n'
+    'session->java_session_has_audio_frame_callback_meth = E->GetMethodID(env, session->java_session_class, "hasAudioFrameCallback", "()Z");\n',
     "audio callback method lookup")
 jni_path.write_text(jni, encoding="utf-8")
 print("Patched Chiaki JNI PCM callback bridge.")
