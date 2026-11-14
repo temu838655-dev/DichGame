@@ -294,7 +294,13 @@ class PsPairActivity : Activity() {
             synchronized(log) { if (log.length < 20000) log.append(ChiakiLog.formatLog(level, text)).append('\n') }
         }
         try {
-            regist = Regist(info, lg) { ev -> runOnUiThread { onRegistEvent(ev) } }
+            regist = Regist(info, lg) { ev ->
+                runOnUiThread {
+                    // Registration có thể trả kết quả sau khi người dùng đã rời màn hình.
+                    // onDestroy() chịu trách nhiệm dừng/dispose Regist; callback muộn không được điều hướng UI.
+                    if (!isFinishing && !isDestroyed) onRegistEvent(ev)
+                }
+            }
         } catch (e: CreateError) {
             running = false
             status = "Không bắt đầu được: ${e.errorCode}"
