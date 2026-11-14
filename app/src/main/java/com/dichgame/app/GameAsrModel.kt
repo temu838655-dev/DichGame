@@ -195,15 +195,16 @@ class GameAudioAsr(
         worker = Thread({
             var engine: OfflineRecognizer? = null
             try {
-                engine = GameAsrModel.createRecognizer(context)
-                recognizer = engine
+                val activeEngine = GameAsrModel.createRecognizer(context)
+                engine = activeEngine
+                recognizer = activeEngine
                 val segmenter = GameAudioSegmenter(onUtterance = { samples ->
                     if (!stopped.get() && samples.isNotEmpty()) {
-                        val stream = engine.createStream()
+                        val stream = activeEngine.createStream()
                         try {
                             stream.acceptWaveform(samples, GamePcmAudio.ASR_SAMPLE_RATE)
-                            engine.decode(stream)
-                            val text = engine.getResult(stream).text.trim()
+                            activeEngine.decode(stream)
+                            val text = activeEngine.getResult(stream).text.trim()
                             if (text.isNotEmpty()) onTranscript(text)
                         } finally {
                             stream.release()
