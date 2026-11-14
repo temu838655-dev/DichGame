@@ -60,7 +60,7 @@ class SettingsActivity : Activity() {
         card.addView(Ui.section(this, "🎧", "Nhận dạng lời thoại bằng âm thanh"))
         val directory = java.io.File(filesDir, "whisper-tiny")
         val files = listOf("encoder.onnx", "decoder.onnx", "tokens.txt").map { java.io.File(directory, it) }
-        val installed = files.all { it.isFile && it.length() > 0L }
+        val installed = WhisperTinyModelInstaller(directory).isInstalled()
         val status = Ui.tv(
             this,
             if (installed) "✔ Đã có bộ nhận dạng Whisper Tiny đa ngôn ngữ trên máy."
