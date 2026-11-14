@@ -457,7 +457,7 @@ class WebTranslateActivity : Activity() {
         overlay.setBackgroundColor(bgc)
         overlay.setShadowLayer(6f, 0f, 0f, Color.BLACK)
         overlay.textSize = p.fontSize * p.subScale / 100f
-        overlay.text = if (orig.isEmpty()) vi else "$orig\\n$vi"
+        overlay.text = if (orig.isEmpty()) vi else "$orig\n$vi"
         overlay.visibility = android.view.View.VISIBLE
     }
 
