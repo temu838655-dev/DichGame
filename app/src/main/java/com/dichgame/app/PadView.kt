@@ -226,7 +226,8 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
             if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL) break
             if ((act == MotionEvent.ACTION_POINTER_UP) && i == e.actionIndex) continue
             when (owner[e.getPointerId(i)]) {
-                "DPAD" -> dpadBits = dpadFrom(e.getX(i) - dpadCx, e.getY(i) - dpadCy)
+                // Nhiều ngón chạm D-pad cùng lúc phải hợp nhất hướng, không ghi đè nhau.
+                "DPAD" -> dpadBits = dpadBits or dpadFrom(e.getX(i) - dpadCx, e.getY(i) - dpadCy)
                 "LS" -> { val v = axis(e.getX(i) - lsCx, e.getY(i) - lsCy, lsR); lx = v.first; ly = v.second }
                 "RS" -> { val v = axis(e.getX(i) - rsCx, e.getY(i) - rsCy, rsR); rx = v.first; ry = v.second }
             }
