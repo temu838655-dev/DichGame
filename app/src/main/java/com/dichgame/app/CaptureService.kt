@@ -662,10 +662,17 @@ class CaptureService : Service() {
         busy = true
         o.read(crop, { m -> ocrFail(m) }) { r ->
                 val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
-                if (text.length < minLen) { last = ""; cand = ""; if (!autoShown) show(""); busy = false; return@read }
+                if (text.isEmpty()) { last = ""; cand = ""; stable = 0; if (!autoShown) show(""); busy = false; return@read }
                 if (text == last) { busy = false; return@read }
                 if (text != cand) { cand = text; stable = 1 } else stable++
-                if (stable < needStable) { busy = false; return@read }
+                // Câu rất ngắn như "No", "Go", "OK" dễ bị bộ lọc độ dài bỏ qua.
+                // Cho phép 1–2 ký tự nhưng yêu cầu lặp lại qua nhiều khung hình để giảm OCR rác.
+                val requiredStable = when (text.length) {
+                    1 -> maxOf(needStable, 3)
+                    2 -> maxOf(needStable, 2)
+                    else -> needStable
+                }
+                if (stable < requiredStable) { busy = false; return@read }
                 last = text
                 if (narrate) { showSub("", text); busy = false; return@read }
                 translateTextEx(text) { vi, d -> showSub(text, vi, d); busy = false }
