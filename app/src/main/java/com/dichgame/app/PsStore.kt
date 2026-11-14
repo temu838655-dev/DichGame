@@ -209,11 +209,19 @@ object PsStore {
         c.ps5 = ps5
         if (r.serverNickname.isNotBlank()) c.name = r.serverNickname
         val same = c.players.indexOfFirst { it.mac.contentEquals(r.serverMac) && it.registKey.contentEquals(r.rpRegistKey) }
-        if (same >= 0) c.players.removeAt(same)
-        val p = PsPlayer("Người chơi ${c.players.size + 1}", r.rpRegistKey, r.rpKeyType.toInt(), r.rpKey, r.serverMac, r.serverNickname)
-        c.players.add(p)
+        // Ghép lại cùng người chơi thì cập nhật tại đúng vị trí cũ. Xóa rồi thêm vào cuối
+        // sẽ đổi thứ tự người chơi và có thể khiến lựa chọn TV/điện thoại trỏ nhầm tài khoản.
+        val label = if (same >= 0) c.players[same].label else "Người chơi ${c.players.size + 1}"
+        val p = PsPlayer(label, r.rpRegistKey, r.rpKeyType.toInt(), r.rpKey, r.serverMac, r.serverNickname)
+        val playerIndex = if (same >= 0) {
+            c.players[same] = p
+            same
+        } else {
+            c.players.add(p)
+            c.players.lastIndex
+        }
         check(save(ctx, c)) { "Không thể lưu khóa ghép nối an toàn. Dữ liệu cũ vẫn được giữ nguyên." }
-        return c.players.size - 1
+        return playerIndex
     }
 
     // ---- chất lượng hình ----
