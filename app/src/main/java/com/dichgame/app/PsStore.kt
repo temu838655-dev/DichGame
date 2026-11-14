@@ -1,6 +1,14 @@
 package com.dichgame.app
 
 import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import com.metallic.chiaki.lib.ConnectInfo
 import com.metallic.chiaki.lib.ConnectVideoProfile
 import com.metallic.chiaki.lib.Codec
@@ -40,6 +48,49 @@ object PsStore {
     private const val K_RES = "res"
     private const val K_RATE = "rate"
     private const val K_ASK = "noask"
+    private const val KEY_ALIAS = "dichgame.remoteplay.storage"
+    private const val ENVELOPE_VERSION = 1
+    private const val GCM_TAG_BITS = 128
+
+    private fun storageKey(): SecretKey {
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        generator.init(
+            KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setRandomizedEncryptionRequired(true)
+                .build(),
+        )
+        return generator.generateKey()
+    }
+
+    /** Mã hóa toàn bộ JSON bằng AES-GCM; IV ngẫu nhiên được lưu cùng ciphertext. */
+    private fun encryptConsoleJson(plainText: String): String {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, storageKey())
+        val encrypted = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
+        return JSONObject()
+            .put("format", ENVELOPE_VERSION)
+            .put("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+            .put("ciphertext", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            .toString()
+    }
+
+    private fun decryptConsoleJson(envelope: JSONObject): String {
+        require(envelope.optInt("format", -1) == ENVELOPE_VERSION) { "Phiên bản dữ liệu ghép nối không được hỗ trợ." }
+        val iv = Base64.decode(envelope.getString("iv"), Base64.NO_WRAP)
+        val ciphertext = Base64.decode(envelope.getString("ciphertext"), Base64.NO_WRAP)
+        require(iv.size == 12 && ciphertext.size >= 16) { "Dữ liệu ghép nối đã mã hóa không hợp lệ." }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, storageKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
+        return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+    }
 
     private fun hex(b: ByteArray) = b.joinToString("") { "%02x".format(it) }
 
@@ -68,10 +119,7 @@ object PsStore {
 
             // Chỉ xóa dữ liệu cũ sau khi bản mới đã được ghi đồng bộ thành công.
             // Nếu ghi thất bại, giữ nguyên dữ liệu cũ để lần mở sau có thể thử chuyển lại.
-            val encoded = encodeConsole(c)
-            val saved = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-                .edit().putString(K_CONSOLE, encoded).commit()
-            if (!saved) return null
+            if (!save(ctx, c)) return null
             old.edit().clear().commit()
             c
         } catch (_: Exception) { null }
@@ -80,27 +128,39 @@ object PsStore {
     fun load(ctx: Context): PsConsole? {
         val raw = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(K_CONSOLE, null) ?: return migrateOld(ctx)
         return try {
-            val o = JSONObject(raw)
-            val host = o.getString("host").trim()
-            if (host.isEmpty()) return null
-            val c = PsConsole(host, o.optBoolean("ps5", true), o.optString("name", "PS5"))
-            val a = o.optJSONArray("players") ?: JSONArray()
-            for (i in 0 until a.length()) {
-                val p = a.getJSONObject(i)
-                val regist = parseHex(p.getString("regist")) ?: return null
-                val key = parseHex(p.getString("key")) ?: return null
-                val mac = parseHex(p.optString("mac", "")) ?: return null
-                if (regist.isEmpty() || key.isEmpty()) return null
-                c.players.add(PsPlayer(
-                    p.optString("label", "Người chơi ${i + 1}"),
-                    regist, p.optInt("type", 0), key, mac, p.optString("nick", ""),
-                ))
-            }
-            if (c.players.isEmpty()) return null
-            c.tvPlayer = o.optInt("tv", 0).coerceIn(0, (c.players.size - 1).coerceAtLeast(0))
-            c.phonePlayer = o.optInt("phone", 0).coerceIn(0, (c.players.size - 1).coerceAtLeast(0))
-            c
+            val stored = JSONObject(raw)
+            val encrypted = stored.has("format")
+            val plainText = if (encrypted) decryptConsoleJson(stored) else raw
+            val console = decodeConsole(plainText) ?: return null
+
+            // Dữ liệu cũ dạng JSON/HEX được nâng cấp tại chỗ sau khi mã hóa và ghi thành công.
+            // Nếu Keystore hoặc commit gặp lỗi, vẫn trả dữ liệu đã đọc được và giữ nguyên bản cũ.
+            if (!encrypted) save(ctx, console)
+            console
         } catch (_: Exception) { null }
+    }
+
+    private fun decodeConsole(raw: String): PsConsole? {
+        val o = JSONObject(raw)
+        val host = o.getString("host").trim()
+        if (host.isEmpty()) return null
+        val c = PsConsole(host, o.optBoolean("ps5", true), o.optString("name", "PS5"))
+        val a = o.optJSONArray("players") ?: JSONArray()
+        for (i in 0 until a.length()) {
+            val p = a.getJSONObject(i)
+            val regist = parseHex(p.getString("regist")) ?: return null
+            val key = parseHex(p.getString("key")) ?: return null
+            val mac = parseHex(p.optString("mac", "")) ?: return null
+            if (regist.isEmpty() || key.isEmpty()) return null
+            c.players.add(PsPlayer(
+                p.optString("label", "Người chơi ${i + 1}"),
+                regist, p.optInt("type", 0), key, mac, p.optString("nick", ""),
+            ))
+        }
+        if (c.players.isEmpty()) return null
+        c.tvPlayer = o.optInt("tv", 0).coerceIn(0, c.players.size - 1)
+        c.phonePlayer = o.optInt("phone", 0).coerceIn(0, c.players.size - 1)
+        return c
     }
 
     private fun encodeConsole(c: PsConsole): String {
@@ -112,10 +172,13 @@ object PsStore {
             .put("players", a).put("tv", c.tvPlayer).put("phone", c.phonePlayer).toString()
     }
 
-    fun save(ctx: Context, c: PsConsole?) {
-        val e = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
-        if (c == null) e.remove(K_CONSOLE) else e.putString(K_CONSOLE, encodeConsole(c))
-        e.apply()
+    /** Trả false nếu ghi không thành công; khóa không bao giờ được ghi lại dưới dạng plaintext. */
+    fun save(ctx: Context, c: PsConsole?): Boolean {
+        val prefs = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+        if (c == null) editor.remove(K_CONSOLE)
+        else editor.putString(K_CONSOLE, encryptConsoleJson(encodeConsole(c)))
+        return editor.commit()
     }
 
     /** Thêm người chơi vừa ghép xong. Máy khác địa chỉ thì thay luôn máy cũ. Trả về số thứ tự người chơi. */
@@ -128,7 +191,7 @@ object PsStore {
         if (same >= 0) c.players.removeAt(same)
         val p = PsPlayer("Người chơi ${c.players.size + 1}", r.rpRegistKey, r.rpKeyType.toInt(), r.rpKey, r.serverMac, r.serverNickname)
         c.players.add(p)
-        save(ctx, c)
+        check(save(ctx, c)) { "Không thể lưu khóa ghép nối an toàn. Dữ liệu cũ vẫn được giữ nguyên." }
         return c.players.size - 1
     }
 
