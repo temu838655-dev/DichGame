@@ -238,8 +238,13 @@ class CaptureService : Service() {
         val bmp = try {
             val p = img.planes[0]
             val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
-            cropAndRecycle(full, 0, 0, img.width, img.height)
+            try {
+                full.copyPixelsFromBuffer(p.buffer)
+                cropAndRecycle(full, 0, 0, img.width, img.height)
+            } finally {
+                // Đảm bảo giải phóng ảnh toàn màn hình nếu copy pixel hoặc crop gặp lỗi.
+                if (!full.isRecycled) runCatching { full.recycle() }
+            }
         } finally { img.close() }
         busy = true
         val skip = listOfNotNull(rectOf(frame), rectOf(overlay))
