@@ -29,6 +29,28 @@ class GameAudioPcmQueueTest {
         assertNull(queue.poll())
     }
 
+    @Test fun sequenceTrackerDetectsAudioGapAfterConsumerHasStarted() {
+        val queue = GameAudioPcmQueue(2)
+        val tracker = GameAudioSequenceTracker()
+
+        assertTrue(queue.offer(shortArrayOf(0, 0), 48_000, 1))
+        val first = queue.poll()!!
+        assertFalse(tracker.hasGap(first.sequence))
+
+        assertTrue(queue.offer(shortArrayOf(1, 1), 48_000, 1))
+        assertTrue(queue.offer(shortArrayOf(2, 2), 48_000, 1))
+        assertTrue(queue.offer(shortArrayOf(3, 3), 48_000, 1))
+
+        // The queue discarded sequence 1 to preserve the newest live audio.
+        val afterGap = queue.poll()!!
+        assertEquals(2L, afterGap.sequence)
+        assertTrue(tracker.hasGap(afterGap.sequence))
+
+        val next = queue.poll()!!
+        assertEquals(3L, next.sequence)
+        assertFalse(tracker.hasGap(next.sequence))
+    }
+
     @Test fun rejectsInvalidFramesAndClosedQueue() {
         val queue = GameAudioPcmQueue(2)
         assertFalse(queue.offer(shortArrayOf(1), 48_000, 2))
