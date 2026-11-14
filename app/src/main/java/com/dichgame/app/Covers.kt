@@ -144,7 +144,7 @@ object Covers {
 class CoverView(c: Context, private val title: String) : View(c) {
     var bmp: Bitmap? = null
         set(v) { field = v; invalidate() }
-    var selected = false
+    var chosen = false
         set(v) { field = v; invalidate() }
     var vietHoa = false
         set(v) { field = v; invalidate() }
@@ -192,7 +192,7 @@ class CoverView(c: Context, private val title: String) : View(c) {
             p.shader = null
             cv.drawText(label, tmp.centerX(), tmp.bottom - 5f * d, tp)
         }
-        if (selected) {
+        if (chosen) {
             p.style = Paint.Style.STROKE
             p.strokeWidth = 3f * d
             p.color = Ui.GOLD

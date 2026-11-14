@@ -152,7 +152,7 @@ class KhoGameActivity : Activity() {
 
     private fun cellOf(name: String, selected: Boolean): View {
         val col = Ui.vbox(this)
-        val cover = CoverView(this, name).apply { this.selected = selected; vietHoa = isViet(name) }
+        val cover = CoverView(this, name).apply { chosen = selected; vietHoa = isViet(name) }
         col.addView(cover, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
         Covers.get(this, name) { b -> cover.bmp = b }
         col.addView(Ui.tv(this, name, 12.5f, if (selected) Ui.GOLD else Ui.TEXT).apply {
