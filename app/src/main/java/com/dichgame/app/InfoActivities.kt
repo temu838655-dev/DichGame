@@ -56,7 +56,7 @@ class FeaturesActivity : Activity() {
             Triple("Dịch video trên web", "Trình duyệt trong app, bảng dịch ở đáy. Nút dịch bắt đầu / tạm dừng, chọn ngôn ngữ, đọc phụ đề CC hoặc quét chữ (OCR) trong khung bạn kéo, ẩn phụ đề gốc, cỡ chữ, đọc to.", true),
             Triple("28 thứ tiếng trong game", "Chữ Latin, Nhật, Hàn, Trung, Hindi đọc trên máy; Nga, Thái, Ả Rập... nhờ Gemini.", true),
             Triple("Từ điển riêng cho từng game", "Ép tên nhân vật, chiêu thức, địa danh luôn đúng một cách gọi, cả khi dịch bằng AI lẫn dịch trên máy.", true),
-            Triple("Kho game Việt hoá", "Hơn 100 game PS5, PS4, Xbox, PC, Steam, Switch. Chọn game là dùng ngay gói Việt hoá của game đó (thuật ngữ, nhân vật, câu thông báo).", true),
+            Triple("Kho game Việt hoá", "Hơn 200 game PS5, PS4, Xbox, PC, Steam, Switch, có ảnh bìa. Chọn game là dùng ngay gói Việt hoá của game đó (thuật ngữ, nhân vật, câu thông báo).", true),
             Triple("Gói Việt hoá: nhập, xuất, chia sẻ", "Nhập gói từ file hoặc link, sửa thẻ nhân vật, lưu gói của mình ra file. Câu thoại khớp là dùng luôn, không qua bộ dịch.", true),
             Triple("Dịch theo cảm xúc và nhịp nhân vật", "Giận, sợ, thì thầm, mỉa mai... đổi giọng đọc, tốc độ và hiện nhãn cảm xúc trên phụ đề. Nhân vật nói chậm hay nhanh đặt trong thẻ nhân vật.", true),
             Triple("11 kiểu dịch và Prompt riêng", "Tự nhiên, thuyết minh, anh – em, bụi bặm, cao bồi, podcast, tin tức... hoặc tự viết yêu cầu cho AI.", true),
