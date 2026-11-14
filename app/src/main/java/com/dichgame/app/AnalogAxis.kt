@@ -9,7 +9,8 @@ import kotlin.math.sqrt
  */
 internal object AnalogAxis {
     fun normalize(value: Float, flat: Float): Float {
-        val v = value.coerceIn(-1f, 1f)
+        // Một số tay cầm/driver có thể phát NaN hoặc vô cực khi vừa kết nối.
+        val v = if (value.isFinite()) value.coerceIn(-1f, 1f) else 0f
         val deadZone = flat.takeIf { it.isFinite() }?.coerceIn(0f, 0.95f) ?: 0.1f
         val magnitude = abs(v)
         if (magnitude <= deadZone) return 0f
@@ -22,8 +23,8 @@ internal object AnalogAxis {
      * Kết quả không vượt quá bán kính 1.
      */
     fun normalizePair(x: Float, y: Float, flatX: Float, flatY: Float): Pair<Float, Float> {
-        val safeX = x.coerceIn(-1f, 1f)
-        val safeY = y.coerceIn(-1f, 1f)
+        val safeX = if (x.isFinite()) x.coerceIn(-1f, 1f) else 0f
+        val safeY = if (y.isFinite()) y.coerceIn(-1f, 1f) else 0f
         val magnitude = sqrt(safeX * safeX + safeY * safeY)
         val deadZone = maxOf(
             flatX.takeIf { it.isFinite() }?.coerceIn(0f, 0.95f) ?: 0.1f,
