@@ -129,7 +129,7 @@ class PackActivity : Activity() {
     }
 
     private fun linkDialog() {
-        val et = Ui.field(this, "https://… (file .txt, GitHub dạng /blob/ cũng được)", "")
+        val et = Ui.field(this, "https://… (file .txt .csv .json .po, GitHub dạng /blob/ cũng được)", "")
         val box = Ui.vbox(this)
         val pad = Ui.dp(this, 20)
         box.setPadding(pad, pad / 2, pad, 0)
@@ -162,7 +162,7 @@ class PackActivity : Activity() {
             Thread {
                 val msg = try {
                     val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
-                    if (bytes.size > 8_000_000) "File quá lớn (tối đa 8 MB)." else PackStore.importText(this, p, String(bytes, Charsets.UTF_8))
+                    if (bytes.size > 8_000_000) "File quá lớn (tối đa 8 MB)." else PackStore.importText(this, p, PackText.decode(bytes))
                 } catch (e: Exception) { "Không đọc được file: " + (e.message ?: e.javaClass.simpleName) }
                 runOnUiThread { done(msg) }
             }.start()

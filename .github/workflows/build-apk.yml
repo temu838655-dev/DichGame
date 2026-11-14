@@ -68,6 +68,9 @@ jobs:
             echo "Đang ký bằng khóa mặc định trong keystore/."
           fi
 
+      - name: Kiểm tra logic gói Việt hoá (unit test)
+        run: gradle :app:testDebugUnitTest -PnoNative --no-daemon --stacktrace
+
       - name: Build điện thoại và TV
         run: gradle :app:assembleRelease :tv:assembleRelease -PbuildNo=${{ github.run_number }} --no-daemon --stacktrace
 

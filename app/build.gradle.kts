@@ -141,4 +141,5 @@ dependencies {
     implementation("org.apache.commons:commons-compress:1.26.2")
     // Âm thanh độ trễ thấp cho Remote Play (engine chiaki-ng tìm thư viện này qua prefab)
     implementation("com.google.oboe:oboe:1.10.0")
+    testImplementation("junit:junit:4.13.2")
 }

@@ -1,5 +1,9 @@
 package com.dichgame.app
 
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.Charset
+import java.nio.charset.CodingErrorAction
 import java.text.Normalizer
 import java.util.Locale
 
@@ -227,6 +231,185 @@ object PackText {
             }
         }
         return Pack(name, terms, cast, lines)
+    }
+
+    // ---------------- nhập file Việt hoá của nơi khác ----------------
+
+    /** Chữ trong file: nhận BOM UTF-8 và UTF-16, thử UTF-8 chặt, không được thì coi là Windows-1258 (file Việt hoá cũ từ Windows). */
+    fun decode(b: ByteArray): String {
+        if (b.size >= 2 && b[0] == 0xFF.toByte() && b[1] == 0xFE.toByte()) return String(b, 2, b.size - 2, Charsets.UTF_16LE)
+        if (b.size >= 2 && b[0] == 0xFE.toByte() && b[1] == 0xFF.toByte()) return String(b, 2, b.size - 2, Charsets.UTF_16BE)
+        val start = if (b.size >= 3 && b[0] == 0xEF.toByte() && b[1] == 0xBB.toByte() && b[2] == 0xBF.toByte()) 3 else 0
+        try {
+            val dec = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
+            return dec.decode(ByteBuffer.wrap(b, start, b.size - start)).toString()
+        } catch (_: CharacterCodingException) {
+        }
+        val cs = try { Charset.forName("windows-1258") } catch (_: Exception) { Charsets.ISO_8859_1 }
+        return String(b, start, b.size - start, cs)
+    }
+
+    private fun hasSection(raw: String): Boolean = raw.lineSequence().any { l0 ->
+        val l = l0.trim()
+        l.startsWith("[") && l.endsWith("]") && l.length > 2 && section(l.substring(1, l.length - 1)) != null
+    }
+
+    private val SRC_NAMES = setOf("original", "source", "src", "orig", "en", "eng", "english", "text", "msgid", "from", "gốc", "câu gốc", "tiếng anh", "nguồn")
+    private val DST_NAMES = setOf("vi", "vn", "vie", "vietnamese", "translation", "translated", "target", "tgt", "dst", "msgstr", "to", "việt", "dịch", "bản dịch", "tiếng việt", "việt hoá", "việt hóa")
+
+    private fun unescape(s: String): String {
+        if (!s.contains('\\')) return s
+        val sb = StringBuilder(s.length)
+        var i = 0
+        while (i < s.length) {
+            val c = s[i]
+            if (c == '\\' && i + 1 < s.length) {
+                val n = s[i + 1]
+                when (n) {
+                    'n' -> { sb.append('\n'); i += 2 }
+                    't' -> { sb.append('\t'); i += 2 }
+                    'r' -> { i += 2 }
+                    '"' -> { sb.append('"'); i += 2 }
+                    '\\' -> { sb.append('\\'); i += 2 }
+                    '/' -> { sb.append('/'); i += 2 }
+                    'u' -> {
+                        val h = if (i + 6 <= s.length) s.substring(i + 2, i + 6).toIntOrNull(16) else null
+                        if (h != null) { sb.append(h.toChar()); i += 6 } else { sb.append(c); i++ }
+                    }
+                    else -> { sb.append(n); i += 2 }
+                }
+            } else { sb.append(c); i++ }
+        }
+        return sb.toString()
+    }
+
+    private val JSON_STR = "\"((?:[^\"\\\\]|\\\\.)*)\""
+
+    /** JSON: mảng các đối tượng {"original": "...", "vi": "..."} hoặc bảng phẳng {"câu gốc": "câu Việt"}. */
+    private fun fromJson(t: String): List<Pair<String, String>> {
+        val kv = Regex("$JSON_STR\\s*:\\s*$JSON_STR")
+        val objs = Regex("\\{([^{}]*)\\}").findAll(t).toList()
+        val out = ArrayList<Pair<String, String>>()
+        if (objs.size == 1 && t.trimStart().startsWith("{") && objs[0].value.length >= t.trim().length - 1) {
+            for (m in kv.findAll(objs[0].groupValues[1])) {
+                val a = unescape(m.groupValues[1]).trim(); val b = unescape(m.groupValues[2]).trim()
+                if (a.any { it.isLetter() } && b.isNotEmpty()) out.add(a to b)
+            }
+            return out
+        }
+        for (o in objs) {
+            var src: String? = null
+            var dst: String? = null
+            for (m in kv.findAll(o.groupValues[1])) {
+                val k = unescape(m.groupValues[1]).trim().lowercase(Locale.ROOT)
+                val v = unescape(m.groupValues[2]).trim()
+                if (k in SRC_NAMES && src == null) src = v
+                if (k in DST_NAMES && dst == null) dst = v
+            }
+            if (!src.isNullOrEmpty() && !dst.isNullOrEmpty()) out.add(src to dst)
+        }
+        return out
+    }
+
+    private fun poUnquote(s: String): String {
+        val t = s.trim()
+        return if (t.length >= 2 && t.startsWith("\"") && t.endsWith("\"")) unescape(t.substring(1, t.length - 1)) else unescape(t)
+    }
+
+    /** gettext .po: msgid "..." / msgstr "..." (có thể nhiều dòng). */
+    private fun fromPo(raw: String): List<Pair<String, String>> {
+        val out = ArrayList<Pair<String, String>>()
+        val id = StringBuilder()
+        val str = StringBuilder()
+        var mode = 0 // 1 đang đọc msgid, 2 đang đọc msgstr, 3 bỏ qua (dạng số nhiều)
+        fun flush() {
+            if (id.isNotEmpty() && str.isNotBlank()) out.add(id.toString().trim() to str.toString().trim())
+            id.setLength(0); str.setLength(0)
+        }
+        for (line in raw.lines()) {
+            val l = line.trim()
+            when {
+                l.startsWith("msgid_plural") -> mode = 3
+                l.startsWith("msgid ") || l == "msgid" -> { if (mode == 2) flush(); mode = 1; id.setLength(0); id.append(poUnquote(l.removePrefix("msgid"))) }
+                l.startsWith("msgstr[0]") -> { mode = 2; str.append(poUnquote(l.removePrefix("msgstr[0]"))) }
+                l.startsWith("msgstr[") -> mode = 3
+                l.startsWith("msgstr") -> { mode = 2; str.append(poUnquote(l.removePrefix("msgstr"))) }
+                l.startsWith("\"") -> { if (mode == 1) id.append(poUnquote(l)) else if (mode == 2) str.append(poUnquote(l)) }
+                l.isEmpty() -> { if (mode == 2 || mode == 3) flush(); mode = 0 }
+            }
+        }
+        flush()
+        return out
+    }
+
+    private fun csvRow(line: String, d: Char): List<String> {
+        val cells = ArrayList<String>()
+        val sb = StringBuilder()
+        var q = false
+        var i = 0
+        while (i < line.length) {
+            val c = line[i]
+            if (q) {
+                if (c == '"') { if (i + 1 < line.length && line[i + 1] == '"') { sb.append('"'); i++ } else q = false } else sb.append(c)
+            } else if (c == '"' && sb.isEmpty()) q = true
+            else if (c == d) { cells.add(sb.toString()); sb.setLength(0) }
+            else sb.append(c)
+            i++
+        }
+        cells.add(sb.toString())
+        return cells
+    }
+
+    /** Bảng TSV hoặc CSV: cột câu gốc, cột câu Việt (tự nhận qua dòng tiêu đề nếu có, không thì hai cột đầu). */
+    private fun fromTable(raw: String): List<Pair<String, String>>? {
+        val rows = raw.lines().filter { it.isNotBlank() && !it.trimStart().startsWith("#") }
+        if (rows.size < 2) return null
+        val sample = rows.take(40)
+        var delim: Char? = null
+        if (sample.count { it.contains('\t') } * 10 >= sample.size * 8) delim = '\t'
+        else for (d in charArrayOf(';', ',')) {
+            val counts = sample.map { csvRow(it, d).size }
+            val mode = counts.groupingBy { it }.eachCount().maxByOrNull { it.value } ?: continue
+            if (mode.key >= 2 && mode.value * 10 >= sample.size * 9 && sample.count { it.contains(" = ") } * 2 < sample.size) { delim = d; break }
+        }
+        val d = delim ?: return null
+        var si = 0
+        var di = 1
+        var from = 0
+        val head = csvRow(rows[0], d).map { it.trim().lowercase(Locale.ROOT) }
+        val hs = head.indexOfFirst { it in SRC_NAMES }
+        val hd = head.indexOfFirst { it in DST_NAMES }
+        if (hs >= 0 && hd >= 0 && hs != hd) { si = hs; di = hd; from = 1 }
+        val out = ArrayList<Pair<String, String>>()
+        for (r in rows.drop(from)) {
+            val c = csvRow(r, d)
+            if (c.size <= maxOf(si, di)) continue
+            val a = c[si].trim(); val b = c[di].trim()
+            if (a.isNotEmpty() && b.isNotEmpty()) out.add(a to b)
+        }
+        return out
+    }
+
+    /**
+     * Nhập file Việt hoá: nhận dạng của app (có mục [thuật ngữ] / [nhân vật] / [câu thoại]) và các dạng phổ biến của nơi khác:
+     * JSON, gettext .po, bảng CSV/TSV (cột câu gốc, cột câu Việt). File chỉ có dòng "gốc = Việt" không có mục thì câu dài
+     * tính là câu thoại, từ ngắn tính là thuật ngữ. Chỉ lấy cặp câu chữ; bản vá (mod) sửa file game thì app không đọc được.
+     */
+    fun parseAny(raw0: String): Pack {
+        val raw = raw0.removePrefix("\uFEFF")
+        if (hasSection(raw)) return parse(raw)
+        val t = raw.trimStart()
+        val pairs: List<Pair<String, String>>? = when {
+            t.startsWith("{") || t.startsWith("[") -> fromJson(t)
+            Regex("(?m)^\\s*msgid\\s+\"").containsMatchIn(raw) -> fromPo(raw)
+            else -> null
+        }
+        if (!pairs.isNullOrEmpty()) return Pack("", emptyList(), emptyList(), pairs.take(MAX_LINES))
+        fromTable(raw)?.let { if (it.isNotEmpty()) return Pack("", emptyList(), emptyList(), it.take(MAX_LINES)) }
+        val p = parse(raw)
+        val long = p.terms.filter { it.first.split(Regex("\\s+")).size >= 4 || it.first.length >= 28 }
+        if (long.isEmpty()) return p
+        return Pack(p.name, p.terms - long.toSet(), p.cast, (p.lines + long).take(MAX_LINES))
     }
 
     fun format(name: String, terms: String, cast: String, lines: List<Pair<String, String>>): String {

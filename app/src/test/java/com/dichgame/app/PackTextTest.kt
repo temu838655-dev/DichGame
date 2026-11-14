@@ -1,0 +1,93 @@
+package com.dichgame.app
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
+import org.junit.Test
+import java.nio.charset.Charset
+
+/** Kiểm tra nhập file Việt hoá ở nhiều dạng (chạy trên máy tính, không cần Android). */
+class PackTextTest {
+    @Test fun decodeUtf16WithBom() {
+        val b = byteArrayOf(0xFF.toByte(), 0xFE.toByte()) + "Xin chào".toByteArray(Charsets.UTF_16LE)
+        assertEquals("Xin chào", PackText.decode(b))
+    }
+
+    @Test fun decodeUtf8WithBom() {
+        val b = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + "Tiếng Việt".toByteArray(Charsets.UTF_8)
+        assertEquals("Tiếng Việt", PackText.decode(b))
+    }
+
+    @Test fun decodeWindows1258() {
+        assumeTrue(Charset.isSupported("windows-1258"))
+        val text = "Tiếng Việt"
+        val b = text.toByteArray(Charset.forName("windows-1258"))
+        assertEquals(text, PackText.decode(b))
+    }
+
+    @Test fun jsonArrayOfObjects() {
+        val p = PackText.parseAny("""[{"id":1,"original":"You died","vi":"Bạn đã chết"},{"source":"Press any button","translation":"Nhấn nút bất kỳ"}]""")
+        assertEquals(listOf("You died" to "Bạn đã chết", "Press any button" to "Nhấn nút bất kỳ"), p.lines)
+    }
+
+    @Test fun jsonFlatMapWithEscapes() {
+        val p = PackText.parseAny("""{ "Hello, world": "Chào thế giới", "Line\none": "Dòng \"một\"", "123": "x" }""")
+        assertEquals(2, p.lines.size)
+        assertEquals("Chào thế giới", p.lines[0].second)
+        assertEquals("Dòng \"một\"", p.lines[1].second)
+    }
+
+    @Test fun gettextPo() {
+        val po = """
+            msgid ""
+            msgstr "Project-Id-Version: x\n"
+
+            #: a.c:1
+            msgid "Save game"
+            msgstr "Lưu game"
+
+            msgid "A very long "
+            "sentence here"
+            msgstr "Một câu rất "
+            "dài ở đây"
+
+            msgid "Untranslated"
+            msgstr ""
+        """.trimIndent()
+        val p = PackText.parseAny(po)
+        assertEquals(listOf("Save game" to "Lưu game", "A very long sentence here" to "Một câu rất dài ở đây"), p.lines)
+    }
+
+    @Test fun csvWithHeaderAndQuotedComma() {
+        val csv = "id,English,Vietnamese\n1,\"Hello, hero\",\"Chào, anh hùng\"\n2,Run away,Chạy đi\n"
+        val p = PackText.parseAny(csv)
+        assertEquals(listOf("Hello, hero" to "Chào, anh hùng", "Run away" to "Chạy đi"), p.lines)
+    }
+
+    @Test fun tsvWithoutHeader() {
+        val p = PackText.parseAny("You died\tBạn đã chết\nQuest complete\tHoàn thành nhiệm vụ\n")
+        assertEquals(2, p.lines.size)
+        assertEquals("Hoàn thành nhiệm vụ", p.lines[1].second)
+    }
+
+    @Test fun plainEqualsFileSplitsTermsAndLines() {
+        val p = PackText.parseAny("Hyrule = Hyrule\nLink = Link\nI will protect this land with my life = Tôi sẽ bảo vệ vùng đất này bằng cả mạng sống\n")
+        assertEquals(2, p.terms.size)
+        assertEquals(1, p.lines.size)
+    }
+
+    @Test fun appFormatKeepsSections() {
+        val p = PackText.parseAny("tên: Game thử\n[thuật ngữ]\nMana = Ma lực\n[câu thoại]\nYOU DIED = BẠN ĐÃ CHẾT\n")
+        assertEquals("Game thử", p.name)
+        assertEquals(listOf("Mana" to "Ma lực"), p.terms)
+        assertEquals(listOf("YOU DIED" to "BẠN ĐÃ CHẾT"), p.lines)
+    }
+
+    @Test fun importedLinesWorkInTransMemory() {
+        val p = PackText.parseAny("""{"original":"YOU DIED","vi":"BẠN ĐÃ CHẾT"}""".let { "[$it]" })
+        val tm = TransMemory(p.lines)
+        assertNotNull(tm.lookup("YOU DIED"))
+        assertTrue(tm.lookup("you d1ed")!!.contains("BẠN"))
+    }
+}

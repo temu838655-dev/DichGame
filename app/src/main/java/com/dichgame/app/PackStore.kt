@@ -98,7 +98,7 @@ object PackStore {
 
     /** Nhập một gói (văn bản) vào hồ sơ hiện tại. Phần đã có được giữ nguyên. Trả về câu báo kết quả. */
     fun importText(ctx: Context, p: Prefs, text: String): String {
-        val pack = PackText.parse(text)
+        val pack = PackText.parseAny(text)
         if (pack.isEmpty) return "File không có gì để nhập. Cần các mục [thuật ngữ], [nhân vật] hoặc [câu thoại]."
         val before = p.glossary.lines().count { it.contains('=') }
         p.glossary = VietHoa.merge(p.glossary, pack.terms)
