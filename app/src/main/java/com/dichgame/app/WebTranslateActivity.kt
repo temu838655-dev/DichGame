@@ -49,6 +49,7 @@ class WebTranslateActivity : Activity() {
     private var ocrCandidate = ""
     private var ocrStableFrames = 0
     private var lastOcrDelivered = ""
+    private var lastOcrTextAt = 0L
     private var speechRecognizer: SpeechRecognizer? = null
     private var micEnabled = false
     private var micButton: TextView? = null
@@ -60,10 +61,13 @@ class WebTranslateActivity : Activity() {
             if (destroyed || !::web.isInitialized) return
             val now = System.currentTimeMillis()
             // Chỉ quét ảnh khi phụ đề HTML không xuất hiện; tránh OCR đè lên phụ đề thật.
-            if (enabled && !ocrBusy && now - lastSubtitleAt > 1400L && now - lastOcrAt > 900L) {
+            val reader = ocr
+            // OCR local peut être rapide; OCR cloud est ralenti pour limiter latence et quota Gemini.
+            val scanInterval = if (reader?.isCloud == true) 1800L else 500L
+            if (enabled && !ocrBusy && now - lastSubtitleAt > 1400L && now - lastOcrAt >= scanInterval) {
                 captureSubtitleRegion()
             }
-            main.postDelayed(this, 900L)
+            main.postDelayed(this, scanInterval)
         }
     }
 
@@ -380,12 +384,19 @@ class WebTranslateActivity : Activity() {
                             .replace(Regex("\\s+"), " ").trim()
                         // Chỉ chấp nhận OCR khi cùng một câu xuất hiện ổn định ở ít nhất 2 lần quét.
                         // Chống nhiễu và tránh gửi đi dịch lại cùng một câu ở mọi khung hình.
-                        if (recognized.length >= 2) {
+                        if (recognized.isNotEmpty()) {
                             if (recognized == ocrCandidate) ocrStableFrames++
                             else { ocrCandidate = recognized; ocrStableFrames = 1 }
-                            if (ocrStableFrames >= 2 && recognized != lastOcrDelivered) {
+                            // Một ký tự rất dễ là nhiễu; cần 3 khung ổn định. Hai ký tự cần ít nhất 2.
+                            val requiredFrames = if (recognized.length == 1) 3 else 2
+                            val nowText = System.currentTimeMillis()
+                            val sameCueReturned = recognized == lastOcrDelivered && nowText - lastOcrTextAt > 1800L
+                            if (ocrStableFrames >= requiredFrames && (recognized != lastOcrDelivered || sameCueReturned)) {
                                 lastOcrDelivered = recognized
+                                lastOcrTextAt = nowText
                                 onSub(recognized)
+                            } else if (recognized == lastOcrDelivered) {
+                                lastOcrTextAt = nowText
                             }
                         } else {
                             ocrCandidate = ""
