@@ -875,6 +875,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 } else {
                     pendingGameTranslations.removeAll { it.first == sourceLanguage }
                     Toast.makeText(this, "Không tải được dữ liệu dịch offline cho ${Prefs.srcNameOf(sourceLanguage)}.", Toast.LENGTH_LONG).show()
+                    drainGameTranslations()
                 }
             }
         }
@@ -892,7 +893,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         gameTranslationBusy = true
         translator.translate(original) { vietnamese ->
             if (gameAsr != null && !isFinishing && !isDestroyed) {
-                gameAsrSubtitle?.text = "$vietnamese\n$original"
+                gameAsrSubtitle?.text = "${Prefs.srcNameOf(language)} · $vietnamese\n$original"
                 gameAsrSubtitle?.visibility = View.VISIBLE
             }
             gameTranslationBusy = false
