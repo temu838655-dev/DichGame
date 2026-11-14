@@ -16,6 +16,17 @@ class PairingPinTest {
         assertNull(parsePairingPin("123456789"))
     }
 
+    @Test fun decodesValidHexAndRejectsCorruptStoredKeys() {
+        val decoded = PsStore.parseHex("00aF19")
+        assertEquals(listOf<Byte>(0, 175.toByte(), 25), decoded?.toList())
+        assertNull(PsStore.parseHex("abc"))
+        assertNull(PsStore.parseHex("0g"))
+    }
+
+    @Test fun acceptsEmptyHexOnlyForOptionalLegacyMac() {
+        assertEquals(emptyList<Byte>(), PsStore.parseHex("")?.toList())
+    }
+
     @Test fun rejectsNonAsciiDigitsAndOtherCharacters() {
         assertNull(parsePairingPin("１２３４５６７８"))
         assertNull(parsePairingPin("1234 678"))
