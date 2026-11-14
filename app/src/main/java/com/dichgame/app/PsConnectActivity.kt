@@ -156,11 +156,11 @@ class PsConnectActivity : Activity() {
             pc.addView(top)
             val labels = { con.players.map { it.label } }
             pc.addView(Ui.dropRow(this@PsConnectActivity, "Khi dịch (chơi trên TV)", { con.players.getOrNull(con.tvPlayer)?.label ?: "-" }, labels) {
-                con.tvPlayer = it; PsStore.save(this@PsConnectActivity, con)
+                con.tvPlayer = it; saveConsoleOrRestore(con)
             })
             pc.addView(Ui.divider(this@PsConnectActivity), Ui.lp(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 1))
             pc.addView(Ui.dropRow(this@PsConnectActivity, "Khi chơi trên điện thoại", { con.players.getOrNull(con.phonePlayer)?.label ?: "-" }, labels) {
-                con.phonePlayer = it; PsStore.save(this@PsConnectActivity, con)
+                con.phonePlayer = it; saveConsoleOrRestore(con)
             })
             pc.addView(Ui.tv(this@PsConnectActivity,
                 "Nên chọn người chơi phụ khi dịch, để tay cầm của bạn trên TV không bị ngắt. Muốn điều khiển nhân vật chính của game 1 người từ điện thoại thì chọn người chơi chính (người đang chơi trên TV sẽ bị ngắt).",
@@ -215,11 +215,21 @@ class PsConnectActivity : Activity() {
             .setPositiveButton("Lưu") { _, _ ->
                 val h = et.text.toString().trim()
                 if (Regex("^[0-9A-Za-z.:-]{3,80}$").matches(h)) {
-                    con.host = h; PsStore.save(this, con)
-                    stopDiscovery(); render(); startDiscovery()
+                    con.host = h
+                    if (saveConsoleOrRestore(con)) { stopDiscovery(); render(); startDiscovery() } else render()
                 } else toast("Địa chỉ chưa đúng.")
             }
             .setNegativeButton("Hủy", null).show()
+    }
+
+    /** Khôi phục cấu hình đã lưu nếu Keystore hoặc ghi đĩa gặp lỗi. */
+    private fun saveConsoleOrRestore(value: PsConsole?): Boolean {
+        val saved = runCatching { PsStore.save(this, value) }.getOrDefault(false)
+        if (!saved) {
+            c = runCatching { PsStore.load(this) }.getOrNull()
+            toast("Không thể lưu thay đổi ghép nối an toàn. Đã tải lại cấu hình đã lưu.")
+        } else c = value
+        return saved
     }
 
     private fun manage() {
@@ -233,8 +243,8 @@ class PsConnectActivity : Activity() {
                 .setPositiveButton("Xóa") { _, _ ->
                     if (i < con.players.size) {
                         PsStore.removePlayer(con, i)
-                        PsStore.save(this, if (con.players.isEmpty()) null else con)
-                    } else PsStore.save(this, null)
+                        saveConsoleOrRestore(if (con.players.isEmpty()) null else con)
+                    } else saveConsoleOrRestore(null)
                     render()
                 }
                 .setNegativeButton("Hủy", null).show()
