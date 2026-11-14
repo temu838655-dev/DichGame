@@ -211,8 +211,14 @@ class GameAudioAsr(
                         }
                     }
                 })
+                // A full queue drops its oldest PCM chunk. Never join audio from
+                // opposite sides of that gap into one Whisper utterance.
+                val sequenceTracker = GameAudioSequenceTracker()
                 while (!stopped.get()) {
                     val chunk = queue.poll(150) ?: continue
+                    if (sequenceTracker.hasGap(chunk.sequence)) {
+                        segmenter.reset()
+                    }
                     val mono = GamePcmAudio.toMonoFloat16k(
                         chunk.samples, chunk.sampleRate, chunk.channels
                     )
