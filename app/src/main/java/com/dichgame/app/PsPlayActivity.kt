@@ -66,6 +66,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var session: Session? = null
     // PCM game audio is handed off through a bounded queue; the native callback never waits.
     private var gameAudioPcmQueue: GameAudioPcmQueue? = null
+    private var gameAudioAsrWorker: GameAudioAsrWorker? = null
     private var gen = 0
     private var surface: Surface? = null
     // SurfaceView có thể bị thay khi xoay màn hình; chỉ holder hiện tại được phép điều khiển surface. 
@@ -452,6 +453,24 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             gameAudioPcmQueue = candidateAudioQueue
             candidateAudioQueue = null
             candidate = null
+            val modelDirectory = java.io.File(filesDir, "whisper-tiny")
+            if (WhisperTinyModelInstaller(modelDirectory).isInstalled()) {
+                val worker = GameAudioAsrWorker(
+                    queue = gameAudioPcmQueue!!,
+                    modelDirectory = modelDirectory,
+                    language = Prefs(this).lang,
+                    onTranscript = { text -> CaptureService.submitAudioTranscript(this, text) },
+                    onError = { message ->
+                        ui.post {
+                            if (!isFinishing && !isDestroyed) {
+                                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                )
+                gameAudioAsrWorker = worker
+                worker.start()
+            }
             surface?.let { s.setSurface(it) }
             push()
         } catch (e: Throwable) {
@@ -559,7 +578,11 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         s.audioFrameCallback = null
         val audioQueue = gameAudioPcmQueue
         gameAudioPcmQueue = null
+        val asrWorker = gameAudioAsrWorker
+        gameAudioAsrWorker = null
         Thread {
+            // Chiaki callback is detached above; drain ASR before stopping native audio.
+            try { asrWorker?.stopAndJoin(10_000L) } catch (_: Throwable) {}
             try { s.stop() } catch (_: Throwable) {}
             try { s.dispose() } catch (_: Throwable) {}
             try { audioQueue?.close() } catch (_: Throwable) {}

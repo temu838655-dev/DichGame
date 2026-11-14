@@ -44,7 +44,23 @@ import org.json.JSONObject
 
 /** Chụp màn hình -> đọc chữ (OCR) -> dịch Anh sang Việt -> hiện ở đầu màn hình. Tất cả chạy trên máy. */
 class CaptureService : Service() {
-    companion object { const val STOP = "stop"; const val TOGGLE = "toggle"; const val MENU = "menu"; const val REGION = "region"; @Volatile var active = false }
+    companion object {
+        const val STOP = "stop"
+        const val TOGGLE = "toggle"
+        const val MENU = "menu"
+        const val REGION = "region"
+        const val AUDIO_TEXT = "audio_text"
+        @Volatile var active = false
+
+        /** Deliver decoded game dialogue to the active subtitle/translation service. */
+        fun submitAudioTranscript(context: android.content.Context, text: String) {
+            if (!active || text.isBlank()) return
+            val intent = Intent(context, CaptureService::class.java)
+                .setAction(AUDIO_TEXT)
+                .putExtra("audio_text", text)
+            runCatching { context.applicationContext.startService(intent) }
+        }
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private var ocr: Ocr? = null
@@ -119,6 +135,11 @@ class CaptureService : Service() {
         if (intent.action == TOGGLE) { if (running) setEditing(!editing); return START_NOT_STICKY }
         if (intent.action == MENU) { if (running) menuOnce(); return START_NOT_STICKY }
         if (intent.action == REGION) { if (running) toggleRegion(); return START_NOT_STICKY }
+        if (intent.action == AUDIO_TEXT) {
+            val text = intent.getStringExtra("audio_text").orEmpty()
+            if (running) handler.post { acceptAudioTranscript(text) }
+            return START_NOT_STICKY
+        }
         if (running) return START_NOT_STICKY
         running = true
         active = true
@@ -304,6 +325,29 @@ class CaptureService : Service() {
                     }
                 }
             }
+    }
+
+    /**
+     * Audio ASR is a fallback for brief dialogue missed by OCR. If OCR is already
+     * processing a frame, prefer that result; exact normalized duplicates are
+     * suppressed in either arrival order.
+     */
+    private fun acceptAudioTranscript(raw: String) {
+        if (!running || !ready || editing || narrate || busy) return
+        val text = raw.replace(Regex("\\s+"), " ").trim()
+        if (text.isEmpty()) return
+        fun normalize(value: String) = value.lowercase(Locale.ROOT)
+            .replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+        val key = normalize(text)
+        if (key.isEmpty() || key == normalize(last) || key == normalize(cand)) return
+        last = text
+        cand = text
+        stable = needStable
+        busy = true
+        translateTextEx(text) { vi, delivery ->
+            if (running) showSub(text, vi, delivery)
+            busy = false
+        }
     }
 
     /** Lỗi đọc chữ: mở khóa để quét lại, chỉ hiện thông báo lỗi của Gemini (không báo lỗi đọc trên máy), tối đa 8 giây một lần. */
