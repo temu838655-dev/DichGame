@@ -633,14 +633,20 @@ class CaptureService : Service() {
         val crop = try {
             val p = img.planes[0]
             val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
-            val loc = IntArray(2)
-            frame!!.getLocationOnScreen(loc)
-            val x = loc[0].coerceIn(0, img.width - 1)
-            val y = loc[1].coerceIn(0, img.height - 1)
-            val w = frame!!.width.coerceIn(1, img.width - x)
-            val h = frame!!.height.coerceIn(1, img.height - y)
-            cropAndRecycle(full, x, y, w, h)
+            try {
+                full.copyPixelsFromBuffer(p.buffer)
+                val loc = IntArray(2)
+                frame!!.getLocationOnScreen(loc)
+                val x = loc[0].coerceIn(0, img.width - 1)
+                val y = loc[1].coerceIn(0, img.height - 1)
+                val w = frame!!.width.coerceIn(1, img.width - x)
+                val h = frame!!.height.coerceIn(1, img.height - y)
+                cropAndRecycle(full, x, y, w, h)
+            } finally {
+                // cropAndRecycle đã giải phóng ảnh gốc khi thành công; nhánh lỗi
+                // (copy pixel / lấy tọa độ / tạo crop) cũng phải giải phóng ảnh.
+                if (!full.isRecycled) runCatching { full.recycle() }
+            }
         } finally { img.close() }
 
         val o = ocr
