@@ -37,7 +37,7 @@ class GameAudioPcmQueue(capacity: Int = DEFAULT_CAPACITY) : AutoCloseable {
 
     /**
      * Copies PCM data before returning because the native decoder may reuse its
-     * output buffer immediately. Never blocks the audio callback.
+     * output buffer immediately. Never waits for the consumer.
      */
     fun offer(samples: ShortArray, sampleRate: Int, channels: Int): Boolean {
         if (closed.get() || sampleRate <= 0 || channels !in 1..2 ||
@@ -50,11 +50,26 @@ class GameAudioPcmQueue(capacity: Int = DEFAULT_CAPACITY) : AutoCloseable {
             channels = channels,
             samples = samples.copyOf()
         )
-        if (queue.offer(chunk)) return true
+        if (closed.get()) return false
+        if (queue.offer(chunk)) {
+            // close() may race with the enqueue; do not leave audio in a closed queue.
+            if (closed.get()) {
+                queue.remove(chunk)
+                return false
+            }
+            return true
+        }
 
-        queue.poll()
-        dropped.incrementAndGet()
-        return queue.offer(chunk)
+        // A consumer may have freed a slot between offer() and poll(). Count
+        // a drop only when this producer actually removed an older chunk.
+        if (queue.poll() != null) dropped.incrementAndGet()
+        if (closed.get()) return false
+        if (!queue.offer(chunk)) return false
+        if (closed.get()) {
+            queue.remove(chunk)
+            return false
+        }
+        return true
     }
 
     /** Returns the next chunk, or null when the timeout expires / queue is closed. */
