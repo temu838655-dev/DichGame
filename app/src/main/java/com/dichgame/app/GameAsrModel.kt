@@ -176,7 +176,7 @@ object GameAsrModel {
  */
 class GameAudioAsr(
     private val context: Context,
-    private val onTranscript: (String) -> Unit,
+    private val onTranscript: (String, String) -> Unit,
     private val onError: (String) -> Unit,
 ) : AutoCloseable {
     private val queue = GameAudioPcmQueue(32)
@@ -204,8 +204,9 @@ class GameAudioAsr(
                         try {
                             stream.acceptWaveform(samples, GamePcmAudio.ASR_SAMPLE_RATE)
                             activeEngine.decode(stream)
-                            val text = activeEngine.getResult(stream).text.trim()
-                            if (text.isNotEmpty()) onTranscript(text)
+                            val result = activeEngine.getResult(stream)
+                            val text = result.text.trim()
+                            if (text.isNotEmpty()) onTranscript(text, result.lang)
                         } finally {
                             stream.release()
                         }
