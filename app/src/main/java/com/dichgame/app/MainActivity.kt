@@ -71,12 +71,12 @@ class MainActivity : Activity() {
                 open(WebTranslateActivity::class.java)
             }, 0, 12)
             val row1 = Ui.hbox(this@MainActivity)
-            row1.addView(tile("🌐", "Cách dịch", engineLabel(), "AI") { open(TranslateActivity::class.java) }, Ui.lp(0, WRAP_CONTENT, 1f))
+            row1.addView(tile("🌐", "Cách dịch", engineLabel(), "AI") { open(TranslateActivity::class.java) }, Ui.lp(0, MATCH_PARENT, 1f))
             row1.addView(tile("🎙", "Giọng đọc", voiceLabel(), null) { open(SettingsActivity::class.java) }, tileLp())
             put(row1, 0, 12)
             val gameName = PackStore.gameName(p)
             val row2 = Ui.hbox(this@MainActivity)
-            row2.addView(tile("🕹", "Kho game", gameName.ifEmpty { "PS5 · PS4 · Xbox · PC · Steam" }, "MỚI") { open(KhoGameActivity::class.java) }, Ui.lp(0, WRAP_CONTENT, 1f))
+            row2.addView(tile("🕹", "Kho game", gameName.ifEmpty { "PS5 · PS4 · Xbox · PC · Steam" }, "MỚI") { open(KhoGameActivity::class.java) }, Ui.lp(0, MATCH_PARENT, 1f))
             row2.addView(tile("🔗", "Ghép nối", if (con != null) "${con.name} · ${con.players.size} người chơi" else "Chưa ghép nối",
                 null, statusBadge(if (con != null) "ĐÃ GHÉP" else "CHƯA", con != null)) { open(PsConnectActivity::class.java) }, tileLp())
             put(row2, 0, 14)
@@ -85,7 +85,7 @@ class MainActivity : Activity() {
                 addView(Ui.tv(this@MainActivity, "Thêm", 16f, Ui.TEXT, true).apply { setPadding(Ui.dp(this@MainActivity, 10), 0, 0, 0) })
             }, 4, 8)
             val more = Ui.hbox(this@MainActivity)
-            more.addView(chip("📦", "Gói Việt hoá") { open(PackActivity::class.java) }, Ui.lp(0, WRAP_CONTENT, 1f))
+            more.addView(chip("📦", "Gói Việt hoá") { open(PackActivity::class.java) }, Ui.lp(0, MATCH_PARENT, 1f))
             more.addView(chip("💡", "Hướng dẫn") { open(GuideActivity::class.java) }, tileLp())
             more.addView(chip("👑", "Tính năng") { open(FeaturesActivity::class.java) }, tileLp())
             put(more, 0, 12)
@@ -103,7 +103,7 @@ class MainActivity : Activity() {
 
     private fun versionName(): String = try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (_: Exception) { "" }
 
-    private fun tileLp() = Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@MainActivity, 12) }
+    private fun tileLp() = Ui.lp(0, MATCH_PARENT, 1f).apply { leftMargin = Ui.dp(this@MainActivity, 12) }
 
     private fun engineLabel() = when (p.engine) {
         Prefs.ENGINE_CLOUD -> "CloudAPI"
