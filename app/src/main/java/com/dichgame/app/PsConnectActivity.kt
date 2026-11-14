@@ -331,7 +331,8 @@ class PsConnectActivity : Activity() {
 
 /** Bảng "Chất lượng hình": độ phân giải và tốc độ mạng tối đa cho luồng Remote Play. */
 object PsQuality {
-    private val RATES = listOf(0, 5, 10, 15, 20, 30)
+    // Thêm mức 2–3 Mbps để ưu tiên giữ hình khi đường truyền rất yếu.
+    private val RATES = listOf(0, 2, 3, 5, 8, 10, 15, 20, 30)
 
     fun summary(a: Activity): String {
         val r = when (PsStore.res(a)) { 1 -> "720p"; 2 -> "1080p"; else -> "720p" }
@@ -370,8 +371,9 @@ object PsQuality {
                 h2.removeAllViews()
                 val sel = RATES.indexOf(PsStore.rate(a)).coerceAtLeast(0)
                 h2.addView(Ui.segmented(a, RATES.map { if (it == 0) "Tự động" else "$it" }, sel) { PsStore.setRate(a, RATES[it]); drawRate() })
-                desc2.text = if (RATES[sel] == 0) "Tự động: 10 Mbps cho 720p, 15 Mbps cho 1080p. Nếu hình giật, thử hạ xuống 5 hoặc 10."
-                else "Tối đa ${RATES[sel]} Mbps. Mạng yếu thì chọn thấp hơn để đỡ giật."
+                desc2.text = if (RATES[sel] == 0) "Tự động theo mức PS Remote Play. Nếu hình giật hoặc hay đứng, thử 2–5 Mbps để ưu tiên ổn định."
+                else if (RATES[sel] <= 3) "Mức rất thấp ${RATES[sel]} Mbps: ưu tiên giảm tải đường truyền, hình có thể mềm và giảm chi tiết."
+                else "Tối đa ${RATES[sel]} Mbps. Mạng yếu thì chọn thấp hơn để giảm nghẽn và rớt khung hình."
             }
             drawRate()
             c2.addView(h2, Ui.lpm(a, 8, 0))
