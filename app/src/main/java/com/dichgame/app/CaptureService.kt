@@ -377,29 +377,60 @@ class CaptureService : Service() {
     }
 
     private fun regionGrab(box: FrameLayout) {
-        ensureSize()
-        val img = reader?.acquireLatestImage()
-        if (img == null || region == null) { img?.close(); busy = false; overlay?.visibility = View.VISIBLE; return }
+        val img = try {
+            ensureSize()
+            reader?.acquireLatestImage()
+        } catch (_: Exception) {
+            reportFrameError()
+            busy = false
+            overlay?.visibility = View.VISIBLE
+            return
+        }
+        if (img == null || region == null) {
+            img?.close()
+            busy = false
+            overlay?.visibility = View.VISIBLE
+            return
+        }
         val crop = try {
             val p = img.planes[0]
             val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
-            val loc = IntArray(2)
-            box.getLocationOnScreen(loc)
-            val x = loc[0].coerceIn(0, img.width - 1)
-            val y = loc[1].coerceIn(0, img.height - 1)
-            cropAndRecycle(full, x, y, box.width.coerceIn(1, img.width - x), box.height.coerceIn(1, img.height - y))
-        } finally { img.close() }
-        ocr!!.read(crop, { m -> ocrFail(m) }) { r ->
-                val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
-                if (text.length < minLen) { show("Không thấy chữ trong khung."); busy = false; return@read }
-                translateText(text) { vi ->
-                    show(vi)
-                    sendTv("region", vi, speak && tvSpeakOn() && !tvVoiceOn())
-                    if (speak && tvVoiceOn()) tvVoice(vi)
-                    busy = false
-                }
+            try {
+                full.copyPixelsFromBuffer(p.buffer)
+                val loc = IntArray(2)
+                box.getLocationOnScreen(loc)
+                val x = loc[0].coerceIn(0, img.width - 1)
+                val y = loc[1].coerceIn(0, img.height - 1)
+                cropAndRecycle(full, x, y, box.width.coerceIn(1, img.width - x), box.height.coerceIn(1, img.height - y))
+            } finally {
+                // Kể cả copy pixel hoặc lấy tọa độ lỗi, không giữ bitmap toàn màn hình.
+                if (!full.isRecycled) runCatching { full.recycle() }
             }
+        } catch (_: Exception) {
+            reportFrameError()
+            busy = false
+            overlay?.visibility = View.VISIBLE
+            return
+        } finally {
+            img.close()
+        }
+        val reader = ocr
+        if (reader == null) {
+            if (!crop.isRecycled) runCatching { crop.recycle() }
+            busy = false
+            overlay?.visibility = View.VISIBLE
+            return
+        }
+        reader.read(crop, { m -> ocrFail(m) }) { r ->
+            val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
+            if (text.length < minLen) { show("Không thấy chữ trong khung."); busy = false; return@read }
+            translateText(text) { vi ->
+                show(vi)
+                sendTv("region", vi, speak && tvSpeakOn() && !tvVoiceOn())
+                if (speak && tvVoiceOn()) tvVoice(vi)
+                busy = false
+            }
+        }
     }
 
     /** Dịch bằng AI nếu đã bật (CloudAPI / Gemini, có nhớ vài câu trước), lỗi thì quay về dịch trên máy. */
@@ -648,84 +679,3 @@ class CaptureService : Service() {
             display = projection!!.createVirtualDisplay(
                 "dg", cw, ch, dm.densityDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 newReader.surface, null, handler
-            )
-        } else {
-            display!!.resize(cw, ch, dm.densityDpi)
-            display!!.surface = newReader.surface
-        }
-        reader?.close()
-        reader = newReader
-        relayoutFrame()
-    }
-
-    private fun capture() {
-        if (busy || !ready || editing || System.currentTimeMillis() < menuUntil) return
-        ensureSize()
-        val img = reader?.acquireLatestImage() ?: return
-        val crop = try {
-            val p = img.planes[0]
-            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            try {
-                full.copyPixelsFromBuffer(p.buffer)
-                val loc = IntArray(2)
-                frame!!.getLocationOnScreen(loc)
-                val x = loc[0].coerceIn(0, img.width - 1)
-                val y = loc[1].coerceIn(0, img.height - 1)
-                val w = frame!!.width.coerceIn(1, img.width - x)
-                val h = frame!!.height.coerceIn(1, img.height - y)
-                cropAndRecycle(full, x, y, w, h)
-            } finally {
-                // cropAndRecycle đã giải phóng ảnh gốc khi thành công; nhánh lỗi
-                // (copy pixel / lấy tọa độ / tạo crop) cũng phải giải phóng ảnh.
-                if (!full.isRecycled) runCatching { full.recycle() }
-            }
-        } finally { img.close() }
-
-        val o = ocr
-        if (o == null) {
-            if (!crop.isRecycled) runCatching { crop.recycle() }
-            return
-        }
-        if (o.isCloud) {
-            // Gemini: chỉ gửi khi hình trong khung thật sự đổi, để khỏi tốn lượt dùng.
-            val sig = Ocr.thumb(crop)
-            if (Ocr.same(sig, lastSig)) {
-                // Không gửi ảnh trùng lên Gemini thì cũng phải giải phóng crop,
-                // vì nhánh này không chuyển quyền sở hữu cho Ocr.read().
-                if (!crop.isRecycled) runCatching { crop.recycle() }
-                return
-            }
-            lastSig = sig
-        }
-        busy = true
-        o.read(crop, { m -> ocrFail(m) }) { r ->
-                val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
-                if (text.isEmpty()) { last = ""; cand = ""; stable = 0; if (!autoShown) show(""); busy = false; return@read }
-                if (text == last) { busy = false; return@read }
-                if (text != cand) { cand = text; stable = 1 } else stable++
-                // Câu rất ngắn như "No", "Go", "OK" dễ bị bộ lọc độ dài bỏ qua.
-                // Cho phép 1–2 ký tự nhưng yêu cầu lặp lại qua nhiều khung hình để giảm OCR rác.
-                val requiredStable = when (text.length) {
-                    1 -> maxOf(needStable, 3)
-                    2 -> maxOf(needStable, 2)
-                    else -> needStable
-                }
-                if (stable < requiredStable) { busy = false; return@read }
-                last = text
-                if (narrate) { showSub("", text); busy = false; return@read }
-                translateTextEx(text) { vi, d -> showSub(text, vi, d); busy = false }
-            }
-    }
-
-    override fun onDestroy() {
-        running = false
-        active = false
-        handler.removeCallbacksAndMessages(null)
-        try { overlay?.let { wm.removeView(it) }; frame?.let { wm.removeView(it) }; region?.let { wm.removeView(it) } } catch (_: Exception) {}
-        display?.release(); reader?.close()
-        projection?.stop()
-        tt?.close(); ocr?.close()
-        speaker?.shutdown(); tvExec.shutdown()
-        super.onDestroy()
-    }
-}
