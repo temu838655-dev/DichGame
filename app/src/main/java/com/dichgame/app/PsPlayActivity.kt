@@ -465,7 +465,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         manual = false
         reconnectPending = true
         pendingReconnectDelayMs = delay
-        setStatus("Mạng bị gián đoạn · thử lại lần " + reconnectAttempt + "/" + reconnectDelaysMs.size + " sau " + (delay / 1000) + " giây…", true)
+        setStatus("Mạng bị gián đoạn · thử lại lần " + reconnectAttempt + "/" + RemotePlayRetryPolicy.maxAttempts + " sau " + (delay / 1000) + " giây…", true)
         shutdownSession()
     }
 
