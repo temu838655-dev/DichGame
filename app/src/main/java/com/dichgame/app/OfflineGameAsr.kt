@@ -104,7 +104,7 @@ class OfflineGameAsr(
 
     companion object {
         const val TARGET_SAMPLE_RATE = 16_000
-        private const val MIN_SAMPLES = TARGET_SAMPLE_RATE / 5 // 200 ms; keep brief utterances.
+        internal const val MIN_SAMPLES = TARGET_SAMPLE_RATE * 120 / 1000 // Match VAD's 120 ms floor; retain short dialogue.
         private const val MAX_SAMPLES = TARGET_SAMPLE_RATE * 30
 
         internal fun toMonoFloat(samples: ShortArray, channels: Int): FloatArray {
