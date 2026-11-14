@@ -225,8 +225,9 @@ class WebTranslateActivity : Activity() {
             val scale = minOf(1f, 1280f / maxOf(web.width, web.height).toFloat())
             val w = (web.width * scale).toInt().coerceAtLeast(1)
             val h = (web.height * scale).toInt().coerceAtLeast(1)
-            full = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(full)
+            val frameBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            full = frameBitmap
+            val canvas = Canvas(frameBitmap)
             canvas.scale(scale, scale)
             web.draw(canvas)
             val top = (h * 0.55f).toInt().coerceIn(0, h - 1)
