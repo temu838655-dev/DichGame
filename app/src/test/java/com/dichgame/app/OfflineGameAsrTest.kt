@@ -36,6 +36,11 @@ class OfflineGameAsrTest {
     }
 
     @Test
+    fun whisperMinimumInputMatchesTheShortDialogueVadFloor() {
+        assertEquals(120 * 16, OfflineGameAsr.MIN_SAMPLES)
+    }
+
+    @Test
     fun resamplingKeepsVeryShortNonEmptyUtterance() {
         val actual = OfflineGameAsr.resample(floatArrayOf(0.1f, 0.2f), 48000, 16000)
         assertEquals(1, actual.size)
