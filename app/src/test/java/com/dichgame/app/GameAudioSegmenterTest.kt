@@ -78,7 +78,6 @@ class GameAudioSegmenterTest {
         val audio = tone(180) + silence(600)
         val wholeResult = mutableListOf<FloatArray>()
         GameAudioSegmenter(onUtterance = wholeResult::add).accept(audio)
-        val wholeSegmenter = GameAudioSegmenter(onUtterance = wholeResult::add)
         // Re-run as irregular decoder chunks that do not align to 20 ms frames.
         val chunkedResult = mutableListOf<FloatArray>()
         val chunkedSegmenter = GameAudioSegmenter(onUtterance = chunkedResult::add)
