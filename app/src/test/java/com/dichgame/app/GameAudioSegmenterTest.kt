@@ -1,5 +1,6 @@
 package com.dichgame.app
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -111,6 +112,22 @@ class GameAudioSegmenterTest {
         segmenter.flush()
         assertEquals(1, result.size)
         assertTrue(result.single().isNotEmpty())
+    }
+
+    @Test fun flushTrimsOnlyActualSamplesFromAPartialTrailingSilenceFrame() {
+        val result = mutableListOf<FloatArray>()
+        val segmenter = GameAudioSegmenter(
+            keptTrailingSilenceMs = 0,
+            onUtterance = result::add,
+        )
+        val speech = tone(100)
+        segmenter.accept(speech)
+        segmenter.accept(silence(5))
+        segmenter.flush()
+
+        assertEquals(1, result.size)
+        assertEquals("A 5 ms partial silence frame must not trim a full 20 ms frame", speech.size, result.single().size)
+        assertArrayEquals(speech, result.single(), 0.000001f)
     }
 
     @Test fun capsVeryLongContinuousAudioIntoBoundedSegments() {
