@@ -149,9 +149,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun updatePhysicalDpad() {
-        val mask = ControllerState.BUTTON_DPAD_LEFT or ControllerState.BUTTON_DPAD_RIGHT or
-            ControllerState.BUTTON_DPAD_UP or ControllerState.BUTTON_DPAD_DOWN
-        phys.buttons = (phys.buttons and mask.inv()) or physicalDpadKeys or physicalDpadHat
+        phys.buttons = ControllerDpad.combine(phys.buttons, physicalDpadKeys, physicalDpadHat)
     }
 
     override fun onCreate(b: Bundle?) {
