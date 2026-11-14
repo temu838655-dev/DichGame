@@ -107,15 +107,24 @@ class WebTranslateActivity : Activity() {
     }
   }
   var sel = ['.ytp-caption-segment', '.captions-text', '.vjs-text-track-display', '.jw-text-track-cue', '.plyr__captions', '.player-timedtext', '.fp-subtitle'];
+  var domHadText = false;
   function dom(){
+    var current = '';
     for (var i = 0; i < sel.length; i++) {
       var els = document.querySelectorAll(sel[i]);
-      if (els.length) {
-        var s = '';
-        for (var k = 0; k < els.length; k++) s += (els[k].innerText || '') + ' ';
-        s = s.trim();
-        if (s) { send(s); return; }
-      }
+      if (!els.length) continue;
+      var s = '';
+      for (var k = 0; k < els.length; k++) s += (els[k].innerText || '') + ' ';
+      s = s.trim();
+      if (s) { current = s; break; }
+    }
+    if (current) {
+      domHadText = true;
+      send(current);
+    } else if (domHadText) {
+      // DOM caption đã biến mất: mở khóa để câu giống hệt ở cảnh sau vẫn được gửi.
+      domHadText = false;
+      send('');
     }
   }
   setInterval(function(){ try { tracks(); dom(); } catch (e) {} }, 500);
