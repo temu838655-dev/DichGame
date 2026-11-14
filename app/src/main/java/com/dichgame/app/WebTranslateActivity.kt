@@ -143,7 +143,7 @@ class WebTranslateActivity : Activity() {
         bar.addView(Ui.tv(this, "Dịch video trên web", 18f, Ui.TEXT, true), Ui.lp(0, WRAP_CONTENT, 1f))
         toggle = Ui.tv(this, "", 13f, Color.parseColor("#2A1A08"), true)
         toggle.setPadding(Ui.dp(this, 12), Ui.dp(this, 7), Ui.dp(this, 12), Ui.dp(this, 7))
-        toggle.setOnClickListener { enabled = !enabled; refreshToggle(); if (!enabled) { overlay.visibility = android.view.View.GONE; try { speechRecognizer?.cancel() } catch (_: Exception) {} } else if (micEnabled) { main.postDelayed(speechRestart, 150L) } }
+        toggle.setOnClickListener { enabled = !enabled; refreshToggle(); if (!enabled) { overlay.visibility = android.view.View.GONE; try { speechRecognizer?.cancel() } catch (_: Exception) {} } else if (micEnabled) { scheduleSpeechRestart(150L) } }
         micButton = Ui.tv(this, "Nghe mic: TẮT", 12f, Color.parseColor("#2A1A08"), true).also { button ->
             button.setPadding(Ui.dp(this, 10), Ui.dp(this, 7), Ui.dp(this, 10), Ui.dp(this, 7))
             button.setOnClickListener { toggleMicrophoneRecognition() }
@@ -261,7 +261,7 @@ class WebTranslateActivity : Activity() {
                     lastAsrDeliveredAt = now
                     runOnUiThread { if (micEnabled && enabled) onSub(text) }
                 }
-                if (micEnabled && !destroyed) main.postDelayed(speechRestart, 250L)
+                if (micEnabled && !destroyed) scheduleSpeechRestart(250L)
             }
             override fun onError(error: Int) {
                 if (!micEnabled || destroyed) return
@@ -270,13 +270,21 @@ class WebTranslateActivity : Activity() {
                     android.widget.Toast.makeText(this@WebTranslateActivity, "Chưa cấp quyền micro.", android.widget.Toast.LENGTH_LONG).show()
                 } else {
                     // Các lỗi timeout/no-match là bình thường khi có khoảng lặng; tự nghe lượt kế tiếp.
-                    main.postDelayed(speechRestart, if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 700L else 350L)
+                    scheduleSpeechRestart(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 900L else 500L)
                 }
             }
         })
     }
 
+    /** Chỉ giữ một lịch khởi động lại để tránh nhiều callback cùng gọi startListening(). */
+    private fun scheduleSpeechRestart(delayMs: Long) {
+        if (!micEnabled || destroyed) return
+        main.removeCallbacks(speechRestart)
+        main.postDelayed(speechRestart, delayMs)
+    }
+
     private fun startSpeechRecognition() {
+        main.removeCallbacks(speechRestart)
         if (!micEnabled || destroyed || !enabled) return
         val recognizer = speechRecognizer ?: return
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -290,7 +298,7 @@ class WebTranslateActivity : Activity() {
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 250L)
         }
         try { recognizer.startListening(intent) }
-        catch (_: Exception) { main.postDelayed(speechRestart, 700L) }
+        catch (_: Exception) { scheduleSpeechRestart(900L) }
     }
 
     private fun stopMicrophoneRecognition() {
