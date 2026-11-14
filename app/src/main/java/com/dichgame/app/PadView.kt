@@ -67,6 +67,8 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
         stroke.strokeWidth = (min(w, h) / 200f).coerceAtLeast(2f)
         soft.strokeWidth = stroke.strokeWidth * 0.7f
         sym.strokeWidth = stroke.strokeWidth * 1.3f
+        // Khi xoay màn hình/đổi kích thước, tọa độ điều khiển cũ không còn hợp lệ.
+        if (ow > 0 && oh > 0 && (ow != w || oh != h)) releaseAll()
     }
 
     /** Dọc: cả bộ nằm trọn trong chiều rộng, đơn vị u = 1/100 chiều rộng. */
@@ -262,7 +264,12 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
         if (st != last) { last = st; onState(st) }
     }
 
-    /** Thả hết mọi nút (khi ẩn tay cầm hoặc mất kết nối). */
+    override fun onDetachedFromWindow() {
+        releaseAll()
+        super.onDetachedFromWindow()
+    }
+
+    /** Thả hết mọi nút (khi ẩn tay cầm, đổi kích thước, tháo view hoặc mất kết nối). */
     fun releaseAll() {
         owner.clear(); pressed.clear(); dpadBits = 0u; lx = 0f; ly = 0f; rx = 0f; ry = 0f
         publish(); invalidate()
