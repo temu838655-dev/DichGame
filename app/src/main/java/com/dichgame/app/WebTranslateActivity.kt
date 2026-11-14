@@ -60,10 +60,10 @@ class WebTranslateActivity : Activity() {
             if (destroyed || !::web.isInitialized) return
             val now = System.currentTimeMillis()
             // Chỉ quét ảnh khi phụ đề HTML không xuất hiện; tránh OCR đè lên phụ đề thật.
-            if (enabled && !ocrBusy && now - lastSubtitleAt > 2200L && now - lastOcrAt > 1800L) {
+            if (enabled && !ocrBusy && now - lastSubtitleAt > 1400L && now - lastOcrAt > 900L) {
                 captureSubtitleRegion()
             }
-            main.postDelayed(this, 1800L)
+            main.postDelayed(this, 900L)
         }
     }
 
