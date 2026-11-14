@@ -250,7 +250,7 @@ class PsPairActivity : Activity() {
         val go = Ui.button(this, if (running) "Đang ghép nối…" else "Ghép nối", true) {
             if (running) return@button
             pin = et.text.toString().trim()
-            if (pin.length != 8) { st.text = "Mã phải đủ 8 chữ số."; st.setTextColor(Ui.DANGER); return@button }
+            if (parsePairingPin(pin) == null) { st.text = "Mã phải gồm đúng 8 chữ số từ 0 đến 9."; st.setTextColor(Ui.DANGER); return@button }
             doRegist()
         }
         f.addView(go, Ui.lpm(this, 10, 0))
@@ -278,11 +278,18 @@ class PsPairActivity : Activity() {
 
     private fun doRegist() {
         val id = accountId ?: return
+        val pairingCode = parsePairingPin(pin)
+        if (pairingCode == null) {
+            running = false
+            status = "Mã ghép nối không hợp lệ. Hãy nhập đúng 8 chữ số từ 0 đến 9."
+            render()
+            return
+        }
         log.setLength(0)
         running = true
         status = "Đang ghép nối, chờ vài giây…"
         render()
-        val info = RegistInfo(PsStore.target(ps5), host, false, null, id, pin.toInt())
+        val info = RegistInfo(PsStore.target(ps5), host, false, null, id, pairingCode)
         val lg = ChiakiLog(ChiakiLog.Level.ALL.value) { level, text ->
             synchronized(log) { if (log.length < 20000) log.append(ChiakiLog.formatLog(level, text)).append('\n') }
         }
@@ -349,4 +356,11 @@ class PsPairActivity : Activity() {
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+}
+
+ 
+/** Chỉ chấp nhận đúng 8 chữ số ASCII; tránh NumberFormatException khi dán mã không hợp lệ. */
+internal fun parsePairingPin(value: String): Int? {
+    if (value.length != 8 || value.any { it !in '0'..'9' }) return null
+    return value.toIntOrNull()
 }
