@@ -245,14 +245,8 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
         return AnalogAxis.normalizePair(dx / r, dy / r, 0.12f, 0.12f)
     }
 
-    private fun dpadFrom(dx: Float, dy: Float): UInt {
-        val d = hypot(dx, dy)
-        if (d < dpadR * 0.22f) return 0u
-        var m = 0u
-        if (abs(dx) > d * 0.38f) m = m or (if (dx > 0) ControllerState.BUTTON_DPAD_RIGHT else ControllerState.BUTTON_DPAD_LEFT)
-        if (abs(dy) > d * 0.38f) m = m or (if (dy > 0) ControllerState.BUTTON_DPAD_DOWN else ControllerState.BUTTON_DPAD_UP)
-        return m
-    }
+    private fun dpadFrom(dx: Float, dy: Float): UInt =
+        VirtualDpad.direction(dx, dy, dpadR * 0.22f)
 
     private fun publish() {
         val st = ControllerState()
