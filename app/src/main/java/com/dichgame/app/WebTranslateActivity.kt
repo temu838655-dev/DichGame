@@ -40,6 +40,9 @@ class WebTranslateActivity : Activity() {
     private var lastOcrAt = 0L
     private var ocrBusy = false
     private var destroyed = false
+    private var ocrCandidate = ""
+    private var ocrStableFrames = 0
+    private var lastOcrDelivered = ""
     private val ocrLoop = object : Runnable {
         override fun run() {
             if (destroyed || !::web.isInitialized) return
@@ -196,6 +199,10 @@ class WebTranslateActivity : Activity() {
     private fun onSub(text: String) {
         if (!enabled) return
         lastSubtitleAt = System.currentTimeMillis()
+        // Phụ đề thật vừa xuất hiện: xóa trạng thái OCR để không phát lại câu cũ.
+        ocrCandidate = ""
+        ocrStableFrames = 0
+        lastOcrDelivered = ""
         if (p.narrate) {
             show(text, "")
             speaker?.speak(text)
@@ -244,8 +251,19 @@ class WebTranslateActivity : Activity() {
                     if (!destroyed && enabled && System.currentTimeMillis() - lastSubtitleAt > 1800L) {
                         val recognized = blocks.joinToString(" ") { it.text.trim() }
                             .replace(Regex("\\s+"), " ").trim()
-                        // Không dịch chuỗi rỗng hoặc ký tự nhiễu đơn lẻ.
-                        if (recognized.length >= 2) onSub(recognized)
+                        // Chỉ chấp nhận OCR khi cùng một câu xuất hiện ổn định ở ít nhất 2 lần quét.
+                        // Chống nhiễu và tránh gửi đi dịch lại cùng một câu ở mọi khung hình.
+                        if (recognized.length >= 2) {
+                            if (recognized == ocrCandidate) ocrStableFrames++
+                            else { ocrCandidate = recognized; ocrStableFrames = 1 }
+                            if (ocrStableFrames >= 2 && recognized != lastOcrDelivered) {
+                                lastOcrDelivered = recognized
+                                onSub(recognized)
+                            }
+                        } else {
+                            ocrCandidate = ""
+                            ocrStableFrames = 0
+                        }
                     }
                 } finally {
                     shot.recycle()
