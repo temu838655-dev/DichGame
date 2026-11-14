@@ -108,7 +108,11 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
         override fun onLost(network: Network) {
             ui.post {
-                if (connected) setStatus("Mạng vừa thay đổi · đang chờ kết nối ổn định…", true)
+                // Android có thể báo mất một mạng cũ sau khi Wi-Fi/Ethernet khác đã hoạt động.
+                // Chỉ cảnh báo khi thiết bị thực sự không còn transport mạng dùng được.
+                if (connected && !hasUsableNetwork()) {
+                    setStatus("Mất kết nối mạng · đang chờ mạng trở lại…", true)
+                }
             }
         }
     }
