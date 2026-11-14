@@ -126,8 +126,17 @@ object PsStore {
     }
 
     /** Có dữ liệu ghép nối được lưu, kể cả khi khóa Keystore hiện không giải mã được. */
-    fun hasStoredConsole(ctx: Context): Boolean =
-        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).contains(K_CONSOLE)
+    fun hasStoredConsole(ctx: Context): Boolean {
+        val current = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        if (current.contains(K_CONSOLE)) return true
+
+        // Bản cũ có thể chưa chuyển đổi được nếu Keystore/ghi đĩa tạm thời lỗi.
+        // Vẫn phải nhận diện để không báo máy hoàn toàn mới hoặc ghi đè luồng chuyển đổi.
+        val legacy = ctx.getSharedPreferences("ps_remote_play", Context.MODE_PRIVATE)
+        return !legacy.getString("host", null).isNullOrBlank() &&
+            !legacy.getString("regist_key", null).isNullOrBlank() &&
+            !legacy.getString("rp_key", null).isNullOrBlank()
+    }
 
     fun load(ctx: Context): PsConsole? {
         val raw = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(K_CONSOLE, null) ?: return migrateOld(ctx)
