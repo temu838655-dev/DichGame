@@ -17,6 +17,9 @@ class PairingPinTest {
         assertEquals(false, isValidPairingPin("123456789"))
         assertEquals(false, isValidPairingPin("１２３４５６７８"))
         assertEquals(false, isValidPairingPin("1234 678"))
+        assertEquals(false, isValidPairingPin(" 1234567"))
+        assertEquals(false, isValidPairingPin("12345678 "))
+        assertEquals(false, isValidPairingPin("\t1234567"))
     }
 
     @Test fun rejectsWrongLength() {
