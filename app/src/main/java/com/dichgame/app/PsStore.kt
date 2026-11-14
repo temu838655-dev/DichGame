@@ -277,5 +277,24 @@ object PsStore {
         return ConnectInfo(c.ps5, c.host, p.registKey, p.key, profile(ctx))
     }
 
+
+    /** Xóa người chơi nhưng giữ đúng danh tính các lựa chọn TV/điện thoại sau khi danh sách dịch chỉ số. */
+    internal fun removePlayer(c: PsConsole, index: Int): Boolean {
+        if (index !in c.players.indices) return false
+        val oldTv = c.tvPlayer
+        val oldPhone = c.phonePlayer
+        c.players.removeAt(index)
+        val last = (c.players.size - 1).coerceAtLeast(0)
+        fun adjusted(selected: Int): Int = when {
+            c.players.isEmpty() -> 0
+            selected > index -> selected - 1
+            selected == index -> index.coerceAtMost(last)
+            else -> selected.coerceIn(0, last)
+        }
+        c.tvPlayer = adjusted(oldTv)
+        c.phonePlayer = adjusted(oldPhone)
+        return true
+    }
+
     fun target(ps5: Boolean): Target = if (ps5) Target.PS5_1 else Target.PS4_10
 }
