@@ -249,7 +249,7 @@ class PsPairActivity : Activity() {
         f.addView(st, Ui.lpm(this, 8, 0))
         val go = Ui.button(this, if (running) "Đang ghép nối…" else "Ghép nối", true) {
             if (running) return@button
-            pin = et.text.toString().trim()
+            pin = et.text.toString()
             if (parsePairingPin(pin) == null) { st.text = "Mã phải gồm đúng 8 chữ số từ 0 đến 9."; st.setTextColor(Ui.DANGER); return@button }
             doRegist()
         }
