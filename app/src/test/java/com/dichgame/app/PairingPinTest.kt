@@ -53,4 +53,15 @@ class PairingPinTest {
         assertEquals(VideoResolutionPreset.RES_720P, PsStore.resolutionPreset(99))
     }
 
+    @Test fun retriesUseBoundedBackoffAndStopAfterFiveAttempts() {
+        assertEquals(1_500L, RemotePlayRetryPolicy.delayForAttempt(0))
+        assertEquals(3_000L, RemotePlayRetryPolicy.delayForAttempt(1))
+        assertEquals(6_000L, RemotePlayRetryPolicy.delayForAttempt(2))
+        assertEquals(10_000L, RemotePlayRetryPolicy.delayForAttempt(3))
+        assertEquals(15_000L, RemotePlayRetryPolicy.delayForAttempt(4))
+        assertNull(RemotePlayRetryPolicy.delayForAttempt(5))
+        assertNull(RemotePlayRetryPolicy.delayForAttempt(-1))
+        assertEquals(5, RemotePlayRetryPolicy.maxAttempts)
+    }
+
 }
