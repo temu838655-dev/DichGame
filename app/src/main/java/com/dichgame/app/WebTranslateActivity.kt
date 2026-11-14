@@ -238,7 +238,7 @@ class WebTranslateActivity : Activity() {
             canvas.scale(scale, scale)
             web.draw(canvas)
             val top = (h * 0.55f).toInt().coerceIn(0, h - 1)
-            crop = Bitmap.createBitmap(full, 0, top, w, h - top)
+            crop = Bitmap.createBitmap(frameBitmap, 0, top, w, h - top)
             full.recycle()
             full = null
             val shot = crop ?: throw IllegalStateException("Không tạo được ảnh OCR")
