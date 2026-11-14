@@ -31,6 +31,8 @@ class PsConnectActivity : Activity() {
     private lateinit var p: Prefs
     private var c: PsConsole? = null
     private var discovery: DiscoveryService? = null
+    // Mỗi lượt dò có một thế hệ riêng để loại callback đến muộn từ dịch vụ cũ.
+    private var discoveryGeneration = 0
     private var hostState: DiscoveryHost.State? = null
     private var hostSeen = false
     private var statusView: TextView? = null
@@ -61,14 +63,14 @@ class PsConnectActivity : Activity() {
 
     private fun startDiscovery() {
         if (discovery != null || c == null || !PsNative.available) return
+        val generation = ++discoveryGeneration
         hostState = null
         hostSeen = false
         try {
             discovery = DiscoveryService(DiscoveryServiceOptions(16UL, 3UL, 500UL, InetSocketAddress("255.255.255.255", 987))) { hosts ->
                 runOnUiThread {
-                    // Discovery có thể gửi callback muộn sau onPause()/onDestroy().
-                    // Chỉ cập nhật UI khi màn hình còn sống và dịch vụ này vẫn là dịch vụ hiện tại.
-                    if (isFinishing || isDestroyed || discovery == null) return@runOnUiThread
+                    // Không nhận callback của lượt dò trước sau pause/resume hoặc đổi địa chỉ máy.
+                    if (isFinishing || isDestroyed || generation != discoveryGeneration || discovery == null) return@runOnUiThread
                     val h = hosts.firstOrNull { it.hostAddr == c?.host }
                     hostSeen = h != null
                     hostState = h?.state
@@ -79,6 +81,8 @@ class PsConnectActivity : Activity() {
     }
 
     private fun stopDiscovery() {
+        // Vô hiệu hóa callback trước khi dispose bất đồng bộ dịch vụ hiện tại.
+        discoveryGeneration++
         val d = discovery ?: return
         discovery = null
         Thread { try { d.dispose() } catch (_: Throwable) {} }.start()
