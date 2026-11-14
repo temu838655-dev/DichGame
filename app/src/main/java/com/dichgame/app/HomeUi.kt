@@ -49,18 +49,6 @@ class GlowBackground(c: Context) : View(c) {
         streak(cv, d, w * 0.52f, 0f, w * 0.98f, h * 0.02f, w * 1.04f, h * 0.17f, gold, 0.75f)
         streak(cv, d, -0.04f * w, h * 0.19f, w * 0.10f, h * 0.10f, w * 0.36f, h * 0.10f, Color.parseColor("#9CFF6B"), 0.5f)
 
-        // vòng cung xanh ở đáy, ôm quanh nút tay cầm
-        val top = h - 100f * d
-        path.reset()
-        path.moveTo(-0.15f * w, h)
-        path.quadTo(0.5f * w, h - 2f * 98f * d, 1.15f * w, h)
-        p.style = Paint.Style.FILL
-        p.shader = LinearGradient(0f, top, 0f, h, Color.parseColor("#3A2EE06B"), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-        cv.drawPath(path, p)
-        p.style = Paint.Style.STROKE
-        p.shader = LinearGradient(0f, 0f, w, 0f, intArrayOf(Color.parseColor("#002EE06B"), Color.parseColor("#FF4CF07B"), Color.parseColor("#002EE06B")), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-        p.strokeWidth = 12f * d; p.alpha = 40; cv.drawPath(path, p)
-        p.strokeWidth = 2.2f * d; p.alpha = 255; cv.drawPath(path, p)
         p.shader = null
     }
 }
@@ -94,10 +82,11 @@ class GamepadGlyph(c: Context, private val body: Int, private val detail: Int) :
     }
 }
 
-/** Dải cánh vàng hai bên nút tay cầm ở đáy màn hình chính. */
+/** Đáy màn hình chính: phủ mờ nội dung phía dưới, vòng cung xanh và cánh vàng hai bên nút tay cầm. */
 class DockWings(c: Context) : View(c) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val r = RectF()
+    private val path = Path()
 
     override fun onDraw(cv: Canvas) {
         val w = width.toFloat()
@@ -107,6 +96,22 @@ class DockWings(c: Context) : View(c) {
         val cx = w / 2f
         val gold = Color.parseColor("#FFD54A")
         val gold2 = Color.parseColor("#F2A900")
+        // lớp phủ mờ để chữ của thẻ cuộn bên dưới không đè lên nút
+        val bg = Ui.BG
+        val bgClear = bg and 0x00FFFFFF
+        p.style = Paint.Style.FILL
+        p.shader = LinearGradient(0f, 0f, 0f, h, intArrayOf(bgClear, (bg and 0x00FFFFFF) or 0xF2000000.toInt(), bg), floatArrayOf(0f, 0.4f, 1f), Shader.TileMode.CLAMP)
+        cv.drawRect(0f, 0f, w, h, p)
+        // vòng cung xanh ôm quanh nút
+        path.reset()
+        path.moveTo(-0.15f * w, h)
+        path.quadTo(cx, 12f * d - h, 1.15f * w, h)
+        p.shader = LinearGradient(0f, 6f * d, 0f, h, Color.parseColor("#402EE06B"), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        cv.drawPath(path, p)
+        p.style = Paint.Style.STROKE
+        p.shader = LinearGradient(0f, 0f, w, 0f, intArrayOf(Color.parseColor("#002EE06B"), Color.parseColor("#FF4CF07B"), Color.parseColor("#002EE06B")), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        p.strokeWidth = 12f * d; p.alpha = 40; cv.drawPath(path, p)
+        p.strokeWidth = 2.2f * d; p.alpha = 255; cv.drawPath(path, p)
         p.style = Paint.Style.FILL
         // ba thanh vàng mỗi bên, ngắn dần ra xa nút, như cánh
         val rows = floatArrayOf(0f, 9f, 18f)

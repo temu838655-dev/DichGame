@@ -13,6 +13,7 @@ adb root >/dev/null 2>&1 || true
 adb wait-for-device
 adb shell appops set "$PKG" SYSTEM_ALERT_WINDOW allow
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
+adb shell settings put global hide_error_dialogs 1 2>/dev/null || true  # ẩn hộp thoại "không phản hồi" của launcher giả lập khỏi ảnh chụp
 adb logcat -c
 
 shot() { adb exec-out screencap -p > "$OUT/$1.png"; }
@@ -52,6 +53,7 @@ adb shell am force-stop "$PKG"
 # Thử giọng offline thật trên máy giả lập: app tự tải gói giọng, nạp sherpa-onnx và đọc thử một câu (SelfTest.kt)
 set_prefs ci/prefs-offline.xml
 start SettingsActivity; shot offline-chua-tai
+adb shell settings put global hide_error_dialogs 1 2>/dev/null || true  # ẩn hộp thoại "không phản hồi" của launcher giả lập khỏi ảnh chụp
 adb logcat -c
 adb shell am force-stop "$PKG"
 adb shell am start -W -n "$PKG/.SettingsActivity" --ez selftest true >/dev/null 2>&1
