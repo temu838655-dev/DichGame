@@ -351,16 +351,17 @@ object PsQuality {
             val desc1 = Ui.tv(a, "", 12.5f, Ui.SUB)
             fun drawRes() {
                 h1.removeAllViews()
-                h1.addView(Ui.segmented(a, listOf("Tự động", "720p", "1080p"), PsStore.res(a)) { PsStore.setRes(a, it); drawRes() })
+                h1.addView(Ui.segmented(a, listOf("Tự động · 720p", "720p", "1080p"), PsStore.res(a)) { PsStore.setRes(a, it); drawRes() })
                 desc1.text = when (PsStore.res(a)) {
                     2 -> "1080p: nét hơn, tốn mạng và nóng máy hơn. Hợp với máy mạnh, mạng 5 GHz tốt."
                     1 -> "720p: mượt, mát máy, hợp với hầu hết điện thoại."
-                    else -> "720p: mượt, mát máy, hợp với hầu hết điện thoại. Tự động dùng 720p."
+                    else -> "Tự động hiện dùng profile 720p mặc định; chưa tự đổi độ phân giải theo tốc độ mạng."
                 }
             }
             drawRes()
             c1.addView(h1, Ui.lpm(a, 8, 0))
             c1.addView(desc1, Ui.lpm(a, 8, 0))
+            c1.addView(Ui.tv(a, "Giới hạn engine Remote Play hiện tại: stream gốc tối đa 1080p. Màn hình 4K chỉ có thể phóng to hình, không tạo video 4K thật.", 12f, Ui.SUB), Ui.lpm(a, 8, 4))
             addView(c1, Ui.lpm(a, 14, 0))
 
             val c2 = Ui.card(a)
@@ -371,7 +372,7 @@ object PsQuality {
                 h2.removeAllViews()
                 val sel = RATES.indexOf(PsStore.rate(a)).coerceAtLeast(0)
                 h2.addView(Ui.segmented(a, RATES.map { if (it == 0) "Tự động" else "$it" }, sel) { PsStore.setRate(a, RATES[it]); drawRate() })
-                desc2.text = if (RATES[sel] == 0) "Tự động theo mức PS Remote Play. Nếu hình giật hoặc hay đứng, thử 2–5 Mbps để ưu tiên ổn định."
+                desc2.text = if (RATES[sel] == 0) "Dùng bitrate mặc định của engine. Nếu hình giật hoặc hay đứng, thử 2–5 Mbps để giảm tải đường truyền."
                 else if (RATES[sel] <= 3) "Mức rất thấp ${RATES[sel]} Mbps: ưu tiên giảm tải đường truyền, hình có thể mềm và giảm chi tiết."
                 else "Tối đa ${RATES[sel]} Mbps. Mạng yếu thì chọn thấp hơn để giảm nghẽn và rớt khung hình."
             }
