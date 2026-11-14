@@ -61,6 +61,22 @@ class GameAudioPcmQueueTest {
         assertNull(queue.poll())
     }
 
+    @Test fun closePreservesAcceptedAudioUntilConsumerDrainsIt() {
+        val queue = GameAudioPcmQueue(2)
+        assertTrue(queue.offer(shortArrayOf(7, 8), 48_000, 1))
+        assertTrue(queue.offer(shortArrayOf(9, 10), 48_000, 1))
+
+        queue.close()
+
+        assertFalse(queue.offer(shortArrayOf(11, 12), 48_000, 1))
+        assertFalse(queue.isDrained())
+        assertArrayEquals(shortArrayOf(7, 8), queue.poll()!!.samples)
+        assertFalse(queue.isDrained())
+        assertArrayEquals(shortArrayOf(9, 10), queue.poll()!!.samples)
+        assertTrue(queue.isDrained())
+        assertNull(queue.poll())
+    }
+
     @Test fun clearRemovesStaleAudio() {
         val queue = GameAudioPcmQueue(2)
         assertTrue(queue.offer(shortArrayOf(1, 2), 48_000, 1))
