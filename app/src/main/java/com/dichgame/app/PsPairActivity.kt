@@ -319,11 +319,16 @@ class PsPairActivity : Activity() {
         running = false
         when (ev) {
             is RegistEventSuccess -> {
-                PsStore.addPlayer(this, host, ps5, ev.host)
-                toast("Ghép nối thành công.")
-                setResult(RESULT_OK)
-                startActivity(Intent(this, PsConnectActivity::class.java))
-                finish()
+                try {
+                    PsStore.addPlayer(this, host, ps5, ev.host)
+                    toast("Ghép nối thành công.")
+                    setResult(RESULT_OK)
+                    startActivity(Intent(this, PsConnectActivity::class.java))
+                    finish()
+                } catch (e: Exception) {
+                    status = e.message ?: "Không thể lưu thông tin ghép nối an toàn."
+                    render()
+                }
             }
             is RegistEventCanceled -> { status = "Đã hủy."; render() }
             is RegistEventFailed -> {
