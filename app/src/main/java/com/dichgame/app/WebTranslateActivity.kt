@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Handler
+import android.os.Build
 import android.os.Looper
 import android.Manifest
 import android.content.Intent
@@ -51,6 +52,7 @@ class WebTranslateActivity : Activity() {
     private var lastOcrDelivered = ""
     private var lastOcrTextAt = 0L
     private var speechRecognizer: SpeechRecognizer? = null
+    private var speechUsesOnDevice = false
     private var micEnabled = false
     private var micButton: TextView? = null
     private var lastAsrDelivered = ""
@@ -230,14 +232,24 @@ class WebTranslateActivity : Activity() {
         }
         micEnabled = true
         micButton?.text = "Nghe mic: BẬT"
-        android.widget.Toast.makeText(this, "Đang nghe qua micro. Hãy phát âm thanh qua loa ngoài để micro nghe được.", android.widget.Toast.LENGTH_LONG).show()
         createSpeechRecognizer()
+        val mode = if (speechUsesOnDevice) "nhận dạng ngoại tuyến trên máy" else "dịch vụ nhận dạng của Android (có thể cần mạng)"
+        android.widget.Toast.makeText(this, "Đang nghe qua micro bằng $mode. Hãy phát âm thanh qua loa ngoài để micro nghe được.", android.widget.Toast.LENGTH_LONG).show()
         startSpeechRecognition()
     }
 
     private fun createSpeechRecognizer() {
         if (speechRecognizer != null) return
-        val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        // Android 12+ có thể cung cấp bộ nhận dạng chạy trực tiếp trên thiết bị.
+        // Nếu không có, dùng dịch vụ mặc định; không giả vờ rằng mọi máy đều hỗ trợ offline.
+        val onDeviceAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
+        speechUsesOnDevice = onDeviceAvailable
+        val recognizer = if (onDeviceAvailable) {
+            SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+        } else {
+            SpeechRecognizer.createSpeechRecognizer(this)
+        }
         speechRecognizer = recognizer
         recognizer.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
@@ -292,6 +304,7 @@ class WebTranslateActivity : Activity() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.forLanguageTag(p.lang).toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, java.util.Locale.forLanguageTag(p.lang).toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 450L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 250L)
