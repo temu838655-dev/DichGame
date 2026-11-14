@@ -334,6 +334,8 @@ class Session(connectInfo: ConnectInfo, logFile: String?, logVerbose: Boolean)
 
 	private var nativePtr: Long
 	var eventCallback: ((event: Event) -> Unit)? = null
+	/** Receives decoded game PCM on Chiaki's audio decoder thread; keep callbacks non-blocking. */
+	@Volatile var audioFrameCallback: ((samples: ShortArray, sampleRate: Int, channels: Int) -> Unit)? = null
 
 	init
 	{
@@ -360,6 +362,11 @@ class Session(connectInfo: ConnectInfo, logFile: String?, logVerbose: Boolean)
 	private fun event(event: Event)
 	{
 		eventCallback?.let { it(event) }
+	}
+
+	private fun eventAudioFrame(samples: ShortArray, sampleRate: Int, channels: Int)
+	{
+		audioFrameCallback?.invoke(samples, sampleRate, channels)
 	}
 
 	private fun eventConnected()
