@@ -404,6 +404,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             s.eventCallback = { ev -> runOnUiThread { if (g == gen && !isFinishing && !isDestroyed) onEvent(ev) } }
             val r = s.start()
             if (!r.isSuccess) {
+                // start() thất bại vẫn phải dừng native session trước khi giải phóng,
+                // giống cùng thứ tự stop -> dispose dùng cho phiên đang chạy.
+                try { s.stop() } catch (_: Throwable) {}
                 try { s.dispose() } catch (_: Throwable) {}
                 candidate = null
                 val message = "Không khởi động được phiên Remote Play: $r"
