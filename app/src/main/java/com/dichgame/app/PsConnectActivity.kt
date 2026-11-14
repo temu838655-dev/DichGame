@@ -330,10 +330,17 @@ class PsConnectActivity : Activity() {
         if (req == 100 && res == RESULT_OK && data != null) {
             val q = Prefs(this)
             q.playOn = pendingMode
-            startForegroundService(Intent(this, CaptureService::class.java)
-                .putExtra("code", res).putExtra("data", data)
-                .putExtra("speak", q.speak).putExtra("lang", q.lang)
-                .putExtra("automenu", q.autoMenu).putExtra("slow", q.slow).putExtra("narrate", q.narrate))
+            val started = runCatching {
+                startForegroundService(Intent(this, CaptureService::class.java)
+                    .putExtra("code", res).putExtra("data", data)
+                    .putExtra("speak", q.speak).putExtra("lang", q.lang)
+                    .putExtra("automenu", q.autoMenu).putExtra("slow", q.slow).putExtra("narrate", q.narrate))
+            }.isSuccess
+            if (!started) {
+                CaptureService.active = false
+                toast("Không thể khởi động dịch nền. Hãy kiểm tra quyền thông báo, quyền ghi màn hình và thử lại.")
+                return
+            }
             CaptureService.active = true
             openPlay()
         }
