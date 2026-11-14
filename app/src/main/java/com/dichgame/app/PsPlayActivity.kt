@@ -662,21 +662,26 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     override fun dispatchGenericMotionEvent(e: MotionEvent): Boolean {
         if (isPad(e.source) && e.actionMasked == MotionEvent.ACTION_MOVE && acceptsPhysicalDevice(e.deviceId)) {
-            // Dùng dead zone do driver khai báo và chuẩn hóa biên độ trước khi gửi engine.
-            fun ax(a: Int): Float = AnalogAxis.normalize(
-                e.getAxisValue(a),
-                e.device?.getMotionRange(a, e.source)?.flat ?: 0.1f
-            )
+            // Dead zone tròn cho mỗi cần giúp hướng chéo không bị tăng lực quá mức.
+            fun flat(a: Int): Float = e.device?.getMotionRange(a, e.source)?.flat ?: 0.1f
             fun hasAxis(a: Int): Boolean = e.device?.getMotionRange(a, e.source) != null
             fun preferredAxis(primary: Int, fallback: Int): Int =
                 if (hasAxis(primary)) primary else fallback
-            phys.leftX = (ax(MotionEvent.AXIS_X) * Short.MAX_VALUE).toInt().toShort()
-            phys.leftY = (ax(MotionEvent.AXIS_Y) * Short.MAX_VALUE).toInt().toShort()
+            val left = AnalogAxis.normalizePair(
+                e.getAxisValue(MotionEvent.AXIS_X), e.getAxisValue(MotionEvent.AXIS_Y),
+                flat(MotionEvent.AXIS_X), flat(MotionEvent.AXIS_Y)
+            )
+            phys.leftX = (left.first * Short.MAX_VALUE).toInt().toShort()
+            phys.leftY = (left.second * Short.MAX_VALUE).toInt().toShort()
             // Android có tay cầm xuất cần phải qua Z/RZ, có loại lại dùng RX/RY.
             val rightX = preferredAxis(MotionEvent.AXIS_Z, MotionEvent.AXIS_RX)
             val rightY = preferredAxis(MotionEvent.AXIS_RZ, MotionEvent.AXIS_RY)
-            phys.rightX = (ax(rightX) * Short.MAX_VALUE).toInt().toShort()
-            phys.rightY = (ax(rightY) * Short.MAX_VALUE).toInt().toShort()
+            val right = AnalogAxis.normalizePair(
+                e.getAxisValue(rightX), e.getAxisValue(rightY),
+                flat(rightX), flat(rightY)
+            )
+            phys.rightX = (right.first * Short.MAX_VALUE).toInt().toShort()
+            phys.rightY = (right.second * Short.MAX_VALUE).toInt().toShort()
             fun trigger(a: Int): Float = TriggerAxis.normalize(
                 e.getAxisValue(a),
                 e.device?.getMotionRange(a, e.source)?.flat ?: 0f
