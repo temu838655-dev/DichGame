@@ -98,9 +98,11 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         override fun onAvailable(network: Network) {
             // NetworkCallback không đảm bảo chạy trên main thread; mọi thay đổi UI/session phải về main.
             ui.post {
-                if (reconnectPending && activityStarted && !manual && session == null && !stopping) {
-                    reconnectRunnable?.let(ui::removeCallbacks)
-                    reconnectRunnable = null
+                // Chỉ bỏ trạng thái chờ khi chưa có lịch retry. Một callback mạng
+                // khác (ví dụ 4G xuất hiện trong lúc Wi-Fi vẫn hoạt động) không được
+                // hủy backoff đã đặt sau lỗi stream, tránh retry dồn dập.
+                if (reconnectPending && reconnectRunnable == null &&
+                    activityStarted && !manual && session == null && !stopping) {
                     pendingReconnectDelayMs = 0L
                     requestConnect()
                 }
