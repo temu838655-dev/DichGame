@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.hardware.input.InputManager
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Color
@@ -82,6 +83,24 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var chipView: TextView? = null
     private var transBtn: TextView? = null
     private val ui = Handler(Looper.getMainLooper())
+    private var inputListenerRegistered = false
+    private val inputDeviceListener = object : InputManager.InputDeviceListener {
+        override fun onInputDeviceAdded(deviceId: Int) = Unit
+        override fun onInputDeviceChanged(deviceId: Int) = Unit
+        override fun onInputDeviceRemoved(deviceId: Int) {
+            // Khi tay cầm bị rút/mất Bluetooth, không giữ lại nút hoặc analog ở trạng thái đang nhấn.
+            resetPhysicalControllerState()
+        }
+    }
+
+    private fun resetPhysicalControllerState() {
+        phys = ControllerState()
+        physicalL2Digital = false
+        physicalR2Digital = false
+        physicalL2Analog = 0f
+        physicalR2Analog = 0f
+        push()
+    }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -107,16 +126,23 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     override fun onStart() {
         super.onStart()
         activityStarted = true
+        if (!inputListenerRegistered) {
+            (getSystemService(Context.INPUT_SERVICE) as? InputManager)?.registerInputDeviceListener(inputDeviceListener, ui)
+            inputListenerRegistered = true
+        }
         if (console != null && !manual) requestConnect()
     }
 
     override fun onStop() {
         activityStarted = false
+        if (inputListenerRegistered) {
+            (getSystemService(Context.INPUT_SERVICE) as? InputManager)?.unregisterInputDeviceListener(inputDeviceListener)
+            inputListenerRegistered = false
+        }
         super.onStop()
         // Rời màn hình thì dừng phiên: PS5 không cần giữ luồng hình cho một app đang ẩn.
-        phys = ControllerState(); padState = ControllerState(); pad?.releaseAll()
-        physicalL2Digital = false; physicalR2Digital = false
-        physicalL2Analog = 0f; physicalR2Analog = 0f
+        resetPhysicalControllerState()
+        padState = ControllerState(); pad?.releaseAll()
         reconnectPending = false
         if (session != null) {
             if (!isFinishing) manual = false
@@ -130,6 +156,11 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         shutdownSession()
         ui.removeCallbacksAndMessages(null)
         super.onDestroy()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus) resetPhysicalControllerState()
     }
 
     override fun onConfigurationChanged(n: Configuration) {
