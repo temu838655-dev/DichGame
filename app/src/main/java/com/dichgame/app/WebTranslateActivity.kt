@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -175,6 +176,8 @@ class WebTranslateActivity : Activity() {
     private lateinit var speakIcon: ToolIcon
     private lateinit var toolsRow: View
     private lateinit var adjustRow: View
+    private lateinit var headRow: View
+    private lateinit var bodyScroll: ScrollView
     private lateinit var fallbackPill: View
     private lateinit var backBtn: TextView
     private lateinit var fwdBtn: TextView
@@ -362,6 +365,7 @@ class WebTranslateActivity : Activity() {
         statusChip = Ui.tv(this, "", 12.5f, Ui.SUB, true)
         head.addView(statusChip)
         panel.addView(head)
+        headRow = head
         origView = Ui.tv(this, "", 13f, Ui.SUB).apply { gravity = Gravity.CENTER; visibility = View.GONE }
         textView = Ui.tv(this, "", 20f, Ui.TEXT, true).apply { gravity = Gravity.CENTER }
         val body = Ui.vbox(this)
@@ -374,6 +378,7 @@ class WebTranslateActivity : Activity() {
         sv.isVerticalScrollBarEnabled = false
         sv.addView(body, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         panel.addView(sv, Ui.lp(MATCH_PARENT, dp(112)))
+        bodyScroll = sv
         panel.addView(Ui.divider(this), Ui.lp(MATCH_PARENT, 1))
 
         // thanh công cụ
@@ -436,6 +441,7 @@ class WebTranslateActivity : Activity() {
         speaker = Speaker(this, p)
         speaker?.onAiError = { m -> Toast.makeText(this, m, Toast.LENGTH_LONG).show() }
         applyFont()
+        applyOrientation()
         refresh()
         setPanel("Bấm nút dịch để bắt đầu", "")
         load(urlField.text.toString())
@@ -444,10 +450,28 @@ class WebTranslateActivity : Activity() {
             "adjust" -> ui.postDelayed({ enterAdjust() }, 800)
             "menu" -> ui.postDelayed({ showSourceMenu(srcPill) }, 800)
             "settings" -> ui.postDelayed({ showSettingsSheet() }, 800)
+            "running" -> ui.postDelayed({
+                running = true; everStarted = true; refresh()
+                setPanel("Xin chào, đây là bản dịch thử.", "Hello, this is a test.")
+                showFallback()
+            }, 800)
         }
     }
 
     // ---------------- giao diện nhỏ ----------------
+
+    /** Màn ngang: bỏ hàng ngôn ngữ và thu bảng dịch lại để trang web còn đủ chỗ. */
+    private fun applyOrientation() {
+        val land = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        headRow.visibility = if (land) View.GONE else View.VISIBLE
+        (bodyScroll.layoutParams as LinearLayout.LayoutParams).height = dp(if (land) 58 else 112)
+        bodyScroll.requestLayout()
+    }
+
+    override fun onConfigurationChanged(c: Configuration) {
+        super.onConfigurationChanged(c)
+        applyOrientation()
+    }
 
     private fun circleBtn(label: String, onClick: () -> Unit): TextView = Ui.tv(this, label, 20f, Ui.TEXT, true).apply {
         gravity = Gravity.CENTER
@@ -547,6 +571,7 @@ class WebTranslateActivity : Activity() {
 
     private fun start() {
         if (running) return
+        if (!p.narrate && !sp.getBoolean("langAsked", false)) { pickLang(thenStart = true); return }
         if (!p.narrate && translator == null) { prepareTranslator { ok -> if (ok) beginRun() }; return }
         beginRun()
     }
@@ -600,9 +625,13 @@ class WebTranslateActivity : Activity() {
         if (was) start()
     }
 
-    private fun pickLang() {
+    private fun pickLang(thenStart: Boolean = false) {
         val codes = Prefs.LANGS.map { it.first }.filter { it != "vi" }
-        Ui.pick(this, "Ngôn ngữ trong video", codes.map { Prefs.langLabel(it) }) { i -> setLang(codes[i]) }
+        Ui.pick(this, "Ngôn ngữ trong video", codes.map { Prefs.langLabel(it) }) { i ->
+            sp.edit().putBoolean("langAsked", true).apply()
+            setLang(codes[i])
+            if (thenStart) start()
+        }
     }
 
     // ---- nguồn CC
@@ -694,6 +723,7 @@ class WebTranslateActivity : Activity() {
     }
 
     private fun readBitmap(bmp: Bitmap) {
+        if (isDestroyed || !running) { bmp.recycle(); scanBusy = false; return }
         val th = Ocr.thumb(bmp)
         if (lastThumb != null && Ocr.same(th, lastThumb)) { bmp.recycle(); scanBusy = false; scheduleScan(); return }
         lastThumb = th
@@ -752,7 +782,7 @@ class WebTranslateActivity : Activity() {
 
     private fun showSourceMenu(anchor: View) {
         val col = Ui.vbox(this)
-        col.background = Ui.bg(this, Color.parseColor("#F2152019"), 24, Ui.LINE, 1)
+        col.background = Ui.bg(this, Color.parseColor("#152019"), 24, Ui.LINE, 1)
         col.setPadding(dp(6), dp(8), dp(6), dp(8))
         var pw: PopupWindow? = null
         fun item(title: String, sub: String?, checked: Boolean, onClick: () -> Unit) {
@@ -768,7 +798,7 @@ class WebTranslateActivity : Activity() {
         }
         item("Chữ hiện dần", "Chỉ bật khi phụ đề hiện ra từng chữ", p.slow) { p.slow = !p.slow; lastCand = "" }
         item("Thuyết minh", "Video có sẵn phụ đề tiếng Việt: đọc to, không dịch", p.narrate) { toggleNarrate() }
-        item("Ẩn phụ đề gốc trên video", if (source == "ocr") "Che khung bằng nền tối, hơi nhấp nháy khi quét" else null, hideOrig) {
+        item("Ẩn phụ đề gốc trên video", if (source == "ocr") "Che khung bằng nền tối khi quét OCR" else null, hideOrig) {
             hideOrig = !hideOrig
             sp.edit().putBoolean("hide", hideOrig).apply()
             applyHide()

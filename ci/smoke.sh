@@ -35,7 +35,7 @@ run_screens() {  # $1 = tiền tố tên ảnh
   done
   start WebTranslateActivity; sleep 6; shot "$1-web"
   adb shell am force-stop "$PKG"
-  for d in adjust menu settings; do
+  for d in adjust menu settings running; do
     adb shell am start -W -n "$PKG/.WebTranslateActivity" --es demo "$d" >/dev/null 2>&1; sleep 6; shot "$1-web-$d"
     adb shell am force-stop "$PKG"
   done
