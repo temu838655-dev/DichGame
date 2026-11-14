@@ -125,6 +125,10 @@ object PsStore {
         } catch (_: Exception) { null }
     }
 
+    /** Có dữ liệu ghép nối được lưu, kể cả khi khóa Keystore hiện không giải mã được. */
+    fun hasStoredConsole(ctx: Context): Boolean =
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).contains(K_CONSOLE)
+
     fun load(ctx: Context): PsConsole? {
         val raw = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(K_CONSOLE, null) ?: return migrateOld(ctx)
         return try {
@@ -188,6 +192,10 @@ object PsStore {
     /** Thêm người chơi vừa ghép xong. Máy khác địa chỉ thì thay luôn máy cũ. Trả về số thứ tự người chơi. */
     fun addPlayer(ctx: Context, host: String, ps5: Boolean, r: RegistHost): Int {
         val old = load(ctx)
+        // Không coi dữ liệu mã hóa không giải mã được là máy mới: tránh ghi đè khóa cũ.
+        check(old != null || !hasStoredConsole(ctx)) {
+            "Dữ liệu ghép nối cũ vẫn còn nhưng không giải mã được bằng khóa bảo mật của thiết bị. App đã giữ nguyên dữ liệu; hãy khôi phục khóa trên đúng thiết bị hoặc chủ động xóa dữ liệu ghép nối trước khi ghép lại."
+        }
         val c = if (old != null && old.host == host) old else PsConsole(host, ps5, r.serverNickname.ifBlank { if (ps5) "PS5" else "PS4" })
         c.ps5 = ps5
         if (r.serverNickname.isNotBlank()) c.name = r.serverNickname
