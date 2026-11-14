@@ -11,6 +11,14 @@ class PairingPinTest {
         assertEquals(00000001, parsePairingPin("00000001"))
     }
 
+    @Test fun validatesLoginPinWithoutDiscardingLeadingZeros() {
+        assertEquals(true, isValidPairingPin("00001234"))
+        assertEquals(false, isValidPairingPin("1234567"))
+        assertEquals(false, isValidPairingPin("123456789"))
+        assertEquals(false, isValidPairingPin("１２３４５６７８"))
+        assertEquals(false, isValidPairingPin("1234 678"))
+    }
+
     @Test fun rejectsWrongLength() {
         assertNull(parsePairingPin(""))
         assertNull(parsePairingPin("1234567"))
