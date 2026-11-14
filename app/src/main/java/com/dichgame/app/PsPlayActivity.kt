@@ -69,6 +69,11 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var stopping = false
     private var activityStarted = false
     private var reconnectPending = false
+    // Mạng chập chờn: thử khôi phục phiên theo backoff, không bật hộp thoại ngay lần rớt đầu.
+    private var reconnectAttempt = 0
+    private var pendingReconnectDelayMs = 0L
+    private var reconnectRunnable: Runnable? = null
+    private val reconnectDelaysMs = longArrayOf(1_500L, 3_000L, 6_000L, 10_000L, 15_000L)
 
     private var padState = ControllerState()
     private var phys = ControllerState()
@@ -144,6 +149,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         resetPhysicalControllerState()
         padState = ControllerState(); pad?.releaseAll()
         reconnectPending = false
+        reconnectRunnable?.let(ui::removeCallbacks)
+        reconnectRunnable = null
+        pendingReconnectDelayMs = 0L
         if (session != null) {
             if (!isFinishing) manual = false
             shutdownSession()
@@ -345,15 +353,46 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     private fun onEvent(ev: Event) {
         when (ev) {
-            is ConnectedEvent -> { connected = true; setStatus("", false); push() }
+            is ConnectedEvent -> {
+                connected = true
+                reconnectAttempt = 0
+                reconnectPending = false
+                reconnectRunnable?.let(ui::removeCallbacks)
+                reconnectRunnable = null
+                setStatus("", false)
+                push()
+            }
             is LoginPinRequestEvent -> askPin(ev.pinIncorrect)
             is QuitEvent -> {
-                shutdownSession()
                 val why = ev.reason.toString() + (ev.reasonString?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: "")
-                ended(if (ev.reason.isError) "Mất kết nối: $why" else "Phiên đã kết thúc: $why", ev.reason.isError)
+                val message = if (ev.reason.isError) "Mất kết nối: $why" else "Phiên đã kết thúc: $why"
+                if (ev.reason.isError && activityStarted && !isFinishing && !isDestroyed) {
+                    retryAfterNetworkDrop(message)
+                } else {
+                    shutdownSession()
+                    ended(message, ev.reason.isError)
+                }
             }
             is RumbleEvent -> {}
         }
+    }
+
+    /**
+     * Transport đã đóng thì không thể giữ nguyên luồng video; tạo lại phiên Remote Play
+     * với backoff tối đa 5 lần để tránh retry storm khi PS tắt hoặc không thể truy cập.
+     */
+    private fun retryAfterNetworkDrop(message: String) {
+        if (reconnectAttempt >= reconnectDelaysMs.size) {
+            shutdownSession()
+            ended(message + "\n\nĐã thử tự kết nối lại " + reconnectDelaysMs.size + " lần nhưng chưa thành công.", true)
+            return
+        }
+        val delay = reconnectDelaysMs[reconnectAttempt++]
+        manual = false
+        reconnectPending = true
+        pendingReconnectDelayMs = delay
+        setStatus("Mạng bị gián đoạn · thử lại lần " + reconnectAttempt + "/" + reconnectDelaysMs.size + " sau " + (delay / 1000) + " giây…", true)
+        shutdownSession()
     }
 
     private fun ended(message: String, error: Boolean) {
@@ -385,7 +424,17 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 stopping = false
                 // Chỉ tạo phiên mới sau khi stop() và dispose() của phiên cũ đã hoàn tất.
                 if (reconnectPending && activityStarted && !manual && !isFinishing && !isDestroyed) {
-                    requestConnect()
+                    val delay = pendingReconnectDelayMs
+                    pendingReconnectDelayMs = 0L
+                    reconnectRunnable?.let(ui::removeCallbacks)
+                    val retry = Runnable {
+                        reconnectRunnable = null
+                        if (reconnectPending && activityStarted && !manual && !isFinishing && !isDestroyed) {
+                            requestConnect()
+                        }
+                    }
+                    reconnectRunnable = retry
+                    if (delay > 0L) ui.postDelayed(retry, delay) else ui.post(retry)
                 }
             }
         }.start()
@@ -393,6 +442,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     private fun reconnect() {
         manual = false
+        reconnectAttempt = 0
+        reconnectRunnable?.let(ui::removeCallbacks)
+        reconnectRunnable = null
+        pendingReconnectDelayMs = 0L
         reconnectPending = true
         refreshStatus()
         if (stopping) return
