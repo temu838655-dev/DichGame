@@ -402,14 +402,18 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             val r = s.start()
             if (!r.isSuccess) {
                 try { s.dispose() } catch (_: Throwable) {}
-                ended("Không khởi động được phiên Remote Play: $r", true)
+                val message = "Không khởi động được phiên Remote Play: $r"
+                if (activityStarted && !isFinishing && !isDestroyed) retryAfterNetworkDrop(message)
+                else ended(message, true)
                 return
             }
             session = s
             surface?.let { s.setSurface(it) }
             push()
         } catch (e: Throwable) {
-            ended("Lỗi mở Remote Play: ${e.message ?: e.javaClass.simpleName}", true)
+            val message = "Lỗi mở Remote Play: ${e.message ?: e.javaClass.simpleName}"
+            if (activityStarted && !isFinishing && !isDestroyed) retryAfterNetworkDrop(message)
+            else ended(message, true)
         }
     }
 
@@ -473,10 +477,33 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             .show()
     }
 
+    /** Lên lịch kết nối lại sau khi phiên cũ đã dừng, hoặc ngay nếu chưa tạo được phiên. */
+    private fun schedulePendingReconnect() {
+        if (!reconnectPending || !activityStarted || manual || isFinishing || isDestroyed) return
+        val delay = pendingReconnectDelayMs
+        pendingReconnectDelayMs = 0L
+        reconnectRunnable?.let(ui::removeCallbacks)
+        val retry = Runnable {
+            reconnectRunnable = null
+            if (reconnectPending && activityStarted && !manual && !isFinishing && !isDestroyed) {
+                if (hasUsableNetwork()) requestConnect()
+                else setStatus("Đang chờ mạng trở lại…", true)
+            }
+        }
+        reconnectRunnable = retry
+        if (delay > 0L) ui.postDelayed(retry, delay) else ui.post(retry)
+    }
+
     private fun shutdownSession() {
         gen++
         connected = false
-        val s = session ?: return
+        val s = session
+        if (s == null) {
+            // Lỗi xảy ra trước khi Session được gán (ví dụ start() trả lỗi):
+            // vẫn phải chạy lịch retry thay vì mắc kẹt ở trạng thái chờ.
+            schedulePendingReconnect()
+            return
+        }
         session = null
         stopping = true
         Thread {
@@ -484,21 +511,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             try { s.dispose() } catch (_: Throwable) {}
             ui.post {
                 stopping = false
-                // Chỉ tạo phiên mới sau khi stop() và dispose() của phiên cũ đã hoàn tất.
-                if (reconnectPending && activityStarted && !manual && !isFinishing && !isDestroyed) {
-                    val delay = pendingReconnectDelayMs
-                    pendingReconnectDelayMs = 0L
-                    reconnectRunnable?.let(ui::removeCallbacks)
-                    val retry = Runnable {
-                        reconnectRunnable = null
-                        if (reconnectPending && activityStarted && !manual && !isFinishing && !isDestroyed) {
-                            if (hasUsableNetwork()) requestConnect()
-                            else setStatus("Đang chờ mạng trở lại…", true)
-                        }
-                    }
-                    reconnectRunnable = retry
-                    if (delay > 0L) ui.postDelayed(retry, delay) else ui.post(retry)
-                }
+                // Không tạo phiên mới cho tới khi stop() và dispose() cũ hoàn tất.
+                schedulePendingReconnect()
             }
         }.start()
     }
