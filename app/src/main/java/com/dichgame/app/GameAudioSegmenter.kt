@@ -53,10 +53,20 @@ class GameAudioSegmenter(
         }
     }
 
-    /** Flushes a final short utterance when the audio stream is stopped. */
+    /**
+     * Processes the final incomplete frame instead of silently discarding it.
+     * This matters when the audio stream stops between the normal 20 ms frame boundaries.
+     */
     @Synchronized
     fun flush() {
-        if (active) emit(keepTrailing = false)
+        val finalFrameWasUnvoiced = if (pending.isNotEmpty()) {
+            val finalFrame = pending.toFloatArray()
+            pending.clear()
+            !processFrame(finalFrame)
+        } else {
+            false
+        }
+        if (active) emit(keepTrailing = finalFrameWasUnvoiced)
         pending.clear()
         preRoll.clear()
     }
@@ -71,7 +81,8 @@ class GameAudioSegmenter(
         silenceFrames = 0
     }
 
-    private fun processFrame(frame: FloatArray) {
+    /** Returns whether this frame crossed the speech-energy threshold. */
+    private fun processFrame(frame: FloatArray): Boolean {
         val rms = sqrt(frame.sumOf { (it * it).toDouble() } / frame.size).toFloat()
         val voiced = rms >= speechRmsThreshold
 
@@ -86,7 +97,7 @@ class GameAudioSegmenter(
             } else {
                 rememberPreRoll(frame)
             }
-            return
+            return voiced
         }
 
         utterance.addAll(frame.toList())
@@ -102,6 +113,7 @@ class GameAudioSegmenter(
         } else if (silenceFrames >= trailingSilenceFrames) {
             emit(keepTrailing = true)
         }
+        return voiced
     }
 
     private fun rememberPreRoll(frame: FloatArray) {
