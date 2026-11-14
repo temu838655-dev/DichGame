@@ -99,7 +99,11 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var gameAsrBtn: TextView? = null
     private var gameAsrSubtitle: TextView? = null
     private var gameAsr: GameAudioAsr? = null
-    private var gameTranslator: TextTranslator? = null
+    private val gameTranslators = mutableMapOf<String, TextTranslator>()
+    private val gameTranslatorReady = mutableSetOf<String>()
+    private val gameTranslatorPreparing = mutableSetOf<String>()
+    private val pendingGameTranslations = ArrayDeque<Pair<String, String>>()
+    private var gameTranslationBusy = false
     private var gameAsrStarting = false
     private val ui = Handler(Looper.getMainLooper())
     private var inputListenerRegistered = false
@@ -822,57 +826,77 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         val activeSession = session
         if (activeSession == null || !connected || isFinishing || isDestroyed) return
         gameAsrStarting = true
-        val prefs = Prefs(this)
-        val translator = TextTranslator(this, prefs, prefs.lang)
-        translator.prepare { ready ->
-            if (!ready) {
-                gameAsrStarting = false
-                translator.close()
-                if (!isFinishing) Toast.makeText(this, "Không tải được dữ liệu dịch offline. Kiểm tra mạng rồi thử lại.", Toast.LENGTH_LONG).show()
-                return@prepare
-            }
-            if (isFinishing || isDestroyed || session !== activeSession || !connected) {
-                gameAsrStarting = false
-                translator.close()
-                return@prepare
-            }
-            val engine = GameAudioAsr(
-                this,
-                onTranscript = { recognized ->
-                    ui.post {
-                        if (gameAsr == null || gameTranslator !== translator || isFinishing || isDestroyed) return@post
-                        translator.translate(recognized) { vietnamese ->
-                            if (gameTranslator === translator && gameAsr != null) {
-                                gameAsrSubtitle?.text = "$vietnamese\n$recognized"
-                                gameAsrSubtitle?.visibility = View.VISIBLE
-                            }
-                        }
-                    }
-                },
-                onError = { message ->
-                    ui.post {
-                        if (gameTranslator === translator) {
-                            stopGameSpeech()
-                            Toast.makeText(this, "Whisper gặp lỗi: $message", Toast.LENGTH_LONG).show()
-                        }
+        val engine = GameAudioAsr(
+            this,
+            onTranscript = { recognized, detectedLanguage ->
+                ui.post {
+                    if (gameAsr == null || isFinishing || isDestroyed) return@post
+                    val source = GameAsrLanguage.resolve(detectedLanguage, Prefs(this).lang)
+                    enqueueGameTranslation(source, recognized)
+                }
+            },
+            onError = { message ->
+                ui.post {
+                    if (gameAsr != null) {
+                        stopGameSpeech()
+                        Toast.makeText(this, "Whisper gặp lỗi: $message", Toast.LENGTH_LONG).show()
                     }
                 }
-            )
-            try {
-                gameTranslator = translator
-                gameAsr = engine
-                gameAsrStarting = false
-                gameAsrBtn?.text = "🎙✓"
-                engine.start(activeSession)
-                Toast.makeText(this, "Đang nghe âm thanh trực tiếp từ PS5 bằng Whisper offline.", Toast.LENGTH_LONG).show()
-            } catch (e: Throwable) {
-                gameAsrStarting = false
-                if (gameAsr === engine) gameAsr = null
-                if (gameTranslator === translator) gameTranslator = null
-                engine.close()
-                translator.close()
-                Toast.makeText(this, "Không bật được nhận dạng: ${e.message ?: "lỗi không xác định"}", Toast.LENGTH_LONG).show()
             }
+        )
+        try {
+            gameAsr = engine
+            gameAsrStarting = false
+            gameAsrBtn?.text = "🎙✓"
+            engine.start(activeSession)
+            Toast.makeText(this, "Đang nhận dạng âm thanh PS5 bằng Whisper offline; ngôn ngữ được tự nhận diện.", Toast.LENGTH_LONG).show()
+        } catch (e: Throwable) {
+            gameAsrStarting = false
+            if (gameAsr === engine) gameAsr = null
+            engine.close()
+            Toast.makeText(this, "Không bật được nhận dạng: ${e.message ?: "lỗi không xác định"}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Dùng ngôn ngữ Whisper nhận diện; nếu thiếu/không hỗ trợ thì giữ ngôn ngữ đã chọn. */
+    private fun enqueueGameTranslation(sourceLanguage: String, recognized: String) {
+        if (recognized.isBlank() || gameAsr == null) return
+        val translator = gameTranslators.getOrPut(sourceLanguage) {
+            TextTranslator(this, Prefs(this), sourceLanguage)
+        }
+        pendingGameTranslations.addLast(sourceLanguage to recognized)
+        if (gameTranslatorPreparing.add(sourceLanguage)) {
+            translator.prepare { ready ->
+                gameTranslatorPreparing.remove(sourceLanguage)
+                if (gameAsr == null || isFinishing || isDestroyed) return@prepare
+                if (ready) {
+                    gameTranslatorReady.add(sourceLanguage)
+                    drainGameTranslations()
+                } else {
+                    pendingGameTranslations.removeAll { it.first == sourceLanguage }
+                    Toast.makeText(this, "Không tải được dữ liệu dịch offline cho ${Prefs.srcNameOf(sourceLanguage)}.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+        drainGameTranslations()
+    }
+
+    /** Giữ đúng thứ tự câu thoại, không chạy chồng nhiều yêu cầu dịch. */
+    private fun drainGameTranslations() {
+        if (gameTranslationBusy || gameAsr == null) return
+        val next = pendingGameTranslations.firstOrNull() ?: return
+        val (language, original) = next
+        if (language !in gameTranslatorReady) return
+        pendingGameTranslations.removeFirst()
+        val translator = gameTranslators[language] ?: return
+        gameTranslationBusy = true
+        translator.translate(original) { vietnamese ->
+            if (gameAsr != null && !isFinishing && !isDestroyed) {
+                gameAsrSubtitle?.text = "$vietnamese\n$original"
+                gameAsrSubtitle?.visibility = View.VISIBLE
+            }
+            gameTranslationBusy = false
+            drainGameTranslations()
         }
     }
 
@@ -880,8 +904,12 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         gameAsrStarting = false
         gameAsr?.close()
         gameAsr = null
-        gameTranslator?.close()
-        gameTranslator = null
+        gameTranslators.values.forEach { it.close() }
+        gameTranslators.clear()
+        gameTranslatorReady.clear()
+        gameTranslatorPreparing.clear()
+        pendingGameTranslations.clear()
+        gameTranslationBusy = false
         gameAsrSubtitle?.text = ""
         gameAsrSubtitle?.visibility = View.GONE
         gameAsrBtn?.text = "🎙"
