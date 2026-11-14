@@ -13,10 +13,10 @@ internal object VirtualDpad {
 
         var result = 0u
         if (abs(dx) > distance * 0.38f) {
-            result = result or if (dx > 0f) ControllerState.BUTTON_DPAD_RIGHT else ControllerState.BUTTON_DPAD_LEFT
+            result = result or (if (dx > 0f) ControllerState.BUTTON_DPAD_RIGHT else ControllerState.BUTTON_DPAD_LEFT)
         }
         if (abs(dy) > distance * 0.38f) {
-            result = result or if (dy > 0f) ControllerState.BUTTON_DPAD_DOWN else ControllerState.BUTTON_DPAD_UP
+            result = result or (if (dy > 0f) ControllerState.BUTTON_DPAD_DOWN else ControllerState.BUTTON_DPAD_UP)
         }
         return result
     }
