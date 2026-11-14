@@ -238,10 +238,10 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
     }
 
     private fun axis(dx: Float, dy: Float, r: Float): Pair<Float, Float> {
-        val d = hypot(dx, dy)
-        if (d < r * 0.12f) return 0f to 0f
-        val k = if (d > r) r / d else 1f
-        return (dx * k / r).coerceIn(-1f, 1f) to (dy * k / r).coerceIn(-1f, 1f)
+        if (!r.isFinite() || r <= 0f || !dx.isFinite() || !dy.isFinite()) return 0f to 0f
+        // Dùng cùng radial dead zone với tay cầm thật: loại rung quanh tâm,
+        // sau đó mở rộng phần hành trình còn lại để cần ảo vẫn đạt đủ biên độ.
+        return AnalogAxis.normalizePair(dx / r, dy / r, 0.12f, 0.12f)
     }
 
     private fun dpadFrom(dx: Float, dy: Float): UInt {
