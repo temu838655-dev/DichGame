@@ -29,7 +29,7 @@ internal class WhisperTinyModelInstaller(
 
     data class Result(val directory: File, val downloadedBytes: Long, val skippedBytes: Long)
 
-    private data class Asset(
+    internal data class Asset(
         val remoteName: String,
         val localName: String,
         val size: Long,
