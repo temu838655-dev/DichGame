@@ -71,6 +71,11 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     private var padState = ControllerState()
     private var phys = ControllerState()
+    // Giữ riêng trạng thái cò nhấn bằng nút và cò analog để hai nguồn không ghi đè lẫn nhau.
+    private var physicalL2Digital = false
+    private var physicalR2Digital = false
+    private var physicalL2Analog = 0f
+    private var physicalR2Analog = 0f
     private var pad: PadView? = null
     private var padOn = true
     private var statusView: TextView? = null
@@ -110,6 +115,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         super.onStop()
         // Rời màn hình thì dừng phiên: PS5 không cần giữ luồng hình cho một app đang ẩn.
         phys = ControllerState(); padState = ControllerState(); pad?.releaseAll()
+        physicalL2Digital = false; physicalR2Digital = false
+        physicalL2Analog = 0f; physicalR2Analog = 0f
         reconnectPending = false
         if (session != null) {
             if (!isFinishing) manual = false
@@ -443,12 +450,17 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         else -> 0u
     }
 
+    private fun updatePhysicalTriggers() {
+        phys.l2State = (maxOf(if (physicalL2Digital) 1f else 0f, physicalL2Analog) * 255f).toInt().coerceIn(0, 255).toUByte()
+        phys.r2State = (maxOf(if (physicalR2Digital) 1f else 0f, physicalR2Analog) * 255f).toInt().coerceIn(0, 255).toUByte()
+    }
+
     override fun dispatchKeyEvent(e: KeyEvent): Boolean {
         if (e.keyCode != KeyEvent.KEYCODE_BACK && isPad(e.source)) {
             val down = e.action == KeyEvent.ACTION_DOWN
             when (e.keyCode) {
-                KeyEvent.KEYCODE_BUTTON_L2 -> { phys.l2State = if (down) UByte.MAX_VALUE else 0u.toUByte(); push(); return true }
-                KeyEvent.KEYCODE_BUTTON_R2 -> { phys.r2State = if (down) UByte.MAX_VALUE else 0u.toUByte(); push(); return true }
+                KeyEvent.KEYCODE_BUTTON_L2 -> { physicalL2Digital = down; updatePhysicalTriggers(); push(); return true }
+                KeyEvent.KEYCODE_BUTTON_R2 -> { physicalR2Digital = down; updatePhysicalTriggers(); push(); return true }
             }
             val m = keyMask(e.keyCode)
             if (m != 0u) {
@@ -463,14 +475,19 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     override fun dispatchGenericMotionEvent(e: MotionEvent): Boolean {
         if (isPad(e.source) && e.actionMasked == MotionEvent.ACTION_MOVE) {
             fun ax(a: Int): Float { val v = e.getAxisValue(a); return if (abs(v) < 0.1f) 0f else v }
+            fun hasAxis(a: Int): Boolean = e.device?.getMotionRange(a, e.source) != null
+            fun preferredAxis(primary: Int, fallback: Int): Int =
+                if (hasAxis(primary)) primary else fallback
             phys.leftX = (ax(MotionEvent.AXIS_X) * Short.MAX_VALUE).toInt().toShort()
             phys.leftY = (ax(MotionEvent.AXIS_Y) * Short.MAX_VALUE).toInt().toShort()
-            phys.rightX = (ax(MotionEvent.AXIS_Z) * Short.MAX_VALUE).toInt().toShort()
-            phys.rightY = (ax(MotionEvent.AXIS_RZ) * Short.MAX_VALUE).toInt().toShort()
-            val lt = maxOf(e.getAxisValue(MotionEvent.AXIS_LTRIGGER), e.getAxisValue(MotionEvent.AXIS_BRAKE)).coerceIn(0f, 1f)
-            val rt = maxOf(e.getAxisValue(MotionEvent.AXIS_RTRIGGER), e.getAxisValue(MotionEvent.AXIS_GAS)).coerceIn(0f, 1f)
-            if (lt > 0.02f || phys.l2State != 0u.toUByte()) phys.l2State = (lt * 255f).toInt().toUByte()
-            if (rt > 0.02f || phys.r2State != 0u.toUByte()) phys.r2State = (rt * 255f).toInt().toUByte()
+            // Android có tay cầm xuất cần phải qua Z/RZ, có loại lại dùng RX/RY.
+            val rightX = preferredAxis(MotionEvent.AXIS_Z, MotionEvent.AXIS_RX)
+            val rightY = preferredAxis(MotionEvent.AXIS_RZ, MotionEvent.AXIS_RY)
+            phys.rightX = (ax(rightX) * Short.MAX_VALUE).toInt().toShort()
+            phys.rightY = (ax(rightY) * Short.MAX_VALUE).toInt().toShort()
+            physicalL2Analog = maxOf(e.getAxisValue(MotionEvent.AXIS_LTRIGGER), e.getAxisValue(MotionEvent.AXIS_BRAKE)).coerceIn(0f, 1f)
+            physicalR2Analog = maxOf(e.getAxisValue(MotionEvent.AXIS_RTRIGGER), e.getAxisValue(MotionEvent.AXIS_GAS)).coerceIn(0f, 1f)
+            updatePhysicalTriggers()
             val hx = e.getAxisValue(MotionEvent.AXIS_HAT_X)
             val hy = e.getAxisValue(MotionEvent.AXIS_HAT_Y)
             var b = phys.buttons and (ControllerState.BUTTON_DPAD_LEFT or ControllerState.BUTTON_DPAD_RIGHT or ControllerState.BUTTON_DPAD_UP or ControllerState.BUTTON_DPAD_DOWN).inv()
