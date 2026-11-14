@@ -335,7 +335,12 @@ object PsQuality {
     private val RATES = listOf(0, 2, 3, 5, 8, 10, 15, 20, 30)
 
     fun summary(a: Activity): String {
-        val r = when (PsStore.res(a)) { 1 -> "720p"; 2 -> "1080p"; else -> "720p" }
+        val r = when (PsStore.res(a)) {
+            2 -> "1080p"
+            3 -> "540p"
+            4 -> "360p"
+            else -> "720p"
+        }
         val m = PsStore.rate(a)
         return r + " · " + if (m == 0) "tự động" else "$m Mbps"
     }
@@ -351,10 +356,13 @@ object PsQuality {
             val desc1 = Ui.tv(a, "", 12.5f, Ui.SUB)
             fun drawRes() {
                 h1.removeAllViews()
-                h1.addView(Ui.segmented(a, listOf("Tự động · 720p", "720p", "1080p"), PsStore.res(a)) { PsStore.setRes(a, it); drawRes() })
+                // Thứ tự giữ nguyên ba lựa chọn cũ; 540p/360p dùng các chỉ số mới để không đổi cài đặt đã lưu.
+                h1.addView(Ui.segmented(a, listOf("Tự động · 720p", "720p", "1080p", "540p", "360p"), PsStore.res(a)) { PsStore.setRes(a, it); drawRes() })
                 desc1.text = when (PsStore.res(a)) {
-                    2 -> "1080p: nét hơn, tốn mạng và nóng máy hơn. Hợp với máy mạnh, mạng 5 GHz tốt."
-                    1 -> "720p: mượt, mát máy, hợp với hầu hết điện thoại."
+                    2 -> "1080p: hình nét nhất trong các mức hiện có, cần mạng ổn định và thiết bị giải mã tốt."
+                    3 -> "540p: giảm đáng kể lượng dữ liệu hình, phù hợp khi mạng yếu hoặc độ trễ dao động."
+                    4 -> "360p: ưu tiên khả năng duy trì luồng trên mạng rất yếu; hình sẽ ít chi tiết hơn."
+                    1 -> "720p: cân bằng độ nét và tải mạng, phù hợp với đa số thiết bị."
                     else -> "Tự động hiện dùng profile 720p mặc định; chưa tự đổi độ phân giải theo tốc độ mạng."
                 }
             }
