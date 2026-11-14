@@ -63,6 +63,17 @@ class GameAudioSegmenterTest {
         assertEquals("Two partial phrases on opposite sides of a dropped-audio gap must not be joined", 0, result.size)
     }
 
+    @Test fun resetClearsPreRollSoAudioBeforeGapCannotLeakIntoNextUtterance() {
+        val result = mutableListOf<FloatArray>()
+        val segmenter = GameAudioSegmenter(onUtterance = result::add)
+        segmenter.accept(tone(140, amplitude = 0.004f))
+        segmenter.reset()
+        segmenter.accept(tone(100, amplitude = 0.2f))
+        segmenter.accept(silence(600))
+        assertEquals(1, result.size)
+        assertTrue("Only post-gap speech should be emitted", result.single().size <= 100 * 16 + 120 * 16)
+    }
+
     @Test fun separatesUtterancesAfterSilence() {
         val result = mutableListOf<FloatArray>()
         val segmenter = GameAudioSegmenter(onUtterance = result::add)
