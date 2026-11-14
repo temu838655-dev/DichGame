@@ -122,7 +122,11 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     }
     private val inputDeviceListener = object : InputManager.InputDeviceListener {
         override fun onInputDeviceAdded(deviceId: Int) = Unit
-        override fun onInputDeviceChanged(deviceId: Int) = Unit
+        override fun onInputDeviceChanged(deviceId: Int) {
+            // Android có thể thay đổi cấu hình trục/nút khi tay cầm reconnect.
+            // Reset để không giữ nút/cò cũ trong lúc driver phát lại trạng thái mới.
+            if (activePhysicalDeviceId == deviceId) resetPhysicalControllerState()
+        }
         override fun onInputDeviceRemoved(deviceId: Int) {
             // Chỉ reset khi thiết bị đang điều khiển bị rút; không làm mất trạng thái của tay cầm đang dùng khác.
             if (activePhysicalDeviceId == deviceId) resetPhysicalControllerState()
