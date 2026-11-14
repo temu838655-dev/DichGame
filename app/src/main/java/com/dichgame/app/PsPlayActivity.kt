@@ -229,7 +229,12 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (!hasFocus) resetPhysicalControllerState()
+        if (!hasFocus) {
+            // Dialog, màn hình hệ thống hoặc app khác có thể lấy focus mà không
+            // gửi đủ ACTION_UP cho các ngón đang giữ trên tay cầm ảo.
+            resetPhysicalControllerState()
+            pad?.releaseAll()
+        }
     }
 
     override fun onConfigurationChanged(n: Configuration) {
