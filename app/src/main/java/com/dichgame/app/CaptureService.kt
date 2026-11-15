@@ -258,7 +258,7 @@ class CaptureService : Service() {
     /** Lỗi lấy khung hình chỉ bỏ qua lượt quét hiện tại, không làm chết vòng lặp OCR. */
     private fun reportFrameError() {
         finishBusy()
-        val now = System.currentTimeMillis()
+        val now = android.os.SystemClock.elapsedRealtime()
         if (now - frameErrAt > 8000) {
             frameErrAt = now
             show("Không lấy được khung hình để đọc chữ. Đang tự thử lại…")
@@ -390,7 +390,7 @@ class CaptureService : Service() {
             val pending = pendingAudioTranscripts.removeFirst()
             // Never show a line after its dialogue moment has passed. This is
             // especially important when cloud OCR/translation temporarily stalls.
-            if (System.currentTimeMillis() - pending.receivedAtMs > maxPendingAudioAgeMs) continue
+            if (android.os.SystemClock.elapsedRealtime() - pending.receivedAtMs > maxPendingAudioAgeMs) continue
             val next = pending.text
             val key = normalizeTranscript(next)
             if (key.isNotEmpty() && key != normalizeTranscript(last) && key != normalizeTranscript(cand)) {
