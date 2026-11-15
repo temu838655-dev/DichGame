@@ -55,8 +55,28 @@ internal class GameAudioAsrWorker(
         return !thread.isAlive
     }
 
+    /**
+     * Stop and wait until the worker has drained queued PCM, flushed its final segment,
+     * and released the recognizer. Intended for a background thread during session teardown.
+     * Interruption is deferred until cleanup completes so callers never close the queue early.
+     */
+    fun stopAndJoinUntilStopped() {
+        running.set(false)
+        val thread = workerThread ?: return
+        if (thread === Thread.currentThread()) return
+        var interrupted = false
+        while (thread.isAlive) {
+            try {
+                thread.join()
+            } catch (_: InterruptedException) {
+                interrupted = true
+            }
+        }
+        if (interrupted) Thread.currentThread().interrupt()
+    }
+
     override fun close() {
-        stopAndJoin()
+        stopAndJoinUntilStopped()
     }
 
     private fun runWorker() {
