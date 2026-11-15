@@ -64,4 +64,23 @@ class PendingAudioTranscriptQueueTest {
         assertFalse(queue.isNotEmpty())
         assertNull(queue.pollFresh(100L))
     }
+
+    @Test
+    fun allowsSameLineAgainAfterPreviousEntryWasDequeued() {
+        val queue = PendingAudioTranscriptQueue()
+        assertTrue(queue.offer("Open the door!", 100L))
+        assertEquals("Open the door!", queue.pollFresh(110L)?.text)
+
+        // De-duplication only covers waiting entries, not later repetitions in gameplay.
+        assertTrue(queue.offer("Open the door!", 120L))
+        assertEquals("Open the door!", queue.pollFresh(130L)?.text)
+    }
+
+    @Test
+    fun normalizesUnicodePunctuationAndWhitespaceForQueuedDuplicates() {
+        val queue = PendingAudioTranscriptQueue()
+        assertTrue(queue.offer("こんにちは、世界！", 100L))
+        assertFalse(queue.offer("こんにちは 世界", 110L))
+        assertEquals("こんにちは、世界！", queue.pollFresh(120L)?.text)
+    }
 }
