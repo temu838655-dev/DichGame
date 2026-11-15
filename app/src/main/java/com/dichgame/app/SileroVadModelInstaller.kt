@@ -23,8 +23,9 @@ internal class SileroVadModelInstaller(
         cancelled.set(false)
         directory.mkdirs()
         check(directory.isDirectory) { "Không tạo được thư mục model giọng nói." }
-        check(StatFs(directory.absolutePath).availableBytes >= MODEL_SIZE + 2L * 1024L * 1024L) {
-            "Không đủ dung lượng trống để cài bộ lọc giọng nói."
+        val availableBytes = StatFs(directory.absolutePath).availableBytes
+        if (availableBytes < MODEL_SIZE + 2L * 1024L * 1024L) {
+            throw IllegalStateException("Không đủ dung lượng trống để cài bộ lọc giọng nói.")
         }
         val target = File(directory, FILE_NAME)
         if (isValid(target)) return
