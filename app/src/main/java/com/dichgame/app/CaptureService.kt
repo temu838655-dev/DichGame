@@ -82,6 +82,7 @@ class CaptureService : Service() {
     private var ready = false
     private var busy = false
     private val pendingAudioTranscripts = PendingAudioTranscriptQueue()
+    private var audioQueueFullWarnAtMs = 0L
     private var running = false
     private var last = ""
     // Keep OCR provenance separate from ASR so partial-overlap suppression is time-bounded.
@@ -356,7 +357,15 @@ class CaptureService : Service() {
 
         if (!ready || busy) {
             // Keep older dialogue in FIFO order; reject this newest line if full.
-            pendingAudioTranscripts.offer(text, receivedAtMs)
+            val accepted = pendingAudioTranscripts.offer(text, receivedAtMs)
+            if (!accepted && (audioQueueFullWarnAtMs == 0L || nowElapsedMs - audioQueueFullWarnAtMs >= 5_000L)) {
+                audioQueueFullWarnAtMs = nowElapsedMs
+                android.widget.Toast.makeText(
+                    applicationContext,
+                    "Hàng đợi thoại đã đầy; câu thoại mới này chưa được nhận. Hãy chờ dịch xong.",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
             return
         }
         translateAudioTranscript(text)
