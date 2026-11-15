@@ -345,10 +345,12 @@ class CaptureService : Service() {
         if (!running || editing || narrate) return
         val text = raw.replace(Regex("\\s+"), " ").trim()
         val key = normalizeTranscript(text)
-        val wallNow = System.currentTimeMillis()
-        val receivedAtMs = android.os.SystemClock.elapsedRealtime()
+        // Use the monotonic clock for both ASR queue age and OCR/ASR overlap windows.
+        // Wall-clock adjustments must not extend or prematurely expire a dialogue match.
+        val nowElapsedMs = android.os.SystemClock.elapsedRealtime()
+        val receivedAtMs = nowElapsedMs
         val overlapsRecentOcr = GameTranscriptDeduplicator.overlapsRecentOcr(
-            text, lastOcrTranscript, lastOcrTranscriptAtMs, wallNow
+            text, lastOcrTranscript, lastOcrTranscriptAtMs, nowElapsedMs
         )
         if (key.isEmpty() || key == normalizeTranscript(last) || key == normalizeTranscript(cand) ||
             overlapsRecentOcr ||
@@ -395,7 +397,7 @@ class CaptureService : Service() {
             val next = pending.text
             val key = normalizeTranscript(next)
             val overlapsRecentOcr = GameTranscriptDeduplicator.overlapsRecentOcr(
-                next, lastOcrTranscript, lastOcrTranscriptAtMs, System.currentTimeMillis()
+                next, lastOcrTranscript, lastOcrTranscriptAtMs, android.os.SystemClock.elapsedRealtime()
             )
             if (key.isNotEmpty() && key != normalizeTranscript(last) &&
                 key != normalizeTranscript(cand) && !overlapsRecentOcr
@@ -864,7 +866,7 @@ class CaptureService : Service() {
                 val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
                 if (text.isEmpty()) { last = ""; cand = ""; lastOcrTranscript = ""; lastOcrTranscriptAtMs = 0L; stable = 0; if (!autoShown) show(""); finishBusy(); return@read }
                 if (text == last) {
-                    if (text == lastOcrTranscript) lastOcrTranscriptAtMs = System.currentTimeMillis()
+                    if (text == lastOcrTranscript) lastOcrTranscriptAtMs = android.os.SystemClock.elapsedRealtime()
                     finishBusy()
                     return@read
                 }
@@ -879,7 +881,7 @@ class CaptureService : Service() {
                 if (stable < requiredStable) { finishBusy(); return@read }
                 last = text
                 lastOcrTranscript = text
-                lastOcrTranscriptAtMs = System.currentTimeMillis()
+                lastOcrTranscriptAtMs = android.os.SystemClock.elapsedRealtime()
                 if (narrate) { showSub("", text); finishBusy(); return@read }
                 translateTextEx(text) { vi, d -> showSub(text, vi, d); finishBusy() }
             }
