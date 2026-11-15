@@ -22,6 +22,21 @@ internal object GameTranscriptDeduplicator {
         return isPartialOverlap(candidate, ocrText)
     }
 
+    /** Suppress exact repeats only inside a short, monotonic time window. */
+    fun isRecentExactMatch(
+        candidate: String,
+        previous: String,
+        previousAtMs: Long,
+        nowMs: Long,
+        windowMs: Long = 3_000L
+    ): Boolean {
+        if (previousAtMs <= 0L || windowMs < 0L) return false
+        val ageMs = nowMs - previousAtMs
+        if (ageMs !in 0L..windowMs) return false
+        val normalizedCandidate = normalize(candidate)
+        return normalizedCandidate.isNotEmpty() && normalizedCandidate == normalize(previous)
+    }
+
     fun isPartialOverlap(candidate: String, reference: String): Boolean {
         val normalizedCandidate = normalize(candidate)
         val normalizedReference = normalize(reference)
