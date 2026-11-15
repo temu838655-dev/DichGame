@@ -347,9 +347,9 @@ class CaptureService : Service() {
         val key = normalizeTranscript(text)
         val wallNow = System.currentTimeMillis()
         val receivedAtMs = android.os.SystemClock.elapsedRealtime()
-        val overlapsRecentOcr = lastOcrTranscriptAtMs > 0L &&
-            wallNow - lastOcrTranscriptAtMs in 0L..3_000L &&
-            GameTranscriptDeduplicator.isPartialOverlap(text, lastOcrTranscript)
+        val overlapsRecentOcr = GameTranscriptDeduplicator.overlapsRecentOcr(
+            text, lastOcrTranscript, lastOcrTranscriptAtMs, wallNow
+        )
         if (key.isEmpty() || key == normalizeTranscript(last) || key == normalizeTranscript(cand) ||
             overlapsRecentOcr ||
             pendingAudioTranscripts.any { normalizeTranscript(it.text) == key }
@@ -394,7 +394,12 @@ class CaptureService : Service() {
             if (android.os.SystemClock.elapsedRealtime() - pending.receivedAtMs > maxPendingAudioAgeMs) continue
             val next = pending.text
             val key = normalizeTranscript(next)
-            if (key.isNotEmpty() && key != normalizeTranscript(last) && key != normalizeTranscript(cand)) {
+            val overlapsRecentOcr = GameTranscriptDeduplicator.overlapsRecentOcr(
+                next, lastOcrTranscript, lastOcrTranscriptAtMs, System.currentTimeMillis()
+            )
+            if (key.isNotEmpty() && key != normalizeTranscript(last) &&
+                key != normalizeTranscript(cand) && !overlapsRecentOcr
+            ) {
                 translateAudioTranscript(next)
                 return
             }
