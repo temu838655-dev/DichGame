@@ -165,8 +165,33 @@ class OfflineGameAsr(
         internal fun toMonoFloat(samples: ShortArray, channels: Int): FloatArray {
             require(channels in 1..2 && samples.size % channels == 0)
             if (channels == 1) return FloatArray(samples.size) { samples[it] / 32768.0f }
-            return FloatArray(samples.size / 2) { i ->
-                (samples[i * 2].toInt() + samples[i * 2 + 1].toInt()) / 65536.0f
+            // Normal downmix preserves the center image. If channels are nearly
+            // opposite-phase, averaging can erase dialogue; in that exceptional
+            // case use the channel with the stronger RMS instead.
+            var leftEnergy = 0.0
+            var rightEnergy = 0.0
+            var mixedEnergy = 0.0
+            for (i in 0 until samples.size step 2) {
+                val left = samples[i].toInt() / 32768.0
+                val right = samples[i + 1].toInt() / 32768.0
+                val mixed = (left + right) * 0.5
+                leftEnergy += left * left
+                rightEnergy += right * right
+                mixedEnergy += mixed * mixed
+            }
+            val frameCount = samples.size / 2
+            val strongestEnergy = maxOf(leftEnergy, rightEnergy) / frameCount
+            val mixedRms = kotlin.math.sqrt(mixedEnergy / frameCount)
+            val strongestRms = kotlin.math.sqrt(strongestEnergy)
+            if (strongestRms > 0.0 && mixedRms < strongestRms * 0.25) {
+                val useLeft = leftEnergy >= rightEnergy
+                FloatArray(frameCount) { i ->
+                    samples[i * 2 + if (useLeft) 0 else 1] / 32768.0f
+                }
+            } else {
+                FloatArray(frameCount) { i ->
+                    (samples[i * 2].toInt() + samples[i * 2 + 1].toInt()) / 65536.0f
+                }
             }
         }
 
