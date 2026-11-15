@@ -15,10 +15,10 @@ internal object GameTranscriptDeduplicator {
             normalizedCandidate == normalizedReference
         ) return false
 
-        // Chinese and Japanese dialogue commonly has no spaces between words.
+        // Chinese, Japanese, Korean and Thai dialogue may not use spaces between words.
         // Token-only matching would treat each whole sentence as one token and
         // fail to detect OCR/ASR duplicates in those languages.
-        if (containsCjk(normalizedCandidate) || containsCjk(normalizedReference)) {
+        if (containsUnspacedScript(normalizedCandidate) || containsUnspacedScript(normalizedReference)) {
             val compactCandidate = normalizedCandidate.replace(" ", "")
             val compactReference = normalizedReference.replace(" ", "")
             val shorter: String
@@ -30,7 +30,7 @@ internal object GameTranscriptDeduplicator {
                 shorter = compactReference
                 longer = compactCandidate
             }
-            if (shorter.length < MIN_CJK_OVERLAP_CHARS) return false
+            if (shorter.length < MIN_UNSPACED_OVERLAP_CHARS) return false
             if (shorter.length.toDouble() / longer.length < MIN_OVERLAP_RATIO) return false
             return longer.contains(shorter)
         }
@@ -53,11 +53,14 @@ internal object GameTranscriptDeduplicator {
         return longer.windowed(shorter.size).any { it == shorter }
     }
 
-    private fun containsCjk(value: String): Boolean = value.any {
+    private fun containsUnspacedScript(value: String): Boolean = value.any {
         it in '\u3040'..'\u30ff' || // Hiragana and Katakana
             it in '\u3400'..'\u4dbf' || // CJK Extension A
             it in '\u4e00'..'\u9fff' || // CJK Unified Ideographs
-            it in '\uf900'..'\ufaff' // CJK Compatibility Ideographs
+            it in '\uf900'..'\ufaff' || // CJK Compatibility Ideographs
+            it in '\uac00'..'\ud7af' || // Hangul syllables
+            it in '\u1100'..'\u11ff' || // Hangul Jamo
+            it in '\u0e00'..'\u0e7f' // Thai
     }
 
     private fun normalize(value: String): String = value.lowercase(Locale.ROOT)
