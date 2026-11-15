@@ -41,6 +41,15 @@ class GameAudioSpeechSegmenterTest {
     }
 
     @Test
+    fun retainsQuietDialogueBelowPreviousEnergyThreshold() {
+        val vad = GameAudioSpeechSegmenter()
+        repeat(10) { vad.accept(chunk(it.toLong(), 250)) } // RMS ~0.0076
+        val segment = vad.flush()
+        assertTrue(segment != null)
+        assertEquals(200L, segment!!.durationMs)
+    }
+
+    @Test
     fun flushesSpeechAtSessionEnd() {
         val vad = GameAudioSpeechSegmenter()
         repeat(10) { vad.accept(chunk(it.toLong(), 6_000)) }
