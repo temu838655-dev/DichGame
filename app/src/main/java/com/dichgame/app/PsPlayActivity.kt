@@ -581,12 +581,14 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         val asrWorker = gameAudioAsrWorker
         gameAudioAsrWorker = null
         Thread {
-            // Chiaki callback is detached above; drain ASR before stopping native audio.
-            // The worker owns copied PCM and may still be decoding a long segment.
-            // Wait without blocking the UI thread so queue.close() cannot discard its tail.
-            try { asrWorker?.stopAndJoin(0L) } catch (_: Throwable) {}
+            // Detaching the callback prevents future delivery, but a JNI callback may
+            // already be in flight. Stop and join Chiaki first so no producer can enqueue
+            // PCM after the ASR worker has finished draining the queue.
             try { s.stop() } catch (_: Throwable) {}
             try { s.dispose() } catch (_: Throwable) {}
+            // The worker owns copied PCM and may still be decoding a long segment.
+            // Wait off the UI thread, then close the queue only after the final drain.
+            try { asrWorker?.stopAndJoin(0L) } catch (_: Throwable) {}
             try { audioQueue?.close() } catch (_: Throwable) {}
             ui.post {
                 stopping = false
