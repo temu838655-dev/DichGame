@@ -41,7 +41,7 @@ class SpeakerBook(cast: List<String> = emptyList()) {
     fun clear() = seen.clear()
 
     companion object {
-        fun key(s: String): String = s.lowercase(Locale.ROOT).filter { Character.isLetterOrDigit(it) }
+        fun key(s: String): String = s.lowercase(Locale.ROOT).filter { it.isLetterOrDigit() }
     }
 }
 
@@ -79,7 +79,7 @@ object DialogueSplitter {
         if (s.isEmpty() || s.any { it.isDigit() }) return false
         if (s.last() in END_PUNCT) return false
         if (s.lowercase(Locale.ROOT) in STOP) return false
-        val letters = s.count { Character.isLetter(it) }
+        val letters = s.count { it.isLetter() }
         if (letters < 2) return false
         val scriptsCjk = s.any { LangDetect.scriptOf(it).let { c -> c == 'H' || c == 'K' || c == 'G' } }
         if (scriptsCjk || cjk) {
@@ -97,7 +97,7 @@ object DialogueSplitter {
 
     private fun allCaps(s: String): Boolean {
         val t = s.trim().trimEnd(':', '：')
-        return t.count { Character.isLetter(it) } >= 3 && t == t.uppercase(Locale.ROOT) && t.any { Character.isLetter(it) && LangDetect.scriptOf(it) == 'L' }
+        return t.count { it.isLetter() } >= 3 && t == t.uppercase(Locale.ROOT) && t.any { it.isLetter() && LangDetect.scriptOf(it) == 'L' }
     }
 
     private fun cleanName(s: String): String = s.trim().trimEnd(':', '：').trim()
@@ -190,7 +190,7 @@ object DialogueSplitter {
             .filter { it.text.isNotBlank() }
     }
 
-    private fun letterLike(s: String) = s.any { Character.isLetter(it) }
+    private fun letterLike(s: String) = s.any { it.isLetter() }
 
     private fun canJoin(a: U, b: U): Boolean {
         if (a.speaker != b.speaker) {
@@ -219,7 +219,7 @@ object DialogueSplitter {
                 LangDetect.scriptOf(l[0]).let { it == 'H' || it == 'K' || it == 'T' }
             when {
                 cjkJoin -> sb.append(l)
-                sb.last() == '-' && sb.length >= 2 && Character.isLetter(sb[sb.length - 2]) && l[0].isLowerCase() -> {
+                sb.last() == '-' && sb.length >= 2 && (sb[sb.length - 2]).isLetter() && l[0].isLowerCase() -> {
                     sb.setLength(sb.length - 1); sb.append(l)
                 }
                 else -> sb.append(' ').append(l)

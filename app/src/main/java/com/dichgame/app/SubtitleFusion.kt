@@ -180,7 +180,7 @@ class SubtitleFusion(
             var seen = 0
             var cut = asr.length
             for (i in asr.indices) {
-                if (Character.isLetterOrDigit(asr[i])) seen++
+                if ((asr[i]).isLetterOrDigit()) seen++
                 if (seen >= k) { cut = i + 1; break }
             }
             return ocr.trimEnd() + asr.substring(cut).trimEnd()

@@ -46,13 +46,13 @@ object AsrGuard {
         // nhãn âm thanh và ký hiệu nhạc: [Music], (gunfire), *sighs*, ♪
         val untagged = TAG.replace(t, " ").replace(Regex("\\s+"), " ").trim()
         if (untagged != t) {
-            if (untagged.none { Character.isLetterOrDigit(it) }) return Verdict(false, t, "nhãn âm thanh")
+            if (untagged.none { it.isLetterOrDigit() }) return Verdict(false, t, "nhãn âm thanh")
             t = untagged
         }
         t = t.trimStart('-', '–', '—', ' ').trim()
-        val letters = t.count { Character.isLetter(it) }
+        val letters = t.count { it.isLetter() }
         if (letters == 0) return Verdict(false, t, "không có chữ")
-        if (letters == 1 && LangDetect.scriptOf(t.first { Character.isLetter(it) }) == 'L') return Verdict(false, t, "một chữ cái")
+        if (letters == 1 && LangDetect.scriptOf(t.first { it.isLetter() }) == 'L') return Verdict(false, t, "một chữ cái")
 
         val key = OcrGuard.key(t)
         if (ALWAYS.any { key.contains(it) }) return Verdict(false, t, "câu mô hình hay bịa")

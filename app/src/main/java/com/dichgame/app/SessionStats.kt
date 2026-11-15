@@ -1,0 +1,84 @@
+package com.dichgame.app
+
+import java.util.Locale
+
+/**
+ * Số đo của một lần dịch (từ lúc bấm bắt đầu tới lúc dừng): để người dùng và người phát triển thấy app thật sự làm gì
+ * khi chơi: bao nhiêu khung hình được bỏ qua, bao nhiêu chữ rác bị loại, bao nhiêu câu nghe được trùng với phụ đề,
+ * độ trễ từ lúc câu xuất hiện tới lúc hiện bản dịch, pin tiêu hao. Chỉ đếm, không lưu nội dung lời thoại. Không phụ thuộc Android.
+ */
+class SessionStats {
+    private val counts = HashMap<String, Long>()
+    private val latencies = ArrayList<Long>()
+    private var startAt = 0L
+    private var startBattery = -1
+
+    @Synchronized fun reset(nowMs: Long, batteryPct: Int) {
+        counts.clear(); latencies.clear(); startAt = nowMs; startBattery = batteryPct
+    }
+
+    @Synchronized fun inc(key: String, n: Long = 1) { counts[key] = (counts[key] ?: 0L) + n }
+
+    @Synchronized fun get(key: String): Long = counts[key] ?: 0L
+
+    /** Độ trễ (ms) từ lúc câu xuất hiện (chữ hiện trên màn hình, hoặc nhân vật nói xong) tới lúc bản dịch được hiện. */
+    @Synchronized fun latency(ms: Long) {
+        if (ms < 0 || ms > 120_000) return
+        if (latencies.size >= 2_000) latencies.removeAt(0)
+        latencies.add(ms)
+    }
+
+    @Synchronized fun percentile(p: Int): Long {
+        if (latencies.isEmpty()) return -1
+        val s = latencies.sorted()
+        return s[((s.size - 1) * p / 100).coerceIn(0, s.size - 1)]
+    }
+
+    private fun sec(ms: Long) = String.format(Locale.US, "%.1f", ms / 1000.0)
+
+    @Synchronized fun report(nowMs: Long, batteryPct: Int): String {
+        if (startAt == 0L) return "Chưa có lần dịch nào. Bấm bắt đầu dịch một lần rồi quay lại đây."
+        val sb = StringBuilder()
+        val mins = ((nowMs - startAt) / 60_000L).coerceAtLeast(0)
+        sb.append("Thời lượng: ").append(if (mins < 1) "dưới 1 phút" else "$mins phút").append('\n')
+        val scans = get("quet")
+        if (scans > 0) {
+            val skipped = get("quet_dung_yen")
+            sb.append("Quét màn hình: $scans lần, bỏ qua ${skipped} lần vì khung hình đứng yên (${skipped * 100 / scans}%)\n")
+        }
+        sb.append("Chữ đọc được: ${get("ocr_cau")} câu; loại vì chữ rác hoặc độ tin cậy thấp: ${get("ocr_rac")}\n")
+        val heard = get("asr_nhan")
+        sb.append("Nghe âm thanh game: $heard câu; loại vì nhiễu hoặc ảo giác: ${get("asr_loc")}; trùng với phụ đề trên màn hình: ${get("asr_trung")}")
+        sb.append("; ghép với chữ đọc dở: ${get("ghep")}\n")
+        sb.append("Dịch: AI ${get("dich_ai")}, bộ nhớ đệm ${get("dich_cache")}, gói Việt hoá ${get("dich_goi")}, dịch trên máy ${get("dich_may")}")
+        sb.append("; AI bị loại rồi dịch lại ${get("dich_loai")}; còn nghi ngờ ${get("dich_nghi")}\n")
+        val n = synchronized(this) { latencies.size }
+        if (n > 0) sb.append("Từ lúc câu xuất hiện tới lúc hiện bản dịch (${n} câu): giữa ${sec(percentile(50))} giây, 90% dưới ${sec(percentile(90))} giây\n")
+        if (startBattery in 0..100 && batteryPct in 0..100 && nowMs > startAt) {
+            val drop = startBattery - batteryPct
+            val perHour = if (nowMs - startAt >= 10 * 60_000L) " (khoảng ${drop * 3_600_000L / (nowMs - startAt)}% mỗi giờ)" else " (dịch trên 10 phút mới ước lượng được mỗi giờ)"
+            sb.append("Pin: ").append(if (drop >= 0) "giảm $drop%" else "tăng ${-drop}% (đang sạc)").append(perHour).append('\n')
+        }
+        return sb.toString().trimEnd()
+    }
+
+    companion object {
+        /** Số đo của lần dịch hiện tại, dùng chung trong tiến trình. */
+        val live = SessionStats()
+        @Volatile var lastReport: String = ""
+    }
+}
+
+/** Màu chữ riêng cho từng người nói, ổn định theo tên (cùng một tên luôn cùng một màu), dễ đọc trên nền tối. */
+object SpeakerColor {
+    private val PALETTE = intArrayOf(
+        0xFFFFD54F.toInt(), 0xFF80DEEA.toInt(), 0xFFA5D6A7.toInt(), 0xFFF48FB1.toInt(), 0xFFCE93D8.toInt(), 0xFFFFAB91.toInt(), 0xFF9FA8DA.toInt(), 0xFFE6EE9C.toInt(),
+    )
+
+    fun of(name: String): Int {
+        val k = SpeakerBook.key(name)
+        var h = 0
+        for (c in k) h = h * 31 + c.code
+        return PALETTE[(h and 0x7fffffff) % PALETTE.size]
+    }
+}

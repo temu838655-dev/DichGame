@@ -23,7 +23,7 @@ object LangDetect {
         c in 'Ͱ'..'Ͽ' || c in 'ἀ'..'῿' -> 'E'
         c in '֐'..'׿' -> 'W'
         c in 'ऀ'..'ॿ' -> 'D'
-        Character.isLetter(c) && (c.code < 0x250 || c in 'Ḁ'..'ỿ') -> 'L'
+        c.isLetter() && (c.code < 0x250 || c in 'Ḁ'..'ỿ') -> 'L'
         else -> ' '
     }
 

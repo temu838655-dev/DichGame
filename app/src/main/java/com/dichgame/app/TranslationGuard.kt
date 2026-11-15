@@ -39,7 +39,7 @@ object TranslationGuard {
         return t
     }
 
-    private fun words(s: String): List<String> = s.split(Regex("[\\s\\n]+")).map { it.trim { c -> !Character.isLetterOrDigit(c) } }.filter { it.isNotEmpty() }
+    private fun words(s: String): List<String> = s.split(Regex("[\\s\\n]+")).map { it.trim { c -> !c.isLetterOrDigit() } }.filter { it.isNotEmpty() }
 
     private fun digitRuns(s: String): List<String> = Regex("\\d+").findAll(s).map { it.value }.toList()
 
@@ -56,8 +56,8 @@ object TranslationGuard {
         if (REFUSAL.any { low.contains(it) }) { reject = true; reasons.add("AI viết lời giải thích hoặc từ chối") }
         if (t.contains("```")) { reject = true; reasons.add("còn định dạng markdown") }
 
-        val srcLetters = src.filter { Character.isLetter(it) }
-        val outLetters = t.filter { Character.isLetter(it) }
+        val srcLetters = src.filter { it.isLetter() }
+        val outLetters = t.filter { it.isLetter() }
         val srcDom = LangDetect.dominantScript(src)?.first ?: 'L'
         val srcCjk = srcDom == 'H' || srcDom == 'K' || srcDom == 'G' || srcDom == 'T'
 
@@ -121,7 +121,7 @@ object TranslationGuard {
         while (i >= 0) {
             val before = if (i == 0) ' ' else hay[i - 1]
             val after = if (i + needle.length >= hay.length) ' ' else hay[i + needle.length]
-            if (!Character.isLetterOrDigit(before) && !Character.isLetterOrDigit(after)) return true
+            if (!before.isLetterOrDigit() && !after.isLetterOrDigit()) return true
             i = hay.indexOf(needle, i + 1)
         }
         return false

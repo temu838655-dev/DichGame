@@ -18,7 +18,7 @@ object OcrGuard {
     private val EDGE_JUNK = Regex("^[|_~`^*#=<>\\\\/\\-]+|[|_~`^*#=<>\\\\/\\-]+$")
     private val VOWELS = "aeiouyàáâãäåæèéêëìíîïòóôõöøùúûüýÿœ"
 
-    fun letterCount(s: String): Int = s.count { Character.isLetter(it) }
+    fun letterCount(s: String): Int = s.count { it.isLetter() }
 
     /** Gộp khoảng trắng, bỏ ký tự vô hình, bỏ ký hiệu thừa (| _ ~ ...) dính ở hai đầu mỗi dòng. */
     fun clean(raw: String): String =
@@ -36,9 +36,9 @@ object OcrGuard {
         if (t.isEmpty()) return Verdict(false, t, "trống")
         if (conf < minConf) return Verdict(false, t, "độ tin cậy thấp")
         val noSpace = t.filter { !it.isWhitespace() }
-        val letters = noSpace.count { Character.isLetter(it) }
+        val letters = noSpace.count { it.isLetter() }
         if (letters == 0) return Verdict(false, t, "không có chữ")
-        val digits = noSpace.count { Character.isDigit(it) }
+        val digits = noSpace.count { it.isDigit() }
         val others = noSpace.length - letters - digits
         // dấu câu thường gặp trong lời thoại không tính là ký hiệu lạ
         val punct = noSpace.count { it in ".,!?;:'\"-–—…()[]¿¡“”‘’«»「」『』、。！？：（）・〜～" }
@@ -47,13 +47,13 @@ object OcrGuard {
         if (letters * 100 / noSpace.length < 50) return Verdict(false, t, "ít chữ, nhiều số hoặc ký hiệu")
 
         // một chữ lặp gần hết (IIIII, llll, ........)
-        val groups = noSpace.filter { Character.isLetter(it) }.lowercase(Locale.ROOT).groupingBy { it }.eachCount()
+        val groups = noSpace.filter { it.isLetter() }.lowercase(Locale.ROOT).groupingBy { it }.eachCount()
         val top = groups.values.maxOrNull() ?: 0
         if (letters >= 4 && top * 100 / letters >= 70) return Verdict(false, t, "một chữ lặp lại")
 
         val latinish = noSpace.count { LangDetect.scriptOf(it) == 'L' } * 2 > letters
         if (latinish) {
-            val tokens = t.split(Regex("[\\s\\n]+")).map { it.trim { c -> !Character.isLetter(c) } }.filter { it.isNotEmpty() }
+            val tokens = t.split(Regex("[\\s\\n]+")).map { it.trim { c -> !c.isLetter() } }.filter { it.isNotEmpty() }
             if (tokens.isNotEmpty()) {
                 var junk = 0
                 for (w in tokens) if (junkWord(w)) junk++
@@ -72,7 +72,7 @@ object OcrGuard {
         if (s.none { it in VOWELS } && !s.all { it == 'z' || it == 'x' }) return true
         var run = 0
         for (c in s) {
-            if (c in VOWELS || !Character.isLetter(c)) run = 0 else if (++run >= 6) return true
+            if (c in VOWELS || !c.isLetter()) run = 0 else if (++run >= 6) return true
         }
         // aBcDeF: từ có từ 2 chữ hoa nằm giữa từ và không phải toàn hoa (McDonald, iPhone chỉ có 1 chữ hoa giữa từ nên qua)
         val mid = w.drop(1)
@@ -83,7 +83,7 @@ object OcrGuard {
     /** Hai chuỗi cùng nội dung chữ (bỏ khác biệt hoa thường, dấu câu, khoảng trắng). */
     fun sameText(a: String, b: String): Boolean = key(a) == key(b)
 
-    fun key(s: String): String = s.lowercase(Locale.ROOT).filter { Character.isLetterOrDigit(it) }
+    fun key(s: String): String = s.lowercase(Locale.ROOT).filter { it.isLetterOrDigit() }
 
     /** Tỉ lệ ký tự giống nhau (Levenshtein) giữa hai khóa; dùng để gộp lần đọc hơi khác nhau của cùng một dòng. */
     fun similarity(a: String, b: String): Float {
