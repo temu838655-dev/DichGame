@@ -19,7 +19,7 @@ internal class SileroVadModelInstaller(
 
     fun isInstalled(): Boolean = isValid(File(directory, FILE_NAME))
 
-    fun install(onProgress: (Long, Long) -> Unit = {}) {
+    fun install(onProgress: (Long, Long) -> Unit = { _, _ -> }) {
         cancelled.set(false)
         directory.mkdirs()
         check(directory.isDirectory) { "Không tạo được thư mục model giọng nói." }
