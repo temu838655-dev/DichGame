@@ -42,6 +42,24 @@ class OfflineGameAsrTest {
     }
 
     @Test
+    fun stereoAntiPhaseAudioDoesNotCancelOutDialogue() {
+        val actual = OfflineGameAsr.toMonoFloat(
+            shortArrayOf(12_000, -12_000, -8_000, 8_000, 4_000, -4_000), 2
+        )
+        assertArrayEquals(
+            floatArrayOf(12_000 / 32768f, -8_000 / 32768f, 4_000 / 32768f),
+            actual,
+            0.0001f
+        )
+    }
+
+    @Test
+    fun stereoDownmixStillAveragesNormalInPhaseAudio() {
+        val actual = OfflineGameAsr.toMonoFloat(shortArrayOf(8_000, 16_000, -4_000, 4_000), 2)
+        assertArrayEquals(floatArrayOf(12_000 / 32768f, 0f), actual, 0.0001f)
+    }
+
+    @Test
     fun resamplingPreservesSamplesAtSameRate() {
         val input = floatArrayOf(-0.5f, 0f, 0.5f)
         assertArrayEquals(input, OfflineGameAsr.resample(input, 16000, 16000), 0f)
