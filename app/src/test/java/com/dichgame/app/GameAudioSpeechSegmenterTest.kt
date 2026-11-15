@@ -77,7 +77,33 @@ class GameAudioSpeechSegmenterTest {
         }
         val remainder = vad.flush()
         assertTrue(remainder != null)
-        assertEquals(300L, remainder!!.durationMs)
+        // The next segment deliberately repeats the final 200 ms to protect boundary phonemes.
+        assertEquals(500L, remainder!!.durationMs)
+    }
+
+    @Test
+    fun overlapsLastVoicedFramesWhenSplittingLongSpeech() {
+        val vad = GameAudioSpeechSegmenter(maxSegmentMs = 400L)
+        val values = listOf<Short>(1_000, 2_000, 3_000, 4_000)
+        var first: GameAudioSpeechSegmenter.Segment? = null
+        values.forEachIndexed { index, value ->
+            val frame = ShortArray(1_600) { value } // 100 ms at 16 kHz, mono.
+            val emitted = vad.accept(GameAudioPcmQueue.Chunk(index.toLong(), 16_000, 1, frame))
+            if (emitted.isNotEmpty()) first = emitted.single()
+        }
+
+        assertTrue(first != null)
+        assertEquals(400L, first!!.durationMs)
+
+        val nextFrame = ShortArray(1_600) { 5_000 }
+        assertTrue(vad.accept(GameAudioPcmQueue.Chunk(4L, 16_000, 1, nextFrame)).isEmpty())
+        val second = vad.flush()
+        assertTrue(second != null)
+        assertEquals(300L, second!!.durationMs)
+        assertEquals(4_800, second.samples.size)
+        assertEquals(3_000.toShort(), second.samples.first())
+        assertEquals(4_000.toShort(), second.samples[1_600])
+        assertEquals(5_000.toShort(), second.samples[3_200])
     }
 
     @Test
