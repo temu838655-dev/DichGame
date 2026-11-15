@@ -53,4 +53,28 @@ class GameTranscriptDeduplicatorTest {
     @Test fun detectsThaiPhraseOverlapWithoutSpaces() {
         assertTrue(GameTranscriptDeduplicator.isPartialOverlap("เปิดประตู", "ช่วยเปิดประตูหน่อย"))
     }
+    @Test fun suppressesPartialOverlapWithRecentOcr() {
+        assertTrue(GameTranscriptDeduplicator.overlapsRecentOcr(
+            "don't know", "I don't know", ocrAtMs = 10_000L, nowMs = 12_000L
+        ))
+    }
+
+    @Test fun doesNotSuppressOverlapAfterRecentWindowExpires() {
+        assertFalse(GameTranscriptDeduplicator.overlapsRecentOcr(
+            "don't know", "I don't know", ocrAtMs = 10_000L, nowMs = 13_001L
+        ))
+    }
+
+    @Test fun doesNotSuppressWhenClockMovesBackwards() {
+        assertFalse(GameTranscriptDeduplicator.overlapsRecentOcr(
+            "don't know", "I don't know", ocrAtMs = 10_000L, nowMs = 9_999L
+        ))
+    }
+
+    @Test fun recentOcrCheckStillKeepsOneWordReplies() {
+        assertFalse(GameTranscriptDeduplicator.overlapsRecentOcr(
+            "No", "I said no", ocrAtMs = 10_000L, nowMs = 10_500L
+        ))
+    }
+
 }
