@@ -68,6 +68,14 @@ class SubtitleFusion(
                 out.add(Out(Kind.REPLACE, text, speaker, Src.OCR, "OCR có đủ câu hơn bản nghe được"))
                 return out
             }
+            if (s.src != Src.ASR && r == Rel.A_EXTENDS_B && s.speaker == speaker) {
+                // chữ hiện dần từng chữ (hiệu ứng máy đánh chữ) hoặc lần đọc trước thiếu: bản dài hơn mới là câu đầy đủ, không được coi là trùng
+                shown.remove(s)
+                shown.add(Seen(text, speaker, Src.OCR, now))
+                note("ocr_mo_rong")
+                out.add(Out(Kind.REPLACE, text, speaker, Src.OCR, "chữ trên màn hình dài ra"))
+                return out
+            }
             s.at = now
             note("ocr_trung")
             out.add(Out(Kind.DROP, text, speaker, Src.OCR, "đã hiện"))

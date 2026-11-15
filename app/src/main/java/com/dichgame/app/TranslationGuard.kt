@@ -97,7 +97,8 @@ object TranslationGuard {
         // số liệu giữ nguyên
         val sd = digitRuns(src)
         val od = digitRuns(t)
-        if (sd.any { it !in od }) reasons.add("mất hoặc đổi số")
+        val outTokens = ow.toSet()
+        if (sd.any { it !in od && !spelledOut(it, outTokens) }) reasons.add("mất hoặc đổi số")
         else if (od.any { it.length >= 2 && it !in sd }) reasons.add("thêm số không có trong câu gốc")
 
         // tên nhân vật, thuật ngữ bắt buộc
@@ -114,6 +115,14 @@ object TranslationGuard {
             else -> Level.OK
         }
         return Verdict(level, t, reasons)
+    }
+
+    private val NUM_WORDS = listOf("không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín", "mười")
+
+    /** Số nhỏ (0-10) được viết bằng chữ trong bản dịch ("3" -> "ba") vẫn coi là còn giữ số. */
+    private fun spelledOut(digits: String, outTokens: Set<String>): Boolean {
+        val n = digits.toIntOrNull() ?: return false
+        return n in 0..10 && NUM_WORDS[n] in outTokens
     }
 
     private fun containsWord(hay: String, needle: String): Boolean {

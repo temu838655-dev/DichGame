@@ -460,6 +460,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     modelDirectory = modelDirectory,
                     language = Prefs(this).lang,
                     onTranscript = { text -> CaptureService.submitAudioTranscript(this, text) },
+                    onTranscriptMeta = { text, ms, rms -> CaptureService.submitAudioTranscript(this, text, ms, rms) },
                     onError = { message ->
                         ui.post {
                             if (!isFinishing && !isDestroyed) {

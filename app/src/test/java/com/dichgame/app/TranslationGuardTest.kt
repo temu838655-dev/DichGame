@@ -66,4 +66,9 @@ class TranslationGuardTest {
         val v = TranslationGuard.check("You have 250 gold left.", "Bạn còn ít vàng.")
         assertTrue(v.reasons.isNotEmpty())
     }
+
+    @Test fun smallNumbersSpelledOutAreAccepted() {
+        assertEquals(Level.OK, lv("I have 3 swords.", "Tôi có ba thanh kiếm."))
+        assertEquals(Level.SUSPECT, lv("I have 30 swords.", "Tôi có ba thanh kiếm."))
+    }
 }

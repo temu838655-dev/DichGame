@@ -276,4 +276,17 @@ class Prefs(ctx: Context) {
     var covers: Boolean
         get() = sp.getBoolean("covers", true)
         set(v) = sp.edit().putBoolean("covers", v).apply()
+
+    /** Bỏ qua lần đọc chữ khi hình trong khung phụ đề y hệt lần trước: đỡ tốn pin, đỡ nóng máy mà không bỏ sót câu mới. */
+    var skipStatic: Boolean
+        get() = sp.getBoolean("skipstatic", true)
+        set(v) = sp.edit().putBoolean("skipstatic", v).apply()
+    /** Tự chuyển ngôn ngữ nguồn khi chữ trên màn hình đổi sang một ngôn ngữ Latin khác (Anh sang Pháp...). */
+    var autoLang: Boolean
+        get() = sp.getBoolean("autolang", true)
+        set(v) = sp.edit().putBoolean("autolang", v).apply()
+    /** Chế độ hiệu năng: 0 tiết kiệm pin (quét thưa hơn), 1 cân bằng, 2 chất lượng cao (quét dày hơn). */
+    var perf: Int
+        get() = sp.getInt("perf", 1).coerceIn(0, 2)
+        set(v) = sp.edit().putInt("perf", v.coerceIn(0, 2)).apply()
 }

@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
@@ -24,6 +25,7 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
+import android.text.style.StyleSpan
 import android.speech.tts.TextToSpeech
 import android.util.DisplayMetrics
 import android.view.Gravity
@@ -38,7 +40,6 @@ import com.google.mlkit.nl.translate.Translator
 import com.google.mlkit.nl.translate.TranslatorOptions
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -53,11 +54,13 @@ class CaptureService : Service() {
         @Volatile var active = false
 
         /** Deliver decoded game dialogue to the active subtitle/translation service. */
-        fun submitAudioTranscript(context: android.content.Context, text: String) {
+        fun submitAudioTranscript(context: android.content.Context, text: String, speechMs: Long = 0L, rms: Float = 1f) {
             if (!active || text.isBlank()) return
             val intent = Intent(context, CaptureService::class.java)
                 .setAction(AUDIO_TEXT)
                 .putExtra("audio_text", text)
+                .putExtra("speech_ms", speechMs)
+                .putExtra("rms", rms)
             runCatching { context.applicationContext.startService(intent) }
         }
     }
@@ -81,13 +84,36 @@ class CaptureService : Service() {
     private var speak = false
     private var ready = false
     private var busy = false
-    private val pendingAudioTranscripts = java.util.ArrayDeque<String>()
-    private val maxPendingAudioTranscripts = 6
+    /** Một câu cần dịch: lời của một người nói (hoặc câu không rõ người nói). */
+    private class Line(val speaker: String?, val text: String, val nameLike: Boolean, val src: Src)
+    /** Một việc dịch: một hoặc vài câu hiện cùng lúc (nhiều người nói trên cùng một khung hình). */
+    private class Job(val lines: List<Line>, val src: Src, val speechMs: Long, val replace: Boolean, val seenAt: Long)
+    private class Card(val speaker: String?, val orig: String, val tr: TextTranslator.Tr, val unsure: Boolean)
+    private class Payload(val cards: List<Card>, val seenAt: Long)
+    /** Các câu đã qua bộ hợp nhất, chờ dịch (mỗi lúc chỉ dịch một việc để giữ đúng thứ tự). */
+    private val jobs = java.util.ArrayDeque<Job>()
+    private val maxJobs = 12
+    private var translating = false
+    private var translatingSince = 0L
+    private var translateToken = 0
+    private val fusion = SubtitleFusion()
+    private val pacer = SubtitlePacer(mergePayload = { a, b ->
+        val x = a as? Payload
+        val y = b as? Payload
+        if (x != null && y != null) Payload(x.cards + y.cards, minOf(x.seenAt, y.seenAt)) else y ?: x
+    })
+    private var speakers = SpeakerBook()
+    private var langTrack: LangSwitchTracker? = null
+    private var pendingLang: String? = null
+    private val retired = ArrayList<TextTranslator>()
+    private val rate = SubtitlePacer.SpeechRate()
+    private val stats = SessionStats.live
+    private var lastFine: IntArray? = null
+    private var skipRun = 0
+    /** Trong khung phụ đề còn chữ (lần quét gần nhất có câu thoại): chưa ẩn phụ đề dù đã hết thời gian đọc. */
+    private var textOnScreen = false
     private var running = false
     private var last = ""
-    // Keep OCR provenance separate from ASR so partial-overlap suppression is time-bounded.
-    private var lastOcrTranscript = ""
-    private var lastOcrTranscriptAtMs = 0L
     private var cw = 0
     private var ch = 0
     private var editing = true
@@ -123,11 +149,12 @@ class CaptureService : Service() {
     private val tick = object : Runnable {
         override fun run() {
             try {
+                housekeeping()
                 capture()
             } catch (_: Exception) {
                 reportFrameError()
             } finally {
-                if (running) handler.postDelayed(this, Prefs(this@CaptureService).scanMs.toLong())
+                if (running) handler.postDelayed(this, scanDelay())
             }
         }
     }
@@ -142,12 +169,15 @@ class CaptureService : Service() {
         if (intent.action == REGION) { if (running) toggleRegion(); return START_NOT_STICKY }
         if (intent.action == AUDIO_TEXT) {
             val text = intent.getStringExtra("audio_text").orEmpty()
-            if (running) handler.post { acceptAudioTranscript(text) }
+            val ms = intent.getLongExtra("speech_ms", 0L)
+            val rms = intent.getFloatExtra("rms", 1f)
+            if (running) handler.post { acceptAudioTranscript(text, ms, rms) }
             return START_NOT_STICKY
         }
         if (running) return START_NOT_STICKY
         running = true
         active = true
+        stats.reset(System.currentTimeMillis(), batteryPct())
         narrate = intent.getBooleanExtra("narrate", false)
         speak = intent.getBooleanExtra("speak", false) || narrate
         needStable = if (intent.getBooleanExtra("slow", false)) 2 else 1
@@ -181,9 +211,11 @@ class CaptureService : Service() {
 
         val tr = TextTranslator(this, Prefs(this), lang)
         tt = tr
+        speakers = SpeakerBook(PackStore.cast(Prefs(this)).map { it.name })
+        langTrack = LangSwitchTracker(lang)
         if (narrate) ready = true else show("Đang tải mô hình dịch (lần đầu, cần mạng)...")
         if (!narrate) tr.prepare { ok ->
-            if (ok) { ready = true; if (!editing) show(""); drainPendingAudioTranscript() }
+            if (ok) { ready = true; if (!editing) show(""); pump() }
             else show("Không tải được mô hình dịch. Kiểm tra mạng rồi bấm Dừng và chạy lại.")
         }
 
@@ -332,72 +364,261 @@ class CaptureService : Service() {
             }
     }
 
-    /**
-     * ASR supplements OCR. Keep a small FIFO while OCR/translation owns the
-     * overlay so short spoken lines are not discarded during a busy frame.
-     */
-    private fun normalizeTranscript(value: String): String = value.lowercase(Locale.ROOT)
-        .replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+    // ---------- lời nghe được từ âm thanh game ----------
 
-    private fun acceptAudioTranscript(raw: String) {
+    /** Câu nhận dạng từ âm thanh game: lọc ảo giác, rồi hợp nhất với chữ trên màn hình (không hiện hai lần). */
+    private fun acceptAudioTranscript(raw: String, speechMs: Long, rms: Float) {
         if (!running || editing || narrate) return
-        val text = raw.replace(Regex("\\s+"), " ").trim()
-        val key = normalizeTranscript(text)
         val now = System.currentTimeMillis()
-        val overlapsRecentOcr = lastOcrTranscriptAtMs > 0L &&
-            now - lastOcrTranscriptAtMs in 0L..3_000L &&
-            GameTranscriptDeduplicator.isPartialOverlap(text, lastOcrTranscript)
-        if (key.isEmpty() || key == normalizeTranscript(last) || key == normalizeTranscript(cand) ||
-            overlapsRecentOcr ||
-            pendingAudioTranscripts.any { normalizeTranscript(it) == key }
-        ) return
+        stats.inc("asr_nhan")
+        val v = AsrGuard.check(raw, rms, lang)
+        // câu ngắn hay bịa ("yeah", "thank you") mà có âm lượng thì vẫn không đủ căn cứ nếu màn hình không có chữ tương ứng: bỏ
+        if (!v.ok || v.ambiguous) { stats.inc("asr_loc"); return }
+        rate.add(v.text, speechMs)
+        val fresh = ArrayList<Line>()
+        applyOuts(fusion.onAsr(v.text, now), false, fresh, speechMs, now)
+        enqueue(fresh, speechMs, now, false)
+    }
 
-        if (!ready || busy) {
-            if (pendingAudioTranscripts.size >= maxPendingAudioTranscripts) {
-                pendingAudioTranscripts.removeFirst()
+    /** Chuyển quyết định của bộ hợp nhất thành các câu cần dịch. REPLACE (bản đầy đủ hơn của câu đã hiện) đi riêng, SHOW gom lại. */
+    private fun applyOuts(outs: List<SubtitleFusion.Out>, nameLike: Boolean, fresh: MutableList<Line>, speechMs: Long, seenAt: Long) {
+        for (o in outs) {
+            when (o.kind) {
+                SubtitleFusion.Kind.DROP -> if (o.src == Src.ASR) stats.inc("asr_trung")
+                SubtitleFusion.Kind.HOLD -> {}
+                SubtitleFusion.Kind.SHOW -> fresh.add(Line(o.speaker, o.text, nameLike, o.src))
+                SubtitleFusion.Kind.REPLACE -> {
+                    if (o.src == Src.MIXED) stats.inc("ghep")
+                    enqueue(listOf(Line(o.speaker, o.text, nameLike, o.src)), speechMs, seenAt, true)
+                }
             }
-            pendingAudioTranscripts.addLast(text)
+        }
+    }
+
+    private fun enqueue(lines: List<Line>, speechMs: Long, seenAt: Long, replace: Boolean) {
+        if (lines.isEmpty()) return
+        var rep = replace
+        if (replace) {
+            // bản cũ của câu này còn đang chờ dịch thì thay ngay trong hàng chờ, khỏi hiện cả hai
+            val removed = jobs.removeAll { j -> j.lines.any { a -> lines.any { b -> fusion.relation(a.text, b.text) != SubtitleFusion.Rel.NONE } } }
+            if (removed) rep = false
+        }
+        // nhân vật đã nói trong ASR thì biết thời gian nói thật; câu chỉ có chữ thì ước lượng theo tốc độ nói đã nghe được
+        var ms = speechMs
+        if (ms == 0L && rate.cps > 0f) ms = (lines.sumOf { l -> l.text.count { c -> !c.isWhitespace() } } * 1000f / rate.cps).toLong()
+        while (jobs.size >= maxJobs) { jobs.removeFirst(); stats.inc("hang_day") }
+        jobs.addLast(Job(lines, lines[0].src, ms, rep, seenAt))
+        pump()
+    }
+
+    /** Mỗi lúc chỉ dịch một việc (giữ đúng thứ tự lời thoại), xong thì đưa cho bộ giữ nhịp quyết định khi nào hiện. */
+    private fun pump() {
+        if (!running || !ready || editing || narrate) return
+        val now = System.currentTimeMillis()
+        if (now < menuUntil) return
+        pacer.poll(now)?.let { render(it) }
+        if (translating) {
+            if (now - translatingSince < 30_000L) return
+            translating = false; stats.inc("dich_treo")
+        }
+        val w = jobs.pollFirst() ?: return
+        translating = true
+        translatingSince = now
+        val token = ++translateToken
+        translateLines(w) { cards ->
+            if (token == translateToken) translating = false
+            if (running) deliver(w, cards)
+            handler.post { pump() }
+        }
+    }
+
+    private fun translateLines(w: Job, done: (List<Card>) -> Unit) {
+        val t = tt
+        val out = ArrayList<Card>()
+        fun next(i: Int) {
+            if (i >= w.lines.size) { done(out); return }
+            val line = w.lines[i]
+            if (t == null) {
+                out.add(Card(line.speaker, line.text, TextTranslator.Tr(line.text, null, false, "may"), false))
+                next(i + 1)
+            } else {
+                t.translateFull(line.text, line.speaker) { tr ->
+                    // một cái tên đứng riêng được giữ nguyên là bình thường, không đánh dấu "chưa chắc"
+                    out.add(Card(line.speaker, line.text, tr, tr.uncertain && !line.nameLike))
+                    next(i + 1)
+                }
+            }
+        }
+        next(0)
+    }
+
+    private fun deliver(w: Job, cards: List<Card>) {
+        if (cards.isEmpty() || editing || narrate) return
+        val now = System.currentTimeMillis()
+        val text = cards.joinToString(" ") { it.tr.text }
+        val item = SubtitlePacer.Item(text, w.src, pacer.holdFor(text, w.speechMs), cards[0].speaker, Payload(cards, w.seenAt))
+        val shown = pacer.submit(item, now, w.replace)
+        if (shown != null) render(shown) else { stats.inc("hang_cho"); scheduleHide() }
+    }
+
+    private fun render(item: SubtitlePacer.Item) {
+        val p = item.payload as? Payload ?: return
+        showCards(p.cards, item.src)
+        // độ trễ: từ lúc chữ được đọc từ màn hình (hoặc lời nghe được nhận dạng xong) tới lúc bản dịch hiện; chưa gồm thời gian nhận dạng giọng nói
+        stats.latency(System.currentTimeMillis() - p.seenAt)
+        scheduleHide()
+    }
+
+    /** Hẹn giờ kiểm tra có thể ẩn dòng đang hiện chưa (hết thời gian đọc, màn hình không còn chữ). */
+    private val hideCheck = Runnable {
+        if (running && !editing) {
+            val now = System.currentTimeMillis()
+            pump()
+            if (pacer.showing != null) {
+                if (pacer.mayHide(now)) { if (!textOnScreen) softHide() } else scheduleHide()
+            }
+        }
+    }
+
+    private fun scheduleHide() {
+        handler.removeCallbacks(hideCheck)
+        val at = pacer.hideAt()
+        if (at == 0L) return
+        handler.postDelayed(hideCheck, (at - System.currentTimeMillis()).coerceAtLeast(250L))
+    }
+
+    /** Ẩn phụ đề (đã đủ thời gian đọc và chữ trên màn hình đã biến mất); vẫn nhớ câu vừa hiện để làm dòng "câu trước". */
+    private fun softHide() {
+        pacer.cleared()
+        handler.removeCallbacks(hideCheck)
+        sendTv("clear", "")
+        overlay?.apply { text = ""; visibility = View.GONE }
+    }
+
+    /** Mỗi nhịp quét: câu nghe được chờ OCR xác nhận mà hết hạn thì hiện, câu xếp hàng tới lượt thì hiện, dòng cũ hết hạn thì ẩn. */
+    private fun housekeeping() {
+        if (!running || editing || narrate || !ready) return
+        val now = System.currentTimeMillis()
+        val outs = fusion.poll(now)
+        if (outs.isNotEmpty()) {
+            val fresh = ArrayList<Line>()
+            applyOuts(outs, false, fresh, 0L, now)
+            enqueue(fresh, 0L, now, false)
+        }
+        pump()
+        if (!textOnScreen && pacer.showing != null && pacer.mayHide(now)) softHide()
+    }
+
+    private fun scanDelay(): Long {
+        val pr = Prefs(this)
+        val f = when (pr.perf) {
+            0 -> 2.0
+            2 -> if (ocr?.isCloud == true) 1.0 else 0.7
+            else -> 1.0
+        }
+        return (pr.scanMs * f).toLong().coerceIn(100L, 4000L)
+    }
+
+    private fun batteryPct(): Int = try {
+        val v = (getSystemService(BATTERY_SERVICE) as android.os.BatteryManager).getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        if (v in 0..100) v else -1
+    } catch (_: Exception) { -1 }
+
+    /** Game đổi sang ngôn ngữ Latin khác (Anh sang Pháp...): nạp bộ dịch mới ở nền, xong mới thay; trong lúc đó vẫn dịch bằng bộ cũ. */
+    private fun switchLang(newLang: String) {
+        val ok = newLang != lang && newLang != "vi" && newLang != pendingLang &&
+            LangDetect.scriptOfLang(newLang) == 'L' && LangDetect.scriptOfLang(lang) == 'L'
+        if (!ok) { langTrack?.current = lang; return }
+        pendingLang = newLang
+        val t2 = TextTranslator(this, Prefs(this), newLang)
+        t2.prepare { done ->
+            pendingLang = null
+            if (!running || !done) {
+                runCatching { t2.close() }
+                langTrack?.current = lang
+                if (running) stats.inc("doi_ngon_ngu_loi")
+                return@prepare
+            }
+            // bộ cũ có thể còn đang dịch dở một câu: đóng muộn để câu đó vẫn ra kết quả
+            tt?.let { old -> retired.add(old); handler.postDelayed({ runCatching { old.close() }; retired.remove(old) }, 30_000L) }
+            tt = t2
+            lang = newLang
+            srcName = Prefs.srcNameOf(newLang)
+            langTrack?.current = newLang
+            stats.inc("doi_ngon_ngu")
+            android.widget.Toast.makeText(this, "Chữ trong game đã đổi sang $srcName: đã chuyển bộ dịch.", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** Số lần đọc giống nhau liên tiếp trước khi tin một câu: câu cực ngắn dễ là chữ rác nên cần thấy lâu hơn. */
+    private fun requiredStable(utts: List<Utterance>): Int {
+        val minLetters = utts.minOf { OcrGuard.letterCount(it.text) }
+        var need = when {
+            minLetters <= 1 -> maxOf(needStable, 3)
+            minLetters <= 2 -> maxOf(needStable, 2)
+            else -> needStable
+        }
+        // chỉ có tên, chưa có lời thoại: thường là thẻ tên hiện trước khi chữ chạy ra, đợi thêm để khỏi nháy
+        if (utts.all { it.nameLike }) need = maxOf(need, 3)
+        return need
+    }
+
+    private fun onOcrResult(r: List<Blk>, scanAt: Long) {
+        if (!running) { finishBusy(); return }
+        val now = System.currentTimeMillis()
+        val cjk = Prefs.isCjk(lang)
+        val lines = ArrayList<OcrLine>()
+        for (b in r) {
+            val t = OcrGuard.clean(b.text)
+            if (t.isEmpty()) continue
+            val v = OcrGuard.check(t, b.conf)
+            if (!v.ok) { stats.inc("ocr_rac"); continue }
+            val bx = b.box
+            lines.add(OcrLine(v.text, bx?.let { Box(it.left, it.top, it.right, it.bottom) }, b.conf))
+        }
+        val utts = DialogueSplitter.split(lines, cjk, speakers)
+        if (utts.isEmpty()) {
+            textOnScreen = false
+            last = ""; cand = ""; stable = 0
+            if (narrate || pacer.showing == null) { if (!autoShown) show("") }
+            else if (pacer.mayHide(now)) softHide() else scheduleHide()
+            finishBusy()
             return
         }
-        translateAudioTranscript(text)
-    }
-
-    private fun translateAudioTranscript(text: String) {
-        if (!running || !ready || editing || narrate || busy) return
-        last = text
-        cand = text
-        stable = needStable
-        busy = true
-        translateTextEx(text) { vi, delivery ->
-            if (running) showSub(text, vi, delivery)
+        textOnScreen = true
+        val sig = DialogueSplitter.signature(utts)
+        if (sig == last) { finishBusy(); return }
+        if (sig != cand) { cand = sig; stable = 1 } else stable++
+        if (stable < requiredStable(utts)) { finishBusy(); return }
+        last = sig
+        stats.inc("ocr_cau", utts.size.toLong())
+        if (narrate) {
+            val text = utts.joinToString(sep) { it.text.replace("\n", sep) }
+            showCards(listOf(Card(null, "", TextTranslator.Tr(text, null, false, "doc"), false)), Src.OCR)
             finishBusy()
+            return
         }
-    }
-
-    /** Release OCR/translation ownership, then process the next queued ASR line. */
-    private fun finishBusy() {
-        busy = false
-        if (running && ready && !editing && !narrate && pendingAudioTranscripts.isNotEmpty()) {
-            handler.post { drainPendingAudioTranscript() }
-        }
-    }
-
-    private fun drainPendingAudioTranscript() {
-        if (!running || !ready || editing || narrate || busy) return
-        while (pendingAudioTranscripts.isNotEmpty()) {
-            val next = pendingAudioTranscripts.removeFirst()
-            val key = normalizeTranscript(next)
-            if (key.isNotEmpty() && key != normalizeTranscript(last) && key != normalizeTranscript(cand)) {
-                translateAudioTranscript(next)
-                return
+        if (Prefs(this).autoLang) {
+            for (u in utts) {
+                if (!u.nameLike) langTrack?.observe(LangDetect.guess(u.text))?.let { switchLang(it) }
             }
         }
+        val fresh = ArrayList<Line>()
+        for (u in utts) applyOuts(fusion.onOcr(u.text, u.speaker, now), u.nameLike, fresh, 0L, scanAt)
+        enqueue(fresh, 0L, scanAt, false)
+        finishBusy()
+    }
+
+    /** Xong một lượt đọc chữ (hoặc dịch menu/vùng): mở khóa quét, và cho câu đang chờ có cơ hội chạy. */
+    private fun finishBusy() {
+        busy = false
+        if (running && ready && !editing && !narrate && (jobs.isNotEmpty() || pacer.queued > 0)) handler.post { pump() }
     }
 
     /** Lỗi đọc chữ: mở khóa để quét lại, chỉ hiện thông báo lỗi của Gemini (không báo lỗi đọc trên máy), tối đa 8 giây một lần. */
     private fun ocrFail(m: String) {
         finishBusy()
-        lastSig = null
+        lastSig = null; lastFine = null
         overlay?.let { if (it.visibility != View.VISIBLE) it.visibility = View.VISIBLE }
         if (m.isNotEmpty() && System.currentTimeMillis() - lastErrAt > 8000) { lastErrAt = System.currentTimeMillis(); show(m) }
     }
@@ -527,11 +748,6 @@ class CaptureService : Service() {
         if (t == null) done(text) else t.translate(text, done)
     }
 
-    private fun translateTextEx(text: String, done: (String, Delivery?) -> Unit) {
-        val t = tt
-        if (t == null) done(text, null) else t.translateEx(text, done)
-    }
-
     private fun tvSpeakOn(): Boolean {
         val p = getSharedPreferences("dg", MODE_PRIVATE)
         return p.getBoolean("tvspeak", false) && p.getString("playon", "phone") == "tv" && !p.getString("tvip", "").isNullOrEmpty() && !p.getString("tvtoken", "").isNullOrEmpty()
@@ -584,9 +800,15 @@ class CaptureService : Service() {
         }
     }
 
-    /** Hộp dịch 3 tầng: câu trước (nhỏ), câu gốc, bản dịch (to). */
-    private fun showSub(orig: String, vi: String, d: Delivery? = null) {
+    /**
+     * Hộp phụ đề: câu trước (nhỏ), câu gốc, rồi bản dịch (to). Nhiều người nói cùng lúc thì mỗi người một dòng,
+     * tên người nói có màu riêng (cùng tên luôn cùng màu). Bản dịch còn nghi ngờ có dấu (?); lời nghe được từ âm thanh có biểu tượng loa.
+     */
+    private fun showCards(cards: List<Card>, src: Src) {
         val sb = SpannableStringBuilder()
+        val fg = styleFg()
+        val dim = (fg and 0x00FFFFFF) or 0xCC000000.toInt()
+        val pr = Prefs(this)
         fun add(t: String, size: Float, color: Int) {
             if (t.isEmpty()) return
             val a = sb.length
@@ -594,18 +816,41 @@ class CaptureService : Service() {
             sb.setSpan(RelativeSizeSpan(size), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             sb.setSpan(ForegroundColorSpan(color), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        val fg = styleFg()
-        val pr = Prefs(this)
         if (pr.showPrev) add(prevVi, 0.7f, (fg and 0x00FFFFFF) or 0x99000000.toInt())
-        if (pr.showOrig) add(orig, 0.75f, (fg and 0x00FFFFFF) or 0xCC000000.toInt())
-        if (pr.emoTr && pr.emoLabel && d != null && d.label.isNotEmpty()) add("● " + d.label, 0.62f, d.mood.color)
-        add(vi, 1.15f, fg)
+        for ((i, c) in cards.withIndex()) {
+            if (pr.showOrig) add((if (src != Src.OCR && c.orig.isNotEmpty()) "🔊 " else "") + c.orig, 0.75f, dim)
+            val d = c.tr.delivery
+            if (i == cards.lastIndex && pr.emoTr && pr.emoLabel && d != null && d.label.isNotEmpty()) add("● " + d.label, 0.62f, d.mood.color)
+            val a = sb.length
+            val name = c.speaker
+            if (name != null) {
+                sb.append(name).append(": ")
+                sb.setSpan(ForegroundColorSpan(SpeakerColor.of(name)), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                sb.setSpan(StyleSpan(Typeface.BOLD), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            val b = sb.length
+            sb.append(c.tr.text)
+            sb.setSpan(ForegroundColorSpan(fg), b, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (c.unsure) {
+                val u = sb.length
+                sb.append(" (?)")
+                sb.setSpan(ForegroundColorSpan(0xFFFFB74D.toInt()), u, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            sb.append("\n")
+            sb.setSpan(RelativeSizeSpan(1.15f), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
         overlay?.apply { text = sb; visibility = View.VISIBLE }
-        sendTv("sub", vi, speak && tvSpeakOn() && !tvVoiceOn())
+        val vi = cards.joinToString(" ") { it.tr.text }
+        val tvSpeaks = speak && tvSpeakOn() && !tvVoiceOn()
+        // TV tự đọc thì chỉ gửi lời dịch; không đọc thì gửi kèm tên người nói
+        val tvText = if (tvSpeaks || cards.none { it.speaker != null }) vi
+        else cards.joinToString("\n") { (it.speaker?.let { n -> "$n: " } ?: "") + it.tr.text }
+        sendTv("sub", tvText, tvSpeaks)
+        val d = cards.lastOrNull()?.tr?.delivery
         if (speak && tvVoiceOn()) tvVoice(vi, d)
         if (speak && ready && !editing && !tvSpeakOn()) speaker?.speak(vi, false, d)
-        prevVi = vi; prevOrig = orig; autoShown = false
+        prevVi = vi; prevOrig = cards.joinToString(" ") { it.orig }; autoShown = false
     }
 
     /** Dịch menu: một lần, đọc cả màn hình, dịch tối đa 4 đoạn chữ dài. */
@@ -706,6 +951,7 @@ class CaptureService : Service() {
         flp.x = p.getInt(pk("fx"), (cw * 0.1).toInt()).coerceIn(0, cw - w)
         flp.y = p.getInt(pk("fy"), (ch * 0.68).toInt()).coerceIn(0, ch - h)
         wm.updateViewLayout(f, flp)
+        lastFine = null
         if (region != null) toggleRegion()
         placeTranslation()
     }
@@ -767,9 +1013,10 @@ class CaptureService : Service() {
         f.background = if (on) border else null
         handle?.visibility = if (on) View.VISIBLE else View.INVISIBLE
         wm.updateViewLayout(f, flp)
-        last = ""
+        last = ""; cand = ""; stable = 0; lastFine = null
+        if (on) { jobs.clear(); fusion.clear() }
         show(if (on) "Kéo khung xanh tới dòng phụ đề, kéo ô vuông góc dưới phải để đổi cỡ. Xong thì kéo thông báo xuống, bấm \"Chỉnh/Khóa khung\"." else "")
-        if (!on) drainPendingAudioTranscript()
+        if (!on) pump()
     }
 
     /** Bản dịch hiện ở phía đối diện khung để không bị đọc lại chính nó. */
@@ -781,6 +1028,8 @@ class CaptureService : Service() {
     }
 
     private fun show(t: String) {
+        // mọi thông báo hay lệnh xoá đều thay thế dòng phụ đề đang hiện: bộ giữ nhịp phải biết là đã hết
+        pacer.cleared(); handler.removeCallbacks(hideCheck)
         if (t.isEmpty()) sendTv("clear", "")
         overlay?.apply { text = t; visibility = if (t.isEmpty()) View.GONE else View.VISIBLE }
         if (t.isNotEmpty() && speak && ready && !editing && !tvSpeakOn()) speaker?.speak(t)
@@ -836,6 +1085,7 @@ class CaptureService : Service() {
             if (!crop.isRecycled) runCatching { crop.recycle() }
             return
         }
+        stats.inc("quet")
         if (o.isCloud) {
             // Gemini: chỉ gửi khi hình trong khung thật sự đổi, để khỏi tốn lượt dùng.
             val sig = Ocr.thumb(crop)
@@ -843,39 +1093,38 @@ class CaptureService : Service() {
                 // Không gửi ảnh trùng lên Gemini thì cũng phải giải phóng crop,
                 // vì nhánh này không chuyển quyền sở hữu cho Ocr.read().
                 if (!crop.isRecycled) runCatching { crop.recycle() }
+                stats.inc("quet_dung_yen")
                 return
             }
             lastSig = sig
+        } else if (Prefs(this).skipStatic) {
+            // Đọc chữ trên máy: hình đứng yên y hệt lần đọc trước thì không đọc lại (đỡ pin, đỡ nóng). Nhưng không bỏ qua khi đang chờ
+            // xác nhận một câu, và cứ vài lần lại đọc một lần để chắc chắn không sót thay đổi rất nhỏ.
+            val fine = Ocr.thumbFine(crop)
+            val settled = cand.isEmpty() || cand == last
+            if (settled && skipRun < 12 && Ocr.sameStrict(fine, lastFine)) {
+                skipRun++
+                if (!crop.isRecycled) runCatching { crop.recycle() }
+                stats.inc("quet_dung_yen")
+                return
+            }
+            skipRun = 0
+            lastFine = fine
         }
         busy = true
-        o.read(crop, { m -> ocrFail(m) }) { r ->
-                val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
-                if (text.isEmpty()) { last = ""; cand = ""; lastOcrTranscript = ""; lastOcrTranscriptAtMs = 0L; stable = 0; if (!autoShown) show(""); finishBusy(); return@read }
-                if (text == last) {
-                    if (text == lastOcrTranscript) lastOcrTranscriptAtMs = System.currentTimeMillis()
-                    finishBusy()
-                    return@read
-                }
-                if (text != cand) { cand = text; stable = 1 } else stable++
-                // Câu rất ngắn như "No", "Go", "OK" dễ bị bộ lọc độ dài bỏ qua.
-                // Cho phép 1–2 ký tự nhưng yêu cầu lặp lại qua nhiều khung hình để giảm OCR rác.
-                val requiredStable = when (text.length) {
-                    1 -> maxOf(needStable, 3)
-                    2 -> maxOf(needStable, 2)
-                    else -> needStable
-                }
-                if (stable < requiredStable) { finishBusy(); return@read }
-                last = text
-                lastOcrTranscript = text
-                lastOcrTranscriptAtMs = System.currentTimeMillis()
-                if (narrate) { showSub("", text); finishBusy(); return@read }
-                translateTextEx(text) { vi, d -> showSub(text, vi, d); finishBusy() }
-            }
+        val scanAt = System.currentTimeMillis()
+        o.read(crop, { m -> ocrFail(m) }) { r -> onOcrResult(r, scanAt) }
     }
 
     override fun onDestroy() {
         running = false
-        pendingAudioTranscripts.clear()
+        jobs.clear()
+        retired.forEach { runCatching { it.close() } }
+        try {
+            val rep = stats.report(System.currentTimeMillis(), batteryPct())
+            SessionStats.lastReport = rep
+            getSharedPreferences("dg", MODE_PRIVATE).edit().putString("lastreport", rep).apply()
+        } catch (_: Exception) {}
         active = false
         handler.removeCallbacksAndMessages(null)
         try { overlay?.let { wm.removeView(it) }; frame?.let { wm.removeView(it) }; region?.let { wm.removeView(it) } } catch (_: Exception) {}

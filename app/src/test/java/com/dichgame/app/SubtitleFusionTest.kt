@@ -118,4 +118,26 @@ class SubtitleFusionTest {
         f.onOcr("I will find you.", null, 1_000)
         assertEquals(listOf(Kind.HOLD), kinds(f.onAsr("Nobody knows where she went.", 1_800)))
     }
+
+    @Test fun growingOcrLineReplacesThePartialOneInsteadOfBeingDropped() {
+        val f = SubtitleFusion()
+        assertEquals(listOf(Kind.SHOW), kinds(f.onOcr("We need to leave before", null, 1_000)))
+        val o = f.onOcr("We need to leave before they find us.", null, 1_400)
+        assertEquals(listOf(Kind.REPLACE), kinds(o))
+        assertEquals("We need to leave before they find us.", o[0].text)
+        // lần đọc sau cùng câu đầy đủ là trùng
+        assertEquals(listOf(Kind.DROP), kinds(f.onOcr("We need to leave before they find us.", null, 1_800)))
+    }
+
+    @Test fun shorterOcrReadOfTheSameLineIsStillADuplicate() {
+        val f = SubtitleFusion()
+        f.onOcr("We need to leave before they find us.", null, 1_000)
+        assertEquals(listOf(Kind.DROP), kinds(f.onOcr("We need to leave before", null, 1_400)))
+    }
+
+    @Test fun growingLineOfAnotherSpeakerIsNotReplaced() {
+        val f = SubtitleFusion()
+        f.onOcr("We need to leave before", "Anna", 1_000)
+        assertEquals(listOf(Kind.DROP), kinds(f.onOcr("We need to leave before they find us.", "Ben", 1_400)))
+    }
 }

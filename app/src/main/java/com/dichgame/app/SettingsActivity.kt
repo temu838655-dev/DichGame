@@ -354,6 +354,22 @@ class SettingsActivity : Activity() {
             p.scanMs = (1000.0 / rates[it]).toInt(); render()
         }, Ui.lpm(this, 6, 0))
         c.addView(Ui.tv(this, "Đọc nhiều lần đỡ sót câu thoại nhưng máy nóng và hao pin hơn. Mặc định 2,5 lần mỗi giây (400 ms).", 12.5f, Ui.SUB), Ui.lpm(this, 6, 8))
+        c.addView(Ui.tv(this, "Chế độ hiệu năng", 15f, Ui.TEXT, true), Ui.lpm(this, 8, 0))
+        c.addView(Ui.segmented(this, listOf("Tiết kiệm pin", "Cân bằng", "Chất lượng"), p.perf) { p.perf = it; render() }, Ui.lpm(this, 6, 0))
+        c.addView(Ui.tv(this, "Tiết kiệm pin: quét thưa gấp đôi, đỡ nóng máy nhưng có thể sót câu hiện rất nhanh. Chất lượng: quét dày hơn (nhanh hơn khoảng 40%), tốn pin hơn.", 12.5f, Ui.SUB), Ui.lpm(this, 6, 8))
+        c.addView(Ui.switchRow(this, "Bỏ qua khi hình đứng yên",
+            "Hình trong khung y hệt lần đọc trước thì không đọc lại; vẫn cứ vài lần đọc một lần để không sót thay đổi nhỏ.", p.skipStatic) { p.skipStatic = it }, Ui.lpm(this, 4, 0))
+        c.addView(Ui.switchRow(this, "Tự nhận ra game đổi ngôn ngữ",
+            "Chữ trong game đổi sang ngôn ngữ Latin khác (ví dụ Anh sang Pháp) thì tự chuyển bộ dịch. Chuyển giữa chữ Nhật, Hàn, Trung, Nga... vẫn cần chọn tay.", p.autoLang) { p.autoLang = it }, Ui.lpm(this, 4, 0))
+        c.addView(Ui.button(this, "📊  Số đo lần dịch gần nhất") {
+            val rep = SessionStats.lastReport.ifEmpty { getSharedPreferences("dg", MODE_PRIVATE).getString("lastreport", "").orEmpty() }
+                .ifEmpty { "Chưa có lần dịch nào. Bấm bắt đầu dịch một lần, dừng lại rồi quay lại đây." }
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Số đo lần dịch gần nhất")
+                .setMessage(rep + "\n\nĐây là số đếm thật trên máy của bạn từ lần dịch vừa rồi; app không lưu nội dung lời thoại.")
+                .setPositiveButton("Đóng", null)
+                .show()
+        }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT))
         c.addView(Ui.divider(this), Ui.lp(MATCH_PARENT, 1))
 
         val adv = Ui.vbox(this)

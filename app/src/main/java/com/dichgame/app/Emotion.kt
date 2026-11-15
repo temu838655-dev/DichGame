@@ -150,6 +150,13 @@ object Cast {
         }
     }
 
+    /** Nhân vật trong thẻ có tên (hoặc tên gọi khác) trùng [name], không phân biệt hoa thường. */
+    fun byName(name: String?, cast: List<Character>): Character? {
+        if (name.isNullOrBlank()) return null
+        val k = name.trim().lowercase(Locale.ROOT)
+        return cast.firstOrNull { c -> c.names.any { it.lowercase(Locale.ROOT) == k } }
+    }
+
     /** Đoán người nói từ nhãn tên ở đầu câu ("Geralt: ..." hoặc "GERALT ..."). Không thấy nhãn thì null. */
     fun speakerOf(src: String, cast: List<Character>): Character? {
         val t = src.trimStart()

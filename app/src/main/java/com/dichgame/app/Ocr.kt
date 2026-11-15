@@ -19,7 +19,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** Một khối chữ đọc được trên màn hình, kèm khung bao (có thể null). */
-class Blk(val text: String, val box: Rect?)
+/** [conf] là độ tin cậy 0..1 do ML Kit báo (trung bình các dòng, có trọng số theo độ dài); 1 nếu bộ đọc không báo. */
+class Blk(val text: String, val box: Rect?, val conf: Float = 1f)
 
 /**
  * Đọc chữ từ ảnh chụp màn hình.
@@ -61,7 +62,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
                 l.process(InputImage.fromBitmap(bmp, 0))
                     .addOnSuccessListener { r ->
                         recycleInput(bmp)
-                        ok(r.textBlocks.map { Blk(it.text, it.boundingBox) })
+                        ok(r.textBlocks.map { Blk(it.text, it.boundingBox, confOf(it)) })
                     }
                     .addOnFailureListener {
                         recycleInput(bmp)
@@ -169,7 +170,46 @@ class Ocr(private val p: Prefs, private val lang: String) {
             else -> "Gemini lỗi ${e.code}."
         } else "Không kết nối được Gemini để đọc chữ."
 
+    private fun confOf(b: com.google.mlkit.vision.text.Text.TextBlock): Float = try {
+        var sum = 0f
+        var w = 0
+        for (l in b.lines) {
+            val n = l.text.length.coerceAtLeast(1)
+            sum += l.confidence * n
+            w += n
+        }
+        if (w == 0) 1f else (sum / w).coerceIn(0f, 1f)
+    } catch (_: Throwable) { 1f }
+
     companion object {
+        /**
+         * Ảnh thu nhỏ 64x32 (độ sáng) để quyết định có bỏ qua một lần đọc chữ hay không. Đủ mịn để một chữ mới hiện lên
+         * làm ít nhất một ô đổi rõ rệt: dùng với [sameStrict], thà đọc thừa còn hơn bỏ sót câu thoại.
+         */
+        fun thumbFine(b: Bitmap): IntArray {
+            val t = Bitmap.createScaledBitmap(b, 64, 32, true)
+            val a = IntArray(64 * 32)
+            t.getPixels(a, 0, 64, 0, 0, 64, 32)
+            if (t !== b) t.recycle()
+            for (i in a.indices) {
+                val c = a[i]
+                a[i] = ((c shr 16 and 255) * 3 + (c shr 8 and 255) * 6 + (c and 255)) / 10
+            }
+            return a
+        }
+
+        /** Hai ảnh coi là y hệt chỉ khi không ô nào lệch quá [cell] mức sáng và độ lệch trung bình rất nhỏ (nhiễu nén video vẫn qua). */
+        fun sameStrict(a: IntArray?, b: IntArray?, cell: Int = 14): Boolean {
+            if (a == null || b == null || a.size != b.size) return false
+            var sum = 0
+            for (i in a.indices) {
+                val d = Math.abs(a[i] - b[i])
+                if (d > cell) return false
+                sum += d
+            }
+            return sum / a.size < 3
+        }
+
         /** Ảnh thu nhỏ 24x12 để biết khung hình có đổi không, tránh gửi Gemini khi hình đứng yên. */
         fun thumb(b: Bitmap): IntArray {
             val t = Bitmap.createScaledBitmap(b, 24, 12, true)

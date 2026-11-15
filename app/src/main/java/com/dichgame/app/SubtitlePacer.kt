@@ -13,8 +13,10 @@ class SubtitlePacer(
     private val minHoldMs: Long = 1_400L,
     private val maxHoldMs: Long = 8_000L,
     private val maxQueue: Int = 2,
+    /** Cách gộp phần dữ liệu đính kèm của hai dòng khi hàng chờ đầy (nếu không đặt thì lấy của dòng sau). */
+    private val mergePayload: ((Any?, Any?) -> Any?)? = null,
 ) {
-    class Item(val text: String, val src: Src, val holdMs: Long, val speaker: String? = null)
+    class Item(val text: String, val src: Src, val holdMs: Long, val speaker: String? = null, val payload: Any? = null)
 
     private class Queued(val item: Item, val readyAt: Long)
 
@@ -57,7 +59,8 @@ class SubtitlePacer(
         while (queue.size > maxQueue) {
             val a = queue.removeAt(0)
             val b = queue.removeAt(0)
-            val merged = Item(a.item.text + "\n" + b.item.text, b.item.src, min(maxHoldMs, (a.item.holdMs + b.item.holdMs) * 7 / 10), b.item.speaker)
+            val merged = Item(a.item.text + "\n" + b.item.text, b.item.src, min(maxHoldMs, (a.item.holdMs + b.item.holdMs) * 7 / 10), b.item.speaker,
+                mergePayload?.invoke(a.item.payload, b.item.payload) ?: b.item.payload)
             queue.add(0, Queued(merged, min(a.readyAt, b.readyAt)))
         }
         return poll(now)

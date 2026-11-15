@@ -21,18 +21,21 @@ object Ai {
      */
     fun prompt(
         p: Prefs, srcName: String, game: String, history: List<String>, text: String,
-        terms: TermMap? = null, cast: List<Character> = emptyList(), emo: Boolean = false,
+        terms: TermMap? = null, cast: List<Character> = emptyList(), emo: Boolean = false, speaker: String? = null,
+        strict: String? = null,
     ): String =
         "Bạn dịch phụ đề game từ $srcName sang tiếng Việt." +
             (if (game.isNotEmpty()) " Game / phong cách: $game." else "") +
             " " + p.styleText() +
             glossaryLine(terms, p, text) +
-            Cast.promptLine(cast, history.joinToString(" ") + " " + text) +
+            Cast.promptLine(cast, history.joinToString(" ") + " " + text + " " + (speaker ?: "")) +
+            (if (speaker != null) " Người đang nói câu này: $speaker (giữ đúng giọng và cách xưng hô của người này, không đổi tên)." else "") +
             (if (emo) Emo.instruction() else "") +
             " Chọn xưng hô (tôi, anh, em, cậu, ông, bà...) hợp quan hệ và ngữ cảnh, sửa lỗi đọc chữ rõ ràng, giữ nguyên tên riêng." +
             (if (emo) " Chỉ trả về thẻ rồi bản dịch." else " Chỉ trả về bản dịch.") +
             (if (history.isNotEmpty()) "\nCác câu trước (chỉ để hiểu mạch truyện, không dịch lại):\n" + history.joinToString("\n") else "") +
-            "\nCần dịch: $text"
+            "\nCần dịch: $text" +
+            (if (strict != null) "\nLƯU Ý NGHIÊM: bản dịch trước bị loại vì $strict. Chỉ trả về đúng một bản dịch tiếng Việt của câu cần dịch: không giải thích, không thêm hay bớt ý, giữ nguyên số và tên riêng." else "")
 
     private fun glossaryLine(terms: TermMap?, p: Prefs, text: String): String {
         val list = terms?.relevant(text, 30)

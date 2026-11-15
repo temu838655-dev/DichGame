@@ -30,6 +30,8 @@ internal class GameAudioAsrWorker(
     private val onError: (String) -> Unit,
     private val engineFactory: (File, String) -> GameAudioTranscriber =
         { directory, lang -> OfflineGameAudioTranscriber(directory, lang) },
+    /** Nếu đặt thì dùng thay [onTranscript]: nhận thêm thời lượng đoạn nói (ms) và âm lượng RMS (0..1) để lọc ảo giác và đo tốc độ nói. */
+    private val onTranscriptMeta: ((String, Long, Float) -> Unit)? = null,
 ) : AutoCloseable {
     private val started = AtomicBoolean(false)
     private val running = AtomicBoolean(false)
@@ -113,7 +115,13 @@ internal class GameAudioAsrWorker(
         try {
             val text = transcriber.transcribe(segment.samples, segment.sampleRate, segment.channels).trim()
             if (text.isNotEmpty()) {
-                try { onTranscript(text) } catch (_: Throwable) {
+                try {
+                    val meta = onTranscriptMeta
+                    if (meta != null) {
+                        val perSecond = (segment.sampleRate.toLong() * segment.channels).coerceAtLeast(1L)
+                        meta(text, segment.samples.size * 1000L / perSecond, AsrGuard.rms(segment.samples))
+                    } else onTranscript(text)
+                } catch (_: Throwable) {
                     // UI/consumer callback failures must not kill audio recognition.
                 }
             }
