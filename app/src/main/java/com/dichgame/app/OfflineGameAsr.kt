@@ -4,6 +4,9 @@ import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
+import com.k2fsa.sherpa.onnx.SileroVadModelConfig
+import com.k2fsa.sherpa.onnx.Vad
+import com.k2fsa.sherpa.onnx.VadModelConfig
 import com.k2fsa.sherpa.onnx.OfflineWhisperModelConfig
 import java.io.File
 
@@ -22,6 +25,7 @@ class OfflineGameAsr(
     private val numThreads: Int = 2,
 ) : AutoCloseable {
     private val recognizer: OfflineRecognizer
+    private val speechVad: Vad?
     private var closed = false
 
     init {
@@ -61,6 +65,21 @@ class OfflineGameAsr(
                 "Không nạp được model nhận dạng giọng nói: ${e.message ?: e.javaClass.simpleName}", e
             )
         }
+
+        // Optional Silero gate rejects likely music/SFX before Whisper.
+        val vadFile = File(modelDirectory, SileroVadModelInstaller.FILE_NAME)
+        speechVad = if (vadFile.isFile) {
+            try {
+                Vad(null, VadModelConfig(
+                    sileroVadModelConfig = SileroVadModelConfig(
+                        model = vadFile.absolutePath, threshold = SILERO_THRESHOLD,
+                        minSilenceDuration = 0.36f, minSpeechDuration = 0.12f,
+                        windowSize = VAD_WINDOW_SAMPLES, maxSpeechDuration = 25.0f
+                    ),
+                    sampleRate = TARGET_SAMPLE_RATE, numThreads = 1, provider = "cpu", debug = false
+                ))
+            } catch (_: Throwable) { null }
+        } else null
     }
 
     /**
@@ -79,6 +98,7 @@ class OfflineGameAsr(
         // MIN_SAMPLES is measured at the 16 kHz Whisper rate, never against source-rate PCM.
         val resampled = resample(mono, sampleRate, TARGET_SAMPLE_RATE)
         if (resampled.size < MIN_SAMPLES) return ""
+        if (speechVad != null && !passesSpeechGate(resampled)) return ""
         require(resampled.size <= MAX_SAMPLES) { "Speech segment exceeds 30 seconds; split it before ASR." }
 
         val stream = recognizer.createStream()
@@ -95,10 +115,25 @@ class OfflineGameAsr(
         }
     }
 
+    private fun passesSpeechGate(samples: FloatArray): Boolean {
+        val vad = speechVad ?: return true
+        val probabilities = ArrayList<Float>((samples.size + VAD_WINDOW_SAMPLES - 1) / VAD_WINDOW_SAMPLES)
+        var offset = 0
+        while (offset < samples.size) {
+            val window = FloatArray(VAD_WINDOW_SAMPLES)
+            val count = minOf(VAD_WINDOW_SAMPLES, samples.size - offset)
+            samples.copyInto(window, 0, offset, offset + count)
+            probabilities += vad.compute(window)
+            offset += count
+        }
+        return hasSpeechConfidence(probabilities)
+    }
+
     @Synchronized
     override fun close() {
         if (!closed) {
             closed = true
+            try { speechVad?.release() } catch (_: Throwable) {}
             try { recognizer.release() } catch (_: Throwable) {}
         }
     }
@@ -107,6 +142,18 @@ class OfflineGameAsr(
         const val TARGET_SAMPLE_RATE = 16_000
         internal const val MIN_SAMPLES = TARGET_SAMPLE_RATE * 120 / 1000 // Match VAD's 120 ms floor; retain short dialogue.
         private const val MAX_SAMPLES = TARGET_SAMPLE_RATE * 30
+        private const val VAD_WINDOW_SAMPLES = 512
+        private const val SILERO_THRESHOLD = 0.5f
+        private const val MIN_SILERO_VOICED_WINDOWS = 3
+        private const val MIN_SILERO_VOICED_RATIO = 0.18
+
+        /** Keeps brief replies: three confident 32 ms windows are sufficient. */
+        internal fun hasSpeechConfidence(probabilities: List<Float>): Boolean {
+            if (probabilities.isEmpty()) return false
+            val voiced = probabilities.count { it >= SILERO_THRESHOLD }
+            return voiced >= MIN_SILERO_VOICED_WINDOWS &&
+                voiced.toDouble() / probabilities.size >= MIN_SILERO_VOICED_RATIO
+        }
 
         internal fun toMonoFloat(samples: ShortArray, channels: Int): FloatArray {
             require(channels in 1..2 && samples.size % channels == 0)
