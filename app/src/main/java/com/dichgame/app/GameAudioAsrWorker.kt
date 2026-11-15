@@ -33,6 +33,7 @@ internal class GameAudioAsrWorker(
 ) : AutoCloseable {
     private val started = AtomicBoolean(false)
     private val running = AtomicBoolean(false)
+    private val dropMonitor = GameAudioQueueDropMonitor()
     @Volatile private var workerThread: Thread? = null
 
     @Synchronized
@@ -75,9 +76,7 @@ internal class GameAudioAsrWorker(
         if (interrupted) Thread.currentThread().interrupt()
     }
 
-    override fun close() {
-        stopAndJoinUntilStopped()
-    }
+    override fun close() { stopAndJoinUntilStopped() }
 
     private fun runWorker() {
         var ownedTranscriber: GameAudioTranscriber? = null
@@ -100,14 +99,17 @@ internal class GameAudioAsrWorker(
                     break
                 } ?: continue
                 processSegments(pipeline.accept(chunk), activeTranscriber)
+                reportQueueDrops()
             }
 
             // Drain PCM queued just before the native callback was detached.
             while (true) {
                 val pending = queue.poll() ?: break
                 processSegments(pipeline.accept(pending), activeTranscriber)
+                reportQueueDrops()
             }
             pipeline.flush()?.let { processSegment(it, activeTranscriber) }
+            reportQueueDrops()
         } catch (error: Throwable) {
             reportError("Worker dịch giọng nói gặp lỗi: ${error.message ?: error.javaClass.simpleName}")
         } finally {
@@ -116,6 +118,14 @@ internal class GameAudioAsrWorker(
             } catch (error: Throwable) {
                 reportError("Không thể giải phóng model giọng nói: ${error.message ?: error.javaClass.simpleName}")
             }
+        }
+    }
+
+    /** Report overload away from Chiaki's real-time callback; never block PCM production. */
+    private fun reportQueueDrops() {
+        val nowMs = System.nanoTime() / 1_000_000L
+        if (dropMonitor.shouldWarn(queue.droppedChunks(), nowMs)) {
+            reportError("Âm thanh game đến nhanh hơn tốc độ nhận dạng; một số khung thoại đã bị bỏ qua. Hãy giảm tải ứng dụng hoặc kiểm tra thiết bị.")
         }
     }
 
@@ -148,7 +158,5 @@ internal class GameAudioAsrWorker(
         }
     }
 
-    companion object {
-        private const val POLL_TIMEOUT_MS = 100L
-    }
+    companion object { private const val POLL_TIMEOUT_MS = 100L }
 }
