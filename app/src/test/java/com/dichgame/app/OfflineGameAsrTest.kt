@@ -60,6 +60,23 @@ class OfflineGameAsrTest {
     }
 
     @Test
+    fun stereoDownmixKeepsStrongerChannelWhenUnequalChannelsPartlyCancel() {
+        val actual = OfflineGameAsr.toMonoFloat(
+            shortArrayOf(12_000, -8_000, -9_000, 6_000, 6_000, -4_000), 2
+        )
+        assertArrayEquals(
+            floatArrayOf(12_000 / 32768f, -9_000 / 32768f, 6_000 / 32768f),
+            actual,
+            0.0001f
+        )
+    }
+
+    @Test
+    fun emptyStereoInputProducesEmptyMonoAudio() {
+        assertArrayEquals(FloatArray(0), OfflineGameAsr.toMonoFloat(shortArrayOf(), 2), 0f)
+    }
+
+    @Test
     fun resamplingPreservesSamplesAtSameRate() {
         val input = floatArrayOf(-0.5f, 0f, 0.5f)
         assertArrayEquals(input, OfflineGameAsr.resample(input, 16000, 16000), 0f)
