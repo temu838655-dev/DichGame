@@ -367,6 +367,9 @@ class SettingsActivity : Activity() {
             "Hình trong khung y hệt lần đọc trước thì không đọc lại; vẫn cứ vài lần đọc một lần để không sót thay đổi nhỏ.", p.skipStatic) { p.skipStatic = it }, Ui.lpm(this, 4, 0))
         c.addView(Ui.switchRow(this, "Tự nhận ra game đổi ngôn ngữ",
             "Chữ trong game đổi sang ngôn ngữ Latin khác (ví dụ Anh sang Pháp) thì tự chuyển bộ dịch. Chuyển giữa chữ Nhật, Hàn, Trung, Nga... vẫn cần chọn tay.", p.autoLang) { p.autoLang = it }, Ui.lpm(this, 4, 0))
+        c.addView(Ui.button(this, "✏️  Sửa bản dịch vừa rồi") {
+            startActivity(android.content.Intent(this, CorrectActivity::class.java))
+        }, Ui.lpm(this, 6, 6, WRAP_CONTENT))
         c.addView(Ui.button(this, "📊  Số đo lần dịch gần nhất") {
             val rep = SessionStats.lastReport.ifEmpty { getSharedPreferences("dg", MODE_PRIVATE).getString("lastreport", "").orEmpty() }
                 .ifEmpty { "Chưa có lần dịch nào. Bấm bắt đầu dịch một lần, dừng lại rồi quay lại đây." }

@@ -181,6 +181,7 @@ class CaptureService : Service() {
         running = true
         active = true
         stats.reset(System.currentTimeMillis(), batteryPct())
+        RecentLines.clear()
         narrate = intent.getBooleanExtra("narrate", false)
         speak = intent.getBooleanExtra("speak", false) || narrate
         needStable = if (intent.getBooleanExtra("slow", false)) 2 else 1
@@ -248,6 +249,9 @@ class CaptureService : Service() {
         val regionPi = PendingIntent.getService(
             this, 3, Intent(this, CaptureService::class.java).setAction(REGION), PendingIntent.FLAG_IMMUTABLE
         )
+        val fixPi = PendingIntent.getActivity(
+            this, 4, Intent(this, CorrectActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE
+        )
         @Suppress("DEPRECATION")
         val n = Notification.Builder(this, "dg")
             .setContentTitle("Dịch game đang chạy")
@@ -256,6 +260,7 @@ class CaptureService : Service() {
             .addAction(0, "Chỉnh/Khóa khung", togglePi)
             .addAction(0, "Dịch menu", menuPi)
             .addAction(0, "Vùng dịch", regionPi)
+            .addAction(0, "Sửa bản dịch", fixPi)
             .setContentIntent(stopPi).build()
         val micGranted = wantMic && Build.VERSION.SDK_INT >= 30 &&
             checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -530,6 +535,8 @@ class CaptureService : Service() {
     private fun render(item: SubtitlePacer.Item) {
         val p = item.payload as? Payload ?: return
         showCards(p.cards, item.src)
+        val at = System.currentTimeMillis()
+        for (c in p.cards) RecentLines.add(c.orig, c.tr.text, c.speaker, c.unsure, at)
         // độ trễ: từ lúc chữ được đọc từ màn hình (hoặc lời nghe được nhận dạng xong) tới lúc bản dịch hiện; chưa gồm thời gian nhận dạng giọng nói
         stats.latency(System.currentTimeMillis() - p.seenAt)
         scheduleHide()
