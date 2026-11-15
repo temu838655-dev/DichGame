@@ -7,7 +7,9 @@ import kotlin.math.sqrt
  *
  * Keeps a short pre-roll so the first consonant of a brief line is not clipped,
  * waits for a short silence hangover before emitting, and caps segment duration
- * below Whisper's 30-second input window. This class has no Android dependencies.
+ * below Whisper's 30-second input window. Long continuous speech segments overlap
+ * slightly so a phoneme at a segment boundary is available to both inferences.
+ * This class has no Android dependencies.
  */
 class GameAudioSpeechSegmenter(
     private val threshold: Double = DEFAULT_RMS_THRESHOLD,
@@ -15,6 +17,7 @@ class GameAudioSpeechSegmenter(
     private val preRollMs: Long = DEFAULT_PRE_ROLL_MS,
     private val minSpeechMs: Long = DEFAULT_MIN_SPEECH_MS,
     private val maxSegmentMs: Long = DEFAULT_MAX_SEGMENT_MS,
+    private val splitOverlapMs: Long = DEFAULT_SPLIT_OVERLAP_MS,
 ) {
     data class Segment(
         val samples: ShortArray,
@@ -23,13 +26,18 @@ class GameAudioSpeechSegmenter(
         val durationMs: Long,
     )
 
-    private data class Frame(val samples: ShortArray, val sampleRate: Int, val channels: Int) {
+    private data class Frame(
+        val samples: ShortArray,
+        val sampleRate: Int,
+        val channels: Int,
+        val voiced: Boolean,
+    ) {
         val durationMs: Long
             get() = (samples.size.toLong() * 1000L / channels / sampleRate).coerceAtLeast(1L)
     }
 
     private val preRoll = ArrayDeque<Frame>()
-    private val speech = ArrayList<ShortArray>()
+    private val speech = ArrayList<Frame>()
     private var sampleRate = 0
     private var channels = 0
     private var preRollDuration = 0L
@@ -41,6 +49,7 @@ class GameAudioSpeechSegmenter(
     init {
         require(threshold > 0.0 && threshold < 1.0)
         require(silenceMs >= 0 && preRollMs >= 0 && minSpeechMs >= 0 && maxSegmentMs > 0)
+        require(splitOverlapMs >= 0)
         require(maxSegmentMs <= 29_000L) { "Keep segments below Whisper's 30-second window." }
     }
 
@@ -58,8 +67,9 @@ class GameAudioSpeechSegmenter(
         }
         sampleRate = chunk.sampleRate
         channels = chunk.channels
-        val frame = Frame(chunk.samples.copyOf(), chunk.sampleRate, chunk.channels)
-        val voiced = rms(frame.samples) >= threshold
+        val copiedSamples = chunk.samples.copyOf()
+        val voiced = rms(copiedSamples) >= threshold
+        val frame = Frame(copiedSamples, chunk.sampleRate, chunk.channels, voiced)
 
         if (!active) {
             if (voiced) {
@@ -69,7 +79,9 @@ class GameAudioSpeechSegmenter(
                 preRollDuration = 0L
                 appendSpeech(frame)
                 voicedDuration += frame.durationMs
-                if (speechDuration >= maxSegmentMs) finish()?.let(output::add)
+                if (speechDuration >= maxSegmentMs) {
+                    finishAtLimit()?.let(output::add)
+                }
             } else {
                 preRoll.addLast(frame)
                 preRollDuration += frame.durationMs
@@ -88,8 +100,11 @@ class GameAudioSpeechSegmenter(
             silenceDuration += frame.durationMs
         }
 
-        if (speechDuration >= maxSegmentMs || silenceDuration >= silenceMs) {
+        // A real pause ends a sentence; do not carry audio across that boundary.
+        if (silenceDuration >= silenceMs) {
             finish()?.let(output::add)
+        } else if (speechDuration >= maxSegmentMs) {
+            finishAtLimit()?.let(output::add)
         }
         return output
     }
@@ -112,8 +127,36 @@ class GameAudioSpeechSegmenter(
     }
 
     private fun appendSpeech(frame: Frame) {
-        speech.add(frame.samples)
+        speech.add(frame)
         speechDuration += frame.durationMs
+    }
+
+    /**
+     * Finish a full segment but seed the next one with up to [splitOverlapMs]
+     * of contiguous voiced tail audio. The overlap protects phonemes crossing
+     * an arbitrary Whisper window boundary; ordinary silence boundaries never
+     * use it.
+     */
+    private fun finishAtLimit(): Segment? {
+        val tail = ArrayList<Frame>()
+        var tailDuration = 0L
+        for (frame in speech.asReversed()) {
+            if (!frame.voiced) break
+            if (tail.isNotEmpty() && tailDuration >= splitOverlapMs) break
+            tail.add(frame)
+            tailDuration += frame.durationMs
+        }
+        val result = finish()
+        if (result != null && tail.isNotEmpty() && splitOverlapMs > 0L) {
+            sampleRate = result.sampleRate
+            channels = result.channels
+            active = true
+            tail.asReversed().forEach {
+                appendSpeech(it)
+                voicedDuration += it.durationMs
+            }
+        }
+        return result
     }
 
     private fun finish(): Segment? {
@@ -121,12 +164,12 @@ class GameAudioSpeechSegmenter(
             reset()
             return null
         }
-        val totalSamples = speech.sumOf { it.size }
+        val totalSamples = speech.sumOf { it.samples.size }
         val combined = ShortArray(totalSamples)
         var offset = 0
-        speech.forEach { samples ->
-            samples.copyInto(combined, offset)
-            offset += samples.size
+        speech.forEach { frame ->
+            frame.samples.copyInto(combined, offset)
+            offset += frame.samples.size
         }
         val result = if (voicedDuration >= minSpeechMs) {
             Segment(combined, sampleRate, channels, speechDuration)
@@ -151,5 +194,6 @@ class GameAudioSpeechSegmenter(
         const val DEFAULT_PRE_ROLL_MS = 200L
         const val DEFAULT_MIN_SPEECH_MS = 120L
         const val DEFAULT_MAX_SEGMENT_MS = 25_000L
+        const val DEFAULT_SPLIT_OVERLAP_MS = 200L
     }
 }
