@@ -77,4 +77,22 @@ class GameTranscriptDeduplicatorTest {
         ))
     }
 
+
+    @Test fun suppressesExactRepeatOnlyInsideRecentWindow() {
+        assertTrue(GameTranscriptDeduplicator.isRecentExactMatch(
+            "Open the door!", "open the door", previousAtMs = 10_000L, nowMs = 12_000L
+        ))
+        assertFalse(GameTranscriptDeduplicator.isRecentExactMatch(
+            "Open the door!", "open the door", previousAtMs = 10_000L, nowMs = 13_001L
+        ))
+    }
+
+    @Test fun exactRepeatCheckRejectsBackwardsClockAndEmptyText() {
+        assertFalse(GameTranscriptDeduplicator.isRecentExactMatch(
+            "same line", "same line", previousAtMs = 10_000L, nowMs = 9_999L
+        ))
+        assertFalse(GameTranscriptDeduplicator.isRecentExactMatch(
+            "！？", "！？", previousAtMs = 10_000L, nowMs = 10_500L
+        ))
+    }
 }
