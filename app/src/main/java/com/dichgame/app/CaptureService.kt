@@ -81,10 +81,7 @@ class CaptureService : Service() {
     private var speak = false
     private var ready = false
     private var busy = false
-    private data class PendingAudioTranscript(val text: String, val receivedAtMs: Long)
-    private val pendingAudioTranscripts = java.util.ArrayDeque<PendingAudioTranscript>()
-    private val maxPendingAudioTranscripts = 6
-    private val maxPendingAudioAgeMs = 8_000L
+    private val pendingAudioTranscripts = PendingAudioTranscriptQueue()
     private var running = false
     private var last = ""
     // Keep OCR provenance separate from ASR so partial-overlap suppression is time-bounded.
@@ -354,14 +351,12 @@ class CaptureService : Service() {
         )
         if (key.isEmpty() || key == normalizeTranscript(last) || key == normalizeTranscript(cand) ||
             overlapsRecentOcr ||
-            pendingAudioTranscripts.any { normalizeTranscript(it.text) == key }
+            pendingAudioTranscripts.contains(text)
         ) return
 
         if (!ready || busy) {
-            if (pendingAudioTranscripts.size >= maxPendingAudioTranscripts) {
-                pendingAudioTranscripts.removeFirst()
-            }
-            pendingAudioTranscripts.addLast(PendingAudioTranscript(text, receivedAtMs))
+            // Keep older dialogue in FIFO order; reject this newest line if full.
+            pendingAudioTranscripts.offer(text, receivedAtMs)
             return
         }
         translateAudioTranscript(text)
@@ -390,10 +385,8 @@ class CaptureService : Service() {
     private fun drainPendingAudioTranscript() {
         if (!running || !ready || editing || narrate || busy) return
         while (pendingAudioTranscripts.isNotEmpty()) {
-            val pending = pendingAudioTranscripts.removeFirst()
-            // Never show a line after its dialogue moment has passed. This is
-            // especially important when cloud OCR/translation temporarily stalls.
-            if (android.os.SystemClock.elapsedRealtime() - pending.receivedAtMs > maxPendingAudioAgeMs) continue
+            // Polling also removes expired lines, using the same monotonic clock.
+            val pending = pendingAudioTranscripts.pollFresh(android.os.SystemClock.elapsedRealtime()) ?: break
             val next = pending.text
             val key = normalizeTranscript(next)
             val overlapsRecentOcr = GameTranscriptDeduplicator.overlapsRecentOcr(
