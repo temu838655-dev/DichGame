@@ -21,7 +21,7 @@ class PackTextTest {
 
     @Test fun decodeWindows1258() {
         assumeTrue(Charset.isSupported("windows-1258"))
-        val text = "Tiếng Việt"
+        val text = "Xin chào Côte" // chỉ dùng chữ có sẵn trong Windows-1258; byte 0xE0 đứng riêng không phải UTF-8 hợp lệ
         val b = text.toByteArray(Charset.forName("windows-1258"))
         assertEquals(text, PackText.decode(b))
     }
