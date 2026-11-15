@@ -408,15 +408,20 @@ class CaptureService : Service() {
         if (!running || !ready || editing || narrate || busy) return
         while (pendingAudioTranscripts.isNotEmpty()) {
             // Polling also removes expired lines, using the same monotonic clock.
-            val pending = pendingAudioTranscripts.pollFresh(android.os.SystemClock.elapsedRealtime()) ?: break
+            val nowElapsedMs = android.os.SystemClock.elapsedRealtime()
+            val pending = pendingAudioTranscripts.pollFresh(nowElapsedMs) ?: break
             val next = pending.text
             val key = normalizeTranscript(next)
             val overlapsRecentOcr = GameTranscriptDeduplicator.overlapsRecentOcr(
-                next, lastOcrTranscript, lastOcrTranscriptAtMs, android.os.SystemClock.elapsedRealtime()
+                next, lastOcrTranscript, lastOcrTranscriptAtMs, nowElapsedMs
             )
-            if (key.isNotEmpty() && key != normalizeTranscript(last) &&
-                key != normalizeTranscript(cand) && !overlapsRecentOcr
-            ) {
+            val repeatsRecentOcr = GameTranscriptDeduplicator.isRecentExactMatch(
+                next, lastOcrTranscript, lastOcrTranscriptAtMs, nowElapsedMs
+            )
+            // Exact ASR repeats are already time-filtered when accepted. Do not
+            // compare against the long-lived OCR stability fields (last/cand):
+            // that would suppress legitimate repeated dialogue indefinitely.
+            if (key.isNotEmpty() && !overlapsRecentOcr && !repeatsRecentOcr) {
                 translateAudioTranscript(next)
                 return
             }
