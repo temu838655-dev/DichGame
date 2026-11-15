@@ -6,6 +6,26 @@ import org.junit.Test
 
 class OfflineGameAsrTest {
     @Test
+    fun sileroGateAcceptsBriefConfidentDialogue() {
+        assertEquals(true, OfflineGameAsr.hasSpeechConfidence(listOf(0.08f, 0.72f, 0.81f, 0.66f, 0.04f)))
+    }
+
+    @Test
+    fun sileroGateRejectsLowConfidenceBackground() {
+        assertEquals(false, OfflineGameAsr.hasSpeechConfidence(listOf(0.05f, 0.21f, 0.12f, 0.08f, 0.03f)))
+    }
+
+    @Test
+    fun sileroGateRequiresMultipleSpeechWindows() {
+        assertEquals(false, OfflineGameAsr.hasSpeechConfidence(listOf(0.91f, 0.02f, 0.01f, 0.03f, 0.02f)))
+    }
+
+    @Test
+    fun sileroGateRejectsEmptyAudioWindows() {
+        assertEquals(false, OfflineGameAsr.hasSpeechConfidence(emptyList()))
+    }
+
+    @Test
     fun monoPcmConvertsToNormalizedFloat() {
         val actual = OfflineGameAsr.toMonoFloat(shortArrayOf(0, 16384, -16384, 32767), 1)
         assertEquals(4, actual.size)
