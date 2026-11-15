@@ -59,7 +59,7 @@ class SettingsActivity : Activity() {
         val card = Ui.card(this)
         card.addView(Ui.section(this, "🎧", "Nhận dạng lời thoại bằng âm thanh"))
         val directory = java.io.File(filesDir, "whisper-tiny")
-        val files = listOf("encoder.onnx", "decoder.onnx", "tokens.txt", SileroVadModelInstaller.FILE_NAME).map { java.io.File(directory, it) }
+        val files = WhisperTinyModelInstaller.assets().map { java.io.File(directory, it.localName) }
         val installed = WhisperTinyModelInstaller(directory).isInstalled()
         val status = Ui.tv(
             this,
@@ -94,7 +94,7 @@ class SettingsActivity : Activity() {
             card.addView(Ui.button(this, "Xóa model Whisper khỏi máy") {
                 AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                     .setTitle("Xóa model nhận dạng?")
-                    .setMessage("Bạn cần tải lại khoảng 104 MB nếu muốn dùng nhận dạng lời thoại bằng âm thanh.")
+                    .setMessage("Bạn cần tải lại khoảng 104 MB nếu muốn dùng nhận dạng lời thoại bằng âm thanh. Bộ lọc Silero VAD đã cài sẽ được giữ nguyên.")
                     .setPositiveButton("Xóa") { _, _ ->
                         files.forEach { runCatching { it.delete() } }
                         render()
