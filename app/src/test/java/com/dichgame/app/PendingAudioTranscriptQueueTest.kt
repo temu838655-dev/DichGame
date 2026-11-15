@@ -83,4 +83,26 @@ class PendingAudioTranscriptQueueTest {
         assertFalse(queue.offer("こんにちは 世界", 110L))
         assertEquals("こんにちは、世界！", queue.pollFresh(120L)?.text)
     }
+
+    @Test
+    fun acceptsEntryAtExactMaximumAgeBoundary() {
+        val queue = PendingAudioTranscriptQueue(capacity = 2, maxAgeMs = 1_000L)
+        assertTrue(queue.offer("Boundary line", 100L))
+        assertEquals("Boundary line", queue.pollFresh(1_100L)?.text)
+    }
+
+    @Test
+    fun rejectsBlankAndPunctuationOnlyEntries() {
+        val queue = PendingAudioTranscriptQueue()
+        assertFalse(queue.offer("   \n\t ", 100L))
+        assertFalse(queue.offer("！？…", 110L))
+        assertFalse(queue.isNotEmpty())
+    }
+
+    @Test
+    fun rejectsEntryOneMillisecondBeyondMaximumAge() {
+        val queue = PendingAudioTranscriptQueue(capacity = 2, maxAgeMs = 1_000L)
+        assertTrue(queue.offer("Too old", 100L))
+        assertNull(queue.pollFresh(1_101L))
+    }
 }
