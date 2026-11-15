@@ -447,10 +447,24 @@ class MainActivity : Activity() {
         }
     }
 
+    private var audioAsked = false
+
     private fun capture() {
+        // nghe âm thanh game trên điện thoại cần quyền ghi âm: hỏi một lần rồi vẫn tiếp tục dù được cấp hay không (khi đó chỉ dịch bằng chữ)
+        if (Prefs(this).phoneAudio && !audioAsked && Build.VERSION.SDK_INT >= 23 &&
+            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            audioAsked = true
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 2)
+            return
+        }
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         @Suppress("DEPRECATION")
         startActivityForResult(mpm.createScreenCaptureIntent(), 100)
+    }
+
+    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, results: IntArray) {
+        super.onRequestPermissionsResult(code, perms, results)
+        if (code == 2) capture()
     }
 
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
@@ -460,6 +474,7 @@ class MainActivity : Activity() {
             val q = Prefs(this)
             val i = Intent(this, CaptureService::class.java)
                 .putExtra("code", res).putExtra("data", data)
+                .putExtra("phoneaudio", q.phoneAudio)
                 .putExtra("speak", q.speak)
                 .putExtra("lang", q.lang)
                 .putExtra("automenu", q.autoMenu).putExtra("slow", q.slow).putExtra("narrate", q.narrate)

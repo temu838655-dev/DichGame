@@ -42,4 +42,17 @@ class SessionStatsTest {
         assertEquals(SpeakerColor.of("Geralt"), SpeakerColor.of("geralt"))
         assertNotEquals(SpeakerColor.of("Geralt"), SpeakerColor.of("Yennefer"))
     }
+
+    @Test fun audioSourceIsReportedHonestly() {
+        val s = SessionStats()
+        s.reset(1, 50)
+        s.inc("nguon_he_thong"); s.inc("nguon_mic")
+        assertTrue(s.report(5 * 60_000L, 50).contains("âm thanh trong của máy, sau đó micro"))
+        val n = SessionStats()
+        n.reset(1, 50); n.inc("nguon_khong")
+        assertTrue(n.report(5 * 60_000L, 50).contains("không nghe được"))
+        val o = SessionStats()
+        o.reset(1, 50)
+        assertTrue(!o.report(5 * 60_000L, 50).contains("Nguồn âm thanh"))
+    }
 }

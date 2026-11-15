@@ -47,6 +47,14 @@ class SessionStats {
             sb.append("Quét màn hình: $scans lần, bỏ qua ${skipped} lần vì khung hình đứng yên (${skipped * 100 / scans}%)\n")
         }
         sb.append("Chữ đọc được: ${get("ocr_cau")} câu; loại vì chữ rác hoặc độ tin cậy thấp: ${get("ocr_rac")}\n")
+        val src = when {
+            get("nguon_he_thong") > 0 && get("nguon_mic") > 0 -> "âm thanh trong của máy, sau đó micro"
+            get("nguon_he_thong") > 0 -> "âm thanh trong của máy"
+            get("nguon_mic") > 0 -> "micro"
+            get("nguon_khong") > 0 -> "không nghe được (xem thông báo lúc bắt đầu)"
+            else -> ""
+        }
+        if (src.isNotEmpty()) sb.append("Nguồn âm thanh trên điện thoại: ").append(src).append('\n')
         val heard = get("asr_nhan")
         sb.append("Nghe âm thanh game: $heard câu; loại vì nhiễu hoặc ảo giác: ${get("asr_loc")}; trùng với phụ đề trên màn hình: ${get("asr_trung")}")
         sb.append("; ghép với chữ đọc dở: ${get("ghep")}\n")

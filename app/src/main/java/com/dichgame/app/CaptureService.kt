@@ -102,6 +102,9 @@ class CaptureService : Service() {
         val y = b as? Payload
         if (x != null && y != null) Payload(x.cards + y.cards, minOf(x.seenAt, y.seenAt)) else y ?: x
     })
+    private var audioQueue: GameAudioPcmQueue? = null
+    private var audioWorker: GameAudioAsrWorker? = null
+    private var phoneAudio: PhoneAudioCapture? = null
     private var speakers = SpeakerBook()
     private var langTrack: LangSwitchTracker? = null
     private var pendingLang: String? = null
@@ -181,6 +184,8 @@ class CaptureService : Service() {
         narrate = intent.getBooleanExtra("narrate", false)
         speak = intent.getBooleanExtra("speak", false) || narrate
         needStable = if (intent.getBooleanExtra("slow", false)) 2 else 1
+        // chỉ khi bắt đầu từ màn hình chính (game chạy trên điện thoại); chơi PS trong app thì đã có âm thanh từ Remote Play
+        val wantPhoneAudio = intent.getBooleanExtra("phoneaudio", false) && !narrate
         autoMenu = intent.getBooleanExtra("automenu", false) && !narrate
         lang = if (narrate) "en" else intent.getStringExtra("lang") ?: "en"
         srcName = Prefs.srcNameOf(lang)
@@ -192,7 +197,7 @@ class CaptureService : Service() {
         ocr = o
         // Đọc chữ bằng Gemini thì không tự quét liên tục (tốn lượt dùng); vẫn dùng được "Dịch menu" và "Vùng dịch".
         if (o.isCloud) autoMenu = false
-        startAsForeground()
+        val micFgs = startAsForeground(wantPhoneAudio)
 
         val data = intent.getParcelableExtra<Intent>("data")
         if (data == null) { stopSelf(); return START_NOT_STICKY }
@@ -221,12 +226,14 @@ class CaptureService : Service() {
 
         ensureSize()
         addFrame()
+        if (wantPhoneAudio) startPhoneAudio(micFgs)
         handler.postDelayed(tick, Prefs(this).scanMs.toLong())
         if (autoMenu) handler.postDelayed(autoRun, 2500)
         return START_NOT_STICKY
     }
 
-    private fun startAsForeground() {
+    /** Trả true nếu dịch vụ nền được phép dùng micro (cần khi game đang chạy phía trước và app ở nền). */
+    private fun startAsForeground(wantMic: Boolean): Boolean {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel("dg", "Dịch game", NotificationManager.IMPORTANCE_LOW))
         val stopPi = PendingIntent.getService(
@@ -250,8 +257,67 @@ class CaptureService : Service() {
             .addAction(0, "Dịch menu", menuPi)
             .addAction(0, "Vùng dịch", regionPi)
             .setContentIntent(stopPi).build()
-        if (Build.VERSION.SDK_INT >= 29) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-        else startForeground(1, n)
+        val micGranted = wantMic && Build.VERSION.SDK_INT >= 30 &&
+            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (Build.VERSION.SDK_INT >= 29) {
+            val projectionType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            if (micGranted) {
+                try {
+                    startForeground(1, n, projectionType or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                    return true
+                } catch (_: SecurityException) {
+                    // hệ điều hành không cho dùng micro trong dịch vụ nền: vẫn dịch chữ, nghe âm thanh qua đường khác nếu được
+                }
+            }
+            startForeground(1, n, projectionType)
+        } else startForeground(1, n)
+        return false
+    }
+
+    /** Nghe âm thanh game trên điện thoại: thu PCM -> VAD + Whisper offline -> bộ hợp nhất. Lỗi gì cũng chỉ báo và vẫn dịch bằng chữ. */
+    private fun startPhoneAudio(micFgs: Boolean) {
+        val dir = java.io.File(filesDir, "whisper-tiny")
+        if (!WhisperTinyModelInstaller(dir).isInstalled()) {
+            android.widget.Toast.makeText(this, "Chưa tải mô hình nhận dạng giọng nói (Cài đặt › Nhận dạng lời thoại bằng âm thanh). Đang dịch chỉ bằng chữ trên màn hình.", android.widget.Toast.LENGTH_LONG).show()
+            stats.inc("nguon_khong")
+            return
+        }
+        try {
+            val q = GameAudioPcmQueue()
+            audioQueue = q
+            val w = GameAudioAsrWorker(
+                queue = q,
+                modelDirectory = dir,
+                language = lang,
+                onTranscript = { t -> handler.post { acceptAudioTranscript(t, 0L, 1f) } },
+                onError = { m -> handler.post { android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_LONG).show() } },
+                onTranscriptMeta = { t, ms, rms -> handler.post { acceptAudioTranscript(t, ms, rms) } },
+            )
+            audioWorker = w
+            w.start()
+            // micro chỉ dùng được ngầm khi dịch vụ nền khai báo loại microphone; nếu không thì coi như không cho dùng micro
+            val allowMic = Prefs(this).phoneAudioMic && micFgs
+            val cap = PhoneAudioCapture(this, projection, q, allowMic) { mode -> handler.post { announceAudioMode(mode) } }
+            phoneAudio = cap
+            cap.start()
+        } catch (e: Throwable) {
+            android.widget.Toast.makeText(this, "Không bật được nghe âm thanh game: ${e.message ?: e.javaClass.simpleName}. Vẫn dịch bằng chữ trên màn hình.", android.widget.Toast.LENGTH_LONG).show()
+            stats.inc("nguon_khong")
+        }
+    }
+
+    /** Nói rõ cho người dùng biết đang nghe âm thanh bằng nguồn nào (hoặc vì sao không nghe được). */
+    private fun announceAudioMode(mode: String) {
+        if (!running) return
+        val msg = when (mode) {
+            "system" -> { stats.inc("nguon_he_thong"); "Đang nghe âm thanh trong của game để bổ sung phụ đề. Game chặn thu âm thanh thì chỉ còn chữ trên màn hình." }
+            "mic" -> { stats.inc("nguon_mic"); "Đang nghe qua micro (máy không thu được âm thanh trong): chất lượng kém hơn và có thể thu cả giọng bạn. Đeo tai nghe sẽ không nghe được game." }
+            "mic-fallback" -> { stats.inc("nguon_mic"); "Game chặn thu âm thanh trong, đang nghe qua micro: chất lượng kém hơn và có thể thu cả giọng bạn." }
+            "none:permission" -> { stats.inc("nguon_khong"); "Chưa cấp quyền ghi âm nên chưa nghe được âm thanh game. Vẫn dịch bằng chữ trên màn hình." }
+            "none:system" -> { stats.inc("nguon_khong"); "Máy hoặc game không cho thu âm thanh trong và micro đang tắt (Cài đặt › Nhận dạng lời thoại). Vẫn dịch bằng chữ trên màn hình." }
+            else -> { stats.inc("nguon_khong"); "Không mở được micro. Vẫn dịch bằng chữ trên màn hình." }
+        }
+        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
     }
 
     private fun addOverlay() {
@@ -1120,6 +1186,16 @@ class CaptureService : Service() {
         running = false
         jobs.clear()
         retired.forEach { runCatching { it.close() } }
+        // dừng thu âm trước, rồi chờ bộ nhận dạng xử lý nốt, cuối cùng mới đóng hàng đợi; làm ở nền để không chặn luồng chính
+        val cap = phoneAudio; val wk = audioWorker; val aq = audioQueue
+        phoneAudio = null; audioWorker = null; audioQueue = null
+        if (cap != null || wk != null || aq != null) {
+            Thread {
+                runCatching { cap?.stop() }
+                runCatching { wk?.stopAndJoin(3_000L) }
+                runCatching { aq?.close() }
+            }.start()
+        }
         try {
             val rep = stats.report(System.currentTimeMillis(), batteryPct())
             SessionStats.lastReport = rep

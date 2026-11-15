@@ -289,4 +289,13 @@ class Prefs(ctx: Context) {
     var perf: Int
         get() = sp.getInt("perf", 1).coerceIn(0, 2)
         set(v) = sp.edit().putInt("perf", v.coerceIn(0, 2)).apply()
+
+    /** Nghe âm thanh của game đang chạy trên điện thoại (cần quyền ghi âm và mô hình Whisper đã tải) để bổ sung cho chữ trên màn hình. */
+    var phoneAudio: Boolean
+        get() = sp.getBoolean("phoneaudio", false)
+        set(v) = sp.edit().putBoolean("phoneaudio", v).apply()
+    /** Game chặn thu âm thanh trong thì nghe qua micro (chất lượng kém hơn, có thể thu cả giọng người chơi). */
+    var phoneAudioMic: Boolean
+        get() = sp.getBoolean("phoneaudiomic", true)
+        set(v) = sp.edit().putBoolean("phoneaudiomic", v).apply()
 }

@@ -71,10 +71,16 @@ class SettingsActivity : Activity() {
         card.addView(status, Ui.lpm(this, 0, 8))
         card.addView(Ui.tv(
             this,
-            "Khi đã tải model và bật Dịch game trong phiên Remote Play, app tự nghe âm thanh game để bổ sung cho OCR khi chữ khó đọc hoặc bị bỏ sót. Xử lý trên máy, không dùng micro.",
+            "Khi đã tải model, app nghe âm thanh game để bổ sung cho chữ trên màn hình (chữ khó đọc, bị sót, hoặc game không có phụ đề). Chơi PS trong app: lấy âm thanh từ Remote Play, không dùng micro. Xử lý hoàn toàn trên máy, không gửi âm thanh đi đâu và không lưu lại.",
             12.5f,
             Ui.SUB
         ), Ui.lpm(this, 0, 10))
+        card.addView(Ui.switchRow(this, "Nghe âm thanh game chạy trên điện thoại (thử nghiệm)",
+            "Cần Android 10 trở lên, quyền ghi âm và model ở trên; áp dụng khi bấm Bắt đầu dịch từ màn hình chính. Thu âm thanh trong của máy; game có thể chặn kiểu thu này.", p.phoneAudio) { p.phoneAudio = it; render() }, Ui.lpm(this, 4, 0))
+        if (p.phoneAudio) {
+            card.addView(Ui.switchRow(this, "Game chặn thì nghe qua micro",
+                "Chất lượng kém hơn và có thể thu cả giọng bạn hoặc tiếng xung quanh; không dùng được khi đeo tai nghe. Tắt thì chỉ dịch bằng chữ trên màn hình.", p.phoneAudioMic) { p.phoneAudioMic = it }, Ui.lpm(this, 0, 0))
+        }
 
         if (installed) {
             card.addView(Ui.button(this, "Xóa model Whisper khỏi máy") {
