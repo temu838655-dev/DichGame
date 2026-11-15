@@ -45,4 +45,12 @@ class GameTranscriptDeduplicatorTest {
     @Test fun ignoresUnrelatedCjkLines() {
         assertFalse(GameTranscriptDeduplicator.isPartialOverlap("開けて", "どこにいる"))
     }
+
+    @Test fun detectsKoreanPhraseOverlapWithoutSpaces() {
+        assertTrue(GameTranscriptDeduplicator.isPartialOverlap("문을열어", "어서문을열어줘"))
+    }
+
+    @Test fun detectsThaiPhraseOverlapWithoutSpaces() {
+        assertTrue(GameTranscriptDeduplicator.isPartialOverlap("เปิดประตู", "ช่วยเปิดประตูหน่อย"))
+    }
 }
