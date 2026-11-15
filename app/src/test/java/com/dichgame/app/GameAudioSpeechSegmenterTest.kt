@@ -132,4 +132,23 @@ class GameAudioSpeechSegmenterTest {
         }.exceptionOrNull()
         assertTrue(error is IllegalArgumentException)
     }
+    @Test
+    fun splitsOversizedPcmCallbackIntoBoundedSpeechSegments() {
+        val vad = GameAudioSpeechSegmenter(maxSegmentMs = 500L, splitOverlapMs = 100L)
+        val oversized = GameAudioPcmQueue.Chunk(
+            sequence = 0L,
+            sampleRate = 16_000,
+            channels = 1,
+            samples = ShortArray(16_000 * 3) { 6_000 }, // One 3-second callback.
+        )
+
+        val emitted = vad.accept(oversized).toMutableList()
+        vad.flush()?.let(emitted::add)
+
+        assertTrue(emitted.size > 1)
+        assertTrue(emitted.all { it.durationMs <= 500L })
+        assertTrue(emitted.all { it.samples.isNotEmpty() })
+        assertTrue(emitted.sumOf { it.durationMs } >= 3_000L)
+    }
+
 }
