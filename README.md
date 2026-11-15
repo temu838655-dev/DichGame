@@ -64,6 +64,22 @@ Lưu ý: đổi khóa thì phải gỡ app cũ rồi cài lại.
 5. Điện thoại và TV phải cùng Wi-Fi. Cổng 8765 (TCP) và 8766 (UDP, để tìm TV).
 6. Khi bấm Bắt đầu chọn **Chơi trên TV** thì phụ đề (và giọng đọc, nếu bật "Đọc qua loa TV") được đẩy lên TV.
 
+## Luồng dịch thông minh
+
+Mỗi lượt quét chữ đi qua các bước (mã trong `app/src/main/java/com/dichgame/app/`, phần logic không phụ thuộc Android nên có unit test):
+
+1. **Bỏ qua khung đứng yên** (`Ocr.thumbFine`/`sameStrict`): hình trong khung y hệt lần đọc trước thì không đọc lại, nhưng không bỏ khi đang chờ xác nhận một câu và cứ 12 lần lại đọc một lần.
+2. **Lọc chữ rác** (`OcrGuard`): loại chữ trống, toàn ký hiệu/số, một chữ lặp, dãy phụ âm vô nghĩa, độ tin cậy ML Kit thấp.
+3. **Tách người nói** (`DialogueSplitter`): nhận "Tên: lời", thẻ 【Tên】, tên đứng trên/bên trái khung thoại. Tên lạ chỉ được tin khi có trong thẻ nhân vật, có dấu hai chấm, hoặc đứng trên ít nhất hai câu khác nhau; chưa đủ căn cứ thì vẫn giữ làm câu riêng, không bỏ chữ, không ghép hai người.
+4. **Lời nghe được** (`GameAudioAsrWorker` › `AsrGuard`): loại câu Whisper hay bịa khi gặp nhạc/tiếng súng/im lặng ("thanks for watching", nhãn [Music], câu lặp vô tận, sai chữ viết).
+5. **Hợp nhất** (`SubtitleFusion`): chữ trên màn hình là nguồn chính; lời nghe được trùng thì bỏ, chưa có trên màn hình thì chờ ~1,3 giây để chữ xác nhận rồi mới hiện, màn hình không đọc được thì hiện luôn, chữ đọc dở thì ghép với phần nghe được (chỉ khi phần chồng đủ dài), chữ máy đánh chữ dài dần thì thay bản dở.
+6. **Dịch** (`TextTranslator.translateFull`): gói Việt hoá › bộ nhớ đệm › AI có ngữ cảnh (tên game, thẻ nhân vật, người nói, câu trước) › dịch trên máy. Bản dịch AI qua `TranslationGuard`; hỏng thì dịch lại có lưu ý, vẫn hỏng thì lùi về dịch trên máy; còn nghi ngờ thì hiện dấu (?).
+7. **Giữ nhịp** (`SubtitlePacer`): giữ mỗi dòng đủ thời gian đọc (~17 ký tự/giây, 1,4–8 giây), không thay dòng quá sớm, hàng chờ đầy thì gộp chứ không bỏ.
+
+Cài đặt › Phụ đề có chế độ hiệu năng, bỏ qua khi hình đứng yên, tự nhận game đổi ngôn ngữ, và xem **số đo lần dịch gần nhất** (số khung bỏ qua, chữ rác bị loại, câu trùng, độ trễ, pin).
+
+**Kiểm thử:** `gradle :app:testDebugUnitTest` chạy các test logic, gồm `PipelineSimulationTest` mô phỏng buổi chơi theo kịch bản (phụ đề đều, phụ đề hiện trễ, không phụ đề, nói nhanh, nói chậm, nhạc xen kẽ, OCR sai...). Đó là kiểm tra **logic** với độ trễ giả định, không phải đo trên máy thật: tỉ lệ nhận đúng chữ, độ trễ thật, CPU, RAM, pin phụ thuộc máy và game, cần chơi thật rồi xem "Số đo lần dịch gần nhất". App không cam kết chính xác tuyệt đối.
+
 ## Ngôn ngữ đọc được
 
 | Cách đọc | Ngôn ngữ |
@@ -82,6 +98,9 @@ Lần đầu dùng mỗi thứ tiếng, app tải mô hình dịch nên cần m�
 - Remote Play tích hợp PS4/PS5 hiện ở trạng thái **thử nghiệm**. Chưa kiểm thử kết nối, hình ảnh, âm thanh và điều khiển trên đầy đủ model/firmware console; cần người dùng thử với máy thật và gửi log khi gặp lỗi. Bản arm64 có engine Chiaki-ng; các ABI khác không có engine Remote Play.
 - Chưa có app cho **iOS, Windows, Mac**, và chưa có **kho Việt hoá tự cập nhật kèm bot gửi yêu cầu** (cần máy chủ). Thay vào đó có mục báo lỗi / yêu cầu game dẫn tới GitHub Issues.
 - Giao diện chỉ có tiếng Việt.
+- **Nghe âm thanh game** hiện chỉ có khi chơi PS4/PS5 trong app (Remote Play, Whisper offline chạy theo từng đoạn nói, không phải nhận dạng liên tục). Trên điện thoại chưa tự thu được âm thanh hệ thống của game khác; khi đó phụ đề chỉ dựa vào chữ trên màn hình.
+- **Tự nhận game đổi ngôn ngữ** chỉ chuyển giữa các ngôn ngữ chữ Latin (Anh, Pháp, Đức, Tây Ban Nha...) theo chữ trên màn hình. Đổi giữa Anh, Nhật, Hàn, Trung, Nga... vẫn phải chọn tay, vì mỗi thứ dùng bộ đọc chữ khác nhau.
+- Tên người nói chỉ được nhận khi chắc chắn (xem Luồng dịch thông minh); game đặt tên người nói theo cách lạ có thể hiện như một câu riêng chứ không phải nhãn.
 - Chữ Nga, Ukraina, Thái, Ả Rập, Hy Lạp, Do Thái đọc chậm hơn (khoảng 1–3 giây mỗi câu) vì phải nhờ Gemini đọc ảnh; ở chế độ này tắt "Dịch menu tự động" (vẫn dùng được nút "Dịch menu" và "Vùng dịch").
 - Giọng của máy là các giọng tiếng Việt cài sẵn (Cài đặt › Ngôn ngữ và nhập › Chuyển văn bản thành giọng nói). Giọng AI dùng chung khóa Google Gemini với bộ dịch, tên model mặc định `gemini-3.8-flash-tts` (đổi được trong app nếu Google đổi tên).
 - **Giọng offline**: dùng thư viện sherpa-onnx (tự tải về lúc build, nằm ở `app/libs/`, không để trong git) và giọng Piper VAIS-1000 tải thêm trong app (khoảng 65 MB). Khi bật "Đọc qua loa TV", điện thoại tự tạo âm thanh offline rồi gửi sang app TV phát bằng loa TV (cần cài app TV bản mới; TV cũ thì đọc bằng giọng của TV). Chưa có giọng nam, và mới có một giọng. Vì sherpa-onnx từ bản 2.0 không còn eSpeak, app tự đổi chữ sang phiên âm bằng bảng `app/src/main/assets/vi_phon.txt`, tạo bởi `tools/gen_vi_phon.py` (cần eSpeak NG ở máy dựng bảng, xem đầu file). Số và ký hiệu được đọc thành chữ; tên riêng, chữ nước ngoài được đọc theo kiểu tiếng Việt nên có thể nghe lạ. Smoke test trên máy giả lập có tự tải giọng và đọc thử một câu (SelfTest.kt) để chắc rằng thư viện chạy được; chất lượng nghe thật vẫn cần bạn nghe trên máy. Nghe không ổn thì dùng mục "Báo lỗi" trong app.
