@@ -8,6 +8,20 @@ import java.util.Locale
  * for scripts that do not normally separate words with spaces).
  */
 internal object GameTranscriptDeduplicator {
+    /** Suppress partial OCR/ASR duplicates only while the OCR result is still recent. */
+    fun overlapsRecentOcr(
+        candidate: String,
+        ocrText: String,
+        ocrAtMs: Long,
+        nowMs: Long,
+        windowMs: Long = 3_000L
+    ): Boolean {
+        if (ocrAtMs <= 0L || windowMs < 0L) return false
+        val ageMs = nowMs - ocrAtMs
+        if (ageMs !in 0L..windowMs) return false
+        return isPartialOverlap(candidate, ocrText)
+    }
+
     fun isPartialOverlap(candidate: String, reference: String): Boolean {
         val normalizedCandidate = normalize(candidate)
         val normalizedReference = normalize(reference)
