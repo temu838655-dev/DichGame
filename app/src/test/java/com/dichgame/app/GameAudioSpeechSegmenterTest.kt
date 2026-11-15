@@ -51,6 +51,27 @@ class GameAudioSpeechSegmenterTest {
     }
 
     @Test
+    fun splitsContinuousSpeechBeforeWhisperWindowLimit() {
+        val vad = GameAudioSpeechSegmenter(maxSegmentMs = 1_000L)
+        var sequence = 0L
+        var first: GameAudioSpeechSegmenter.Segment? = null
+        repeat(10) {
+            val emitted = vad.accept(chunk(sequence++, 6_000, durationMs = 100))
+            if (emitted.isNotEmpty()) first = emitted.single()
+        }
+
+        assertTrue(first != null)
+        assertEquals(1_000L, first!!.durationMs)
+
+        repeat(3) {
+            assertTrue(vad.accept(chunk(sequence++, 6_000, durationMs = 100)).isEmpty())
+        }
+        val remainder = vad.flush()
+        assertTrue(remainder != null)
+        assertEquals(300L, remainder!!.durationMs)
+    }
+
+    @Test
     fun changesInAudioFormatFinishPreviousSegment() {
         val vad = GameAudioSpeechSegmenter()
         repeat(10) { vad.accept(chunk(it.toLong(), 6_000)) }
