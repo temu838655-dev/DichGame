@@ -43,12 +43,103 @@ class SettingsActivity : Activity() {
         screen("Cài đặt") {
             put(voiceCard(), 0, 12)
             put(subtitleCard(), 0, 12)
+            put(gameAudioAsrCard(), 0, 12)
             val prof = profileCard()
             put(prof, 0, 12)
             put(languageCard(), 0, 12)
             put(aboutCard(), 0, 12)
             if (target == "profile") post { (parent as? ScrollView)?.smoothScrollTo(0, prof.top) }
         }
+    }
+
+
+    // ---------------- Nhận dạng lời thoại từ âm thanh game ----------------
+
+    private fun gameAudioAsrCard(): View {
+        val card = Ui.card(this)
+        card.addView(Ui.section(this, "🎧", "Nhận dạng lời thoại bằng âm thanh"))
+        val directory = java.io.File(filesDir, "whisper-tiny")
+        val files = listOf("encoder.onnx", "decoder.onnx", "tokens.txt").map { java.io.File(directory, it) }
+        val installed = WhisperTinyModelInstaller(directory).isInstalled()
+        val status = Ui.tv(
+            this,
+            if (installed) "✔ Đã có bộ nhận dạng Whisper Tiny đa ngôn ngữ trên máy."
+            else "Chưa tải model. Cần khoảng 104 MB và thêm dung lượng trống để cài đặt.",
+            13f,
+            if (installed) Ui.OK else Ui.SUB
+        )
+        card.addView(status, Ui.lpm(this, 0, 8))
+        card.addView(Ui.tv(
+            this,
+            "Khi đã tải model và bật Dịch game trong phiên Remote Play, app tự nghe âm thanh game để bổ sung cho OCR khi chữ khó đọc hoặc bị bỏ sót. Xử lý trên máy, không dùng micro.",
+            12.5f,
+            Ui.SUB
+        ), Ui.lpm(this, 0, 10))
+
+        if (installed) {
+            card.addView(Ui.button(this, "Xóa model Whisper khỏi máy") {
+                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("Xóa model nhận dạng?")
+                    .setMessage("Bạn cần tải lại khoảng 104 MB nếu muốn dùng nhận dạng lời thoại bằng âm thanh.")
+                    .setPositiveButton("Xóa") { _, _ ->
+                        files.forEach { runCatching { it.delete() } }
+                        render()
+                    }
+                    .setNegativeButton("Giữ lại", null).show()
+            }, Ui.lpm(this, 0, 6, WRAP_CONTENT))
+        } else {
+            card.addView(Ui.button(this, "⬇  Tải model Whisper Tiny (khoảng 104 MB)", true) {
+                downloadWhisperModel()
+            }, Ui.lpm(this, 0, 6, WRAP_CONTENT))
+        }
+        return card
+    }
+
+    private fun downloadWhisperModel() {
+        val directory = java.io.File(filesDir, "whisper-tiny")
+        val installer = WhisperTinyModelInstaller(directory)
+        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100 }
+        val message = Ui.tv(this, "Chuẩn bị tải model...", 13f, Ui.TEXT)
+        val box = Ui.vbox(this)
+        val pad = Ui.dp(this, 20)
+        box.setPadding(pad, pad, pad, pad / 2)
+        box.addView(message, Ui.lpm(this, 0, 8))
+        box.addView(progress, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Cài model nhận dạng lời thoại")
+            .setView(box)
+            .setCancelable(false)
+            .setNegativeButton("Hủy") { _, _ -> installer.cancel() }
+            .create()
+        dialog.show()
+
+        Thread {
+            var error: String? = null
+            try {
+                installer.install { progressInfo ->
+                    val total = WhisperTinyModelInstaller.assets().sumOf { it.size }
+                    val completedBefore = WhisperTinyModelInstaller.assets().take(progressInfo.fileIndex - 1).sumOf { it.size }
+                    val percent = ((completedBefore + progressInfo.downloadedBytes) * 100L / total).toInt().coerceIn(0, 100)
+                    runOnUiThread {
+                        progress.progress = percent
+                        message.text = "Đang tải ${progressInfo.fileName}: $percent%"
+                    }
+                }
+            } catch (e: Throwable) {
+                error = e.message ?: "Không tải được model Whisper."
+            }
+            val resultError = error
+            runOnUiThread {
+                runCatching { dialog.dismiss() }
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (resultError == null) {
+                    Toast.makeText(this, "Đã cài model Whisper Tiny đa ngôn ngữ.", Toast.LENGTH_LONG).show()
+                    render()
+                } else {
+                    Toast.makeText(this, resultError, Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
     // ---------------- Giới thiệu và hỗ trợ ----------------
@@ -256,11 +347,13 @@ class SettingsActivity : Activity() {
         c.addView(Ui.tv(this, "Cách đọc chữ trên hình", 15f, Ui.TEXT, true), Ui.lpm(this, 12, 0))
         c.addView(Ui.segmented(this, listOf("Kỹ", "Nhanh"), if (p.slow) 0 else 1) { p.slow = it == 0; render() }, Ui.lpm(this, 6, 0))
         c.addView(Ui.tv(this, "Kỹ: chờ chữ hiện đủ rồi mới dịch, ít dịch nhầm câu đang hiện dở. Nhanh: dịch ngay khi thấy chữ.", 12.5f, Ui.SUB), Ui.lpm(this, 6, 0))
-        val rates = listOf(3, 4, 6, 8)
-        val rateSel = rates.indexOfFirst { kotlin.math.abs(1000 / it - p.scanMs) <= 20 }
+        val rates = listOf(2.0, 2.5, 3.0, 4.0, 6.0, 8.0)
+        val rateSel = rates.indexOfFirst { kotlin.math.abs((1000.0 / it).toInt() - p.scanMs) <= 20 }
         c.addView(Ui.tv(this, "Mỗi giây đọc phụ đề mấy lần", 15f, Ui.TEXT, true), Ui.lpm(this, 14, 0))
-        c.addView(Ui.segmented(this, rates.map { it.toString() }, rateSel) { p.scanMs = 1000 / rates[it]; render() }, Ui.lpm(this, 6, 0))
-        c.addView(Ui.tv(this, "Đọc nhiều lần đỡ sót câu thoại nhưng máy nóng và hao pin hơn. Mặc định 1 lần mỗi giây.", 12.5f, Ui.SUB), Ui.lpm(this, 6, 8))
+        c.addView(Ui.segmented(this, rates.map { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString().replace(".", ",") }, rateSel) {
+            p.scanMs = (1000.0 / rates[it]).toInt(); render()
+        }, Ui.lpm(this, 6, 0))
+        c.addView(Ui.tv(this, "Đọc nhiều lần đỡ sót câu thoại nhưng máy nóng và hao pin hơn. Mặc định 2,5 lần mỗi giây (400 ms).", 12.5f, Ui.SUB), Ui.lpm(this, 6, 8))
         c.addView(Ui.divider(this), Ui.lp(MATCH_PARENT, 1))
 
         val adv = Ui.vbox(this)

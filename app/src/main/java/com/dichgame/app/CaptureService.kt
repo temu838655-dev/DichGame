@@ -44,12 +44,29 @@ import org.json.JSONObject
 
 /** Chụp màn hình -> đọc chữ (OCR) -> dịch Anh sang Việt -> hiện ở đầu màn hình. Tất cả chạy trên máy. */
 class CaptureService : Service() {
-    companion object { const val STOP = "stop"; const val TOGGLE = "toggle"; const val MENU = "menu"; const val REGION = "region"; @Volatile var active = false }
+    companion object {
+        const val STOP = "stop"
+        const val TOGGLE = "toggle"
+        const val MENU = "menu"
+        const val REGION = "region"
+        const val AUDIO_TEXT = "audio_text"
+        @Volatile var active = false
+
+        /** Deliver decoded game dialogue to the active subtitle/translation service. */
+        fun submitAudioTranscript(context: android.content.Context, text: String) {
+            if (!active || text.isBlank()) return
+            val intent = Intent(context, CaptureService::class.java)
+                .setAction(AUDIO_TEXT)
+                .putExtra("audio_text", text)
+            runCatching { context.applicationContext.startService(intent) }
+        }
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private var ocr: Ocr? = null
     private var lastSig: IntArray? = null
     private var lastErrAt = 0L
+    private var frameErrAt = 0L
     private var lang = "en"
     private var srcName = "tiếng Anh"
     private var sep = " "
@@ -64,8 +81,13 @@ class CaptureService : Service() {
     private var speak = false
     private var ready = false
     private var busy = false
+    private val pendingAudioTranscripts = java.util.ArrayDeque<String>()
+    private val maxPendingAudioTranscripts = 6
     private var running = false
     private var last = ""
+    // Keep OCR provenance separate from ASR so partial-overlap suppression is time-bounded.
+    private var lastOcrTranscript = ""
+    private var lastOcrTranscriptAtMs = 0L
     private var cw = 0
     private var ch = 0
     private var editing = true
@@ -99,7 +121,15 @@ class CaptureService : Service() {
     }
 
     private val tick = object : Runnable {
-        override fun run() { ensureSize(); capture(); handler.postDelayed(this, Prefs(this@CaptureService).scanMs.toLong()) }
+        override fun run() {
+            try {
+                capture()
+            } catch (_: Exception) {
+                reportFrameError()
+            } finally {
+                if (running) handler.postDelayed(this, Prefs(this@CaptureService).scanMs.toLong())
+            }
+        }
     }
 
     override fun onBind(i: Intent?): IBinder? = null
@@ -110,6 +140,11 @@ class CaptureService : Service() {
         if (intent.action == TOGGLE) { if (running) setEditing(!editing); return START_NOT_STICKY }
         if (intent.action == MENU) { if (running) menuOnce(); return START_NOT_STICKY }
         if (intent.action == REGION) { if (running) toggleRegion(); return START_NOT_STICKY }
+        if (intent.action == AUDIO_TEXT) {
+            val text = intent.getStringExtra("audio_text").orEmpty()
+            if (running) handler.post { acceptAudioTranscript(text) }
+            return START_NOT_STICKY
+        }
         if (running) return START_NOT_STICKY
         running = true
         active = true
@@ -148,7 +183,7 @@ class CaptureService : Service() {
         tt = tr
         if (narrate) ready = true else show("Đang tải mô hình dịch (lần đầu, cần mạng)...")
         if (!narrate) tr.prepare { ok ->
-            if (ok) { ready = true; if (!editing) show("") }
+            if (ok) { ready = true; if (!editing) show(""); drainPendingAudioTranscript() }
             else show("Không tải được mô hình dịch. Kiểm tra mạng rồi bấm Dừng và chạy lại.")
         }
 
@@ -207,7 +242,38 @@ class CaptureService : Service() {
     }
 
     private val autoRun = object : Runnable {
-        override fun run() { autoScan(); handler.postDelayed(this, 2000) }
+        override fun run() {
+            try {
+                autoScan()
+            } catch (_: Exception) {
+                reportFrameError()
+            } finally {
+                if (running && autoMenu) handler.postDelayed(this, 2000)
+            }
+        }
+    }
+
+    /** Lỗi lấy khung hình chỉ bỏ qua lượt quét hiện tại, không làm chết vòng lặp OCR. */
+    private fun reportFrameError() {
+        finishBusy()
+        val now = System.currentTimeMillis()
+        if (now - frameErrAt > 8000) {
+            frameErrAt = now
+            show("Không lấy được khung hình để đọc chữ. Đang tự thử lại…")
+        }
+    }
+
+    /**
+     * Tạo ảnh cắt độc lập rồi giải phóng bitmap toàn màn hình tạm.
+     * Các luồng OCR chỉ cần giữ ảnh crop; giữ cả ảnh gốc ở mỗi lần quét
+     * sẽ làm tăng áp lực bộ nhớ khi game chạy liên tục.
+     */
+    private fun cropAndRecycle(full: Bitmap, x: Int, y: Int, width: Int, height: Int): Bitmap {
+        return try {
+            Bitmap.createBitmap(full, x, y, width, height)
+        } finally {
+            if (!full.isRecycled) runCatching { full.recycle() }
+        }
     }
 
     private fun rectOf(v: View?): android.graphics.Rect? {
@@ -225,8 +291,13 @@ class CaptureService : Service() {
         val bmp = try {
             val p = img.planes[0]
             val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
-            Bitmap.createBitmap(full, 0, 0, img.width, img.height)
+            try {
+                full.copyPixelsFromBuffer(p.buffer)
+                cropAndRecycle(full, 0, 0, img.width, img.height)
+            } finally {
+                // Đảm bảo giải phóng ảnh toàn màn hình nếu copy pixel hoặc crop gặp lỗi.
+                if (!full.isRecycled) runCatching { full.recycle() }
+            }
         } finally { img.close() }
         busy = true
         val skip = listOfNotNull(rectOf(frame), rectOf(overlay))
@@ -238,11 +309,11 @@ class CaptureService : Service() {
                 if (blocks.size < 2) {
                     autoCand = ""; autoStable = 0; autoDone = ""
                     if (autoShown) { autoShown = false; show("") }
-                    busy = false; return@read
+                    finishBusy(); return@read
                 }
                 val sig = blocks.joinToString("|")
                 if (sig != autoCand) { autoCand = sig; autoStable = 1 } else autoStable++
-                if (autoStable < 2 || sig == autoDone) { busy = false; return@read }
+                if (autoStable < 2 || sig == autoDone) { finishBusy(); return@read }
                 autoDone = sig
                 val parts = arrayOfNulls<String>(blocks.size)
                 var left = blocks.size
@@ -254,16 +325,78 @@ class CaptureService : Service() {
                             overlay?.apply { text = j; visibility = View.VISIBLE }
                             sendTv("region", j)
                             autoShown = true
-                            busy = false
+                            finishBusy()
                         }
                     }
                 }
             }
     }
 
+    /**
+     * ASR supplements OCR. Keep a small FIFO while OCR/translation owns the
+     * overlay so short spoken lines are not discarded during a busy frame.
+     */
+    private fun normalizeTranscript(value: String): String = value.lowercase(Locale.ROOT)
+        .replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+
+    private fun acceptAudioTranscript(raw: String) {
+        if (!running || editing || narrate) return
+        val text = raw.replace(Regex("\\s+"), " ").trim()
+        val key = normalizeTranscript(text)
+        val now = System.currentTimeMillis()
+        val overlapsRecentOcr = lastOcrTranscriptAtMs > 0L &&
+            now - lastOcrTranscriptAtMs in 0L..3_000L &&
+            GameTranscriptDeduplicator.isPartialOverlap(text, lastOcrTranscript)
+        if (key.isEmpty() || key == normalizeTranscript(last) || key == normalizeTranscript(cand) ||
+            overlapsRecentOcr ||
+            pendingAudioTranscripts.any { normalizeTranscript(it) == key }
+        ) return
+
+        if (!ready || busy) {
+            if (pendingAudioTranscripts.size >= maxPendingAudioTranscripts) {
+                pendingAudioTranscripts.removeFirst()
+            }
+            pendingAudioTranscripts.addLast(text)
+            return
+        }
+        translateAudioTranscript(text)
+    }
+
+    private fun translateAudioTranscript(text: String) {
+        if (!running || !ready || editing || narrate || busy) return
+        last = text
+        cand = text
+        stable = needStable
+        busy = true
+        translateTextEx(text) { vi, delivery ->
+            if (running) showSub(text, vi, delivery)
+            finishBusy()
+        }
+    }
+
+    /** Release OCR/translation ownership, then process the next queued ASR line. */
+    private fun finishBusy() {
+        busy = false
+        if (running && ready && !editing && !narrate && pendingAudioTranscripts.isNotEmpty()) {
+            handler.post { drainPendingAudioTranscript() }
+        }
+    }
+
+    private fun drainPendingAudioTranscript() {
+        if (!running || !ready || editing || narrate || busy) return
+        while (pendingAudioTranscripts.isNotEmpty()) {
+            val next = pendingAudioTranscripts.removeFirst()
+            val key = normalizeTranscript(next)
+            if (key.isNotEmpty() && key != normalizeTranscript(last) && key != normalizeTranscript(cand)) {
+                translateAudioTranscript(next)
+                return
+            }
+        }
+    }
+
     /** Lỗi đọc chữ: mở khóa để quét lại, chỉ hiện thông báo lỗi của Gemini (không báo lỗi đọc trên máy), tối đa 8 giây một lần. */
     private fun ocrFail(m: String) {
-        busy = false
+        finishBusy()
         lastSig = null
         overlay?.let { if (it.visibility != View.VISIBLE) it.visibility = View.VISIBLE }
         if (m.isNotEmpty() && System.currentTimeMillis() - lastErrAt > 8000) { lastErrAt = System.currentTimeMillis(); show(m) }
@@ -332,29 +465,60 @@ class CaptureService : Service() {
     }
 
     private fun regionGrab(box: FrameLayout) {
-        ensureSize()
-        val img = reader?.acquireLatestImage()
-        if (img == null || region == null) { img?.close(); busy = false; overlay?.visibility = View.VISIBLE; return }
+        val img = try {
+            ensureSize()
+            reader?.acquireLatestImage()
+        } catch (_: Exception) {
+            reportFrameError()
+            finishBusy()
+            overlay?.visibility = View.VISIBLE
+            return
+        }
+        if (img == null || region == null) {
+            img?.close()
+            finishBusy()
+            overlay?.visibility = View.VISIBLE
+            return
+        }
         val crop = try {
             val p = img.planes[0]
             val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
-            val loc = IntArray(2)
-            box.getLocationOnScreen(loc)
-            val x = loc[0].coerceIn(0, img.width - 1)
-            val y = loc[1].coerceIn(0, img.height - 1)
-            Bitmap.createBitmap(full, x, y, box.width.coerceIn(1, img.width - x), box.height.coerceIn(1, img.height - y))
-        } finally { img.close() }
-        ocr!!.read(crop, { m -> ocrFail(m) }) { r ->
-                val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
-                if (text.length < minLen) { show("Không thấy chữ trong khung."); busy = false; return@read }
-                translateText(text) { vi ->
-                    show(vi)
-                    sendTv("region", vi, speak && tvSpeakOn() && !tvVoiceOn())
-                    if (speak && tvVoiceOn()) tvVoice(vi)
-                    busy = false
-                }
+            try {
+                full.copyPixelsFromBuffer(p.buffer)
+                val loc = IntArray(2)
+                box.getLocationOnScreen(loc)
+                val x = loc[0].coerceIn(0, img.width - 1)
+                val y = loc[1].coerceIn(0, img.height - 1)
+                cropAndRecycle(full, x, y, box.width.coerceIn(1, img.width - x), box.height.coerceIn(1, img.height - y))
+            } finally {
+                // Kể cả copy pixel hoặc lấy tọa độ lỗi, không giữ bitmap toàn màn hình.
+                if (!full.isRecycled) runCatching { full.recycle() }
             }
+        } catch (_: Exception) {
+            reportFrameError()
+            finishBusy()
+            overlay?.visibility = View.VISIBLE
+            return
+        } finally {
+            img.close()
+        }
+        val reader = ocr
+        if (reader == null) {
+            if (!crop.isRecycled) runCatching { crop.recycle() }
+            finishBusy()
+            overlay?.visibility = View.VISIBLE
+            return
+        }
+        reader.read(crop, { m -> ocrFail(m) }) { r ->
+            val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
+            if (text.length < minLen) { show("Không thấy chữ trong khung."); finishBusy(); return@read }
+            translateText(text) { vi ->
+                show(vi)
+                sendTv("region", vi, speak && tvSpeakOn() && !tvVoiceOn())
+                if (speak && tvVoiceOn()) tvVoice(vi)
+                finishBusy()
+            }
+        }
     }
 
     /** Dịch bằng AI nếu đã bật (CloudAPI / Gemini, có nhớ vài câu trước), lỗi thì quay về dịch trên máy. */
@@ -453,39 +617,69 @@ class CaptureService : Service() {
     }
 
     private fun menuGrab() {
-        ensureSize()
-        val img = reader?.acquireLatestImage()
-        if (img == null) { busy = false; overlay?.visibility = View.VISIBLE; return }
+        val img = try {
+            ensureSize()
+            reader?.acquireLatestImage()
+        } catch (_: Exception) {
+            reportFrameError()
+            overlay?.visibility = View.VISIBLE
+            return
+        }
+        if (img == null) {
+            finishBusy()
+            overlay?.visibility = View.VISIBLE
+            return
+        }
         val bmp = try {
             val p = img.planes[0]
             val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
-            Bitmap.createBitmap(full, 0, 0, img.width, img.height)
-        } finally { img.close() }
-        ocr!!.read(bmp, { m -> ocrFail(m) }) { r ->
-                val blocks = r.map { it.text.replace("\n", sep).trim() }.filter { it.length >= longLen }.take(4)
-                if (blocks.isEmpty()) {
-                    menuUntil = System.currentTimeMillis() + 3000
-                    show("Không thấy đoạn chữ dài nào để dịch.")
-                    handler.postDelayed({ if (!editing) show("") }, 3000)
-                    busy = false; return@read
-                }
-                val parts = arrayOfNulls<String>(blocks.size)
-                var left = blocks.size
-                blocks.forEachIndexed { i, b ->
-                    translateText(b) { vi ->
-                        parts[i] = vi
-                        if (--left == 0) {
-                            menuUntil = System.currentTimeMillis() + 15000
-                            show(parts.joinToString("\n\n")); sendTv("region", parts.joinToString("\n\n"))
-                            busy = false
-                            handler.postDelayed({
-                                if (!editing && System.currentTimeMillis() >= menuUntil) show("")
-                            }, 15000)
-                        }
+            try {
+                full.copyPixelsFromBuffer(p.buffer)
+                cropAndRecycle(full, 0, 0, img.width, img.height)
+            } finally {
+                if (!full.isRecycled) runCatching { full.recycle() }
+            }
+        } catch (_: Exception) {
+            reportFrameError()
+            overlay?.visibility = View.VISIBLE
+            return
+        } finally {
+            img.close()
+        }
+        val reader = ocr
+        if (reader == null) {
+            if (!bmp.isRecycled) runCatching { bmp.recycle() }
+            finishBusy()
+            overlay?.visibility = View.VISIBLE
+            return
+        }
+        reader.read(bmp, { m -> ocrFail(m) }) { r ->
+            val blocks = r.map { it.text.replace("\n", sep).trim() }.filter { it.length >= longLen }.take(4)
+            if (blocks.isEmpty()) {
+                menuUntil = System.currentTimeMillis() + 3000
+                show("Không thấy đoạn chữ dài nào để dịch.")
+                handler.postDelayed({ if (!editing) show("") }, 3000)
+                finishBusy()
+                return@read
+            }
+            val parts = arrayOfNulls<String>(blocks.size)
+            var left = blocks.size
+            blocks.forEachIndexed { i, b ->
+                translateText(b) { vi ->
+                    parts[i] = vi
+                    if (--left == 0) {
+                        menuUntil = System.currentTimeMillis() + 15000
+                        val translated = parts.joinToString("\n\n")
+                        show(translated)
+                        sendTv("region", translated)
+                        finishBusy()
+                        handler.postDelayed({
+                            if (!editing && System.currentTimeMillis() >= menuUntil) show("")
+                        }, 15000)
                     }
                 }
             }
+        }
     }
 
     /** Mỗi hướng màn hình (dọc/ngang) nhớ vị trí khung riêng. */
@@ -575,6 +769,7 @@ class CaptureService : Service() {
         wm.updateViewLayout(f, flp)
         last = ""
         show(if (on) "Kéo khung xanh tới dòng phụ đề, kéo ô vuông góc dưới phải để đổi cỡ. Xong thì kéo thông báo xuống, bấm \"Chỉnh/Khóa khung\"." else "")
+        if (!on) drainPendingAudioTranscript()
     }
 
     /** Bản dịch hiện ở phía đối diện khung để không bị đọc lại chính nó. */
@@ -620,38 +815,67 @@ class CaptureService : Service() {
         val crop = try {
             val p = img.planes[0]
             val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            full.copyPixelsFromBuffer(p.buffer)
-            val loc = IntArray(2)
-            frame!!.getLocationOnScreen(loc)
-            val x = loc[0].coerceIn(0, img.width - 1)
-            val y = loc[1].coerceIn(0, img.height - 1)
-            val w = frame!!.width.coerceIn(1, img.width - x)
-            val h = frame!!.height.coerceIn(1, img.height - y)
-            Bitmap.createBitmap(full, x, y, w, h)
+            try {
+                full.copyPixelsFromBuffer(p.buffer)
+                val loc = IntArray(2)
+                frame!!.getLocationOnScreen(loc)
+                val x = loc[0].coerceIn(0, img.width - 1)
+                val y = loc[1].coerceIn(0, img.height - 1)
+                val w = frame!!.width.coerceIn(1, img.width - x)
+                val h = frame!!.height.coerceIn(1, img.height - y)
+                cropAndRecycle(full, x, y, w, h)
+            } finally {
+                // cropAndRecycle đã giải phóng ảnh gốc khi thành công; nhánh lỗi
+                // (copy pixel / lấy tọa độ / tạo crop) cũng phải giải phóng ảnh.
+                if (!full.isRecycled) runCatching { full.recycle() }
+            }
         } finally { img.close() }
 
-        val o = ocr ?: return
+        val o = ocr
+        if (o == null) {
+            if (!crop.isRecycled) runCatching { crop.recycle() }
+            return
+        }
         if (o.isCloud) {
             // Gemini: chỉ gửi khi hình trong khung thật sự đổi, để khỏi tốn lượt dùng.
             val sig = Ocr.thumb(crop)
-            if (Ocr.same(sig, lastSig)) return
+            if (Ocr.same(sig, lastSig)) {
+                // Không gửi ảnh trùng lên Gemini thì cũng phải giải phóng crop,
+                // vì nhánh này không chuyển quyền sở hữu cho Ocr.read().
+                if (!crop.isRecycled) runCatching { crop.recycle() }
+                return
+            }
             lastSig = sig
         }
         busy = true
         o.read(crop, { m -> ocrFail(m) }) { r ->
                 val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
-                if (text.length < minLen) { last = ""; cand = ""; if (!autoShown) show(""); busy = false; return@read }
-                if (text == last) { busy = false; return@read }
+                if (text.isEmpty()) { last = ""; cand = ""; lastOcrTranscript = ""; lastOcrTranscriptAtMs = 0L; stable = 0; if (!autoShown) show(""); finishBusy(); return@read }
+                if (text == last) {
+                    if (text == lastOcrTranscript) lastOcrTranscriptAtMs = System.currentTimeMillis()
+                    finishBusy()
+                    return@read
+                }
                 if (text != cand) { cand = text; stable = 1 } else stable++
-                if (stable < needStable) { busy = false; return@read }
+                // Câu rất ngắn như "No", "Go", "OK" dễ bị bộ lọc độ dài bỏ qua.
+                // Cho phép 1–2 ký tự nhưng yêu cầu lặp lại qua nhiều khung hình để giảm OCR rác.
+                val requiredStable = when (text.length) {
+                    1 -> maxOf(needStable, 3)
+                    2 -> maxOf(needStable, 2)
+                    else -> needStable
+                }
+                if (stable < requiredStable) { finishBusy(); return@read }
                 last = text
-                if (narrate) { showSub("", text); busy = false; return@read }
-                translateTextEx(text) { vi, d -> showSub(text, vi, d); busy = false }
+                lastOcrTranscript = text
+                lastOcrTranscriptAtMs = System.currentTimeMillis()
+                if (narrate) { showSub("", text); finishBusy(); return@read }
+                translateTextEx(text) { vi, d -> showSub(text, vi, d); finishBusy() }
             }
     }
 
     override fun onDestroy() {
         running = false
+        pendingAudioTranscripts.clear()
         active = false
         handler.removeCallbacksAndMessages(null)
         try { overlay?.let { wm.removeView(it) }; frame?.let { wm.removeView(it) }; region?.let { wm.removeView(it) } } catch (_: Exception) {}

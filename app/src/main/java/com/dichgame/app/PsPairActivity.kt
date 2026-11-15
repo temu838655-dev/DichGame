@@ -42,6 +42,7 @@ class PsPairActivity : Activity() {
     private var pin = ""
 
     private var discovery: DiscoveryService? = null
+    private var discoveryGeneration = 0
     private var foundBox: LinearLayout? = null
     private var found: List<DiscoveryHost> = emptyList()
 
@@ -70,21 +71,34 @@ class PsPairActivity : Activity() {
         super.onDestroy()
         val r = regist
         regist = null
-        if (r != null) Thread { try { r.stop(); r.dispose() } catch (_: Throwable) {} }.start()
+        if (r != null) Thread {
+            // stop() có thể ném lỗi; vẫn phải gọi dispose() để giải phóng tài nguyên native.
+            try { r.stop() } catch (_: Throwable) {}
+            try { r.dispose() } catch (_: Throwable) {}
+        }.start()
     }
 
     // ---------------- Tìm máy trong mạng ----------------
 
     private fun startDiscovery() {
         if (discovery != null || !PsNative.available) return
+        val generation = ++discoveryGeneration
         try {
             discovery = DiscoveryService(DiscoveryServiceOptions(16UL, 3UL, 500UL, InetSocketAddress("255.255.255.255", 987))) { hosts ->
-                runOnUiThread { found = hosts; drawFound() }
+                runOnUiThread {
+                    // Bỏ qua callback của dịch vụ cũ sau onPause(), onDestroy() hoặc khi đã tạo lượt tìm mới.
+                    if (isFinishing || isDestroyed || step != 1 ||
+                        generation != discoveryGeneration || discovery == null) return@runOnUiThread
+                    found = hosts
+                    drawFound()
+                }
             }
         } catch (_: CreateError) { discovery = null } catch (_: Throwable) { discovery = null }
     }
 
     private fun stopDiscovery() {
+        // Tăng thế hệ trước khi dispose để callback đang nằm trong hàng đợi không cập nhật UI.
+        discoveryGeneration++
         val d = discovery ?: return
         discovery = null
         Thread { try { d.dispose() } catch (_: Throwable) {} }.start()
@@ -249,8 +263,8 @@ class PsPairActivity : Activity() {
         f.addView(st, Ui.lpm(this, 8, 0))
         val go = Ui.button(this, if (running) "Đang ghép nối…" else "Ghép nối", true) {
             if (running) return@button
-            pin = et.text.toString().trim()
-            if (pin.length != 8) { st.text = "Mã phải đủ 8 chữ số."; st.setTextColor(Ui.DANGER); return@button }
+            pin = et.text.toString()
+            if (parsePairingPin(pin) == null) { st.text = "Mã phải gồm đúng 8 chữ số từ 0 đến 9."; st.setTextColor(Ui.DANGER); return@button }
             doRegist()
         }
         f.addView(go, Ui.lpm(this, 10, 0))
@@ -278,16 +292,29 @@ class PsPairActivity : Activity() {
 
     private fun doRegist() {
         val id = accountId ?: return
+        val pairingCode = parsePairingPin(pin)
+        if (pairingCode == null) {
+            running = false
+            status = "Mã ghép nối không hợp lệ. Hãy nhập đúng 8 chữ số từ 0 đến 9."
+            render()
+            return
+        }
         log.setLength(0)
         running = true
         status = "Đang ghép nối, chờ vài giây…"
         render()
-        val info = RegistInfo(PsStore.target(ps5), host, false, null, id, pin.toInt())
+        val info = RegistInfo(PsStore.target(ps5), host, false, null, id, pairingCode)
         val lg = ChiakiLog(ChiakiLog.Level.ALL.value) { level, text ->
             synchronized(log) { if (log.length < 20000) log.append(ChiakiLog.formatLog(level, text)).append('\n') }
         }
         try {
-            regist = Regist(info, lg) { ev -> runOnUiThread { onRegistEvent(ev) } }
+            regist = Regist(info, lg) { ev ->
+                runOnUiThread {
+                    // Registration có thể trả kết quả sau khi người dùng đã rời màn hình.
+                    // onDestroy() chịu trách nhiệm dừng/dispose Regist; callback muộn không được điều hướng UI.
+                    if (!isFinishing && !isDestroyed) onRegistEvent(ev)
+                }
+            }
         } catch (e: CreateError) {
             running = false
             status = "Không bắt đầu được: ${e.errorCode}"
@@ -300,17 +327,25 @@ class PsPairActivity : Activity() {
     }
 
     private fun onRegistEvent(ev: RegistEvent) {
+        // Một số luồng native có thể phát callback muộn/lặp; chỉ xử lý kết quả đầu tiên
+        // của lần ghép nối đang chạy để tránh lưu hoặc điều hướng hai lần.
+        if (!running) return
+        running = false
         val r = regist
         regist = null
         if (r != null) Thread { try { r.dispose() } catch (_: Throwable) {} }.start()
-        running = false
         when (ev) {
             is RegistEventSuccess -> {
-                PsStore.addPlayer(this, host, ps5, ev.host)
-                toast("Ghép nối thành công.")
-                setResult(RESULT_OK)
-                startActivity(Intent(this, PsConnectActivity::class.java))
-                finish()
+                try {
+                    PsStore.addPlayer(this, host, ps5, ev.host)
+                    toast("Ghép nối thành công.")
+                    setResult(RESULT_OK)
+                    startActivity(Intent(this, PsConnectActivity::class.java))
+                    finish()
+                } catch (e: Exception) {
+                    status = e.message ?: "Không thể lưu thông tin ghép nối an toàn."
+                    render()
+                }
             }
             is RegistEventCanceled -> { status = "Đã hủy."; render() }
             is RegistEventFailed -> {
@@ -350,3 +385,5 @@ class PsPairActivity : Activity() {
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
 }
+
+

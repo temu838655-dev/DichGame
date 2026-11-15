@@ -67,6 +67,8 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
         stroke.strokeWidth = (min(w, h) / 200f).coerceAtLeast(2f)
         soft.strokeWidth = stroke.strokeWidth * 0.7f
         sym.strokeWidth = stroke.strokeWidth * 1.3f
+        // Khi xoay màn hình/đổi kích thước, tọa độ điều khiển cũ không còn hợp lệ.
+        if (ow > 0 && oh > 0 && (ow != w || oh != h)) releaseAll()
     }
 
     /** Dọc: cả bộ nằm trọn trong chiều rộng, đơn vị u = 1/100 chiều rộng. */
@@ -213,8 +215,11 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
                     if (pressed.add(k)) performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
-                if (act == MotionEvent.ACTION_CANCEL) { owner.clear() } else owner.remove(e.getPointerId(e.actionIndex))
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_OUTSIDE -> {
+                // ACTION_OUTSIDE có thể xuất hiện khi cửa sổ nhận chạm ngoài vùng view;
+                // xóa toàn bộ owner để không giữ nút nếu hệ thống không gửi UP tương ứng.
+                if (act == MotionEvent.ACTION_CANCEL || act == MotionEvent.ACTION_OUTSIDE) owner.clear()
+                else owner.remove(e.getPointerId(e.actionIndex))
             }
         }
         // Tính lại điều khiển nào đang được giữ từ các ngón còn lại.
@@ -223,35 +228,30 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
         pressed.addAll(held)
         dpadBits = 0u; lx = 0f; ly = 0f; rx = 0f; ry = 0f
         for (i in 0 until e.pointerCount) {
-            if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL) break
+            if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL || act == MotionEvent.ACTION_OUTSIDE) break
             if ((act == MotionEvent.ACTION_POINTER_UP) && i == e.actionIndex) continue
             when (owner[e.getPointerId(i)]) {
-                "DPAD" -> dpadBits = dpadFrom(e.getX(i) - dpadCx, e.getY(i) - dpadCy)
+                // Nhiều ngón chạm D-pad cùng lúc phải hợp nhất hướng, không ghi đè nhau.
+                "DPAD" -> dpadBits = dpadBits or dpadFrom(e.getX(i) - dpadCx, e.getY(i) - dpadCy)
                 "LS" -> { val v = axis(e.getX(i) - lsCx, e.getY(i) - lsCy, lsR); lx = v.first; ly = v.second }
                 "RS" -> { val v = axis(e.getX(i) - rsCx, e.getY(i) - rsCy, rsR); rx = v.first; ry = v.second }
             }
         }
-        if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL) { pressed.clear(); dpadBits = 0u }
+        if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL || act == MotionEvent.ACTION_OUTSIDE) { pressed.clear(); dpadBits = 0u }
         publish()
         invalidate()
         return true
     }
 
     private fun axis(dx: Float, dy: Float, r: Float): Pair<Float, Float> {
-        val d = hypot(dx, dy)
-        if (d < r * 0.12f) return 0f to 0f
-        val k = if (d > r) r / d else 1f
-        return (dx * k / r).coerceIn(-1f, 1f) to (dy * k / r).coerceIn(-1f, 1f)
+        if (!r.isFinite() || r <= 0f || !dx.isFinite() || !dy.isFinite()) return 0f to 0f
+        // Dùng cùng radial dead zone với tay cầm thật: loại rung quanh tâm,
+        // sau đó mở rộng phần hành trình còn lại để cần ảo vẫn đạt đủ biên độ.
+        return AnalogAxis.normalizePair(dx / r, dy / r, 0.12f, 0.12f)
     }
 
-    private fun dpadFrom(dx: Float, dy: Float): UInt {
-        val d = hypot(dx, dy)
-        if (d < dpadR * 0.22f) return 0u
-        var m = 0u
-        if (abs(dx) > d * 0.38f) m = m or (if (dx > 0) ControllerState.BUTTON_DPAD_RIGHT else ControllerState.BUTTON_DPAD_LEFT)
-        if (abs(dy) > d * 0.38f) m = m or (if (dy > 0) ControllerState.BUTTON_DPAD_DOWN else ControllerState.BUTTON_DPAD_UP)
-        return m
-    }
+    private fun dpadFrom(dx: Float, dy: Float): UInt =
+        VirtualDpad.direction(dx, dy, dpadR * 0.22f)
 
     private fun publish() {
         val st = ControllerState()
@@ -267,7 +267,12 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
         if (st != last) { last = st; onState(st) }
     }
 
-    /** Thả hết mọi nút (khi ẩn tay cầm hoặc mất kết nối). */
+    override fun onDetachedFromWindow() {
+        releaseAll()
+        super.onDetachedFromWindow()
+    }
+
+    /** Thả hết mọi nút (khi ẩn tay cầm, đổi kích thước, tháo view hoặc mất kết nối). */
     fun releaseAll() {
         owner.clear(); pressed.clear(); dpadBits = 0u; lx = 0f; ly = 0f; rx = 0f; ry = 0f
         publish(); invalidate()
