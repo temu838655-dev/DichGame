@@ -146,7 +146,7 @@ class GameAudioSpeechSegmenter(
     }
 
     companion object {
-        const val DEFAULT_RMS_THRESHOLD = 0.012
+        const val DEFAULT_RMS_THRESHOLD = 0.006
         const val DEFAULT_SILENCE_MS = 360L
         const val DEFAULT_PRE_ROLL_MS = 200L
         const val DEFAULT_MIN_SPEECH_MS = 120L
