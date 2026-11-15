@@ -76,7 +76,8 @@ Lần đầu dùng mỗi thứ tiếng, app tải mô hình dịch nên cần m�
 
 ## Giới hạn hiện tại
 
-- Chưa có app cho **TV LG (webOS)** và **TV Samsung (Tizen)**; chỉ Android TV / Google TV.
+- Gói Việt hoá nhập được từ file **.txt** (dạng của app), **.csv / .tsv** (cột câu gốc, cột câu Việt), **.json** và **.po**, tự nhận bảng mã UTF-8, UTF-16 và Windows-1258. Chỉ lấy cặp câu chữ: bản vá (mod) sửa trong file game thì app không đọc được.
+- Chưa có app cài lên **TV LG (webOS)** và **TV Samsung (Tizen)**; app TV chỉ chạy trên Android TV / Google TV. Với LG và Samsung: chơi PS4/PS5 trong app rồi chiếu điện thoại lên TV (Smart View, Screen Share, Chromecast, cáp USB-C ra HDMI), phụ đề nằm sẵn trên hình. Cách cài app lên hai hãng này cần chế độ nhà phát triển của TV (LG) hoặc chứng chỉ riêng của Samsung và chưa thử được ở đây.
 - **Giấy phép Remote Play**: engine Chiaki-ng (`third_party/chiaki-ng`) theo **AGPL-3.0-only kèm ngoại lệ OpenSSL**. Bản APK có Remote Play vì vậy phải được phát hành theo AGPL-3.0 và giữ mã nguồn công khai; bản dựng với `-PnoNative` (dùng cho smoke test) không chứa engine này. Chưa có tệp LICENSE chung cho repo, chủ dự án cần chọn giấy phép AGPL-3.0 cho phần mã còn lại nếu muốn phát hành công khai.
 - Remote Play tích hợp PS4/PS5 hiện ở trạng thái **thử nghiệm**. Chưa kiểm thử kết nối, hình ảnh, âm thanh và điều khiển trên đầy đủ model/firmware console; cần người dùng thử với máy thật và gửi log khi gặp lỗi. Bản arm64 có engine Chiaki-ng; các ABI khác không có engine Remote Play.
 - Chưa có app cho **iOS, Windows, Mac**, và chưa có **kho Việt hoá tự cập nhật kèm bot gửi yêu cầu** (cần máy chủ). Thay vào đó có mục báo lỗi / yêu cầu game dẫn tới GitHub Issues.

@@ -3,6 +3,7 @@ package com.dichgame.app
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.text.InputType
@@ -38,9 +39,10 @@ class TvSetupActivity : Activity() {
 
             val warn = Ui.card(this@TvSetupActivity)
             warn.background = Ui.bg(this@TvSetupActivity, Color.parseColor("#2A1F14"), 20, Ui.GOLD2, 1)
-            warn.addView(Ui.tv(this@TvSetupActivity, "⬇  Phải cài thêm app lên TV", 17f, Ui.TEXT, true))
+            warn.addView(Ui.tv(this@TvSetupActivity, if (brand == 0) "⬇  Phải cài thêm app lên TV" else "📲  TV LG, Samsung: chiếu màn hình điện thoại", 17f, Ui.TEXT, true))
             warn.addView(Ui.tv(this@TvSetupActivity,
-                "Phụ đề chỉ hiện trên TV khi TV có app Dịch game TV (miễn phí). Hãy chọn hãng TV bên dưới rồi làm theo hướng dẫn cài.", 14f, Ui.SUB).apply {
+                if (brand == 0) "Phụ đề chỉ hiện trên TV khi TV có app Dịch game TV (miễn phí). Hãy chọn hãng TV bên dưới rồi làm theo hướng dẫn cài."
+                else "App Dịch game TV chỉ chạy trên Android TV / Google TV nên chưa cài được lên TV LG và Samsung. Cách dùng được ngay: chơi PS4/PS5 trong app rồi chiếu điện thoại lên TV (xem hướng dẫn bên dưới).", 14f, Ui.SUB).apply {
                 setPadding(0, Ui.dp(this@TvSetupActivity, 6), 0, 0)
             })
             put(warn, 0, 12)
@@ -54,7 +56,7 @@ class TvSetupActivity : Activity() {
             brands.addView(row)
             brands.addView(Ui.tv(this@TvSetupActivity,
                 if (brand == 0) "TV Sony, TCL, Xiaomi... chạy Android TV hoặc Google TV, Android 8 trở lên. Cài app ngay trên TV bằng remote, không cần máy tính."
-                else "Bản này chưa hỗ trợ cài app cho TV LG và TV Samsung từ điện thoại. Hiện dùng được với TV chạy Android TV / Google TV.",
+                else "Chưa có app cài lên TV LG và TV Samsung. Hai hãng này không cho app của bên thứ ba vẽ chữ đè lên cổng HDMI của máy chơi game, nên phải dùng cách chiếu màn hình bên dưới.",
                 13.5f, if (brand == 0) Ui.SUB else Ui.GOLD2).apply {
                 setPadding(0, Ui.dp(this@TvSetupActivity, 12), 0, Ui.dp(this@TvSetupActivity, 4))
             })
@@ -63,8 +65,10 @@ class TvSetupActivity : Activity() {
             })
             put(brands, 0, 12)
 
-            put(stepsCard(), 0, 12)
-            put(pairCard(), 0, 12)
+            if (brand == 0) {
+                put(stepsCard(), 0, 12)
+                put(pairCard(), 0, 12)
+            } else put(mirrorCard(), 0, 12)
         }
     }
 
@@ -83,6 +87,26 @@ class TvSetupActivity : Activity() {
         v.addView(Ui.tv(this, how, 12f, if (on) fg else Ui.SUB).apply { gravity = Gravity.CENTER })
         v.setOnClickListener { brand = idx; render() }
         return v
+    }
+
+    /** Hướng dẫn cho TV không chạy Android TV: chơi trong app rồi chiếu màn hình điện thoại, phụ đề nằm sẵn trên hình. */
+    private fun mirrorCard(): View {
+        val c = Ui.card(this)
+        c.addView(Ui.section(this, "📲", "Chiếu màn hình lên TV LG, Samsung"))
+        val steps = listOf(
+            "Ghép nối PS4/PS5 trong app một lần: Trang chủ, Ghép nối máy chơi game.",
+            "Vào chơi trong app, bấm 🌐 để bật dịch phụ đề rồi kéo khung tới dòng phụ đề của game.",
+            "Chiếu điện thoại lên TV: Samsung dùng Smart View, LG dùng Screen Share, TV khác dùng Chromecast hoặc AirPlay. Có cáp USB-C ra HDMI thì cắm thẳng vào TV (điện thoại phải hỗ trợ xuất hình).",
+            "TV hiện đúng hình game kèm phụ đề tiếng Việt, vì phụ đề nằm sẵn trên màn hình điện thoại."
+        )
+        steps.forEachIndexed { i, t ->
+            c.addView(Ui.tv(this, "${i + 1}.  $t", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(this@TvSetupActivity, 8), 0, 0) })
+        }
+        c.addView(Ui.tv(this, "Chiếu không dây trễ khoảng 0,1 đến 0,3 giây: hợp game cốt truyện hơn game đối kháng. Cáp gần như không trễ. Chơi PS4/PS5 trong app còn là bản thử nghiệm.", 12.5f, Ui.SUB).apply {
+            setPadding(0, Ui.dp(this@TvSetupActivity, 10), 0, Ui.dp(this@TvSetupActivity, 6))
+        })
+        c.addView(Ui.button(this, "Mở ghép nối PS4/PS5", true) { startActivity(Intent(this, PsConnectActivity::class.java)) })
+        return c
     }
 
     private fun stepsCard(): View {

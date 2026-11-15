@@ -57,7 +57,7 @@ class FeaturesActivity : Activity() {
             Triple("28 thứ tiếng trong game", "Chữ Latin, Nhật, Hàn, Trung, Hindi đọc trên máy; Nga, Thái, Ả Rập... nhờ Gemini.", true),
             Triple("Từ điển riêng cho từng game", "Ép tên nhân vật, chiêu thức, địa danh luôn đúng một cách gọi, cả khi dịch bằng AI lẫn dịch trên máy.", true),
             Triple("Kho game Việt hoá", "Hơn 200 game PS5, PS4, Xbox, PC, Steam, Switch, có ảnh bìa. Chọn game là dùng ngay gói Việt hoá của game đó (thuật ngữ, nhân vật, câu thông báo).", true),
-            Triple("Gói Việt hoá: nhập, xuất, chia sẻ", "Nhập gói từ file hoặc link, sửa thẻ nhân vật, lưu gói của mình ra file. Câu thoại khớp là dùng luôn, không qua bộ dịch.", true),
+            Triple("Gói Việt hoá: nhập, xuất, chia sẻ", "Nhập gói từ file hoặc link (.txt, .csv, .json, .po), sửa thẻ nhân vật, lưu gói của mình ra file. Câu thoại khớp là dùng luôn, không qua bộ dịch.", true),
             Triple("Dịch theo cảm xúc và nhịp nhân vật", "Giận, sợ, thì thầm, mỉa mai... đổi giọng đọc, tốc độ và hiện nhãn cảm xúc trên phụ đề. Nhân vật nói chậm hay nhanh đặt trong thẻ nhân vật.", true),
             Triple("11 kiểu dịch và Prompt riêng", "Tự nhiên, thuyết minh, anh – em, bụi bặm, cao bồi, podcast, tin tức... hoặc tự viết yêu cầu cho AI.", true),
             Triple("Liên kết tới các trang Việt hoá cộng đồng", "The Red Team, PS Việt Hóa, Tổ Mèo Cam... mở trang gốc theo nền tảng. App không tải hộ hay chép lại bản vá.", true),
@@ -65,7 +65,7 @@ class FeaturesActivity : Activity() {
             Triple("Kiểm tra bản mới, báo lỗi, yêu cầu game", "Ở cuối màn Cài đặt.", true),
             Triple("Chơi PS4/PS5 ngay trong app (thử nghiệm)", "Ghép nối trong app, nhiều người chơi để vừa chơi trên TV vừa chơi trên điện thoại, tay cầm ảo, dịch phụ đề ngay trên màn chơi. Chỉ chạy trên điện thoại arm64; chưa kiểm thử trên mọi máy PS.", true),
             Triple("Tự tải và cài bản vá Việt hoá vào game", "Chưa có. Bản vá do từng nhóm giữ quyền, nên app chỉ dẫn tới trang gốc.", false),
-            Triple("App cho TV LG, Samsung", "Chưa có trong bản này.", false),
+            Triple("App cài lên TV LG, Samsung", "Chưa có app cài lên TV. Dùng được bằng cách chơi trong app rồi chiếu điện thoại lên TV (Smart View, Screen Share, Chromecast, cáp USB-C ra HDMI): xem mục Phụ đề trên TV.", false),
             Triple("App iOS, Windows, Mac", "Chưa có, hiện chỉ có Android.", false)
         )
         screen("Tính năng") {
