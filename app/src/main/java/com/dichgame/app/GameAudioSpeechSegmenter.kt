@@ -70,12 +70,29 @@ class GameAudioSpeechSegmenter(
         }
         sampleRate = chunk.sampleRate
         channels = chunk.channels
-        val copiedSamples = chunk.samples.copyOf()
-        val voiced = rms(copiedSamples) >= threshold
-        val frame = Frame(copiedSamples, chunk.sampleRate, chunk.channels, voiced)
 
+        // Chiaki normally delivers short decoder frames, but never assume that:
+        // split oversized callbacks into ~20 ms analysis frames so one unusually
+        // large callback cannot push a segment far beyond the Whisper input limit.
+        val samplesPerFrame = (chunk.sampleRate / ANALYSIS_FRAMES_PER_SECOND)
+            .coerceAtLeast(1) * chunk.channels
+        var offset = 0
+        while (offset < chunk.samples.size) {
+            val end = (offset + samplesPerFrame).coerceAtMost(chunk.samples.size)
+            val frameSamples = chunk.samples.copyOfRange(offset, end)
+            val voiced = rms(frameSamples) >= threshold
+            processFrame(
+                Frame(frameSamples, chunk.sampleRate, chunk.channels, voiced),
+                output,
+            )
+            offset = end
+        }
+        return output
+    }
+
+    private fun processFrame(frame: Frame, output: MutableList<Segment>) {
         if (!active) {
-            if (voiced) {
+            if (frame.voiced) {
                 active = true
                 preRoll.forEach { appendSpeech(it) }
                 preRoll.clear()
@@ -92,11 +109,11 @@ class GameAudioSpeechSegmenter(
                     preRollDuration -= preRoll.removeFirst().durationMs
                 }
             }
-            return output
+            return
         }
 
         appendSpeech(frame)
-        if (voiced) {
+        if (frame.voiced) {
             voicedDuration += frame.durationMs
             silenceDuration = 0L
         } else {
@@ -109,7 +126,6 @@ class GameAudioSpeechSegmenter(
         } else if (speechDuration >= maxSegmentMs) {
             finishAtLimit()?.let(output::add)
         }
-        return output
     }
 
     /** Flush remaining speech when the Remote Play session stops. */
@@ -192,6 +208,7 @@ class GameAudioSpeechSegmenter(
     }
 
     companion object {
+        private const val ANALYSIS_FRAMES_PER_SECOND = 50
         const val DEFAULT_RMS_THRESHOLD = 0.006
         const val DEFAULT_SILENCE_MS = 360L
         const val DEFAULT_PRE_ROLL_MS = 200L
