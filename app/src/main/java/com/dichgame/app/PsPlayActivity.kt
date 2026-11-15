@@ -67,6 +67,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     // PCM game audio is handed off through a bounded queue; the native callback never waits.
     private var gameAudioPcmQueue: GameAudioPcmQueue? = null
     private var gameAudioAsrWorker: GameAudioAsrWorker? = null
+    private var whisperSetupHintShown = false
     private var gen = 0
     private var surface: Surface? = null
     // SurfaceView có thể bị thay khi xoay màn hình; chỉ holder hiện tại được phép điều khiển surface. 
@@ -470,6 +471,13 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 )
                 gameAudioAsrWorker = worker
                 worker.start()
+            } else if (!whisperSetupHintShown) {
+                whisperSetupHintShown = true
+                Toast.makeText(
+                    this,
+                    "Âm thanh game đã kết nối, nhưng chưa có model Whisper (~104 MB). OCR vẫn hoạt động; vào Cài đặt để tải model và bật nhận dạng lời thoại.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
             surface?.let { s.setSurface(it) }
             push()
