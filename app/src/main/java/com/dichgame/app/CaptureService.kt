@@ -81,8 +81,10 @@ class CaptureService : Service() {
     private var speak = false
     private var ready = false
     private var busy = false
-    private val pendingAudioTranscripts = java.util.ArrayDeque<String>()
+    private data class PendingAudioTranscript(val text: String, val receivedAtMs: Long)
+    private val pendingAudioTranscripts = java.util.ArrayDeque<PendingAudioTranscript>()
     private val maxPendingAudioTranscripts = 6
+    private val maxPendingAudioAgeMs = 8_000L
     private var running = false
     private var last = ""
     // Keep OCR provenance separate from ASR so partial-overlap suppression is time-bounded.
@@ -349,14 +351,14 @@ class CaptureService : Service() {
             GameTranscriptDeduplicator.isPartialOverlap(text, lastOcrTranscript)
         if (key.isEmpty() || key == normalizeTranscript(last) || key == normalizeTranscript(cand) ||
             overlapsRecentOcr ||
-            pendingAudioTranscripts.any { normalizeTranscript(it) == key }
+            pendingAudioTranscripts.any { normalizeTranscript(it.text) == key }
         ) return
 
         if (!ready || busy) {
             if (pendingAudioTranscripts.size >= maxPendingAudioTranscripts) {
                 pendingAudioTranscripts.removeFirst()
             }
-            pendingAudioTranscripts.addLast(text)
+            pendingAudioTranscripts.addLast(PendingAudioTranscript(text, now))
             return
         }
         translateAudioTranscript(text)
@@ -385,7 +387,11 @@ class CaptureService : Service() {
     private fun drainPendingAudioTranscript() {
         if (!running || !ready || editing || narrate || busy) return
         while (pendingAudioTranscripts.isNotEmpty()) {
-            val next = pendingAudioTranscripts.removeFirst()
+            val pending = pendingAudioTranscripts.removeFirst()
+            // Never show a line after its dialogue moment has passed. This is
+            // especially important when cloud OCR/translation temporarily stalls.
+            if (System.currentTimeMillis() - pending.receivedAtMs > maxPendingAudioAgeMs) continue
+            val next = pending.text
             val key = normalizeTranscript(next)
             if (key.isNotEmpty() && key != normalizeTranscript(last) && key != normalizeTranscript(cand)) {
                 translateAudioTranscript(next)
