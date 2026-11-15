@@ -183,7 +183,7 @@ class OfflineGameAsr(
             val strongestEnergy = maxOf(leftEnergy, rightEnergy) / frameCount
             val mixedRms = kotlin.math.sqrt(mixedEnergy / frameCount)
             val strongestRms = kotlin.math.sqrt(strongestEnergy)
-            if (strongestRms > 0.0 && mixedRms < strongestRms * 0.25) {
+            return if (strongestRms > 0.0 && mixedRms < strongestRms * 0.25) {
                 val useLeft = leftEnergy >= rightEnergy
                 FloatArray(frameCount) { i ->
                     samples[i * 2 + if (useLeft) 0 else 1] / 32768.0f
