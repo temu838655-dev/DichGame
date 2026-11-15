@@ -117,16 +117,23 @@ class OfflineGameAsr(
 
     private fun passesSpeechGate(samples: FloatArray): Boolean {
         val vad = speechVad ?: return true
-        val probabilities = ArrayList<Float>((samples.size + VAD_WINDOW_SAMPLES - 1) / VAD_WINDOW_SAMPLES)
-        var offset = 0
-        while (offset < samples.size) {
-            val window = FloatArray(VAD_WINDOW_SAMPLES)
-            val count = minOf(VAD_WINDOW_SAMPLES, samples.size - offset)
-            samples.copyInto(window, 0, offset, offset + count)
-            probabilities += vad.compute(window)
-            offset += count
+        return try {
+            // Reset recurrent VAD state between independent Whisper segments.
+            vad.reset()
+            val probabilities = ArrayList<Float>((samples.size + VAD_WINDOW_SAMPLES - 1) / VAD_WINDOW_SAMPLES)
+            var offset = 0
+            while (offset < samples.size) {
+                val window = FloatArray(VAD_WINDOW_SAMPLES)
+                val count = minOf(VAD_WINDOW_SAMPLES, samples.size - offset)
+                samples.copyInto(window, 0, offset, offset + count)
+                probabilities += vad.compute(window)
+                offset += count
+            }
+            hasSpeechConfidence(probabilities)
+        } catch (_: Throwable) {
+            // A VAD runtime problem must not silently discard real game dialogue.
+            true
         }
-        return hasSpeechConfidence(probabilities)
     }
 
     @Synchronized
