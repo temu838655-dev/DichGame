@@ -67,6 +67,6 @@ internal object GameTranscriptDeduplicator {
         .replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
 
     private const val MIN_LATIN_OVERLAP_CHARS = 6
-    private const val MIN_CJK_OVERLAP_CHARS = 3
+    private const val MIN_UNSPACED_OVERLAP_CHARS = 3
     private const val MIN_OVERLAP_RATIO = 0.45
 }
