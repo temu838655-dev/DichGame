@@ -85,6 +85,9 @@ class CaptureService : Service() {
     private val maxPendingAudioTranscripts = 6
     private var running = false
     private var last = ""
+    // Keep OCR provenance separate from ASR so partial-overlap suppression is time-bounded.
+    private var lastOcrTranscript = ""
+    private var lastOcrTranscriptAtMs = 0L
     private var cw = 0
     private var ch = 0
     private var editing = true
@@ -340,7 +343,12 @@ class CaptureService : Service() {
         if (!running || editing || narrate) return
         val text = raw.replace(Regex("\\s+"), " ").trim()
         val key = normalizeTranscript(text)
+        val now = System.currentTimeMillis()
+        val overlapsRecentOcr = lastOcrTranscriptAtMs > 0L &&
+            now - lastOcrTranscriptAtMs in 0L..3_000L &&
+            GameTranscriptDeduplicator.isPartialOverlap(text, lastOcrTranscript)
         if (key.isEmpty() || key == normalizeTranscript(last) || key == normalizeTranscript(cand) ||
+            overlapsRecentOcr ||
             pendingAudioTranscripts.any { normalizeTranscript(it) == key }
         ) return
 
@@ -842,8 +850,12 @@ class CaptureService : Service() {
         busy = true
         o.read(crop, { m -> ocrFail(m) }) { r ->
                 val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
-                if (text.isEmpty()) { last = ""; cand = ""; stable = 0; if (!autoShown) show(""); finishBusy(); return@read }
-                if (text == last) { finishBusy(); return@read }
+                if (text.isEmpty()) { last = ""; cand = ""; lastOcrTranscript = ""; lastOcrTranscriptAtMs = 0L; stable = 0; if (!autoShown) show(""); finishBusy(); return@read }
+                if (text == last) {
+                    if (text == lastOcrTranscript) lastOcrTranscriptAtMs = System.currentTimeMillis()
+                    finishBusy()
+                    return@read
+                }
                 if (text != cand) { cand = text; stable = 1 } else stable++
                 // Câu rất ngắn như "No", "Go", "OK" dễ bị bộ lọc độ dài bỏ qua.
                 // Cho phép 1–2 ký tự nhưng yêu cầu lặp lại qua nhiều khung hình để giảm OCR rác.
@@ -854,6 +866,8 @@ class CaptureService : Service() {
                 }
                 if (stable < requiredStable) { finishBusy(); return@read }
                 last = text
+                lastOcrTranscript = text
+                lastOcrTranscriptAtMs = System.currentTimeMillis()
                 if (narrate) { showSub("", text); finishBusy(); return@read }
                 translateTextEx(text) { vi, d -> showSub(text, vi, d); finishBusy() }
             }
