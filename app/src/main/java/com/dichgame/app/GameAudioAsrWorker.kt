@@ -61,8 +61,7 @@ internal class GameAudioAsrWorker(
 
     private fun runWorker() {
         var ownedTranscriber: GameAudioTranscriber? = null
-        val segmenter = GameAudioSpeechSegmenter()
-        val sequenceTracker = GameAudioSequenceTracker()
+        val pipeline = GameAudioSpeechPipeline()
         try {
             val activeTranscriber = try {
                 engineFactory(modelDirectory, language).also { ownedTranscriber = it }
@@ -80,15 +79,15 @@ internal class GameAudioAsrWorker(
                     reportError("Luồng nhận âm thanh bị gián đoạn.")
                     break
                 } ?: continue
-                processChunk(chunk, segmenter, sequenceTracker, activeTranscriber)
+                processSegments(pipeline.accept(chunk), activeTranscriber)
             }
 
             // Drain PCM queued just before the native callback was detached.
             while (true) {
                 val pending = queue.poll() ?: break
-                processChunk(pending, segmenter, sequenceTracker, activeTranscriber)
+                processSegments(pipeline.accept(pending), activeTranscriber)
             }
-            segmenter.flush()?.let { processSegment(it, activeTranscriber) }
+            pipeline.flush()?.let { processSegment(it, activeTranscriber) }
         } catch (error: Throwable) {
             reportError("Worker dịch giọng nói gặp lỗi: ${error.message ?: error.javaClass.simpleName}")
         } finally {
@@ -98,23 +97,6 @@ internal class GameAudioAsrWorker(
                 reportError("Không thể giải phóng model giọng nói: ${error.message ?: error.javaClass.simpleName}")
             }
         }
-    }
-
-    /**
-     * A dropped queue frame creates a hole in the PCM timeline. Flush the
-     * current segment at that boundary instead of joining audio from either
-     * side of missing speech into one misleading transcript.
-     */
-    private fun processChunk(
-        chunk: GameAudioPcmQueue.Chunk,
-        segmenter: GameAudioSpeechSegmenter,
-        sequenceTracker: GameAudioSequenceTracker,
-        transcriber: GameAudioTranscriber,
-    ) {
-        if (sequenceTracker.hasGap(chunk.sequence)) {
-            segmenter.flush()?.let { processSegment(it, transcriber) }
-        }
-        processSegments(segmenter.accept(chunk), transcriber)
     }
 
     private fun processSegments(
