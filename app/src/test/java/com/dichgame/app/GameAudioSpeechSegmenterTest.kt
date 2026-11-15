@@ -116,4 +116,20 @@ class GameAudioSpeechSegmenterTest {
         assertEquals(16_000, emitted.single().sampleRate)
         assertFalse(vad.flush() != null)
     }
+
+    @Test
+    fun rejectsZeroSilenceHangover() {
+        val error = runCatching {
+            GameAudioSpeechSegmenter(silenceMs = 0L)
+        }.exceptionOrNull()
+        assertTrue(error is IllegalArgumentException)
+    }
+
+    @Test
+    fun rejectsSplitOverlapAtOrAboveMaximumSegmentDuration() {
+        val error = runCatching {
+            GameAudioSpeechSegmenter(maxSegmentMs = 200L, splitOverlapMs = 200L)
+        }.exceptionOrNull()
+        assertTrue(error is IllegalArgumentException)
+    }
 }
