@@ -48,8 +48,11 @@ class GameAudioSpeechSegmenter(
 
     init {
         require(threshold > 0.0 && threshold < 1.0)
-        require(silenceMs >= 0 && preRollMs >= 0 && minSpeechMs >= 0 && maxSegmentMs > 0)
-        require(splitOverlapMs >= 0)
+        require(silenceMs > 0) { "Silence hangover must be positive to avoid ending every voiced frame." }
+        require(preRollMs >= 0 && minSpeechMs >= 0 && maxSegmentMs > 0)
+        require(splitOverlapMs >= 0 && splitOverlapMs < maxSegmentMs) {
+            "Split overlap must be shorter than the maximum segment duration."
+        }
         require(maxSegmentMs <= 29_000L) { "Keep segments below Whisper's 30-second window." }
     }
 
