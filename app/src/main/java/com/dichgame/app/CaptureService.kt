@@ -345,9 +345,10 @@ class CaptureService : Service() {
         if (!running || editing || narrate) return
         val text = raw.replace(Regex("\\s+"), " ").trim()
         val key = normalizeTranscript(text)
-        val now = System.currentTimeMillis()
+        val wallNow = System.currentTimeMillis()
+        val receivedAtMs = android.os.SystemClock.elapsedRealtime()
         val overlapsRecentOcr = lastOcrTranscriptAtMs > 0L &&
-            now - lastOcrTranscriptAtMs in 0L..3_000L &&
+            wallNow - lastOcrTranscriptAtMs in 0L..3_000L &&
             GameTranscriptDeduplicator.isPartialOverlap(text, lastOcrTranscript)
         if (key.isEmpty() || key == normalizeTranscript(last) || key == normalizeTranscript(cand) ||
             overlapsRecentOcr ||
@@ -358,7 +359,7 @@ class CaptureService : Service() {
             if (pendingAudioTranscripts.size >= maxPendingAudioTranscripts) {
                 pendingAudioTranscripts.removeFirst()
             }
-            pendingAudioTranscripts.addLast(PendingAudioTranscript(text, now))
+            pendingAudioTranscripts.addLast(PendingAudioTranscript(text, receivedAtMs))
             return
         }
         translateAudioTranscript(text)
