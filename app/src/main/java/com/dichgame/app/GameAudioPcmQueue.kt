@@ -60,11 +60,15 @@ class GameAudioPcmQueue(capacity: Int = DEFAULT_CAPACITY) : AutoCloseable {
             return true
         }
 
-        // A consumer may have freed a slot between offer() and poll(). Count
-        // a drop only when this producer actually removed an older chunk.
+        // Keep the newest audio when the consumer falls behind. Count the
+        // evicted old chunk separately from a new chunk that still cannot fit
+        // after the eviction (for example, if another producer races this call).
         if (queue.poll() != null) dropped.incrementAndGet()
         if (closed.get()) return false
-        if (!queue.offer(chunk)) return false
+        if (!queue.offer(chunk)) {
+            dropped.incrementAndGet()
+            return false
+        }
         if (closed.get()) {
             queue.remove(chunk)
             return false
