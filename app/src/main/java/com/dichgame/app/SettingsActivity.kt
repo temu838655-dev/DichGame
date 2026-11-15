@@ -71,7 +71,7 @@ class SettingsActivity : Activity() {
         card.addView(status, Ui.lpm(this, 0, 8))
         card.addView(Ui.tv(
             this,
-            "Khi được tích hợp vào phiên chơi, app sẽ nhận dạng lời thoại từ âm thanh đã giải mã của PS Remote Play để bổ sung cho OCR. Xử lý trên máy, không dùng micro.",
+            "Khi đã tải model và bật Dịch game trong phiên Remote Play, app tự nghe âm thanh game để bổ sung cho OCR khi chữ khó đọc hoặc bị bỏ sót. Xử lý trên máy, không dùng micro.",
             12.5f,
             Ui.SUB
         ), Ui.lpm(this, 0, 10))
