@@ -29,4 +29,20 @@ class GameTranscriptDeduplicatorTest {
     @Test fun ignoresVeryShortCommonPhrases() {
         assertFalse(GameTranscriptDeduplicator.isPartialOverlap("I am", "I am ready"))
     }
+
+    @Test fun detectsChinesePhraseOverlapWithoutSpaces() {
+        assertTrue(GameTranscriptDeduplicator.isPartialOverlap("你在哪里", "我想知道你在哪里"))
+    }
+
+    @Test fun detectsJapanesePhraseOverlapWithoutSpaces() {
+        assertTrue(GameTranscriptDeduplicator.isPartialOverlap("ここに行こう", "早くここに行こうよ"))
+    }
+
+    @Test fun keepsVeryShortCjkReplies() {
+        assertFalse(GameTranscriptDeduplicator.isPartialOverlap("行け", "早く行けよ"))
+    }
+
+    @Test fun ignoresUnrelatedCjkLines() {
+        assertFalse(GameTranscriptDeduplicator.isPartialOverlap("開けて", "どこにいる"))
+    }
 }
