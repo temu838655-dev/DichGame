@@ -88,6 +88,8 @@ class CaptureService : Service() {
     // Keep OCR provenance separate from ASR so partial-overlap suppression is time-bounded.
     private var lastOcrTranscript = ""
     private var lastOcrTranscriptAtMs = 0L
+    private var lastAudioTranscript = ""
+    private var lastAudioTranscriptAtMs = 0L
     private var cw = 0
     private var ch = 0
     private var editing = true
@@ -350,14 +352,23 @@ class CaptureService : Service() {
         val overlapsRecentOcr = GameTranscriptDeduplicator.overlapsRecentOcr(
             text, lastOcrTranscript, lastOcrTranscriptAtMs, nowElapsedMs
         )
-        if (key.isEmpty() || key == normalizeTranscript(last) || key == normalizeTranscript(cand) ||
-            overlapsRecentOcr ||
+        val repeatsRecentOcr = GameTranscriptDeduplicator.isRecentExactMatch(
+            text, lastOcrTranscript, lastOcrTranscriptAtMs, nowElapsedMs
+        )
+        val repeatsRecentAudio = GameTranscriptDeduplicator.isRecentExactMatch(
+            text, lastAudioTranscript, lastAudioTranscriptAtMs, nowElapsedMs
+        )
+        if (key.isEmpty() || repeatsRecentOcr || repeatsRecentAudio || overlapsRecentOcr ||
             pendingAudioTranscripts.contains(text)
         ) return
 
         if (!ready || busy) {
             // Keep older dialogue in FIFO order; reject this newest line if full.
             val accepted = pendingAudioTranscripts.offer(text, receivedAtMs)
+            if (accepted) {
+                lastAudioTranscript = text
+                lastAudioTranscriptAtMs = nowElapsedMs
+            }
             if (!accepted && (audioQueueFullWarnAtMs == 0L || nowElapsedMs - audioQueueFullWarnAtMs >= 5_000L)) {
                 audioQueueFullWarnAtMs = nowElapsedMs
                 android.widget.Toast.makeText(
@@ -375,6 +386,8 @@ class CaptureService : Service() {
         if (!running || !ready || editing || narrate || busy) return
         last = text
         cand = text
+        lastAudioTranscript = text
+        lastAudioTranscriptAtMs = android.os.SystemClock.elapsedRealtime()
         stable = needStable
         busy = true
         translateTextEx(text) { vi, delivery ->
