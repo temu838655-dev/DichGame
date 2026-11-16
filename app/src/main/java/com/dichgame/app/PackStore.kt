@@ -99,15 +99,48 @@ object PackStore {
     /** Nhập một gói (văn bản) vào hồ sơ hiện tại. Phần đã có được giữ nguyên. Trả về câu báo kết quả. */
     fun importText(ctx: Context, p: Prefs, text: String): String {
         val pack = PackText.parseAny(text)
-        if (pack.isEmpty) return "File không có gì để nhập. Cần các mục [thuật ngữ], [nhân vật] hoặc [câu thoại]."
+        if (pack.isEmpty) {
+            val t = LocFormat.parse(text)
+            if (t != null) return "File này là file chữ một ngôn ngữ của game (${t.size} mục), chưa có cặp \"gốc = Việt hoá\" để nhập. " +
+                "Nếu có cả file gốc và file đã Việt hoá, dùng \"Ghép 2 file\" và chọn lần lượt hai file."
+            return "File không có gì để nhập. Cần các mục [thuật ngữ], [nhân vật] hoặc [câu thoại], hoặc dùng \"Ghép 2 file\" với file gốc và file Việt hoá."
+        }
         val before = p.glossary.lines().count { it.contains('=') }
         p.glossary = VietHoa.merge(p.glossary, pack.terms)
         val addedTerms = p.glossary.lines().count { it.contains('=') } - before
         p.cast = Cast.merge(p.cast, pack.cast)
         val beforeL = lineCount(ctx, p.profile)
-        val total = if (pack.lines.isEmpty()) beforeL else addLines(ctx, p.profile, pack.lines)
+        val j = LocFormat.filter(pack.lines, "file")
+        val total = if (j.pairs.isEmpty()) beforeL else addLines(ctx, p.profile, j.pairs)
         val who = if (pack.name.isNotBlank()) " \"${pack.name}\"" else ""
-        return "Đã nhập gói$who vào hồ sơ ${p.profile}: thêm $addedTerms thuật ngữ, ${pack.cast.size} nhân vật, ${total - beforeL} câu thoại."
+        return "Đã nhập gói$who vào hồ sơ ${p.profile}: thêm $addedTerms thuật ngữ, ${pack.cast.size} nhân vật, ${total - beforeL} câu thoại." + skipNote(j)
+    }
+
+    private fun skipNote(j: LocFormat.Join): String {
+        val parts = ArrayList<String>()
+        if (j.untranslated > 0) parts.add("${j.untranslated} câu chưa dịch (giống hệt câu gốc)")
+        if (j.withVariables > 0) parts.add("${j.withVariables} câu có biến số như {tên}, %s mà app không biết điền")
+        if (j.noText > 0) parts.add("${j.noText} dòng không có chữ")
+        return if (parts.isEmpty()) "" else "\nBỏ qua: " + parts.joinToString("; ") + "."
+    }
+
+    /**
+     * Ghép file chữ gốc của game với file đã Việt hoá (cùng khoá hoặc cùng thứ tự dòng) rồi nhập vào hồ sơ hiện tại.
+     * Câu nào trên màn hình khớp một câu gốc trong file thì hiện đúng bản Việt hoá trong file.
+     */
+    fun importJoined(ctx: Context, p: Prefs, origName: String, orig: String, viName: String, vi: String): String {
+        val a = LocFormat.parse(orig, origName)
+            ?: return "Không đọc được file gốc \"$origName\". Cần file chữ: .json, .xml (strings.xml, .resx), .strings, .properties/.ini, .srt hoặc mỗi dòng một câu."
+        val b = LocFormat.parse(vi, viName)
+            ?: return "Không đọc được file Việt hoá \"$viName\". Cần file chữ: .json, .xml (strings.xml, .resx), .strings, .properties/.ini, .srt hoặc mỗi dòng một câu."
+        val j = LocFormat.join(a, b)
+        if (j.how == null) return j.note
+        if (j.pairs.isEmpty()) return "Ghép theo ${j.how} được ${j.total} cặp nhưng không cặp nào dùng được." + skipNote(j)
+        val before = lineCount(ctx, p.profile)
+        val total = addLines(ctx, p.profile, j.pairs)
+        return "Đã ghép theo ${j.how}: ${j.pairs.size} câu đưa vào hồ sơ ${p.profile} (hồ sơ có ${total} câu thoại, thêm mới ${total - before})." + skipNote(j) +
+            (if (j.note.isNotEmpty()) "\n" + j.note else "") +
+            "\nKhi chơi, câu nào trên màn hình khớp một câu gốc trong file thì hiện đúng bản Việt hoá trong file, không qua bộ dịch. Chữ đọc lệch vài ký tự vẫn khớp được."
     }
 
     /** Xuất phần của người dùng trong hồ sơ hiện tại thành file gói để chia sẻ. */

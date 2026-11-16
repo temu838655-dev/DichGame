@@ -58,7 +58,7 @@ class SessionStats {
         val heard = get("asr_nhan")
         sb.append("Nghe âm thanh game: $heard câu; loại vì nhiễu hoặc ảo giác: ${get("asr_loc")}; trùng với phụ đề trên màn hình: ${get("asr_trung")}")
         sb.append("; ghép với chữ đọc dở: ${get("ghep")}\n")
-        sb.append("Dịch: AI ${get("dich_ai")}, bộ nhớ đệm ${get("dich_cache")}, gói Việt hoá ${get("dich_goi")}, dịch trên máy ${get("dich_may")}")
+        sb.append("Dịch: AI ${get("dich_ai")}, bộ nhớ đệm ${get("dich_cache")}, gói Việt hoá ${get("dich_goi")}" + (if (get("dich_goi_gan") > 0) " (trong đó ${get("dich_goi_gan")} khớp gần đúng)" else "") + ", dịch trên máy ${get("dich_may")}")
         sb.append("; AI bị loại rồi dịch lại ${get("dich_loai")}; còn nghi ngờ ${get("dich_nghi")}\n")
         val n = synchronized(this) { latencies.size }
         if (n > 0) sb.append("Từ lúc câu xuất hiện tới lúc hiện bản dịch (${n} câu): giữa ${sec(percentile(50))} giây, 90% dưới ${sec(percentile(90))} giây\n")

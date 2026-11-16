@@ -73,13 +73,25 @@ Mỗi lượt quét chữ đi qua các bước (mã trong `app/src/main/java/com
 3. **Tách người nói** (`DialogueSplitter`): nhận "Tên: lời", thẻ 【Tên】, tên đứng trên/bên trái khung thoại. Tên lạ chỉ được tin khi có trong thẻ nhân vật, có dấu hai chấm, hoặc đứng trên ít nhất hai câu khác nhau; chưa đủ căn cứ thì vẫn giữ làm câu riêng, không bỏ chữ, không ghép hai người.
 4. **Lời nghe được** (`GameAudioAsrWorker` › `AsrGuard`): loại câu Whisper hay bịa khi gặp nhạc/tiếng súng/im lặng ("thanks for watching", nhãn [Music], câu lặp vô tận, sai chữ viết).
 5. **Hợp nhất** (`SubtitleFusion`): chữ trên màn hình là nguồn chính; lời nghe được trùng thì bỏ, chưa có trên màn hình thì chờ ~1,3 giây để chữ xác nhận rồi mới hiện, màn hình không đọc được thì hiện luôn, chữ đọc dở thì ghép với phần nghe được (chỉ khi phần chồng đủ dài), chữ máy đánh chữ dài dần thì thay bản dở.
-6. **Dịch** (`TextTranslator.translateFull`): gói Việt hoá › bộ nhớ đệm › AI có ngữ cảnh (tên game, thẻ nhân vật, người nói, câu trước) › dịch trên máy. Bản dịch AI qua `TranslationGuard`; hỏng thì dịch lại có lưu ý, vẫn hỏng thì lùi về dịch trên máy; còn nghi ngờ thì hiện dấu (?).
+6. **Dịch** (`TextTranslator.translateFull`): gói Việt hoá (file đã nhập, khớp đúng rồi khớp gần đúng) › bộ nhớ đệm › AI có ngữ cảnh (tên game, thẻ nhân vật, người nói, câu trước) › dịch trên máy. Bản dịch AI qua `TranslationGuard`; hỏng thì dịch lại có lưu ý, vẫn hỏng thì lùi về dịch trên máy; còn nghi ngờ thì hiện dấu (?).
 7. **Giữ nhịp** (`SubtitlePacer`): giữ mỗi dòng đủ thời gian đọc (~17 ký tự/giây, 1,4–8 giây), không thay dòng quá sớm, hàng chờ đầy thì gộp chứ không bỏ.
 8. **Sửa bản dịch sai** (`RecentLines`, `CorrectActivity`): 40 câu vừa dịch nằm trong bộ nhớ (không ghi ra đĩa); bạn sửa rồi Lưu thì bản sửa vào gói Việt hoá của game và được dùng trước cả dịch AI ở lần gặp sau. Mở từ thông báo hoặc Cài đặt › Phụ đề.
 
 Cài đặt › Phụ đề có chế độ hiệu năng, bỏ qua khi hình đứng yên, tự nhận game đổi ngôn ngữ, và xem **số đo lần dịch gần nhất** (số khung bỏ qua, chữ rác bị loại, câu trùng, độ trễ, pin).
 
 **Kiểm thử:** `gradle :app:testDebugUnitTest` chạy các test logic, gồm `PipelineSimulationTest` mô phỏng buổi chơi theo kịch bản (phụ đề đều, phụ đề hiện trễ, không phụ đề, nói nhanh, nói chậm, nhạc xen kẽ, OCR sai...). Đó là kiểm tra **logic** với độ trễ giả định, không phải đo trên máy thật: tỉ lệ nhận đúng chữ, độ trễ thật, CPU, RAM, pin phụ thuộc máy và game, cần chơi thật rồi xem "Số đo lần dịch gần nhất". App không cam kết chính xác tuyệt đối.
+
+## Áp file Việt hoá như chơi trên máy tính
+
+Khi bạn tải về file chữ Việt hoá của một game, nhập vào hồ sơ của game đó (Kho game › chọn game › **Nhập file Việt hoá của game này**, hoặc Gói Việt hoá › Nhập và chia sẻ) thì lúc chơi, câu nào trên màn hình khớp một câu gốc trong file sẽ hiện đúng bản Việt hoá trong file, không qua bộ dịch (mã: `LocFormat.kt`, `Pack.kt`, `PackStore.importJoined`).
+
+- **Một file** đã có cả hai ngôn ngữ: file gói của app (.txt), .csv/.tsv (cột gốc, cột Việt), .json dạng `{"câu gốc": "câu Việt"}`, .po.
+- **Ghép 2 file** (nút "Ghép 2 file"): chọn file chữ gốc rồi file đã Việt hoá. Đọc được .json (lồng nhau, mảng), .xml (strings.xml, .resx, `<tên name="khoá">chữ</tên>`), .strings (iOS), .properties/.ini/.lang, .srt, .csv/.tsv, và file mỗi dòng một câu. Ghép theo **khoá** (cùng khoá ở hai file); .srt ghép theo mốc thời gian, file từng dòng ghép theo **thứ tự** và chỉ khi hai file gần như cùng số dòng. Không ghép được thì app báo rõ lý do, không đoán.
+- **Làm sạch**: bỏ thẻ định dạng (`<b>`, `<color=…>`), `\n` và `<br>` thành khoảng trắng. Bỏ qua và báo số lượng: câu chưa dịch (giống hệt gốc), dòng không có chữ, câu có biến số (`{tên}`, `%s`, `$x$`...) vì app không biết điền.
+- **Khớp**: trước hết khớp đúng (không phân biệt hoa thường, dấu câu, chữ dễ nhầm như 0/O, 1/l/I). Không được thì khớp gần đúng cho câu từ 18 ký tự (câu CJK từ 8): chịu được chữ OCR đọc lệch vài ký tự, giống từ 92% (câu dưới 40 ký tự) hoặc 88% (câu dài hơn), **cùng các con số** ("Take 5" không bao giờ khớp "Take 6"), và bỏ qua nếu có hai câu khác nghĩa giống ngang nhau. Câu ngắn như "Yes." chỉ khớp đúng. Đo trong test: 60.000 câu dựng chỉ mục khoảng 1 giây, mỗi lần tra gần đúng dưới 1 ms (máy dựng test, không phải điện thoại).
+- Bản bạn sửa trong "Sửa bản dịch sai" và file đã nhập đều nằm trong cùng bộ nhớ hồ sơ; câu nhập sau đè câu nhập trước. Mỗi hồ sơ lưu tối đa 100.000 câu.
+
+**Không làm được:** bản vá nhị phân (.exe, .pak, .locres, .xdelta, .assets, bản Việt hoá cài thẳng vào game trên PC/console) sửa trong file game, app không đọc được và không cài hộ. Câu có biến số bị bỏ qua. Chữ trong game bị vẽ thành hình (không phải chữ) thì vẫn phụ thuộc OCR. Phần khớp chưa chạy thử trên game thật với file Việt hoá thật của cộng đồng; chỉ kiểm thử bằng dữ liệu mẫu.
 
 ## Ngôn ngữ đọc được
 
@@ -93,7 +105,7 @@ Lần đầu dùng mỗi thứ tiếng, app tải mô hình dịch nên cần m�
 
 ## Giới hạn hiện tại
 
-- Gói Việt hoá nhập được từ file **.txt** (dạng của app), **.csv / .tsv** (cột câu gốc, cột câu Việt), **.json** và **.po**, tự nhận bảng mã UTF-8, UTF-16 và Windows-1258. Chỉ lấy cặp câu chữ: bản vá (mod) sửa trong file game thì app không đọc được.
+- Gói Việt hoá nhập được từ file **.txt** (dạng của app), **.csv / .tsv** (cột câu gốc, cột câu Việt), **.json** và **.po**, hoặc ghép hai file chữ (gốc + Việt hoá: .json, .xml, .strings, .properties, .srt...), tự nhận bảng mã UTF-8, UTF-16 và Windows-1258, tối đa 24 MB mỗi file. Chỉ lấy cặp câu chữ: bản vá (mod) nhị phân sửa trong file game thì app không đọc được (xem "Áp file Việt hoá như chơi trên máy tính").
 - Chưa có app cài lên **TV LG (webOS)** và **TV Samsung (Tizen)**; app TV chỉ chạy trên Android TV / Google TV. Với LG và Samsung: chơi PS4/PS5 trong app rồi chiếu điện thoại lên TV (Smart View, Screen Share, Chromecast, cáp USB-C ra HDMI), phụ đề nằm sẵn trên hình. Cách cài app lên hai hãng này cần chế độ nhà phát triển của TV (LG) hoặc chứng chỉ riêng của Samsung và chưa thử được ở đây.
 - **Giấy phép Remote Play**: engine Chiaki-ng (`third_party/chiaki-ng`) theo **AGPL-3.0-only kèm ngoại lệ OpenSSL**. Bản APK có Remote Play vì vậy phải được phát hành theo AGPL-3.0 và giữ mã nguồn công khai; bản dựng với `-PnoNative` (dùng cho smoke test) không chứa engine này. Chưa có tệp LICENSE chung cho repo, chủ dự án cần chọn giấy phép AGPL-3.0 cho phần mã còn lại nếu muốn phát hành công khai.
 - Remote Play tích hợp PS4/PS5 hiện ở trạng thái **thử nghiệm**. Chưa kiểm thử kết nối, hình ảnh, âm thanh và điều khiển trên đầy đủ model/firmware console; cần người dùng thử với máy thật và gửi log khi gặp lỗi. Bản arm64 có engine Chiaki-ng; các ABI khác không có engine Remote Play.

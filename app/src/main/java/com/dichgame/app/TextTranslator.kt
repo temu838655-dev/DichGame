@@ -114,11 +114,15 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     fun translateFull(text: String, speaker: String?, done: (Tr) -> Unit) {
         val st = SessionStats.live
         val key = (speaker?.lowercase() ?: "") + "|" + OcrGuard.key(text)
-        cache[key]?.let { st.inc("dich_cache"); done(it); return }
         val hist = history.takeLast(p.ctxCount)
         history.add(if (speaker != null) "$speaker: $text" else text)
         while (history.size > 10) history.removeAt(0)
-        PackStore.memory(ctx, p).lookup(text)?.let { st.inc("dich_goi"); done(Tr(it, null, false, "goi")); return }
+        // gói Việt hoá (file đã nhập, bản người dùng sửa) đứng trước mọi thứ, kể cả bộ nhớ đệm: bản vừa sửa phải có hiệu lực ngay
+        PackStore.memory(ctx, p).lookupEx(text)?.let { h ->
+            st.inc("dich_goi"); if (h.fuzzy) st.inc("dich_goi_gan")
+            done(Tr(h.vi, null, false, "goi")); return
+        }
+        cache[key]?.let { st.inc("dich_cache"); done(it); return }
         val terms = PackStore.terms(p)
         val cast = PackStore.cast(p)
         val names = guardNames(terms, cast)

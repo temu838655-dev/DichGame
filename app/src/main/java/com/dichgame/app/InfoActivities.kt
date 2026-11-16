@@ -64,6 +64,7 @@ class FeaturesActivity : Activity() {
             Triple("Từ điển riêng cho từng game", "Ép tên nhân vật, chiêu thức, địa danh luôn đúng một cách gọi, cả khi dịch bằng AI lẫn dịch trên máy.", true),
             Triple("Kho game Việt hoá", "Hơn 200 game PS5, PS4, Xbox, PC, Steam, Switch, có ảnh bìa. Chọn game là dùng ngay gói Việt hoá của game đó (thuật ngữ, nhân vật, câu thông báo).", true),
             Triple("Gói Việt hoá: nhập, xuất, chia sẻ", "Nhập gói từ file hoặc link (.txt, .csv, .json, .po), sửa thẻ nhân vật, lưu gói của mình ra file. Câu thoại khớp là dùng luôn, không qua bộ dịch.", true),
+            Triple("Áp file Việt hoá như trên máy tính", "Tải file chữ Việt hoá của game (en.json + vi.json, strings.xml, .properties, .srt...) rồi ghép 2 file hoặc nhập vào game đó: câu trên màn hình khớp câu gốc trong file (kể cả chữ đọc lệch vài ký tự) thì hiện đúng bản Việt hoá. Câu có biến số bị bỏ qua.", true),
             Triple("Dịch theo cảm xúc và nhịp nhân vật", "Giận, sợ, thì thầm, mỉa mai... đổi giọng đọc, tốc độ và hiện nhãn cảm xúc trên phụ đề. Nhân vật nói chậm hay nhanh đặt trong thẻ nhân vật.", true),
             Triple("11 kiểu dịch và Prompt riêng", "Tự nhiên, thuyết minh, anh – em, bụi bặm, cao bồi, podcast, tin tức... hoặc tự viết yêu cầu cho AI.", true),
             Triple("Liên kết tới các trang Việt hoá cộng đồng", "The Red Team, PS Việt Hóa, Tổ Mèo Cam... mở trang gốc theo nền tảng. App không tải hộ hay chép lại bản vá.", true),
@@ -71,6 +72,7 @@ class FeaturesActivity : Activity() {
             Triple("Kiểm tra bản mới, báo lỗi, yêu cầu game", "Ở cuối màn Cài đặt.", true),
             Triple("Chơi PS4/PS5 ngay trong app (thử nghiệm)", "Ghép nối trong app, nhiều người chơi để vừa chơi trên TV vừa chơi trên điện thoại, tay cầm ảo, dịch phụ đề ngay trên màn chơi. Chỉ chạy trên điện thoại arm64; chưa kiểm thử trên mọi máy PS.", true),
             Triple("Tự tải và cài bản vá Việt hoá vào game", "Chưa có. Bản vá do từng nhóm giữ quyền, nên app chỉ dẫn tới trang gốc.", false),
+            Triple("Đọc bản vá Việt hoá dạng nhị phân", "Không làm được: file .exe, .pak, .locres, .xdelta... sửa thẳng file game. App chỉ đọc được file chữ (json, xml, strings, properties, srt, csv).", false),
             Triple("App cài lên TV LG, Samsung", "Chưa có app cài lên TV. Dùng được bằng cách chơi trong app rồi chiếu điện thoại lên TV (Smart View, Screen Share, Chromecast, cáp USB-C ra HDMI): xem mục Phụ đề trên TV.", false),
             Triple("App iOS, Windows, Mac", "Chưa có, hiện chỉ có Android.", false)
         )

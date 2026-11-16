@@ -205,6 +205,19 @@ class KhoGameActivity : Activity() {
                 "Áp dụng khi dịch bằng AI lẫn dịch trên máy: tên riêng, chiêu thức, địa danh luôn đúng một cách gọi. Gói do người làm app soạn theo cách gọi phổ biến của cộng đồng, " +
                     "không phải bản dịch chính thức của nhà phát hành. Sửa hoặc nhập thêm gói trong mục Gói Việt hoá.", 12f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 6, 0))
             addView(c, Ui.lpm(this@KhoGameActivity, 12, 0))
+            // File Việt hoá tải về: áp vào game này để khi chơi hiện đúng câu trong file
+            val mine = PackStore.lineCount(this@KhoGameActivity, name)
+            addView(Ui.button(this@KhoGameActivity, "📥  Nhập file Việt hoá của game này") {
+                d.dismiss()
+                this@KhoGameActivity.select(name)
+                setResult(RESULT_OK)
+                Toast.makeText(this@KhoGameActivity, "Đã chọn $name. File nhập vào sẽ áp dụng cho game này.", Toast.LENGTH_SHORT).show()
+                startActivity(Intent(this@KhoGameActivity, PackActivity::class.java).putExtra("import", true))
+            }, Ui.lpm(this@KhoGameActivity, 10, 0))
+            addView(Ui.tv(this@KhoGameActivity,
+                (if (mine > 0) "Đã có $mine câu Việt hoá bạn nhập cho game này. " else "") +
+                    "Tải file Việt hoá (en.json + vi.json, strings.xml, .srt...) rồi nhập vào đây: khi chơi, câu nào trên màn hình khớp câu trong file thì hiện đúng bản đó, như chơi bản Việt hoá trên máy tính.",
+                12f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 6, 0))
             // Cách chơi theo nền tảng
             val start = ps.firstOrNull() ?: Plat.PS5
             val guide = Ui.tv(this@KhoGameActivity, RemotePlay.guide(start), 13f, Ui.TEXT)
@@ -288,11 +301,16 @@ class KhoGameActivity : Activity() {
         }
     }
 
-    private fun choose(name: String, go: Boolean) {
+    /** Đặt game này làm game đang chơi: hồ sơ riêng của game, tên game và thể loại. */
+    private fun select(name: String) {
         val g = genreOf(name)
         if (p.profiles.contains(name)) p.profile = name else p.addProfile(name)
         p.game = if (g.isEmpty()) name else "$name, $g"
         p.addPlayed(name)
+    }
+
+    private fun choose(name: String, go: Boolean) {
+        select(name)
         Toast.makeText(this, "Đã chọn $name. Gói Việt hoá của game đang được dùng.", Toast.LENGTH_SHORT).show()
         setResult(RESULT_OK)
         if (go) startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("go", true))

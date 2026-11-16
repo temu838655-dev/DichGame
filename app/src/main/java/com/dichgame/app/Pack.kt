@@ -47,13 +47,27 @@ object Canon {
 /** Bộ nhớ câu thoại: "câu gốc -> câu Việt hoá chuẩn". Mục thêm sau đè mục thêm trước. */
 class TransMemory(pairs: Iterable<Pair<String, String>>) {
     private val map = HashMap<String, String>()
+    /** Các chữ số trong câu gốc (chỉ câu có số): khớp gần đúng không được bỏ qua chỗ khác nhau về số ("Take 5" khác "Take 6"). */
+    private val digits = HashMap<String, String>()
 
     init {
         for ((s, v) in pairs) {
             val k = Canon.key(s)
-            if (Canon.usable(k) && v.isNotBlank()) map[k] = v.trim()
+            if (Canon.usable(k) && v.isNotBlank()) {
+                map[k] = v.trim()
+                val d = digitSig(s)
+                if (d.isEmpty()) digits.remove(k) else digits[k] = d
+            }
         }
     }
+
+    /** Kết quả tra: [fuzzy] = khớp gần đúng (chữ đọc từ màn hình hơi lệch so với câu trong gói), không phải khớp đúng khoá. */
+    class Hit(val vi: String, val fuzzy: Boolean)
+
+    private val fuzzyIndex: FuzzyIndex by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { FuzzyIndex(map, digits) }
+
+    /** Dựng sẵn chỉ mục khớp gần đúng (gọi ở luồng nền khi bắt đầu dịch) để lần tra đầu tiên không bị khựng. */
+    fun warm() { if (map.size > 1) fuzzyIndex }
 
     val size: Int get() = map.size
 
@@ -86,15 +100,172 @@ class TransMemory(pairs: Iterable<Pair<String, String>>) {
         return cover(0)?.joinToString(" ")
     }
 
-    /** Bản Việt hoá nếu cả đoạn chữ (hoặc từng câu trong đó) đều có trong bộ nhớ, ngược lại null. */
-    fun lookup(text: String): String? {
+    /**
+     * Bản Việt hoá nếu cả đoạn chữ (hoặc từng câu trong đó) có trong bộ nhớ, ngược lại null. Khớp đúng khoá trước; không được thì khớp
+     * gần đúng cho câu dài (chịu được chữ đọc lệch vài ký tự, thiếu hoặc thừa chút ít), chỉ nhận khi gần như chắc chắn là cùng một câu.
+     */
+    fun lookup(text: String): String? = lookupEx(text)?.vi
+
+    fun lookupEx(text: String): Hit? {
         if (map.isEmpty() || text.isBlank()) return null
+        exact(text)?.let { return Hit(it, false) }
+        val q = Canon.key(text)
+        if (q.length < FuzzyIndex.minLen(q)) return null
+        return fuzzyIndex.find(q, digitSig(text))?.let { Hit(it, true) }
+    }
+
+    private fun exact(text: String): String? {
         part(text)?.let { return it }
         val parts = text.split(Regex("[\\r\\n]+|(?<=[.!?。！？])\\s*")).map { it.trim() }.filter { Canon.key(it).isNotEmpty() }
         if (parts.size < 2) return null
         val out = ArrayList<String>(parts.size)
         for (pt in parts) out.add(part(pt) ?: return null)
         return out.joinToString(" ")
+    }
+}
+
+/**
+ * Các số trong câu, dùng để khớp gần đúng không nhầm "Take 5" với "Take 6". Chữ số lọt giữa hai chữ cái ("bef0re", "H2O") bị bỏ qua:
+ * đó thường là chữ bị đọc nhầm (0 thành o, 1 thành l, 5 thành s), không phải một con số.
+ */
+internal fun digitSig(s: String): String {
+    val sb = StringBuilder()
+    for (i in s.indices) {
+        val c = s[i]
+        if (!c.isDigit()) continue
+        // chỉ xét cả cụm số: tìm biên của cụm chứa c
+        var a = i; while (a > 0 && s[a - 1].isDigit()) a--
+        var b = i; while (b + 1 < s.length && s[b + 1].isDigit()) b++
+        val left = a > 0 && s[a - 1].isLetter()
+        val right = b + 1 < s.length && s[b + 1].isLetter()
+        if (!(left && right)) sb.append(c)
+    }
+    return sb.toString()
+}
+
+/**
+ * Chỉ mục khớp gần đúng cho câu dài. Mỗi câu gốc được cắt thành các đoạn 4 ký tự; chỉ giữ khoảng một phần tư số đoạn (chọn theo nội dung,
+ * không theo vị trí, nên câu bị cắt đầu hoặc đuôi vẫn chọn đúng các đoạn như cũ) cộng đoạn đầu và đoạn cuối. Tra: các đoạn của câu cần tìm
+ * "bỏ phiếu" cho các câu trong gói, rồi chỉ so kỹ (khoảng cách chỉnh sửa) vài câu nhiều phiếu nhất.
+ * Nhận khi giống từ 92% (câu dưới 40 ký tự) hoặc 88% (câu dài hơn), cùng các chữ số, và không có câu thứ hai khác nghĩa giống ngang ngửa.
+ */
+private class FuzzyIndex(map: Map<String, String>, digits: Map<String, String>) {
+    private val keys: Array<String>
+    private val vals: Array<String>
+    private val dig: Array<String>
+    private val post: LongArray
+
+    init {
+        val ks = ArrayList<String>()
+        val vs = ArrayList<String>()
+        val ds = ArrayList<String>()
+        for ((k, v) in map) if (k.length >= minLen(k)) { ks.add(k); vs.add(v); ds.add(digits[k] ?: "") }
+        keys = ks.toTypedArray(); vals = vs.toTypedArray(); dig = ds.toTypedArray()
+        var buf = LongArray(1 shl 16)
+        var n = 0
+        for (id in keys.indices) {
+            forGrams(keys[id]) { h ->
+                if (n == buf.size) buf = buf.copyOf(n * 2)
+                buf[n++] = ((h.toLong() and 0xFFFFFFFFL) shl 32) or id.toLong()
+            }
+        }
+        java.util.Arrays.sort(buf, 0, n)
+        var m = 0
+        for (i in 0 until n) if (i == 0 || buf[i] != buf[i - 1]) buf[m++] = buf[i]
+        post = buf.copyOf(m)
+    }
+
+    private fun lowerBound(x: Long): Int {
+        var lo = 0
+        var hi = post.size
+        while (lo < hi) { val mid = (lo + hi) ushr 1; if (post[mid] < x) lo = mid + 1 else hi = mid }
+        return lo
+    }
+
+    fun find(q: String, qDigits: String): String? {
+        if (keys.isEmpty()) return null
+        val votes = HashMap<Int, Int>()
+        val seen = HashSet<Int>()
+        var selected = 0
+        forGrams(q) { h ->
+            if (seen.add(h)) {
+                val hl = (h.toLong() and 0xFFFFFFFFL) shl 32
+                val from = lowerBound(hl)
+                var end = from
+                while (end < post.size && (post[end] and -0x100000000L) == hl && end - from <= MAX_POSTINGS) end++
+                // đoạn có mặt ở quá nhiều câu thì không giúp phân biệt: bỏ, không tính phiếu
+                if (end - from > MAX_POSTINGS) return@forGrams
+                selected++
+                for (i in from until end) {
+                    val id = (post[i] and 0xFFFFFFFFL).toInt()
+                    votes[id] = (votes[id] ?: 0) + 1
+                }
+            }
+        }
+        if (selected == 0) return null
+        val need = maxOf(2, selected / 4)
+        val top = votes.entries.filter { it.value >= need }.sortedByDescending { it.value }.take(TOP)
+        var bestId = -1
+        var best = 0f
+        var second = 0f
+        var secondVi: String? = null
+        for ((id, _) in top) {
+            val k = keys[id]
+            if (kotlin.math.abs(k.length - q.length) * 4 > maxOf(k.length, q.length)) continue
+            if (dig[id] != qDigits) continue
+            val sim = similarity(q, k)
+            val th = if (k.length < 40) 0.92f else 0.88f
+            if (sim < th) continue
+            if (sim > best) { second = best; secondVi = if (bestId >= 0) vals[bestId] else null; best = sim; bestId = id }
+            else if (sim > second) { second = sim; secondVi = vals[id] }
+        }
+        if (bestId < 0) return null
+        // hai câu khác nghĩa giống ngang ngửa: không chắc câu nào, để bộ dịch xử lý
+        if (secondVi != null && secondVi != vals[bestId] && second >= best - 0.02f) return null
+        return vals[bestId]
+    }
+
+    companion object {
+        private const val N = 4
+        private const val TOP = 6
+        private const val MAX_POSTINGS = 64
+        private const val MAX_LEN = 700
+
+        /** Độ dài khoá tối thiểu để được khớp gần đúng: câu ngắn quá thì chỉ nhận khớp đúng. */
+        fun minLen(key: String): Int = if (key.any { isCjk(it) }) 8 else 18
+
+        private fun forGrams(k: String, f: (Int) -> Unit) {
+            val cjk = k.any { isCjk(it) }
+            val n = if (cjk) 2 else N
+            val last = k.length - n
+            if (last < 0) return
+            val shift = if (cjk) 31 else 30
+            for (i in 0..last) {
+                var h = 0
+                for (j in i until i + n) h = h * 31 + k[j].code
+                h *= -1640531535
+                if (i == 0 || i == last || (h ushr shift) == 0) f(h)
+            }
+        }
+
+        /** Tỉ lệ giống nhau (1 trừ khoảng cách chỉnh sửa chia độ dài dài hơn). Quá dài thì coi như không giống. */
+        fun similarity(a: String, b: String): Float {
+            if (a == b) return 1f
+            val n = a.length
+            val m = b.length
+            if (n > MAX_LEN || m > MAX_LEN || n == 0 || m == 0) return 0f
+            var prev = IntArray(m + 1) { it }
+            var cur = IntArray(m + 1)
+            for (i in 1..n) {
+                cur[0] = i
+                for (j in 1..m) {
+                    val c = if (a[i - 1] == b[j - 1]) 0 else 1
+                    cur[j] = minOf(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + c)
+                }
+                val t = prev; prev = cur; cur = t
+            }
+            return 1f - prev[m].toFloat() / maxOf(n, m)
+        }
     }
 }
 
@@ -194,7 +365,7 @@ object PackText {
         else -> null
     }
 
-    const val MAX_LINES = 60000
+    const val MAX_LINES = 100000
     const val MAX_TERMS = 4000
 
     fun parse(raw: String): Pack {

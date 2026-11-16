@@ -220,6 +220,9 @@ class CaptureService : Service() {
         val tr = TextTranslator(this, Prefs(this), lang)
         tt = tr
         speakers = SpeakerBook(PackStore.cast(Prefs(this)).map { it.name })
+        // dựng sẵn bộ nhớ câu Việt hoá (có thể hàng chục nghìn câu nhập từ file) ở nền để câu đầu tiên không bị khựng
+        val warmPrefs = Prefs(this)
+        Thread { try { PackStore.memory(applicationContext, warmPrefs).warm() } catch (_: Throwable) {} }.start()
         langTrack = LangSwitchTracker(lang)
         if (narrate) ready = true else show("Đang tải mô hình dịch (lần đầu, cần mạng)...")
         if (!narrate) tr.prepare { ok ->

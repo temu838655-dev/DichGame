@@ -17,9 +17,15 @@ import android.widget.Toast
 class PackActivity : Activity() {
     private lateinit var p: Prefs
 
+    /** Bước 1 của "Ghép 2 file": file chữ gốc đã chọn, chờ file Việt hoá. */
+    private var origName = ""
+    private var origText: String? = null
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         render()
+        // mở từ Kho game ("Nhập file Việt hoá của game này"): hỏi luôn cách nhập
+        if (b == null && intent.getBooleanExtra("import", false)) importMenu()
     }
 
     private fun render() {
@@ -79,9 +85,17 @@ class PackActivity : Activity() {
                 "Gói là file văn bản UTF-8 có ba mục: [thuật ngữ] gốc = tiếng Việt, [nhân vật] Tên = mô tả; nhịp: chậm, và [câu thoại] câu gốc = câu Việt hoá. " +
                     "Câu thoại khớp với chữ trên màn hình thì được dùng luôn, không qua bộ dịch. Gói được nhập vào hồ sơ đang chọn (${p.profile}).", 12.5f, Ui.SUB), Ui.lpm(this@PackActivity, 0, 10))
             val r = Ui.hbox(this@PackActivity)
-            r.addView(Ui.button(this@PackActivity, "📂  Từ file") { pickFile() }, Ui.lp(0, WRAP_CONTENT, 1f))
+            r.addView(Ui.button(this@PackActivity, "📂  Từ file") { pickFile(31) }, Ui.lp(0, WRAP_CONTENT, 1f))
             r.addView(Ui.button(this@PackActivity, "🔗  Từ link") { linkDialog() }, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@PackActivity, 10) })
             i.addView(r)
+            i.addView(Ui.button(this@PackActivity, "🔀  Ghép 2 file: file gốc + file Việt hoá") { joinStart() }, Ui.lpm(this@PackActivity, 8, 0))
+            i.addView(Ui.tv(this@PackActivity,
+                "Bản Việt hoá của game thường gồm hai file chữ cùng cấu trúc: file gốc (en.json, strings.xml...) và file đã dịch (vi.json...). " +
+                    "Chọn \"Ghép 2 file\" rồi chọn lần lượt hai file; app ghép theo khoá hoặc theo thứ tự dòng. Khi chơi, câu nào trên màn hình khớp một câu gốc trong file " +
+                    "(kể cả khi chữ đọc lệch vài ký tự) thì hiện đúng bản Việt hoá trong file, như chơi bản Việt hoá trên máy tính.\n" +
+                    "Đọc được: .json, .xml (strings.xml, .resx), .strings, .properties/.ini, .srt, .csv/.tsv, .po, file mỗi dòng một câu. " +
+                    "Câu có biến số như {tên} hay %s bị bỏ qua vì app không biết điền. Bản vá dạng nhị phân (.exe, .pak, .locres, .xdelta…) sửa thẳng file game thì app không đọc được: " +
+                    "hãy cài bản vá đó vào game như bình thường, app vẫn dịch những chỗ còn lại.", 12f, Ui.SUB), Ui.lpm(this@PackActivity, 10, 0))
             i.addView(Ui.button(this@PackActivity, "📤  Lưu gói của mình ra file") { saveFile() }, Ui.lpm(this@PackActivity, 8, 0))
             put(i, 0, 12)
 
@@ -116,9 +130,53 @@ class PackActivity : Activity() {
             .setNegativeButton("Hủy", null).show()
     }
 
-    private fun pickFile() {
+    private fun pickFile(req: Int) {
         @Suppress("DEPRECATION")
-        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), 31)
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), req)
+    }
+
+    /** Hỏi cách nhập file Việt hoá (mở từ Kho game). */
+    private fun importMenu() {
+        val items = arrayOf("🔀  Ghép 2 file: file gốc + file Việt hoá", "📂  Một file gói hoặc file có sẵn cả hai ngôn ngữ", "🔗  Từ link")
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Nhập file Việt hoá cho ${p.profile}")
+            .setItems(items) { _, w -> when (w) { 0 -> joinStart(); 1 -> pickFile(31); else -> linkDialog() } }
+            .setNegativeButton("Hủy", null).show()
+    }
+
+    private fun joinStart() {
+        origText = null
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Ghép 2 file")
+            .setMessage("Bước 1: chọn file chữ GỐC của game (tiếng Anh, Nhật...).\nBước 2: chọn file đã VIỆT HOÁ cùng cấu trúc.\n\n" +
+                "App ghép hai file theo khoá (hoặc theo thứ tự dòng nếu là .srt hay file từng dòng) rồi nhập vào hồ sơ ${p.profile}.")
+            .setPositiveButton("Chọn file gốc") { _, _ -> pickFile(33) }
+            .setNegativeButton("Hủy", null).show()
+    }
+
+    private fun nameOf(uri: Uri): String {
+        var n: String? = null
+        try {
+            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) n = c.getString(0)
+            }
+        } catch (_: Exception) {}
+        return n ?: uri.lastPathSegment.orEmpty()
+    }
+
+    /** Đọc file chữ (tối đa [MAX_FILE] byte), tự nhận mã hoá. */
+    private fun readText(uri: Uri): String {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(1 shl 16)
+        contentResolver.openInputStream(uri)?.use { ins ->
+            while (true) {
+                val n = ins.read(buf)
+                if (n < 0) break
+                out.write(buf, 0, n)
+                if (out.size() > MAX_FILE) throw java.io.IOException("File quá lớn (tối đa ${MAX_FILE / 1_000_000} MB).")
+            }
+        }
+        return PackText.decode(out.toByteArray())
     }
 
     private fun saveFile() {
@@ -160,11 +218,30 @@ class PackActivity : Activity() {
         if (res != RESULT_OK) return
         if (req == 31) {
             Thread {
-                val msg = try {
-                    val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
-                    if (bytes.size > 8_000_000) "File quá lớn (tối đa 8 MB)." else PackStore.importText(this, p, PackText.decode(bytes))
-                } catch (e: Exception) { "Không đọc được file: " + (e.message ?: e.javaClass.simpleName) }
+                val msg = try { PackStore.importText(this, p, readText(uri)) } catch (e: Exception) { "Không đọc được file: " + (e.message ?: e.javaClass.simpleName) }
                 runOnUiThread { done(msg) }
+            }.start()
+        } else if (req == 33) {
+            val nm = nameOf(uri)
+            Thread {
+                try {
+                    val t = readText(uri)
+                    runOnUiThread {
+                        origName = nm; origText = t
+                        Toast.makeText(this, "Đã đọc file gốc. Bước 2: chọn file đã Việt hoá.", Toast.LENGTH_LONG).show()
+                        pickFile(34)
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread { done("Không đọc được file gốc: " + (e.message ?: e.javaClass.simpleName)) }
+                }
+            }.start()
+        } else if (req == 34) {
+            val o = origText
+            if (o == null) { done("Chưa có file gốc. Hãy chọn lại từ bước 1."); return }
+            val nm = nameOf(uri)
+            Thread {
+                val msg = try { PackStore.importJoined(this, p, origName, o, nm, readText(uri)) } catch (e: Exception) { "Không đọc được file Việt hoá: " + (e.message ?: e.javaClass.simpleName) }
+                runOnUiThread { origText = null; done(msg) }
             }.start()
         } else if (req == 32) {
             try {
@@ -174,5 +251,10 @@ class PackActivity : Activity() {
                 Toast.makeText(this, "Không lưu được: " + (e.message ?: ""), Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    private companion object {
+        /** File chữ của game có thể lớn (hàng chục nghìn câu), nhưng quá mức này thường không phải file chữ. */
+        const val MAX_FILE = 24_000_000
     }
 }
