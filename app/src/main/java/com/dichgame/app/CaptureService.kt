@@ -187,6 +187,7 @@ class CaptureService : Service() {
         tt = tr
         if (narrate) ready = true else show("Đang tải mô hình dịch (lần đầu, cần mạng)...")
         if (!narrate) tr.prepare { ok ->
+            if (!running) return@prepare
             if (ok) { ready = true; if (!editing) show(""); drainPendingAudioTranscript() }
             else show("Không tải được mô hình dịch. Kiểm tra mạng rồi bấm Dừng và chạy lại.")
         }
