@@ -18,7 +18,7 @@ import com.google.mlkit.nl.translate.TranslatorOptions
  */
 class TextTranslator(private val ctx: Context, private val p: Prefs, private val lang: String) {
     private val main = Handler(Looper.getMainLooper())
-    private val history = ArrayList<String>()
+    private val history = TranslationContextHistory()
     private val warned = AtomicBoolean(false)
     @Volatile private var closed = false
 
@@ -96,15 +96,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      */
     fun translateEx(text: String, done: (String, Delivery?) -> Unit) {
         if (closed) return
-        // Translation entry points can be reached by OCR, ASR and menu
-        // recognition callbacks. Snapshot and append atomically so concurrent
-        // requests cannot corrupt ArrayList state or lose dialogue context.
-        val hist = synchronized(history) {
-            val previous = history.takeLast(p.ctxCount)
-            history.add(text)
-            while (history.size > 10) history.removeAt(0)
-            previous
-        }
+        // Capture preceding dialogue and append this line atomically.
+        val hist = history.appendAndSnapshot(text, p.ctxCount)
         PackStore.memory(ctx, p).lookup(text)?.let { done(it, null); return }
         if (!Ai.enabled(p)) { translateLocal(text, done); return }
         val terms = PackStore.terms(p)
