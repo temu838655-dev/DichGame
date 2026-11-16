@@ -131,13 +131,14 @@ class GameAudioAsrWorkerTest {
 
         assertTrue(worker.start())
         repeat(10) { queue.offer(ShortArray(320) { 6_000 }, 16_000, 1) }
-        assertTrue(recognitionStarted.await(2, TimeUnit.SECONDS))
         val stopper = Thread {
             worker.stopAndJoinUntilStopped()
             interruptRestored.set(Thread.currentThread().isInterrupted)
             stopReturned.countDown()
         }
         stopper.start()
+        assertTrue(recognitionStarted.await(2, TimeUnit.SECONDS))
+        // Interrupt while join is waiting for the in-flight recognition to finish.
         stopper.interrupt()
 
         assertEquals(1L, stopReturned.count)
