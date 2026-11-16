@@ -78,8 +78,9 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
 
     /** Tải mô hình dịch trên máy (lần đầu cần mạng). */
     fun prepare(onDone: (Boolean) -> Unit) {
+        if (closed) return
         val l = local
-        if (l == null) { onDone(true); return }
+        if (l == null) { if (!closed) onDone(true); return }
         l.downloadModelIfNeeded()
             .addOnSuccessListener { if (!closed) onDone(true) }
             .addOnFailureListener { if (!closed) onDone(false) }
@@ -93,6 +94,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      * [done] nhận bản dịch và cách đọc (cảm xúc, nhịp) nếu có.
      */
     fun translateEx(text: String, done: (String, Delivery?) -> Unit) {
+        if (closed) return
         val hist = history.takeLast(p.ctxCount)
         history.add(text)
         while (history.size > 10) history.removeAt(0)
@@ -129,28 +131,34 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         if (p.emoTr) Emo.detect(text, vi, Cast.speakerOf(text, PackStore.cast(p))?.pace) else null
 
     private fun translateLocal(text: String, done: (String, Delivery?) -> Unit) {
+        if (closed) return
         val l = local
         if (l == null) { done(text, null); return }
         val terms = PackStore.terms(p)
         val prot = terms.protect(text)
         l.translate(prot.text)
             .addOnSuccessListener { out ->
+                if (closed) return@addOnSuccessListener
                 val (r, lost) = terms.restore(out, prot)
                 if (prot.tokens.isEmpty() || lost == 0) done(r, deliveryOf(text, r))
                 else {
                     // bộ dịch làm mất mã giữ chỗ: dịch lại nguyên câu rồi sửa tên theo từ điển
                     l.translate(text)
-                        .addOnSuccessListener { o2 -> val f = terms.fixOutput(o2); done(f, deliveryOf(text, f)) }
-                        .addOnFailureListener { done(text, null) }
+                        .addOnSuccessListener { o2 ->
+                            if (!closed) { val f = terms.fixOutput(o2); done(f, deliveryOf(text, f)) }
+                        }
+                        .addOnFailureListener { if (!closed) done(text, null) }
                 }
             }
-            .addOnFailureListener { done(text, null) }
+            .addOnFailureListener { if (!closed) done(text, null) }
     }
 
     private fun warn(m: String) {
-        if (warned) return
+        if (closed || warned) return
         warned = true
-        main.post { Toast.makeText(ctx.applicationContext, m, Toast.LENGTH_LONG).show() }
+        main.post {
+            if (!closed) Toast.makeText(ctx.applicationContext, m, Toast.LENGTH_LONG).show()
+        }
     }
 
     fun close() {
