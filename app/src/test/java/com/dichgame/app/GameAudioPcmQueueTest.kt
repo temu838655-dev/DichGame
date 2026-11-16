@@ -11,6 +11,7 @@ class GameAudioPcmQueueTest {
         input[0] = 99
 
         val chunk = queue.poll()!!
+        assertEquals(0L, chunk.sequence)
         assertArrayEquals(shortArrayOf(1, 2, 3, 4), chunk.samples)
         assertEquals(2, chunk.frameCount)
         assertEquals(48_000, chunk.sampleRate)
@@ -24,25 +25,46 @@ class GameAudioPcmQueueTest {
         assertTrue(queue.offer(shortArrayOf(5, 6), 48_000, 1))
 
         assertEquals(1L, queue.droppedChunks())
-        assertArrayEquals(shortArrayOf(3, 4), queue.poll()!!.samples)
-        assertArrayEquals(shortArrayOf(5, 6), queue.poll()!!.samples)
+        val second = queue.poll()!!
+        val third = queue.poll()!!
+        assertEquals(1L, second.sequence)
+        assertEquals(2L, third.sequence)
+        assertArrayEquals(shortArrayOf(3, 4), second.samples)
+        assertArrayEquals(shortArrayOf(5, 6), third.samples)
         assertNull(queue.poll())
     }
 
-    @Test fun rejectsInvalidFramesAndClosedQueue() {
+    @Test fun rejectsInvalidFramesWithoutConsumingSequenceNumbers() {
         val queue = GameAudioPcmQueue(2)
         assertFalse(queue.offer(shortArrayOf(1), 48_000, 2))
         assertFalse(queue.offer(shortArrayOf(1, 2), 0, 1))
         assertFalse(queue.offer(shortArrayOf(1, 2), 48_000, 3))
-        queue.close()
-        assertFalse(queue.offer(shortArrayOf(1, 2), 48_000, 1))
-        assertNull(queue.poll())
+
+        assertTrue(queue.offer(shortArrayOf(3, 4), 48_000, 1))
+        assertEquals(0L, queue.poll()!!.sequence)
     }
 
-    @Test fun clearRemovesStaleAudio() {
+    @Test fun clearRemovesStaleAudioButKeepsSequenceMonotonic() {
         val queue = GameAudioPcmQueue(2)
         assertTrue(queue.offer(shortArrayOf(1, 2), 48_000, 1))
+        assertEquals(0L, queue.poll()!!.sequence)
+        assertTrue(queue.offer(shortArrayOf(3, 4), 48_000, 1))
+
         queue.clear()
+
+        assertNull(queue.poll())
+        assertEquals(0L, queue.droppedChunks())
+        assertTrue(queue.offer(shortArrayOf(5, 6), 48_000, 1))
+        assertEquals(2L, queue.poll()!!.sequence)
+    }
+
+    @Test fun closeClearsQueueAndRejectsFutureAudio() {
+        val queue = GameAudioPcmQueue(2)
+        assertTrue(queue.offer(shortArrayOf(1, 2), 48_000, 1))
+
+        queue.close()
+
+        assertFalse(queue.offer(shortArrayOf(3, 4), 48_000, 1))
         assertNull(queue.poll())
         assertEquals(0L, queue.droppedChunks())
     }

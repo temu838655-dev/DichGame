@@ -67,6 +67,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     // PCM game audio is handed off through a bounded queue; the native callback never waits.
     private var gameAudioPcmQueue: GameAudioPcmQueue? = null
     private var gameAudioAsrWorker: GameAudioAsrWorker? = null
+    private var whisperSetupHintShown = false
     private var gen = 0
     private var surface: Surface? = null
     // SurfaceView có thể bị thay khi xoay màn hình; chỉ holder hiện tại được phép điều khiển surface. 
@@ -470,6 +471,13 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 )
                 gameAudioAsrWorker = worker
                 worker.start()
+            } else if (!whisperSetupHintShown) {
+                whisperSetupHintShown = true
+                Toast.makeText(
+                    this,
+                    "Âm thanh game đã kết nối, nhưng chưa có model Whisper (~104 MB). OCR vẫn hoạt động; vào Cài đặt để tải model và bật nhận dạng lời thoại.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
             surface?.let { s.setSurface(it) }
             push()
@@ -581,10 +589,14 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         val asrWorker = gameAudioAsrWorker
         gameAudioAsrWorker = null
         Thread {
-            // Chiaki callback is detached above; drain ASR before stopping native audio.
-            try { asrWorker?.stopAndJoin(10_000L) } catch (_: Throwable) {}
+            // Detaching the callback prevents future delivery, but a JNI callback may
+            // already be in flight. Stop and join Chiaki first so no producer can enqueue
+            // PCM after the ASR worker has finished draining the queue.
             try { s.stop() } catch (_: Throwable) {}
             try { s.dispose() } catch (_: Throwable) {}
+            // The worker owns copied PCM and may still be decoding a long segment.
+            // Wait off the UI thread, then close the queue only after the final drain.
+            try { asrWorker?.stopAndJoinUntilStopped() } catch (_: Throwable) {}
             try { audioQueue?.close() } catch (_: Throwable) {}
             ui.post {
                 stopping = false

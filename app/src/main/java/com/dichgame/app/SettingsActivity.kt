@@ -59,7 +59,7 @@ class SettingsActivity : Activity() {
         val card = Ui.card(this)
         card.addView(Ui.section(this, "🎧", "Nhận dạng lời thoại bằng âm thanh"))
         val directory = java.io.File(filesDir, "whisper-tiny")
-        val files = listOf("encoder.onnx", "decoder.onnx", "tokens.txt").map { java.io.File(directory, it) }
+        val files = WhisperTinyModelInstaller.assets().map { java.io.File(directory, it.localName) }
         val installed = WhisperTinyModelInstaller(directory).isInstalled()
         val status = Ui.tv(
             this,
@@ -71,16 +71,30 @@ class SettingsActivity : Activity() {
         card.addView(status, Ui.lpm(this, 0, 8))
         card.addView(Ui.tv(
             this,
-            "Khi được tích hợp vào phiên chơi, app sẽ nhận dạng lời thoại từ âm thanh đã giải mã của PS Remote Play để bổ sung cho OCR. Xử lý trên máy, không dùng micro.",
+            "Khi đã tải model và bật Dịch game trong phiên Remote Play, app tự nghe âm thanh game để bổ sung cho OCR khi chữ khó đọc hoặc bị bỏ sót. Xử lý trên máy, không dùng micro.",
             12.5f,
             Ui.SUB
         ), Ui.lpm(this, 0, 10))
+
+        val vadInstalled = SileroVadModelInstaller(directory).isInstalled()
+        card.addView(Ui.tv(
+            this,
+            if (vadInstalled) "✔ Bộ lọc Silero VAD đã cài: giúp giảm nhận nhầm nhạc và hiệu ứng thành lời thoại."
+            else "Bộ lọc Silero VAD chưa cài. Whisper vẫn hoạt động bằng bộ tách âm hiện tại; cài thêm 0,6 MB để lọc giọng nói tốt hơn.",
+            12.5f,
+            if (vadInstalled) Ui.OK else Ui.SUB
+        ), Ui.lpm(this, 0, 8))
+        if (!vadInstalled) {
+            card.addView(Ui.button(this, "⬇  Tải bộ lọc giọng nói Silero (0,6 MB)") {
+                downloadSileroVadModel()
+            }, Ui.lpm(this, 0, 6, WRAP_CONTENT))
+        }
 
         if (installed) {
             card.addView(Ui.button(this, "Xóa model Whisper khỏi máy") {
                 AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                     .setTitle("Xóa model nhận dạng?")
-                    .setMessage("Bạn cần tải lại khoảng 104 MB nếu muốn dùng nhận dạng lời thoại bằng âm thanh.")
+                    .setMessage("Bạn cần tải lại khoảng 104 MB nếu muốn dùng nhận dạng lời thoại bằng âm thanh. Bộ lọc Silero VAD đã cài sẽ được giữ nguyên.")
                     .setPositiveButton("Xóa") { _, _ ->
                         files.forEach { runCatching { it.delete() } }
                         render()
@@ -134,6 +148,50 @@ class SettingsActivity : Activity() {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (resultError == null) {
                     Toast.makeText(this, "Đã cài model Whisper Tiny đa ngôn ngữ.", Toast.LENGTH_LONG).show()
+                    render()
+                } else {
+                    Toast.makeText(this, resultError, Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun downloadSileroVadModel() {
+        val directory = java.io.File(filesDir, "whisper-tiny")
+        val installer = SileroVadModelInstaller(directory)
+        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100 }
+        val message = Ui.tv(this, "Chuẩn bị tải bộ lọc giọng nói...", 13f, Ui.TEXT)
+        val box = Ui.vbox(this)
+        val pad = Ui.dp(this, 20)
+        box.setPadding(pad, pad, pad, pad / 2)
+        box.addView(message, Ui.lpm(this, 0, 8))
+        box.addView(progress, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Cài bộ lọc giọng nói")
+            .setView(box)
+            .setCancelable(false)
+            .setNegativeButton("Hủy") { _, _ -> installer.cancel() }
+            .create()
+        dialog.show()
+        Thread {
+            var error: String? = null
+            try {
+                installer.install { downloaded, total ->
+                    val percent = (downloaded * 100L / total).toInt().coerceIn(0, 100)
+                    runOnUiThread {
+                        progress.progress = percent
+                        message.text = "Đang tải Silero VAD: $percent%"
+                    }
+                }
+            } catch (e: Throwable) {
+                error = e.message ?: "Không tải được bộ lọc giọng nói."
+            }
+            val resultError = error
+            runOnUiThread {
+                runCatching { dialog.dismiss() }
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (resultError == null) {
+                    Toast.makeText(this, "Đã cài bộ lọc Silero VAD.", Toast.LENGTH_LONG).show()
                     render()
                 } else {
                     Toast.makeText(this, resultError, Toast.LENGTH_LONG).show()

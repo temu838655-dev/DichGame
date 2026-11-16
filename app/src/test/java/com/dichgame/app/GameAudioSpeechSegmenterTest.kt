@@ -41,6 +41,15 @@ class GameAudioSpeechSegmenterTest {
     }
 
     @Test
+    fun retainsQuietDialogueBelowPreviousEnergyThreshold() {
+        val vad = GameAudioSpeechSegmenter()
+        repeat(10) { vad.accept(chunk(it.toLong(), 250)) } // RMS ~0.0076
+        val segment = vad.flush()
+        assertTrue(segment != null)
+        assertEquals(200L, segment!!.durationMs)
+    }
+
+    @Test
     fun flushesSpeechAtSessionEnd() {
         val vad = GameAudioSpeechSegmenter()
         repeat(10) { vad.accept(chunk(it.toLong(), 6_000)) }
@@ -48,6 +57,53 @@ class GameAudioSpeechSegmenterTest {
         assertTrue(segment != null)
         assertEquals(200L, segment!!.durationMs)
         assertEquals(null, vad.flush())
+    }
+
+    @Test
+    fun splitsContinuousSpeechBeforeWhisperWindowLimit() {
+        val vad = GameAudioSpeechSegmenter(maxSegmentMs = 1_000L)
+        var sequence = 0L
+        var first: GameAudioSpeechSegmenter.Segment? = null
+        repeat(10) {
+            val emitted = vad.accept(chunk(sequence++, 6_000, durationMs = 100))
+            if (emitted.isNotEmpty()) first = emitted.single()
+        }
+
+        assertTrue(first != null)
+        assertEquals(1_000L, first!!.durationMs)
+
+        repeat(3) {
+            assertTrue(vad.accept(chunk(sequence++, 6_000, durationMs = 100)).isEmpty())
+        }
+        val remainder = vad.flush()
+        assertTrue(remainder != null)
+        // The next segment deliberately repeats the final 200 ms to protect boundary phonemes.
+        assertEquals(500L, remainder!!.durationMs)
+    }
+
+    @Test
+    fun overlapsLastVoicedFramesWhenSplittingLongSpeech() {
+        val vad = GameAudioSpeechSegmenter(maxSegmentMs = 400L)
+        val values = listOf<Short>(1_000, 2_000, 3_000, 4_000)
+        var first: GameAudioSpeechSegmenter.Segment? = null
+        values.forEachIndexed { index, value ->
+            val frame = ShortArray(1_600) { value } // 100 ms at 16 kHz, mono.
+            val emitted = vad.accept(GameAudioPcmQueue.Chunk(index.toLong(), 16_000, 1, frame))
+            if (emitted.isNotEmpty()) first = emitted.single()
+        }
+
+        assertTrue(first != null)
+        assertEquals(400L, first!!.durationMs)
+
+        val nextFrame = ShortArray(1_600) { 5_000 }
+        assertTrue(vad.accept(GameAudioPcmQueue.Chunk(4L, 16_000, 1, nextFrame)).isEmpty())
+        val second = vad.flush()
+        assertTrue(second != null)
+        assertEquals(300L, second!!.durationMs)
+        assertEquals(4_800, second.samples.size)
+        assertEquals(3_000.toShort(), second.samples.first())
+        assertEquals(4_000.toShort(), second.samples[1_600])
+        assertEquals(5_000.toShort(), second.samples[3_200])
     }
 
     @Test
@@ -60,4 +116,39 @@ class GameAudioSpeechSegmenterTest {
         assertEquals(16_000, emitted.single().sampleRate)
         assertFalse(vad.flush() != null)
     }
+
+    @Test
+    fun rejectsZeroSilenceHangover() {
+        val error = runCatching {
+            GameAudioSpeechSegmenter(silenceMs = 0L)
+        }.exceptionOrNull()
+        assertTrue(error is IllegalArgumentException)
+    }
+
+    @Test
+    fun rejectsSplitOverlapAtOrAboveMaximumSegmentDuration() {
+        val error = runCatching {
+            GameAudioSpeechSegmenter(maxSegmentMs = 200L, splitOverlapMs = 200L)
+        }.exceptionOrNull()
+        assertTrue(error is IllegalArgumentException)
+    }
+    @Test
+    fun splitsOversizedPcmCallbackIntoBoundedSpeechSegments() {
+        val vad = GameAudioSpeechSegmenter(maxSegmentMs = 500L, splitOverlapMs = 100L)
+        val oversized = GameAudioPcmQueue.Chunk(
+            sequence = 0L,
+            sampleRate = 16_000,
+            channels = 1,
+            samples = ShortArray(16_000 * 3) { 6_000 }, // One 3-second callback.
+        )
+
+        val emitted = vad.accept(oversized).toMutableList()
+        vad.flush()?.let(emitted::add)
+
+        assertTrue(emitted.size > 1)
+        assertTrue(emitted.all { it.durationMs <= 500L })
+        assertTrue(emitted.all { it.samples.isNotEmpty() })
+        assertTrue(emitted.sumOf { it.durationMs } >= 3_000L)
+    }
+
 }

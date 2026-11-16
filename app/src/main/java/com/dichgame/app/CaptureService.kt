@@ -81,10 +81,17 @@ class CaptureService : Service() {
     private var speak = false
     private var ready = false
     private var busy = false
-    private val pendingAudioTranscripts = java.util.ArrayDeque<String>()
-    private val maxPendingAudioTranscripts = 6
+    private val pendingAudioTranscripts = PendingAudioTranscriptQueue()
+    private var audioQueueFullWarnAtMs = 0L
     private var running = false
+    // Invalidates delayed overlay clears when a newer subtitle is displayed.
+    private var overlayRevision = 0L
     private var last = ""
+    // Keep OCR provenance separate from ASR so partial-overlap suppression is time-bounded.
+    private var lastOcrTranscript = ""
+    private var lastOcrTranscriptAtMs = 0L
+    private var lastAudioTranscript = ""
+    private var lastAudioTranscriptAtMs = 0L
     private var cw = 0
     private var ch = 0
     private var editing = true
@@ -180,6 +187,7 @@ class CaptureService : Service() {
         tt = tr
         if (narrate) ready = true else show("Đang tải mô hình dịch (lần đầu, cần mạng)...")
         if (!narrate) tr.prepare { ok ->
+            if (!running) return@prepare
             if (ok) { ready = true; if (!editing) show(""); drainPendingAudioTranscript() }
             else show("Không tải được mô hình dịch. Kiểm tra mạng rồi bấm Dừng và chạy lại.")
         }
@@ -253,7 +261,7 @@ class CaptureService : Service() {
     /** Lỗi lấy khung hình chỉ bỏ qua lượt quét hiện tại, không làm chết vòng lặp OCR. */
     private fun reportFrameError() {
         finishBusy()
-        val now = System.currentTimeMillis()
+        val now = android.os.SystemClock.elapsedRealtime()
         if (now - frameErrAt > 8000) {
             frameErrAt = now
             show("Không lấy được khung hình để đọc chữ. Đang tự thử lại…")
@@ -299,6 +307,7 @@ class CaptureService : Service() {
         busy = true
         val skip = listOfNotNull(rectOf(frame), rectOf(overlay))
         ocr!!.read(bmp, { m -> ocrFail(m) }) { r ->
+                if (!running) return@read
                 val blocks = r.filter { b ->
                     val bb = b.box
                     b.text.length >= longLen && (bb == null || skip.none { it.contains(bb.centerX(), bb.centerY()) })
@@ -319,6 +328,7 @@ class CaptureService : Service() {
                         parts[i] = vi
                         if (--left == 0) {
                             val j = parts.joinToString("\n\n")
+                            overlayRevision++
                             overlay?.apply { text = j; visibility = View.VISIBLE }
                             sendTv("region", j)
                             autoShown = true
@@ -340,15 +350,38 @@ class CaptureService : Service() {
         if (!running || editing || narrate) return
         val text = raw.replace(Regex("\\s+"), " ").trim()
         val key = normalizeTranscript(text)
-        if (key.isEmpty() || key == normalizeTranscript(last) || key == normalizeTranscript(cand) ||
-            pendingAudioTranscripts.any { normalizeTranscript(it) == key }
+        // Use the monotonic clock for both ASR queue age and OCR/ASR overlap windows.
+        // Wall-clock adjustments must not extend or prematurely expire a dialogue match.
+        val nowElapsedMs = android.os.SystemClock.elapsedRealtime()
+        val receivedAtMs = nowElapsedMs
+        val overlapsRecentOcr = GameTranscriptDeduplicator.overlapsRecentOcr(
+            text, lastOcrTranscript, lastOcrTranscriptAtMs, nowElapsedMs
+        )
+        val repeatsRecentOcr = GameTranscriptDeduplicator.isRecentExactMatch(
+            text, lastOcrTranscript, lastOcrTranscriptAtMs, nowElapsedMs
+        )
+        val repeatsRecentAudio = GameTranscriptDeduplicator.isRecentExactMatch(
+            text, lastAudioTranscript, lastAudioTranscriptAtMs, nowElapsedMs
+        )
+        if (key.isEmpty() || repeatsRecentOcr || repeatsRecentAudio || overlapsRecentOcr ||
+            pendingAudioTranscripts.contains(text)
         ) return
 
         if (!ready || busy) {
-            if (pendingAudioTranscripts.size >= maxPendingAudioTranscripts) {
-                pendingAudioTranscripts.removeFirst()
+            // Keep older dialogue in FIFO order; reject this newest line if full.
+            val accepted = pendingAudioTranscripts.offer(text, receivedAtMs)
+            if (accepted) {
+                lastAudioTranscript = text
+                lastAudioTranscriptAtMs = nowElapsedMs
             }
-            pendingAudioTranscripts.addLast(text)
+            if (!accepted && (audioQueueFullWarnAtMs == 0L || nowElapsedMs - audioQueueFullWarnAtMs >= 5_000L)) {
+                audioQueueFullWarnAtMs = nowElapsedMs
+                android.widget.Toast.makeText(
+                    applicationContext,
+                    "Hàng đợi thoại đã đầy; câu thoại mới này chưa được nhận. Hãy chờ dịch xong.",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
             return
         }
         translateAudioTranscript(text)
@@ -358,6 +391,8 @@ class CaptureService : Service() {
         if (!running || !ready || editing || narrate || busy) return
         last = text
         cand = text
+        lastAudioTranscript = text
+        lastAudioTranscriptAtMs = android.os.SystemClock.elapsedRealtime()
         stable = needStable
         busy = true
         translateTextEx(text) { vi, delivery ->
@@ -377,9 +412,21 @@ class CaptureService : Service() {
     private fun drainPendingAudioTranscript() {
         if (!running || !ready || editing || narrate || busy) return
         while (pendingAudioTranscripts.isNotEmpty()) {
-            val next = pendingAudioTranscripts.removeFirst()
+            // Polling also removes expired lines, using the same monotonic clock.
+            val nowElapsedMs = android.os.SystemClock.elapsedRealtime()
+            val pending = pendingAudioTranscripts.pollFresh(nowElapsedMs) ?: break
+            val next = pending.text
             val key = normalizeTranscript(next)
-            if (key.isNotEmpty() && key != normalizeTranscript(last) && key != normalizeTranscript(cand)) {
+            val overlapsRecentOcr = GameTranscriptDeduplicator.overlapsRecentOcr(
+                next, lastOcrTranscript, lastOcrTranscriptAtMs, nowElapsedMs
+            )
+            val repeatsRecentOcr = GameTranscriptDeduplicator.isRecentExactMatch(
+                next, lastOcrTranscript, lastOcrTranscriptAtMs, nowElapsedMs
+            )
+            // Exact ASR repeats are already time-filtered when accepted. Do not
+            // compare against the long-lived OCR stability fields (last/cand):
+            // that would suppress legitimate repeated dialogue indefinitely.
+            if (key.isNotEmpty() && !overlapsRecentOcr && !repeatsRecentOcr) {
                 translateAudioTranscript(next)
                 return
             }
@@ -388,6 +435,7 @@ class CaptureService : Service() {
 
     /** Lỗi đọc chữ: mở khóa để quét lại, chỉ hiện thông báo lỗi của Gemini (không báo lỗi đọc trên máy), tối đa 8 giây một lần. */
     private fun ocrFail(m: String) {
+        if (!running) return
         finishBusy()
         lastSig = null
         overlay?.let { if (it.visibility != View.VISIBLE) it.visibility = View.VISIBLE }
@@ -502,6 +550,7 @@ class CaptureService : Service() {
             return
         }
         reader.read(crop, { m -> ocrFail(m) }) { r ->
+            if (!running) return@read
             val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
             if (text.length < minLen) { show("Không thấy chữ trong khung."); finishBusy(); return@read }
             translateText(text) { vi ->
@@ -516,12 +565,14 @@ class CaptureService : Service() {
     /** Dịch bằng AI nếu đã bật (CloudAPI / Gemini, có nhớ vài câu trước), lỗi thì quay về dịch trên máy. */
     private fun translateText(text: String, done: (String) -> Unit) {
         val t = tt
-        if (t == null) done(text) else t.translate(text, done)
+        val guardedDone: (String) -> Unit = { result -> if (running) done(result) }
+        if (t == null) guardedDone(text) else t.translate(text, guardedDone)
     }
 
     private fun translateTextEx(text: String, done: (String, Delivery?) -> Unit) {
         val t = tt
-        if (t == null) done(text, null) else t.translateEx(text, done)
+        val guardedDone: (String, Delivery?) -> Unit = { result, delivery -> if (running) done(result, delivery) }
+        if (t == null) guardedDone(text, null) else t.translateEx(text, guardedDone)
     }
 
     private fun tvSpeakOn(): Boolean {
@@ -593,6 +644,7 @@ class CaptureService : Service() {
         if (pr.emoTr && pr.emoLabel && d != null && d.label.isNotEmpty()) add("● " + d.label, 0.62f, d.mood.color)
         add(vi, 1.15f, fg)
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
+        overlayRevision++
         overlay?.apply { text = sb; visibility = View.VISIBLE }
         sendTv("sub", vi, speak && tvSpeakOn() && !tvVoiceOn())
         if (speak && tvVoiceOn()) tvVoice(vi, d)
@@ -646,11 +698,15 @@ class CaptureService : Service() {
             return
         }
         reader.read(bmp, { m -> ocrFail(m) }) { r ->
+            if (!running) return@read
             val blocks = r.map { it.text.replace("\n", sep).trim() }.filter { it.length >= longLen }.take(4)
             if (blocks.isEmpty()) {
                 menuUntil = System.currentTimeMillis() + 3000
                 show("Không thấy đoạn chữ dài nào để dịch.")
-                handler.postDelayed({ if (!editing) show("") }, 3000)
+                val clearRevision = overlayRevision
+                handler.postDelayed({
+                    if (running && !editing && overlayRevision == clearRevision) show("")
+                }, 3000)
                 finishBusy()
                 return@read
             }
@@ -663,10 +719,13 @@ class CaptureService : Service() {
                         menuUntil = System.currentTimeMillis() + 15000
                         val translated = parts.joinToString("\n\n")
                         show(translated)
+                        val clearRevision = overlayRevision
                         sendTv("region", translated)
                         finishBusy()
                         handler.postDelayed({
-                            if (!editing && System.currentTimeMillis() >= menuUntil) show("")
+                            if (running && !editing && overlayRevision == clearRevision &&
+                                System.currentTimeMillis() >= menuUntil
+                            ) show("")
                         }, 15000)
                     }
                 }
@@ -773,6 +832,7 @@ class CaptureService : Service() {
     }
 
     private fun show(t: String) {
+        overlayRevision++
         if (t.isEmpty()) sendTv("clear", "")
         overlay?.apply { text = t; visibility = if (t.isEmpty()) View.GONE else View.VISIBLE }
         if (t.isNotEmpty() && speak && ready && !editing && !tvSpeakOn()) speaker?.speak(t)
@@ -841,9 +901,14 @@ class CaptureService : Service() {
         }
         busy = true
         o.read(crop, { m -> ocrFail(m) }) { r ->
+                if (!running) return@read
                 val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
-                if (text.isEmpty()) { last = ""; cand = ""; stable = 0; if (!autoShown) show(""); finishBusy(); return@read }
-                if (text == last) { finishBusy(); return@read }
+                if (text.isEmpty()) { last = ""; cand = ""; lastOcrTranscript = ""; lastOcrTranscriptAtMs = 0L; stable = 0; if (!autoShown) show(""); finishBusy(); return@read }
+                if (text == last) {
+                    if (text == lastOcrTranscript) lastOcrTranscriptAtMs = android.os.SystemClock.elapsedRealtime()
+                    finishBusy()
+                    return@read
+                }
                 if (text != cand) { cand = text; stable = 1 } else stable++
                 // Câu rất ngắn như "No", "Go", "OK" dễ bị bộ lọc độ dài bỏ qua.
                 // Cho phép 1–2 ký tự nhưng yêu cầu lặp lại qua nhiều khung hình để giảm OCR rác.
@@ -854,6 +919,8 @@ class CaptureService : Service() {
                 }
                 if (stable < requiredStable) { finishBusy(); return@read }
                 last = text
+                lastOcrTranscript = text
+                lastOcrTranscriptAtMs = android.os.SystemClock.elapsedRealtime()
                 if (narrate) { showSub("", text); finishBusy(); return@read }
                 translateTextEx(text) { vi, d -> showSub(text, vi, d); finishBusy() }
             }

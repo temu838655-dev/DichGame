@@ -34,8 +34,11 @@ class GameAudioAsrWorkerTest {
         assertTrue(worker.start())
         assertFalse(worker.start())
         repeat(10) { queue.offer(ShortArray(320) { 6_000 }, 16_000, 1) }
-        assertTrue(transcriptLatch.await(2, TimeUnit.SECONDS))
+
+        // A continuous voiced segment is emitted only when stop flushes the segmenter.
+        // Wait for the worker to drain and flush before expecting a transcript.
         assertTrue(worker.stopAndJoin())
+        assertTrue(transcriptLatch.await(2, TimeUnit.SECONDS))
         queue.close()
 
         synchronized(transcripts) { assertEquals(listOf("short line"), transcripts) }
@@ -61,4 +64,44 @@ class GameAudioAsrWorkerTest {
         queue.close()
         assertTrue(message.contains("model missing"))
     }
+    @Test
+    fun stopWaitsForInFlightRecognitionBeforeReturning() {
+        val queue = GameAudioPcmQueue()
+        val recognitionStarted = CountDownLatch(1)
+        val allowRecognitionToFinish = CountDownLatch(1)
+        val stopReturned = CountDownLatch(1)
+        val worker = GameAudioAsrWorker(
+            queue = queue,
+            modelDirectory = File("unused-test-model"),
+            onTranscript = {},
+            onError = {},
+            engineFactory = { _, _ ->
+                object : GameAudioTranscriber {
+                    override fun transcribe(samples: ShortArray, sampleRate: Int, channels: Int): String {
+                        recognitionStarted.countDown()
+                        assertTrue(allowRecognitionToFinish.await(2, TimeUnit.SECONDS))
+                        return "final line"
+                    }
+                    override fun close() {}
+                }
+            },
+        )
+
+        assertTrue(worker.start())
+        repeat(10) { queue.offer(ShortArray(320) { 6_000 }, 16_000, 1) }
+        val stopper = Thread {
+            worker.stopAndJoinUntilStopped()
+            stopReturned.countDown()
+        }
+        stopper.start()
+
+        assertTrue(recognitionStarted.await(2, TimeUnit.SECONDS))
+        // The worker is still inside Whisper: teardown must not proceed to close its queue.
+        assertEquals(1L, stopReturned.count)
+        allowRecognitionToFinish.countDown()
+        assertTrue(stopReturned.await(2, TimeUnit.SECONDS))
+        stopper.join(2_000L)
+        queue.close()
+    }
+
 }

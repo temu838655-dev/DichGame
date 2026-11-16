@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import java.util.concurrent.atomic.AtomicBoolean
 import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.TranslateRemoteModel
@@ -17,8 +18,8 @@ import com.google.mlkit.nl.translate.TranslatorOptions
  */
 class TextTranslator(private val ctx: Context, private val p: Prefs, private val lang: String) {
     private val main = Handler(Looper.getMainLooper())
-    private val history = ArrayList<String>()
-    private var warned = false
+    private val history = TranslationContextHistory()
+    private val warned = AtomicBoolean(false)
     @Volatile private var closed = false
 
     private val local: Translator? = if (lang == "vi") null else Translation.getClient(
@@ -78,11 +79,12 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
 
     /** Tải mô hình dịch trên máy (lần đầu cần mạng). */
     fun prepare(onDone: (Boolean) -> Unit) {
+        if (closed) return
         val l = local
-        if (l == null) { onDone(true); return }
+        if (l == null) { if (!closed) onDone(true); return }
         l.downloadModelIfNeeded()
-            .addOnSuccessListener { onDone(true) }
-            .addOnFailureListener { onDone(false) }
+            .addOnSuccessListener { if (!closed) onDone(true) }
+            .addOnFailureListener { if (!closed) onDone(false) }
     }
 
     fun translate(text: String, done: (String) -> Unit) = translateEx(text) { vi, _ -> done(vi) }
@@ -93,9 +95,9 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      * [done] nhận bản dịch và cách đọc (cảm xúc, nhịp) nếu có.
      */
     fun translateEx(text: String, done: (String, Delivery?) -> Unit) {
-        val hist = history.takeLast(p.ctxCount)
-        history.add(text)
-        while (history.size > 10) history.removeAt(0)
+        if (closed) return
+        // Capture preceding dialogue and append this line atomically.
+        val hist = history.appendAndSnapshot(text, p.ctxCount)
         PackStore.memory(ctx, p).lookup(text)?.let { done(it, null); return }
         if (!Ai.enabled(p)) { translateLocal(text, done); return }
         val terms = PackStore.terms(p)
@@ -129,28 +131,33 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         if (p.emoTr) Emo.detect(text, vi, Cast.speakerOf(text, PackStore.cast(p))?.pace) else null
 
     private fun translateLocal(text: String, done: (String, Delivery?) -> Unit) {
+        if (closed) return
         val l = local
         if (l == null) { done(text, null); return }
         val terms = PackStore.terms(p)
         val prot = terms.protect(text)
         l.translate(prot.text)
             .addOnSuccessListener { out ->
+                if (closed) return@addOnSuccessListener
                 val (r, lost) = terms.restore(out, prot)
                 if (prot.tokens.isEmpty() || lost == 0) done(r, deliveryOf(text, r))
                 else {
                     // bộ dịch làm mất mã giữ chỗ: dịch lại nguyên câu rồi sửa tên theo từ điển
                     l.translate(text)
-                        .addOnSuccessListener { o2 -> val f = terms.fixOutput(o2); done(f, deliveryOf(text, f)) }
-                        .addOnFailureListener { done(text, null) }
+                        .addOnSuccessListener { o2 ->
+                            if (!closed) { val f = terms.fixOutput(o2); done(f, deliveryOf(text, f)) }
+                        }
+                        .addOnFailureListener { if (!closed) done(text, null) }
                 }
             }
-            .addOnFailureListener { done(text, null) }
+            .addOnFailureListener { if (!closed) done(text, null) }
     }
 
     private fun warn(m: String) {
-        if (warned) return
-        warned = true
-        main.post { Toast.makeText(ctx.applicationContext, m, Toast.LENGTH_LONG).show() }
+        if (closed || !warned.compareAndSet(false, true)) return
+        main.post {
+            if (!closed) Toast.makeText(ctx.applicationContext, m, Toast.LENGTH_LONG).show()
+        }
     }
 
     fun close() {
