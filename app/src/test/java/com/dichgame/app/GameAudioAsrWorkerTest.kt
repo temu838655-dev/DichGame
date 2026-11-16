@@ -104,4 +104,48 @@ class GameAudioAsrWorkerTest {
         queue.close()
     }
 
+
+    @Test
+    fun interruptedTeardownStillWaitsAndRestoresInterruptFlag() {
+        val queue = GameAudioPcmQueue()
+        val recognitionStarted = CountDownLatch(1)
+        val allowRecognitionToFinish = CountDownLatch(1)
+        val stopReturned = CountDownLatch(1)
+        val interruptRestored = java.util.concurrent.atomic.AtomicBoolean(false)
+        val worker = GameAudioAsrWorker(
+            queue = queue,
+            modelDirectory = File("unused-test-model"),
+            onTranscript = {},
+            onError = {},
+            engineFactory = { _, _ ->
+                object : GameAudioTranscriber {
+                    override fun transcribe(samples: ShortArray, sampleRate: Int, channels: Int): String {
+                        recognitionStarted.countDown()
+                        assertTrue(allowRecognitionToFinish.await(2, TimeUnit.SECONDS))
+                        return "final line"
+                    }
+                    override fun close() {}
+                }
+            },
+        )
+
+        assertTrue(worker.start())
+        repeat(10) { queue.offer(ShortArray(320) { 6_000 }, 16_000, 1) }
+        assertTrue(recognitionStarted.await(2, TimeUnit.SECONDS))
+        val stopper = Thread {
+            worker.stopAndJoinUntilStopped()
+            interruptRestored.set(Thread.currentThread().isInterrupted)
+            stopReturned.countDown()
+        }
+        stopper.start()
+        stopper.interrupt()
+
+        assertEquals(1L, stopReturned.count)
+        allowRecognitionToFinish.countDown()
+        assertTrue(stopReturned.await(2, TimeUnit.SECONDS))
+        stopper.join(2_000L)
+        assertTrue(interruptRestored.get())
+        queue.close()
+    }
+
 }
