@@ -39,6 +39,29 @@ class TranslationContextHistoryTest {
     }
 
     @Test
+    fun clampsRequestedContextToConfiguredCapacity() {
+        val history = TranslationContextHistory(capacity = 3)
+        history.appendAndSnapshot("A", 3)
+        history.appendAndSnapshot("B", 3)
+        history.appendAndSnapshot("C", 3)
+
+        assertEquals(listOf("A", "B", "C"), history.appendAndSnapshot("D", 99))
+    }
+
+    @Test
+    fun negativeContextCountProducesEmptySnapshot() {
+        val history = TranslationContextHistory()
+        history.appendAndSnapshot("Earlier line", 3)
+
+        assertEquals(emptyList<String>(), history.appendAndSnapshot("Current line", -1))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsNonPositiveCapacity() {
+        TranslationContextHistory(capacity = 0)
+    }
+
+    @Test
     fun concurrentUpdatesKeepSnapshotsConsistentAndBounded() {
         val history = TranslationContextHistory()
         val workers = 8
