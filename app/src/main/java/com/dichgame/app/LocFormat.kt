@@ -30,6 +30,7 @@ object LocFormat {
             ext == "srt" || Regex("(?m)^\\s*\\d{1,2}:\\d{2}:\\d{2}[,.]\\d{1,3}\\s*-->").containsMatchIn(raw) -> fromSrt(raw)
             ext == "xml" || ext == "resx" || t.startsWith("<?xml") || t.startsWith("<resources") || t.startsWith("<root") -> fromXml(raw)
             ext == "strings" || looksLikeStrings(raw) -> fromStrings(raw)
+            ext == "yml" || ext == "yaml" || Regex("(?m)\\A(?:\\s*#.*\\n)*\\s*l_[a-z_]+:\\s*$").containsMatchIn(raw) -> fromYaml(raw)
             ext == "csv" || ext == "tsv" -> fromCsv(raw)
             else -> fromProps(raw) ?: fromLines(raw)
         }
@@ -122,7 +123,7 @@ object LocFormat {
         return if (out.size < 2) null else Table(out, "csv")
     }
 
-    private fun csvCells(line: String, d: Char): List<String> {
+    internal fun csvCells(line: String, d: Char): List<String> {
         val cells = ArrayList<String>()
         val sb = StringBuilder()
         var q = false
@@ -140,9 +141,52 @@ object LocFormat {
         return cells
     }
 
+    // ---------------- YAML (Paradox: l_english: rồi KEY:0 "chữ"; Rails i18n lồng nhau) ----------------
+
+    private fun yamlValue(rest: String): String? {
+        val r = rest.trim()
+        if (r.isEmpty()) return null
+        val c = r[0]
+        if (c == '"' || c == '\'') {
+            var i = 1
+            val sb = StringBuilder()
+            while (i < r.length) {
+                val ch = r[i]
+                if (ch == '\\' && c == '"' && i + 1 < r.length) { sb.append(r[i + 1].let { if (it == 'n') '\n' else it }); i += 2; continue }
+                if (ch == c) { if (c == '\'' && i + 1 < r.length && r[i + 1] == '\'') { sb.append('\''); i += 2; continue }; return sb.toString() }
+                sb.append(ch); i++
+            }
+            return null
+        }
+        if (c == '|' || c == '>' || c == '[' || c == '{' || c == '&' || c == '*' || c == '!') return null
+        return r.substringBefore(" #").trim()
+    }
+
+    private fun fromYaml(raw: String): Table? {
+        val rx = Regex("^(\\s*)(\"[^\"]+\"|'[^']+'|[^\\s:#\"'][^:#]*?)\\s*:\\s*(?:\\d+\\s+)?(.*)$")
+        val stack = ArrayList<Pair<Int, String>>()
+        val out = ArrayList<Pair<String, String>>()
+        for (line in raw.lines()) {
+            if (line.isBlank() || line.trimStart().startsWith("#")) continue
+            val m = rx.matchEntire(line.trimEnd()) ?: continue
+            val indent = m.groupValues[1].length
+            val key = m.groupValues[2].trim().trim('"', '\'')
+            val rest = m.groupValues[3]
+            while (stack.isNotEmpty() && stack.last().first >= indent) stack.removeAt(stack.size - 1)
+            if (rest.isBlank()) { stack.add(indent to key); continue }
+            val v = yamlValue(rest) ?: continue
+            // khoá gốc "l_english"/"vi" chỉ là tên ngôn ngữ, bỏ ra khỏi đường dẫn để hai file ngôn ngữ ghép được theo khoá
+            val path = stack.map { it.second }.filterIndexed { i, k -> !(i == 0 && (k.startsWith("l_") || k.length <= 5 && stack.size > 1 && k.all { c -> c.isLetter() || c == '-' || c == '_' } && out.isEmpty().not().or(true) && k.length <= 5 && isLangKey(k))) } + key
+            out.add(path.joinToString(".") to v)
+        }
+        return if (out.isEmpty()) null else Table(out, "yml")
+    }
+
+    private fun isLangKey(k: String) = k.lowercase(Locale.ROOT).replace('_', '-').let { it.length == 2 || Regex("[a-z]{2}-[a-z]{2}").matches(it) }
+
     // ---------------- XML ----------------
 
-    private fun xmlText(s: String): String {
+    internal fun xmlText(s: String): String {
         var t = s.trim()
         if (t.startsWith("<![CDATA[") && t.endsWith("]]>")) t = t.substring(9, t.length - 3)
         t = Regex("<value>(.*?)</value>", RegexOption.DOT_MATCHES_ALL).find(t)?.groupValues?.get(1) ?: t
@@ -234,12 +278,14 @@ object LineClean {
     private val BR = Regex("(?i)<br\\s*/?>|\\\\[nr]|\\r?\\n")
     private val TAG = Regex("</?[A-Za-z][^<>\\n]{0,60}>")
     private val SPACES = Regex("\\s+")
-    private val VAR = Regex("\\{[^{}\\n]{1,40}}|%(?:\\d+\\$)?[sdfi]\\b|\\$\\w+\\$|\\\\[cCnNvVpPiI]\\[\\d+]|\\[\\[[^\\]]+]]|<<[^>]{1,40}>>|@\\{[^}]+}")
+    private val VAR = Regex("\\{[^{}\\n]{1,40}}|%(?:\\d+\\$)?[sdfi]\\b|\\$\\w+\\$|\\\\[cCnNvVpPiI]\\[\\d+]|\\[\\[[^\\]]+]]|\\[[A-Za-z_][\\w.]{0,30}]|<<[^>]{1,40}>>|@\\{[^}]+}")
+    /** Thẻ định dạng chữ (không phải biến số): {b} {i} {w} {color=#f00} của Ren'Py, mã màu §Y và §! của Paradox. */
+    private val FMT = Regex("\\{/?(?:i|b|u|s|w|p|nw|fast|plain|k|a|font|color|size|alpha|cps|rt|rb|image|space|vspace|art|clear|noalt)(?:=[^{}]*)?}|§[A-Za-z0-9!]")
 
     /** Còn chỗ trống phải điền giá trị lúc chạy game (tên người chơi, số lượng...): app không biết giá trị nên không dùng được dòng này. */
-    fun hasVars(s: String): Boolean = VAR.containsMatchIn(s)
+    fun hasVars(s: String): Boolean = VAR.containsMatchIn(s.replace(FMT, ""))
 
-    fun clean(s: String): String = s.replace(BR, " ").replace(TAG, "").replace(SPACES, " ").trim()
+    fun clean(s: String): String = s.replace(BR, " ").replace(TAG, "").replace(FMT, "").replace(SPACES, " ").trim()
 }
 
 /** Bộ đọc JSON tối thiểu (không phụ thuộc thư viện): object, array, chuỗi, số, true/false/null. Lỗi cú pháp thì trả null. */

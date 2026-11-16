@@ -420,13 +420,13 @@ object PackText {
         return String(b, start, b.size - start, cs)
     }
 
-    private fun hasSection(raw: String): Boolean = raw.lineSequence().any { l0 ->
+    internal fun hasSection(raw: String): Boolean = raw.lineSequence().any { l0 ->
         val l = l0.trim()
         l.startsWith("[") && l.endsWith("]") && l.length > 2 && section(l.substring(1, l.length - 1)) != null
     }
 
-    private val SRC_NAMES = setOf("original", "source", "src", "orig", "en", "eng", "english", "text", "msgid", "from", "gốc", "câu gốc", "tiếng anh", "nguồn")
-    private val DST_NAMES = setOf("vi", "vn", "vie", "vietnamese", "translation", "translated", "target", "tgt", "dst", "msgstr", "to", "việt", "dịch", "bản dịch", "tiếng việt", "việt hoá", "việt hóa")
+    internal val SRC = setOf("original", "source", "src", "orig", "en", "eng", "english", "text", "msgid", "from", "gốc", "câu gốc", "tiếng anh", "nguồn")
+    internal val DST = setOf("vi", "vn", "vie", "vietnamese", "translation", "translated", "target", "tgt", "dst", "msgstr", "to", "việt", "dịch", "bản dịch", "tiếng việt", "việt hoá", "việt hóa")
 
     private fun unescape(s: String): String {
         if (!s.contains('\\')) return s
@@ -474,8 +474,8 @@ object PackText {
             for (m in kv.findAll(o.groupValues[1])) {
                 val k = unescape(m.groupValues[1]).trim().lowercase(Locale.ROOT)
                 val v = unescape(m.groupValues[2]).trim()
-                if (k in SRC_NAMES && src == null) src = v
-                if (k in DST_NAMES && dst == null) dst = v
+                if (k in SRC && src == null) src = v
+                if (k in DST && dst == null) dst = v
             }
             if (!src.isNullOrEmpty() && !dst.isNullOrEmpty()) out.add(src to dst)
         }
@@ -548,8 +548,8 @@ object PackText {
         var di = 1
         var from = 0
         val head = csvRow(rows[0], d).map { it.trim().lowercase(Locale.ROOT) }
-        val hs = head.indexOfFirst { it in SRC_NAMES }
-        val hd = head.indexOfFirst { it in DST_NAMES }
+        val hs = head.indexOfFirst { it in SRC }
+        val hd = head.indexOfFirst { it in DST }
         if (hs >= 0 && hd >= 0 && hs != hd) { si = hs; di = hd; from = 1 }
         val out = ArrayList<Pair<String, String>>()
         for (r in rows.drop(from)) {
