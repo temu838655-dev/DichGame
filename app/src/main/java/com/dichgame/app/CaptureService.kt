@@ -304,6 +304,7 @@ class CaptureService : Service() {
         busy = true
         val skip = listOfNotNull(rectOf(frame), rectOf(overlay))
         ocr!!.read(bmp, { m -> ocrFail(m) }) { r ->
+                if (!running) return@read
                 val blocks = r.filter { b ->
                     val bb = b.box
                     b.text.length >= longLen && (bb == null || skip.none { it.contains(bb.centerX(), bb.centerY()) })
@@ -430,6 +431,7 @@ class CaptureService : Service() {
 
     /** Lỗi đọc chữ: mở khóa để quét lại, chỉ hiện thông báo lỗi của Gemini (không báo lỗi đọc trên máy), tối đa 8 giây một lần. */
     private fun ocrFail(m: String) {
+        if (!running) return
         finishBusy()
         lastSig = null
         overlay?.let { if (it.visibility != View.VISIBLE) it.visibility = View.VISIBLE }
@@ -544,6 +546,7 @@ class CaptureService : Service() {
             return
         }
         reader.read(crop, { m -> ocrFail(m) }) { r ->
+            if (!running) return@read
             val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
             if (text.length < minLen) { show("Không thấy chữ trong khung."); finishBusy(); return@read }
             translateText(text) { vi ->
@@ -558,12 +561,14 @@ class CaptureService : Service() {
     /** Dịch bằng AI nếu đã bật (CloudAPI / Gemini, có nhớ vài câu trước), lỗi thì quay về dịch trên máy. */
     private fun translateText(text: String, done: (String) -> Unit) {
         val t = tt
-        if (t == null) done(text) else t.translate(text, done)
+        val guardedDone: (String) -> Unit = { result -> if (running) done(result) }
+        if (t == null) guardedDone(text) else t.translate(text, guardedDone)
     }
 
     private fun translateTextEx(text: String, done: (String, Delivery?) -> Unit) {
         val t = tt
-        if (t == null) done(text, null) else t.translateEx(text, done)
+        val guardedDone: (String, Delivery?) -> Unit = { result, delivery -> if (running) done(result, delivery) }
+        if (t == null) guardedDone(text, null) else t.translateEx(text, guardedDone)
     }
 
     private fun tvSpeakOn(): Boolean {
@@ -883,6 +888,7 @@ class CaptureService : Service() {
         }
         busy = true
         o.read(crop, { m -> ocrFail(m) }) { r ->
+                if (!running) return@read
                 val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
                 if (text.isEmpty()) { last = ""; cand = ""; lastOcrTranscript = ""; lastOcrTranscriptAtMs = 0L; stable = 0; if (!autoShown) show(""); finishBusy(); return@read }
                 if (text == last) {
