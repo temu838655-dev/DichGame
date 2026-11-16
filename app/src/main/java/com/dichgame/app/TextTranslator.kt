@@ -96,9 +96,15 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      */
     fun translateEx(text: String, done: (String, Delivery?) -> Unit) {
         if (closed) return
-        val hist = history.takeLast(p.ctxCount)
-        history.add(text)
-        while (history.size > 10) history.removeAt(0)
+        // Translation entry points can be reached by OCR, ASR and menu
+        // recognition callbacks. Snapshot and append atomically so concurrent
+        // requests cannot corrupt ArrayList state or lose dialogue context.
+        val hist = synchronized(history) {
+            val previous = history.takeLast(p.ctxCount)
+            history.add(text)
+            while (history.size > 10) history.removeAt(0)
+            previous
+        }
         PackStore.memory(ctx, p).lookup(text)?.let { done(it, null); return }
         if (!Ai.enabled(p)) { translateLocal(text, done); return }
         val terms = PackStore.terms(p)
