@@ -57,8 +57,29 @@ internal class GameAudioAsrWorker(
         return !thread.isAlive
     }
 
+    /**
+     * Wait until the worker has drained queued PCM, flushed its final segment,
+     * and released the recognizer. Use from a background teardown thread.
+     * Interruption is deferred until cleanup completes so the PCM queue is not
+     * closed while Whisper is still processing an in-flight segment.
+     */
+    fun stopAndJoinUntilStopped() {
+        running.set(false)
+        val thread = workerThread ?: return
+        if (thread === Thread.currentThread()) return
+        var interrupted = false
+        while (thread.isAlive) {
+            try {
+                thread.join()
+            } catch (_: InterruptedException) {
+                interrupted = true
+            }
+        }
+        if (interrupted) Thread.currentThread().interrupt()
+    }
+
     override fun close() {
-        stopAndJoin()
+        stopAndJoinUntilStopped()
     }
 
     private fun runWorker() {
