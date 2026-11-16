@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import java.util.concurrent.atomic.AtomicBoolean
 import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.TranslateRemoteModel
@@ -18,7 +19,7 @@ import com.google.mlkit.nl.translate.TranslatorOptions
 class TextTranslator(private val ctx: Context, private val p: Prefs, private val lang: String) {
     private val main = Handler(Looper.getMainLooper())
     private val history = ArrayList<String>()
-    private var warned = false
+    private val warned = AtomicBoolean(false)
     @Volatile private var closed = false
 
     private val local: Translator? = if (lang == "vi") null else Translation.getClient(
@@ -154,8 +155,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     }
 
     private fun warn(m: String) {
-        if (closed || warned) return
-        warned = true
+        if (closed || !warned.compareAndSet(false, true)) return
         main.post {
             if (!closed) Toast.makeText(ctx.applicationContext, m, Toast.LENGTH_LONG).show()
         }
