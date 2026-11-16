@@ -22,9 +22,10 @@ class GameAudioQueueDropMonitorTest {
 
     @Test fun doesNotWarnForUnchangedOrDecreasingCounter() {
         val monitor = GameAudioQueueDropMonitor()
-        assertFalse(monitor.shouldWarn(4L, 1_000L))
-        assertTrue(monitor.shouldWarn(5L, 1_001L))
-        assertFalse(monitor.shouldWarn(3L, 7_000L))
+        assertTrue(monitor.shouldWarn(4L, 1_000L))
+        assertFalse(monitor.shouldWarn(4L, 7_000L))
+        assertTrue(monitor.shouldWarn(5L, 7_001L))
+        assertFalse(monitor.shouldWarn(3L, 13_000L))
     }
 
     @Test fun backwardsClockDoesNotReleaseThrottleEarly() {
