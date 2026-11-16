@@ -84,6 +84,8 @@ class CaptureService : Service() {
     private val pendingAudioTranscripts = PendingAudioTranscriptQueue()
     private var audioQueueFullWarnAtMs = 0L
     private var running = false
+    // Invalidates delayed overlay clears when a newer subtitle is displayed.
+    private var overlayRevision = 0L
     private var last = ""
     // Keep OCR provenance separate from ASR so partial-overlap suppression is time-bounded.
     private var lastOcrTranscript = ""
@@ -325,6 +327,7 @@ class CaptureService : Service() {
                         parts[i] = vi
                         if (--left == 0) {
                             val j = parts.joinToString("\n\n")
+                            overlayRevision++
                             overlay?.apply { text = j; visibility = View.VISIBLE }
                             sendTv("region", j)
                             autoShown = true
@@ -640,6 +643,7 @@ class CaptureService : Service() {
         if (pr.emoTr && pr.emoLabel && d != null && d.label.isNotEmpty()) add("● " + d.label, 0.62f, d.mood.color)
         add(vi, 1.15f, fg)
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
+        overlayRevision++
         overlay?.apply { text = sb; visibility = View.VISIBLE }
         sendTv("sub", vi, speak && tvSpeakOn() && !tvVoiceOn())
         if (speak && tvVoiceOn()) tvVoice(vi, d)
@@ -697,7 +701,10 @@ class CaptureService : Service() {
             if (blocks.isEmpty()) {
                 menuUntil = System.currentTimeMillis() + 3000
                 show("Không thấy đoạn chữ dài nào để dịch.")
-                handler.postDelayed({ if (!editing) show("") }, 3000)
+                val clearRevision = overlayRevision
+                handler.postDelayed({
+                    if (running && !editing && overlayRevision == clearRevision) show("")
+                }, 3000)
                 finishBusy()
                 return@read
             }
@@ -710,10 +717,13 @@ class CaptureService : Service() {
                         menuUntil = System.currentTimeMillis() + 15000
                         val translated = parts.joinToString("\n\n")
                         show(translated)
+                        val clearRevision = overlayRevision
                         sendTv("region", translated)
                         finishBusy()
                         handler.postDelayed({
-                            if (!editing && System.currentTimeMillis() >= menuUntil) show("")
+                            if (running && !editing && overlayRevision == clearRevision &&
+                                System.currentTimeMillis() >= menuUntil
+                            ) show("")
                         }, 15000)
                     }
                 }
@@ -820,6 +830,7 @@ class CaptureService : Service() {
     }
 
     private fun show(t: String) {
+        overlayRevision++
         if (t.isEmpty()) sendTv("clear", "")
         overlay?.apply { text = t; visibility = if (t.isEmpty()) View.GONE else View.VISIBLE }
         if (t.isNotEmpty() && speak && ready && !editing && !tvSpeakOn()) speaker?.speak(t)
