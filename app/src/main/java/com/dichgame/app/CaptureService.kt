@@ -697,6 +697,7 @@ class CaptureService : Service() {
             return
         }
         reader.read(bmp, { m -> ocrFail(m) }) { r ->
+            if (!running) return@read
             val blocks = r.map { it.text.replace("\n", sep).trim() }.filter { it.length >= longLen }.take(4)
             if (blocks.isEmpty()) {
                 menuUntil = System.currentTimeMillis() + 3000
