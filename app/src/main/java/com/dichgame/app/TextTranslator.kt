@@ -81,8 +81,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         val l = local
         if (l == null) { onDone(true); return }
         l.downloadModelIfNeeded()
-            .addOnSuccessListener { onDone(true) }
-            .addOnFailureListener { onDone(false) }
+            .addOnSuccessListener { if (!closed) onDone(true) }
+            .addOnFailureListener { if (!closed) onDone(false) }
     }
 
     fun translate(text: String, done: (String) -> Unit) = translateEx(text) { vi, _ -> done(vi) }
