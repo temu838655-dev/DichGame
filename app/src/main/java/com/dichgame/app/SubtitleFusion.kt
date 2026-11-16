@@ -22,12 +22,16 @@ class SubtitleFusion(
     private val longWindowMs: Long = 12_000L,
     private val confirmHoldMs: Long = 1_300L,
     private val healthyMs: Long = 6_000L,
+    /** Màn hình không còn câu thoại liên tục từng này thì câu đã hiện coi như đã biến mất: hiện lại cùng chữ là lần hiển thị mới. */
+    private val goneAfterMs: Long = 1_200L,
 ) {
     enum class Kind { SHOW, REPLACE, DROP, HOLD }
 
     class Out(val kind: Kind, val text: String, val speaker: String?, val src: Src, val reason: String)
 
     private inner class Seen(val text: String, val speaker: String?, val src: Src, var at: Long) {
+        /** Chữ này đã biến mất khỏi màn hình (đủ lâu, không phải nháy một lần). Chỉ ảnh hưởng tới OCR; câu nghe được vẫn coi là trùng. */
+        var gone = false
         /** Câu dài được nhớ lâu hơn: nhận dạng giọng nói chỉ có sau khi nhân vật nói xong, có thể muộn hơn chữ hiện trên màn hình nhiều giây. */
         val windowMs: Long = if (OcrGuard.key(text).length < 14) shortWindowMs else longWindowMs
     }
@@ -36,6 +40,7 @@ class SubtitleFusion(
     private val shown = ArrayList<Seen>()
     private val pending = ArrayList<Pending>()
     private var lastOcrAt = Long.MIN_VALUE / 2
+    private var emptySince = -1L
 
     /** Số lần mỗi quyết định đã xảy ra, để thống kê. */
     val counts = HashMap<String, Int>()
@@ -50,6 +55,7 @@ class SubtitleFusion(
     fun onOcr(text: String, speaker: String?, now: Long): List<Out> {
         prune(now)
         lastOcrAt = now
+        emptySince = -1L
         val out = ArrayList<Out>()
         // câu ASR đang chờ mà OCR vừa xác nhận: bỏ, đã có bản chữ trên màn hình
         val it = pending.iterator()
@@ -60,6 +66,14 @@ class SubtitleFusion(
         for (s in shown) {
             val r = relation(text, s.text)
             if (r == Rel.NONE) continue
+            if (s.gone && s.src != Src.ASR) {
+                // câu giống hệt đã biến mất khỏi màn hình rồi hiện lại (nhắc lại lời thoại, xem lại nhật ký...): hiển thị mới, không phải trùng
+                shown.remove(s)
+                shown.add(Seen(text, speaker, Src.OCR, now))
+                note("ocr_hien_lai")
+                out.add(Out(Kind.SHOW, text, speaker, Src.OCR, "hiện lại sau khi biến mất"))
+                return out
+            }
             if (s.src == Src.ASR && r == Rel.A_EXTENDS_B) {
                 // câu ASR đã hiện chỉ là nửa câu, OCR có đủ: thay bằng bản đủ
                 shown.remove(s)
@@ -85,6 +99,15 @@ class SubtitleFusion(
         note("ocr_hien")
         out.add(Out(Kind.SHOW, text, speaker, Src.OCR, ""))
         return out
+    }
+
+    /**
+     * Lần quét không thấy câu thoại nào (sau khi lọc chữ rác). Vắng đủ [goneAfterMs] thì các câu OCR đã hiện được đánh dấu là đã biến mất.
+     * Gọi lặp lại được (mỗi nhịp quét); lần gọi đầu ghi mốc thời gian.
+     */
+    fun onScreenEmpty(now: Long) {
+        if (emptySince < 0) emptySince = now
+        if (now - emptySince >= goneAfterMs) for (s in shown) if (s.src != Src.ASR) s.gone = true
     }
 
     /** Một câu nhận dạng từ âm thanh (đã qua AsrGuard). */
@@ -134,7 +157,7 @@ class SubtitleFusion(
         return out
     }
 
-    fun clear() { shown.clear(); pending.clear(); lastOcrAt = Long.MIN_VALUE / 2 }
+    fun clear() { shown.clear(); pending.clear(); lastOcrAt = Long.MIN_VALUE / 2; emptySince = -1L }
 
     // ---- so sánh hai câu ----
 

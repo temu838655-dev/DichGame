@@ -115,6 +115,8 @@ class CaptureService : Service() {
     private var skipRun = 0
     /** Trong khung phụ đề còn chữ (lần quét gần nhất có câu thoại): chưa ẩn phụ đề dù đã hết thời gian đọc. */
     private var textOnScreen = false
+    /** Lúc lần đầu không thấy câu thoại nào (0 khi đang có chữ): chỉ ẩn phụ đề khi chữ đã biến mất đủ lâu, không ẩn vì một lần đọc hụt. */
+    private var textGoneSince = 0L
     private var running = false
     private var last = ""
     private var cw = 0
@@ -548,7 +550,7 @@ class CaptureService : Service() {
             val now = System.currentTimeMillis()
             pump()
             if (pacer.showing != null) {
-                if (pacer.mayHide(now)) { if (!textOnScreen) softHide() } else scheduleHide()
+                if (pacer.mayHide(now)) { if (canHide(now)) softHide() else if (!textOnScreen) scheduleHide() } else scheduleHide()
             }
         }
     }
@@ -558,6 +560,16 @@ class CaptureService : Service() {
         val at = pacer.hideAt()
         if (at == 0L) return
         handler.postDelayed(hideCheck, (at - System.currentTimeMillis()).coerceAtLeast(250L))
+    }
+
+    /**
+     * Dòng đang hiện đã đủ thời gian đọc và không còn lý do giữ: lời nghe được (không có chữ nào trên màn hình để theo dõi)
+     * ẩn ngay khi hết thời gian đọc; dòng đọc từ màn hình ẩn khi chữ đã biến mất đủ lâu (không phải một lần đọc hụt).
+     */
+    private fun canHide(now: Long): Boolean {
+        val cur = pacer.showing ?: return false
+        if (!pacer.mayHide(now)) return false
+        return cur.src == Src.ASR || (!textOnScreen && now - textGoneSince >= 1_200L)
     }
 
     /** Ẩn phụ đề (đã đủ thời gian đọc và chữ trên màn hình đã biến mất); vẫn nhớ câu vừa hiện để làm dòng "câu trước". */
@@ -579,7 +591,8 @@ class CaptureService : Service() {
             enqueue(fresh, 0L, now, false)
         }
         pump()
-        if (!textOnScreen && pacer.showing != null && pacer.mayHide(now)) softHide()
+        if (!textOnScreen) fusion.onScreenEmpty(now)
+        if (canHide(now)) softHide()
     }
 
     private fun scanDelay(): Long {
@@ -651,10 +664,11 @@ class CaptureService : Service() {
         }
         val utts = DialogueSplitter.split(lines, cjk, speakers)
         if (utts.isEmpty()) {
-            textOnScreen = false
+            if (textOnScreen) { textOnScreen = false; textGoneSince = now }
+            fusion.onScreenEmpty(now)
             last = ""; cand = ""; stable = 0
             if (narrate || pacer.showing == null) { if (!autoShown) show("") }
-            else if (pacer.mayHide(now)) softHide() else scheduleHide()
+            else if (canHide(now)) softHide() else scheduleHide()
             finishBusy()
             return
         }

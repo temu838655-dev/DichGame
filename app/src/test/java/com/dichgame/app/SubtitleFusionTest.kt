@@ -140,4 +140,30 @@ class SubtitleFusionTest {
         f.onOcr("We need to leave before", "Anna", 1_000)
         assertEquals(listOf(Kind.DROP), kinds(f.onOcr("We need to leave before they find us.", "Ben", 1_400)))
     }
+
+    @Test fun lineThatVanishedAndComesBackIsShownAgain() {
+        val f = SubtitleFusion()
+        val line = "We need to leave before they find us."
+        assertEquals(listOf(Kind.SHOW), kinds(f.onOcr(line, null, 1_000)))
+        f.onScreenEmpty(2_000)
+        f.onScreenEmpty(3_500)
+        assertEquals(listOf(Kind.SHOW), kinds(f.onOcr(line, null, 4_000)))
+    }
+
+    @Test fun shortFlickerOfTheScreenIsStillADuplicate() {
+        val f = SubtitleFusion()
+        val line = "We need to leave before they find us."
+        f.onOcr(line, null, 1_000)
+        f.onScreenEmpty(2_000)
+        assertEquals(listOf(Kind.DROP), kinds(f.onOcr(line, null, 2_800)))
+    }
+
+    @Test fun vanishedOcrLineStillSuppressesTheHeardCopy() {
+        val f = SubtitleFusion()
+        val line = "We need to leave before they find us."
+        f.onOcr(line, null, 1_000)
+        f.onScreenEmpty(2_000)
+        f.onScreenEmpty(3_500)
+        assertEquals(listOf(Kind.DROP), kinds(f.onAsr("We need to leave before they find us", 4_000)))
+    }
 }
