@@ -83,3 +83,6 @@ jobs:
           if [ -s shots/live-fail.txt ]; then
             echo "Dịch phụ đề trong màn chơi lỗi:"; cat shots/live-fail.txt; cat shots/live.txt; exit 1
           fi
+          if [ -s shots/play-fail.txt ]; then
+            echo "Màn chơi (xem thử) bị lỗi:"; cat shots/play-fail.txt; exit 1
+          fi

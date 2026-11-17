@@ -77,6 +77,20 @@ grep -q "DG_LIVE.*doc: " "$OUT/live.txt" || echo "Dịch trong màn chơi: khôn
 grep -q "DG_LIVE.*dich: " "$OUT/live.txt" || echo "Dịch trong màn chơi: không ra bản dịch" >> "$OUT/live-fail.txt"
 adb shell am force-stop "$PKG"
 
+# Màn chơi Remote Play (xem thử, không kết nối máy thật): thẻ "Đang tìm máy…", thanh công cụ 9 nút, khung OCR hiện rồi ẩn đi, ngang
+adb logcat -c
+adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo adjust >/dev/null 2>&1
+sleep 1; shot play-demo
+sleep 2.5; shot play-demo-adjust
+sleep 3.5; shot play-demo-hidden
+adb shell am force-stop "$PKG"
+adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo land >/dev/null 2>&1
+sleep 3; shot play-demo-land
+adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 > "$OUT/play-fail.txt"
+[ -s "$OUT/play-fail.txt" ] || rm -f "$OUT/play-fail.txt"
+adb shell settings put system user_rotation 0 >/dev/null 2>&1
+adb shell am force-stop "$PKG"
+
 # Kho game Việt hoá: lọc theo nền tảng và bảng chi tiết một game (extra chỉ có ở bản debug)
 adb shell am force-stop "$PKG"
 # ảnh bìa tải từ Steam: chờ lâu hơn lần đầu, các lần sau lấy từ bộ nhớ đệm

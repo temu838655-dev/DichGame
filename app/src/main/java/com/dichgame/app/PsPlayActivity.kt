@@ -7,7 +7,11 @@ import android.content.Intent
 import android.hardware.input.InputManager
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.animation.ValueAnimator
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -26,6 +30,8 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
+import android.view.animation.LinearInterpolator
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.WindowManager
@@ -94,7 +100,17 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var padOn = true
     private var statusView: TextView? = null
     private var chipView: TextView? = null
-    private var transBtn: TextView? = null
+    private var statusSub: TextView? = null
+    private var statusCard: View? = null
+    private var subsIcon: ToolIcon? = null
+    private var scanIcon: ToolIcon? = null
+    private var speakIcon: ToolIcon? = null
+    private var padIcon: ToolIcon? = null
+    private var toolsBar: View? = null
+    private var toolsOpen = true
+    private var zoomLevel = 0
+    // Chỉ bản debug: dựng giao diện mà không kết nối máy thật (để chụp ảnh kiểm tra giao diện trên máy giả lập).
+    private var demo = false
     // Dịch phụ đề chạy ngay trong màn chơi (chụp hình thẳng từ SurfaceView), không cần quyền ghi màn hình.
     @Volatile private var live: LiveSubs? = null
     private var videoView: SurfaceView? = null
@@ -165,20 +181,33 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         wantTranslate = intent.getBooleanExtra(EXTRA_TRANSLATE, false)
         player = intent.getIntExtra(EXTRA_PLAYER, 0)
         padOn = mode != "tv"
-        val c = PsStore.load(this)
-        if (!PsNative.available || c == null || c.players.isEmpty()) {
+        val demoMode = if (BuildConfig.DEBUG) intent.getStringExtra("dg_demo") else null
+        demo = demoMode != null
+        val c = if (demo) PsConsole("192.168.1.20", true, "PS5 (xem thử)", mutableListOf(
+            PsPlayer("Người chơi 1", ByteArray(0), 0, ByteArray(0), ByteArray(0), "demo"),
+            PsPlayer("Người chơi 2", ByteArray(0), 0, ByteArray(0), ByteArray(0), "demo2"),
+        )) else PsStore.load(this)
+        if (!demo && (!PsNative.available || c == null || c.players.isEmpty())) {
             Toast.makeText(this, "Chưa có máy đã ghép nối, hoặc máy này chưa hỗ trợ chơi PS5 trong app.", Toast.LENGTH_LONG).show()
             finish()
             return
         }
         console = c
         CrashLog.mark("choi:vao mode=$mode")
+        if (c == null) return
         player = player.coerceIn(0, c.players.size - 1)
-        try {
+        if (!demo) try {
             val prof = PsStore.profile(this)
             if (prof.height > 0) ratio = prof.width.toFloat() / prof.height
         } catch (_: Throwable) {}
         build()
+        // Chỉ bản debug: tự thao tác vài bước để CI chụp được ảnh giao diện.
+        if (demoMode == "adjust") {
+            ui.postDelayed({ if (!isFinishing && !isDestroyed) toggleAdjust() }, 1500)
+            ui.postDelayed({ if (!isFinishing && !isDestroyed) toggleAdjust() }, 5000)
+        } else if (demoMode == "land") {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
     }
 
     override fun onStart() {
@@ -200,7 +229,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 networkCallbackRegistered = true
             }
         }
-        if (console != null && !manual) requestConnect()
+        if (console != null && !manual && !demo) requestConnect()
     }
 
     override fun onStop() {
@@ -214,7 +243,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             networkCallbackRegistered = false
         }
         super.onStop()
-        live?.let { l -> if (l.running) { l.stop(); transBtn?.text = "🌐" } }
+        live?.let { l -> if (l.running) { l.stop(); syncTools() } }
         // Rời màn hình thì dừng phiên: PS5 không cần giữ luồng hình cho một app đang ẩn.
         resetPhysicalControllerState()
         padState = ControllerState(); pad?.releaseAll()
@@ -267,6 +296,50 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
+    /** Vòng xoay vàng trên thẻ "Đang tìm máy…". Chỉ chạy khi đang hiện. */
+    private class Spin(c: Context) : View(c) {
+        private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; color = Ui.GOLD }
+        private val track = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = 0x33FFD54A }
+        private val box = RectF()
+        private var angle = 0f
+        private var anim: ValueAnimator? = null
+
+        private fun begin() {
+            if (anim != null) return
+            anim = ValueAnimator.ofFloat(0f, 360f).apply {
+                duration = 900
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                addUpdateListener { angle = it.animatedValue as Float; invalidate() }
+                start()
+            }
+        }
+
+        private fun end() { anim?.cancel(); anim = null }
+
+        override fun onVisibilityAggregated(isVisible: Boolean) {
+            super.onVisibilityAggregated(isVisible)
+            if (isVisible && isAttachedToWindow) begin() else end()
+        }
+
+        override fun onAttachedToWindow() { super.onAttachedToWindow(); if (isShown) begin() }
+        override fun onDetachedFromWindow() { end(); super.onDetachedFromWindow() }
+
+        override fun onDraw(cv: Canvas) {
+            val s = minOf(width, height).toFloat()
+            if (s <= 0f) return
+            val w = s * 0.1f
+            ring.strokeWidth = w
+            track.strokeWidth = w
+            val pad = w
+            box.set((width - s) / 2f + pad, (height - s) / 2f + pad, (width + s) / 2f - pad, (height + s) / 2f - pad)
+            cv.drawArc(box, 0f, 360f, false, track)
+            cv.drawArc(box, angle, 100f, false, ring)
+        }
+    }
+
+    private fun dpi(n: Number): Int = Ui.dp(this, n)
+
     @Suppress("DEPRECATION")
     private fun build() {
         val land = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -280,40 +353,85 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         val sv = SurfaceView(this)
         videoView = sv
         sv.holder.addCallback(this)
-        val st = Ui.tv(this, "", 16f, Color.WHITE, true).apply { gravity = Gravity.CENTER }
-        statusView = st
+
+        // Thẻ chờ kết nối đè lên hình: vòng xoay + "Đang tìm máy…" + gợi ý.
+        val title = Ui.tv(this, "Đang tìm máy…", 16f, Color.WHITE, true).apply { gravity = Gravity.CENTER }
+        val sub = Ui.tv(this, "", 12.5f, Ui.SUB).apply { gravity = Gravity.CENTER }
+        statusView = title
+        statusSub = sub
+        val card = Ui.vbox(this).apply {
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#E00B0F0C"))
+            setPadding(dpi(16), dpi(8), dpi(16), dpi(8))
+            addView(Spin(this@PsPlayActivity), Ui.lp(dpi(46), dpi(46)).apply { bottomMargin = dpi(10) })
+            addView(title, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
+            addView(sub, Ui.lpm(this@PsPlayActivity, 4, 0))
+        }
+        statusCard = card
+
         val vid = FitFrame(this, ratio)
         vid.setBackgroundColor(Color.BLACK)
         vid.addView(sv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-        vid.addView(st, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        vid.addView(card, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         vidFrame = vid
         live?.attach(vid)
+        applyZoom()
 
-        val padV = PadView(this) { s -> padState = s; push() }
+        val padV = PadView(this) { st -> padState = st; push() }
         pad = padV
         padV.visibility = if (padOn && live?.isAdjusting != true) View.VISIBLE else View.GONE
 
         val chip = Ui.tv(this, "", 12f, Ui.SUB).apply {
-            setPadding(Ui.dp(this@PsPlayActivity, 10), Ui.dp(this@PsPlayActivity, 5), Ui.dp(this@PsPlayActivity, 10), Ui.dp(this@PsPlayActivity, 5))
+            gravity = Gravity.CENTER
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(dpi(10), dpi(5), dpi(10), dpi(5))
             background = Ui.bg(this@PsPlayActivity, Ui.CARD2, 14)
         }
         chipView = chip
+
+        val (closeBtn, _) = roundIcon(ToolIcon.Kind.CLOSE) { leave() }
+        val (padBtn, padIc) = roundIcon(ToolIcon.Kind.GAMEPAD) { togglePad() }
+        padIcon = padIc
+        val pill = playerPill()
+        val bar = toolbar()
+        toolsBar = bar
+        bar.visibility = if (toolsOpen) View.VISIBLE else View.GONE
 
         if (!land) {
             val root = Ui.vbox(this)
             root.setBackgroundColor(Color.parseColor("#0B0F0C"))
             val top = Ui.hbox(this)
-            top.setPadding(Ui.dp(this, 10), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8))
-            top.addView(roundBtn("✕") { leave() })
-            top.addView(Ui.tv(this, (console?.name ?: "PS5") + " · " + (console?.players?.getOrNull(player)?.label ?: ""), 14f, Ui.TEXT, true).apply {
-                setPadding(Ui.dp(this@PsPlayActivity, 12), 0, 0, 0); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-            }, Ui.lp(0, WRAP_CONTENT, 1f))
-            top.addView(chip)
+            top.setPadding(dpi(10), dpi(8), dpi(10), dpi(6))
+            top.addView(closeBtn)
+            top.addView(padBtn, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(8) })
+            top.addView(chip, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = dpi(8); rightMargin = dpi(8) })
+            top.addView(pill)
             root.addView(top)
-            root.addView(vid, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
-            val bar = toolbar()
-            bar.background = Ui.bg(this, Color.parseColor("#17120D"), 24)
-            root.addView(bar, Ui.lpm(this, 8, 4).apply { leftMargin = Ui.dp(this@PsPlayActivity, 10); rightMargin = Ui.dp(this@PsPlayActivity, 10) })
+
+            // Khung video viền vàng, bo góc; phóng hình thì phần thừa bị cắt trong khung.
+            val vcard = FrameLayout(this).apply {
+                background = Ui.bg(this@PsPlayActivity, Color.BLACK, 16, Ui.GOLD, 2)
+                setPadding(dpi(2), dpi(2), dpi(2), dpi(2))
+                clipToOutline = true
+                outlineProvider = ViewOutlineProvider.BACKGROUND
+            }
+            vcard.addView(vid, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+            root.addView(vcard, Ui.lp(MATCH_PARENT, WRAP_CONTENT).apply { leftMargin = dpi(10); rightMargin = dpi(10) })
+
+            bar.background = Ui.bg(this, Color.parseColor("#17120D"), 24, Color.parseColor("#44F2B84B"), 1)
+            root.addView(bar, Ui.lpm(this, 10, 0).apply { leftMargin = dpi(10); rightMargin = dpi(10) })
+
+            // Thanh kéo: bấm để thu gọn hoặc mở lại thanh công cụ, dành chỗ cho tay cầm.
+            val grip = FrameLayout(this).apply {
+                isClickable = true
+                isFocusable = true
+                contentDescription = "Thu gọn hoặc mở thanh công cụ"
+                setOnClickListener { toggleTools() }
+                addView(View(this@PsPlayActivity).apply { background = Ui.bg(this@PsPlayActivity, Color.parseColor("#88F2B84B"), 3) },
+                    FrameLayout.LayoutParams(dpi(44), dpi(5), Gravity.CENTER))
+            }
+            root.addView(grip, Ui.lp(MATCH_PARENT, dpi(22)))
             root.addView(padV, Ui.lp(MATCH_PARENT, 0, 1f))
             setContentView(root)
         } else {
@@ -322,72 +440,224 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             root.addView(vid, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
             padV.alpha = 0.8f
             root.addView(padV, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-            val bar = toolbar()
-            bar.background = Ui.bg(this, Color.parseColor("#B0120D0A"), 20)
-            root.addView(bar, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = Ui.dp(this@PsPlayActivity, 6) })
-            root.addView(chip, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.END).apply {
-                topMargin = Ui.dp(this@PsPlayActivity, 10); rightMargin = Ui.dp(this@PsPlayActivity, 12)
-            })
+            bar.background = Ui.bg(this, Color.parseColor("#C017120D"), 22, Color.parseColor("#44F2B84B"), 1)
+            root.addView(bar, FrameLayout.LayoutParams(dpi(396), WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dpi(6) })
+            val left = Ui.hbox(this)
+            left.addView(closeBtn)
+            left.addView(padBtn, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(8) })
+            root.addView(left, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.START).apply { topMargin = dpi(6); leftMargin = dpi(10) })
+            val right = Ui.hbox(this)
+            right.addView(chip)
+            right.addView(pill, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(8) })
+            root.addView(right, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.END).apply { topMargin = dpi(8); rightMargin = dpi(12) })
             setContentView(root)
         }
         refreshStatus()
     }
 
-    private fun roundBtn(label: String, onClick: () -> Unit): TextView = Ui.tv(this, label, 18f, Ui.TEXT, true).apply {
-        gravity = Gravity.CENTER
-        background = Ui.bg(this@PsPlayActivity, Ui.CARD2, 22)
-        layoutParams = LinearLayout.LayoutParams(Ui.dp(this@PsPlayActivity, 40), Ui.dp(this@PsPlayActivity, 40))
-        setOnClickListener { onClick() }
+    /** Nút tròn nhỏ có biểu tượng vẽ nét (✕, tay cầm). */
+    private fun roundIcon(kind: ToolIcon.Kind, onClick: () -> Unit): Pair<FrameLayout, ToolIcon> {
+        val ic = ToolIcon(this, kind, Ui.GOLD)
+        val f = FrameLayout(this).apply {
+            background = Ui.bg(this@PsPlayActivity, Ui.CARD2, 22, Color.parseColor("#44F2B84B"), 1)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onClick() }
+            addView(ic, FrameLayout.LayoutParams(dpi(20), dpi(20), Gravity.CENTER))
+        }
+        f.layoutParams = LinearLayout.LayoutParams(dpi(40), dpi(40))
+        return f to ic
+    }
+
+    /** Ô chọn người chơi (tài khoản PSN đã ghép) ở góc trên bên phải. */
+    private fun playerPill(): View {
+        val pill = Ui.hbox(this)
+        pill.background = Ui.bg(this, Ui.CARD2, 20, Color.parseColor("#44F2B84B"), 1)
+        pill.setPadding(dpi(12), dpi(8), dpi(10), dpi(8))
+        pill.isClickable = true
+        pill.isFocusable = true
+        val label = Ui.tv(this, console?.players?.getOrNull(player)?.label ?: "Người chơi 1", 13f, Ui.TEXT, true).apply {
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            maxWidth = dpi(120)
+        }
+        pill.addView(label)
+        pill.addView(ToolIcon(this, ToolIcon.Kind.CHEVRON, Ui.GOLD), Ui.lp(dpi(14), dpi(14)).apply { leftMargin = dpi(4) })
+        pill.setOnClickListener { pickPlayer() }
+        return pill
+    }
+
+    private fun pickPlayer() {
+        val c = console ?: return
+        val labels = c.players.map { it.label }
+        if (labels.size < 2) {
+            Toast.makeText(this, "Mới có một người chơi. Thêm người chơi ở màn Ghép nối.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Ui.pick(this, "Chọn người chơi", labels) { i ->
+            if (i != player) {
+                player = i
+                build()
+                if (!demo) reconnect()
+            }
+        }
     }
 
     private fun toolbar(): LinearLayout {
         val bar = Ui.hbox(this)
-        bar.setPadding(Ui.dp(this, 6), Ui.dp(this, 4), Ui.dp(this, 6), Ui.dp(this, 4))
-        fun item(label: String, onClick: (TextView) -> Unit): TextView {
-            val t = Ui.tv(this, label, 20f, Ui.GOLD).apply {
-                gravity = Gravity.CENTER
-                setPadding(Ui.dp(this@PsPlayActivity, 12), Ui.dp(this@PsPlayActivity, 8), Ui.dp(this@PsPlayActivity, 12), Ui.dp(this@PsPlayActivity, 8))
+        bar.setPadding(dpi(4), dpi(2), dpi(4), dpi(2))
+        fun tool(kind: ToolIcon.Kind, desc: String, onClick: () -> Unit): ToolIcon {
+            val ic = ToolIcon(this, kind, Ui.GOLD)
+            val cell = FrameLayout(this).apply {
+                isClickable = true
+                isFocusable = true
+                contentDescription = desc
+                setOnClickListener { onClick() }
+                addView(ic, FrameLayout.LayoutParams(dpi(24), dpi(24), Gravity.CENTER))
             }
-            t.setOnClickListener { onClick(t) }
-            bar.addView(t, Ui.lp(0, WRAP_CONTENT, 1f))
-            return t
+            bar.addView(cell, Ui.lp(0, dpi(46), 1f))
+            return ic
         }
-        transBtn = item(if (live?.running == true) "💬" else "🌐") { toggleTranslate() }
-        item("🔲") { toggleAdjust() }
-        item("🎮") { padOn = !padOn; pad?.visibility = if (padOn) View.VISIBLE else View.GONE; if (!padOn) pad?.releaseAll() }
-        item("⟳") {
+        scanIcon = tool(ToolIcon.Kind.SCAN, "Khung chọn vùng phụ đề") { toggleAdjust() }
+        subsIcon = tool(ToolIcon.Kind.SUBS, "Bật hoặc tắt dịch phụ đề") { toggleTranslate() }
+        speakIcon = tool(ToolIcon.Kind.SPEAKER_ON, "Đọc to bản dịch") { toggleSpeak() }
+        tool(ToolIcon.Kind.TEXT_SIZE, "Cỡ chữ phụ đề") { showFontDialog() }
+        tool(ToolIcon.Kind.DIAL, "Tốc độ quét phụ đề") { showScanDialog() }
+        tool(ToolIcon.Kind.ZOOM, "Phóng to hình") { toggleZoom() }
+        tool(ToolIcon.Kind.ROTATE, "Xoay ngang hoặc dọc") {
             requestedOrientation = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
                 ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         }
-        item("⚙") { PsQuality.sheet(this, null) { reconnect() } }
-        item("❓") { help() }
-        item("⏻") { leave() }
+        tool(ToolIcon.Kind.GEAR, "Cài đặt chất lượng hình") { PsQuality.sheet(this, null) { reconnect() } }
+        tool(ToolIcon.Kind.HELP, "Trợ giúp") { help() }
+        syncTools()
         return bar
     }
 
+    /** Vẽ lại trạng thái các nút công cụ (bật = vàng có nền sáng, tắt = trắng/xám). */
+    private fun syncTools() {
+        val running = live?.running == true
+        val adjusting = live?.isAdjusting == true
+        val sp = Prefs(this).speak
+        fun mark(ic: ToolIcon?, kind: ToolIcon.Kind, on: Boolean, offColor: Int = Ui.GOLD) {
+            ic ?: return
+            ic.set(kind, if (on) Ui.GOLD else offColor)
+            (ic.parent as? View)?.background = if (on) Ui.bg(this, Color.parseColor("#33F2B84B"), 16) else null
+        }
+        mark(scanIcon, ToolIcon.Kind.SCAN, adjusting)
+        mark(subsIcon, ToolIcon.Kind.SUBS, running)
+        mark(speakIcon, if (sp) ToolIcon.Kind.SPEAKER_ON else ToolIcon.Kind.SPEAKER_OFF, sp, Ui.SUB)
+        padIcon?.set(ToolIcon.Kind.GAMEPAD, if (padOn) Ui.GOLD else Ui.SUB)
+    }
+
+    private fun togglePad() {
+        padOn = !padOn
+        pad?.visibility = if (padOn && live?.isAdjusting != true) View.VISIBLE else View.GONE
+        if (!padOn) pad?.releaseAll()
+        syncTools()
+    }
+
+    private fun toggleTools() {
+        toolsOpen = !toolsOpen
+        toolsBar?.visibility = if (toolsOpen) View.VISIBLE else View.GONE
+    }
+
+    private val zooms = floatArrayOf(1f, 1.25f, 1.5f)
+
+    private fun applyZoom() {
+        val f = vidFrame ?: return
+        val z = zooms[zoomLevel.coerceIn(0, zooms.size - 1)]
+        f.post {
+            f.pivotX = f.width / 2f
+            f.pivotY = f.height / 2f
+            f.scaleX = z
+            f.scaleY = z
+        }
+    }
+
+    private fun toggleZoom() {
+        zoomLevel = (zoomLevel + 1) % zooms.size
+        applyZoom()
+        Toast.makeText(this, if (zoomLevel == 0) "Hình vừa khung." else "Phóng hình ×" + zooms[zoomLevel], Toast.LENGTH_SHORT).show()
+    }
+
+    private fun toggleSpeak() {
+        val pr = Prefs(this)
+        pr.speak = !pr.speak
+        live?.setSpeak(pr.speak)
+        syncTools()
+        Toast.makeText(this, if (pr.speak) "Đọc to bản dịch: bật." else "Đọc to bản dịch: tắt (chỉ hiện chữ).", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showFontDialog() {
+        val a = this
+        val pr = Prefs(a)
+        Ui.sheet(a) { dlg ->
+            addView(Ui.tv(a, "Cỡ chữ phụ đề", 18f, Ui.TEXT, true))
+            addView(Ui.seekRow(a, "Cỡ chữ", { v -> "$v%" }, 50, 200, pr.subScale) { pr.subScale = it; live?.restyle() }, Ui.lpm(a, 10, 8))
+            addView(Ui.button(a, "Xong", true) { dlg.dismiss() }, Ui.lpm(a, 8, 0))
+        }
+    }
+
+    private fun showScanDialog() {
+        val a = this
+        val pr = Prefs(a)
+        Ui.sheet(a) { dlg ->
+            val box = this
+            fun fill() {
+                box.removeAllViews()
+                box.addView(Ui.tv(a, "Tốc độ đọc phụ đề", 18f, Ui.TEXT, true))
+                val rates = listOf(3, 4, 6, 8)
+                val sel = rates.indexOfFirst { abs(1000 / it - pr.scanMs) <= 20 }
+                box.addView(Ui.tv(a, "Mỗi giây quét mấy lần", 15f, Ui.TEXT, true), Ui.lpm(a, 14, 0))
+                box.addView(Ui.segmented(a, rates.map { it.toString() }, sel) { pr.scanMs = 1000 / rates[it]; fill() }, Ui.lpm(a, 6, 0))
+                box.addView(Ui.tv(a, "Quét nhiều đỡ sót câu ngắn nhưng máy nóng và hao pin hơn.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 0))
+                box.addView(Ui.tv(a, "Cách đọc chữ trên hình", 15f, Ui.TEXT, true), Ui.lpm(a, 14, 0))
+                box.addView(Ui.segmented(a, listOf("Kỹ", "Nhanh"), if (pr.slow) 0 else 1) { pr.slow = it == 0; fill() }, Ui.lpm(a, 6, 0))
+                box.addView(Ui.tv(a, "Kỹ: chờ chữ hiện đủ rồi mới dịch (áp dụng từ lần bật dịch sau). Nhanh: dịch ngay khi thấy chữ.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 0))
+                box.addView(Ui.button(a, "Xong", true) { dlg.dismiss() }, Ui.lpm(a, 14, 0))
+            }
+            fill()
+        }
+    }
+
     private fun setStatus(text: String, show: Boolean) {
-        statusView?.apply { this.text = text; visibility = if (show) View.VISIBLE else View.GONE }
-        chipView?.text = if (connected) "● Đã kết nối · " + PsQuality.summary(this) else "● " + text.lines().first()
+        val lines = text.lines()
+        statusView?.text = lines.firstOrNull().orEmpty()
+        val rest = lines.drop(1).joinToString("\n")
+        statusSub?.text = rest
+        statusSub?.visibility = if (rest.isEmpty()) View.GONE else View.VISIBLE
+        statusCard?.visibility = if (show) View.VISIBLE else View.GONE
+        chipView?.text = if (connected) "● Đã kết nối · " + PsQuality.summary(this) else "● " + lines.first()
         chipView?.setTextColor(if (connected) Ui.OK else Ui.GOLD)
     }
 
     private fun refreshStatus() {
-        if (connected) setStatus("", false) else setStatus(if (manual) "Đã ngắt kết nối" else "Đang vào game…", true)
-        transBtn?.text = if (live?.running == true) "💬" else "🌐"
+        if (connected) setStatus("", false)
+        else if (manual) setStatus("Đã ngắt kết nối", true)
+        else if (session == null) setStatus("Đang tìm máy…\nMáy chơi game cần đang bật (hoặc chế độ nghỉ) và cùng Wi-Fi/LAN với điện thoại.", true)
+        else setStatus("Đang kết nối…", true)
+        syncTools()
     }
 
     private fun help() {
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("Mẹo khi chơi")
             .setMessage(
-                "🌐 / 💬  Bật hoặc tắt dịch phụ đề trên hình game.\n" +
-                    "🎮  Ẩn hoặc hiện tay cầm ảo (tay cầm thật nối với điện thoại vẫn dùng được).\n" +
+                "Thanh công cụ, từ trái sang phải:\n" +
+                    "⛶  Khung chọn vùng phụ đề: kéo khung tới đúng dòng phụ đề của game, bấm lần nữa hoặc ✓ Xong để ẩn khung.\n" +
+                    "▭  Bật hoặc tắt dịch phụ đề ngay trên hình game.\n" +
+                    "🔊  Đọc to bản dịch (bật/tắt).\n" +
+                    "A  Cỡ chữ phụ đề.\n" +
+                    "◔  Tốc độ quét: quét nhiều đỡ sót câu nhưng hao pin hơn.\n" +
+                    "⊕  Phóng to hình.\n" +
                     "⟳  Xoay ngang để xem hình lớn, tay cầm trong suốt phủ lên hình.\n" +
-                    "⚙  Đổi chất lượng hình, áp dụng ngay bằng cách kết nối lại.\n\n" +
-                    "• Bật phụ đề tiếng Anh trong game, rồi kéo khung dịch tới đúng dòng phụ đề.\n" +
+                    "⚙  Chất lượng hình, áp dụng bằng cách kết nối lại.\n\n" +
+                    "• Nút tay cầm ở góc trên: ẩn hoặc hiện tay cầm ảo (tay cầm thật nối với điện thoại vẫn dùng được).\n" +
+                    "• Ô người chơi ở góc trên bên phải: đổi sang tài khoản đã ghép khác.\n" +
+                    "• Thanh nhỏ dưới hình: thu gọn hoặc mở thanh công cụ.\n" +
                     "• Máy báo đang bận: tắt Chơi từ xa ở thiết bị khác, đợi 30 giây rồi thử lại.\n" +
-                    "• Hình giật: dùng Wi-Fi 5 GHz hoặc dây LAN cho máy chơi game, hạ chất lượng ở ⚙.\n" +
-                    "• Tay cầm trên TV bị ngắt khi vào bằng người chơi chính: bấm nút PS trên tay cầm rồi chọn lại người chơi của bạn."
+                    "• Hình giật: dùng Wi-Fi 5 GHz hoặc dây LAN cho máy chơi game, hạ chất lượng ở ⚙."
             )
             .setPositiveButton("Đã hiểu", null).show()
     }
@@ -818,7 +1088,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             if (l.running) {
                 wantTranslate = false
                 l.stop()
-                transBtn?.text = "🌐"
+                syncTools()
                 Toast.makeText(this, "Đã tắt dịch phụ đề.", Toast.LENGTH_SHORT).show()
                 return
             }
@@ -826,7 +1096,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             startTranslate()
         } catch (e: Throwable) {
             CrashLog.mark("choi:dich-loi " + e.javaClass.simpleName)
-            transBtn?.text = "🌐"
+            syncTools()
             Toast.makeText(this, "Không bật được dịch phụ đề: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
         }
     }
@@ -839,11 +1109,11 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             vidFrame?.let { l.attach(it) }
             Prefs(this).playOn = if (mode == "tv") "tv" else "phone"
             l.start()
-            transBtn?.text = if (l.running) "💬" else "🌐"
-            if (l.running) Toast.makeText(this, "Đang dịch phụ đề ngay trong màn chơi. Bật phụ đề trong game, bấm 🔲 để kéo khung tới đúng dòng phụ đề.", Toast.LENGTH_LONG).show()
+            syncTools()
+            if (l.running) Toast.makeText(this, "Đang dịch phụ đề ngay trong màn chơi. Bật phụ đề trong game, bấm nút khung (⛶) để kéo khung tới đúng dòng phụ đề.", Toast.LENGTH_LONG).show()
         } catch (e: Throwable) {
             CrashLog.mark("choi:dich-loi " + e.javaClass.simpleName)
-            transBtn?.text = "🌐"
+            syncTools()
             Toast.makeText(this, "Không bật được dịch phụ đề: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
         }
     }
@@ -857,9 +1127,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             l.setAdjusting(on)
             pad?.visibility = if (!on && padOn) View.VISIBLE else View.GONE
             if (on) pad?.releaseAll()
+            syncTools()
             Toast.makeText(
                 this,
-                if (on) "Kéo khung tới đúng chỗ phụ đề của game, kéo chấm tròn để đổi cỡ. Bấm 🔲 lần nữa để xong."
+                if (on) "Kéo khung tới đúng chỗ phụ đề của game, kéo chấm tròn để đổi cỡ. Bấm ⛶ lần nữa hoặc ✓ Xong để ẩn khung."
                 else "Đã chọn khung. Khung ẩn đi khi đang dịch.",
                 Toast.LENGTH_LONG
             ).show()

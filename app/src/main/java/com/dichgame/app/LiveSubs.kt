@@ -148,6 +148,25 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         view.textSize = (pr.fontSize * pr.subScale / 100f).coerceIn(10f, 40f)
     }
 
+    /** Cỡ chữ/kiểu phụ đề vừa đổi trong cài đặt: áp dụng ngay, không cần tắt bật dịch. */
+    fun restyle() {
+        try { styleView() } catch (_: Throwable) {}
+    }
+
+    /** Bật/tắt đọc to bản dịch ngay khi đang dịch (loa trên biểu tượng 🔊). */
+    fun setSpeak(on: Boolean) {
+        speak = on
+        if (!running) return
+        if (on && speaker == null) {
+            try {
+                speaker = Speaker(act, Prefs(act)).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() } }
+            } catch (_: Throwable) { speaker = null }
+        } else if (!on) {
+            runCatching { speaker?.shutdown() }
+            speaker = null
+        }
+    }
+
     // ---- bắt đầu / dừng
 
     fun start() {

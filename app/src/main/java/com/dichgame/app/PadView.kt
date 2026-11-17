@@ -146,7 +146,17 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
             "SQU" -> c.drawRect(r.cx - s, r.cy - s, r.cx + s, r.cy + s, sym)
             "CIR" -> c.drawCircle(r.cx, r.cy, s * 1.1f, sym)
             "CRO" -> { c.drawLine(r.cx - s, r.cy - s, r.cx + s, r.cy + s, sym); c.drawLine(r.cx + s, r.cy - s, r.cx - s, r.cy + s, sym) }
-            "PS" -> { text.color = Color.parseColor("#2A1A08"); text.textSize = r.rad * 0.95f; c.drawText("PS", r.cx, r.cy + text.textSize * 0.35f, text); text.color = gold }
+            "PS" -> {
+                // Nút Home: hình ngôi nhà tối trên nền vàng
+                sym.color = Color.parseColor("#2A1A08")
+                val q = r.rad * 0.5f
+                val h = Path()
+                h.moveTo(r.cx - q * 1.15f, r.cy - q * 0.05f); h.lineTo(r.cx, r.cy - q * 1.0f); h.lineTo(r.cx + q * 1.15f, r.cy - q * 0.05f)
+                h.moveTo(r.cx - q * 0.8f, r.cy - q * 0.15f); h.lineTo(r.cx - q * 0.8f, r.cy + q * 0.95f)
+                h.lineTo(r.cx + q * 0.8f, r.cy + q * 0.95f); h.lineTo(r.cx + q * 0.8f, r.cy - q * 0.15f)
+                c.drawPath(h, sym)
+                sym.color = gold
+            }
             "SHARE" -> { c.drawRect(r.cx - s * 0.9f, r.cy - s * 0.5f, r.cx + s * 0.5f, r.cy + s * 0.9f, sym); c.drawRect(r.cx - s * 0.5f, r.cy - s * 0.9f, r.cx + s * 0.9f, r.cy + s * 0.5f, sym) }
             "TP" -> { for (i in -1..1) for (j in -1..1) c.drawCircle(r.cx + i * s * 0.75f, r.cy + j * s * 0.75f, s * 0.14f, sym) }
             "OPT" -> { for (j in -1..1) c.drawLine(r.cx - s, r.cy + j * s * 0.7f, r.cx + s, r.cy + j * s * 0.7f, sym) }
@@ -190,7 +200,13 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
         val kx = cx + nx * r * 0.7f
         val ky = cy + ny * r * 0.7f
         c.drawCircle(kx, ky, r * 0.5f, fillP)
-        c.drawCircle(kx, ky, r * 0.5f, stroke)
+        // Núm cần có viền vàng dày như ảnh mẫu
+        val w0 = stroke.strokeWidth
+        stroke.strokeWidth = w0 * 2.2f
+        c.drawCircle(kx, ky, r * 0.46f, stroke)
+        stroke.strokeWidth = w0
+        fillP.color = if (on) Color.parseColor("#FFE29A") else gold
+        c.drawCircle(kx, ky, r * 0.1f, fillP)
     }
 
     // ---------------- Cảm ứng ----------------

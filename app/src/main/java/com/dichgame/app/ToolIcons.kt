@@ -13,7 +13,7 @@ import android.view.View
  * [color] là màu nét, [knock] là màu nền để khoét chữ trên biểu tượng dịch.
  */
 class ToolIcon(c: Context, var kind: Kind, var color: Int, private val knock: Int = 0) : View(c) {
-    enum class Kind { TRANSLATE, SCAN, CC, CROP, TEXT_SIZE, SPEAKER_ON, SPEAKER_OFF, PAUSE, PLAY, SEARCH, GEAR }
+    enum class Kind { TRANSLATE, SCAN, CC, CROP, TEXT_SIZE, SPEAKER_ON, SPEAKER_OFF, PAUSE, PLAY, SEARCH, GEAR, SUBS, DIAL, ZOOM, ROTATE, HELP, CLOSE, GAMEPAD, HOME, CHEVRON }
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
@@ -122,6 +122,70 @@ class ToolIcon(c: Context, var kind: Kind, var color: Int, private val knock: In
             Kind.SEARCH -> {
                 cv.drawCircle(s * 0.42f, s * 0.42f, s * 0.28f, p)
                 cv.drawLine(s * 0.63f, s * 0.63f, s * 0.90f, s * 0.90f, p)
+            }
+            Kind.SUBS -> {
+                r.set(s * 0.06f, s * 0.18f, s * 0.94f, s * 0.82f)
+                cv.drawRoundRect(r, s * 0.14f, s * 0.14f, p)
+                cv.drawLine(s * 0.22f, s * 0.46f, s * 0.50f, s * 0.46f, p)
+                cv.drawLine(s * 0.60f, s * 0.46f, s * 0.78f, s * 0.46f, p)
+                cv.drawLine(s * 0.22f, s * 0.64f, s * 0.64f, s * 0.64f, p)
+            }
+            Kind.DIAL -> {
+                r.set(s * 0.08f, s * 0.18f, s * 0.92f, s * 1.02f)
+                cv.drawArc(r, 180f, 180f, false, p)
+                cv.drawLine(s * 0.08f, s * 0.60f, s * 0.92f, s * 0.60f, p)
+                cv.drawLine(s * 0.50f, s * 0.60f, s * 0.72f, s * 0.34f, p)
+                p.style = Paint.Style.FILL
+                cv.drawCircle(s * 0.50f, s * 0.60f, s * 0.06f, p)
+                p.style = Paint.Style.STROKE
+            }
+            Kind.ZOOM -> {
+                cv.drawCircle(s * 0.42f, s * 0.42f, s * 0.30f, p)
+                cv.drawLine(s * 0.64f, s * 0.64f, s * 0.92f, s * 0.92f, p)
+                cv.drawLine(s * 0.28f, s * 0.42f, s * 0.56f, s * 0.42f, p)
+                cv.drawLine(s * 0.42f, s * 0.28f, s * 0.42f, s * 0.56f, p)
+            }
+            Kind.ROTATE -> {
+                r.set(s * 0.14f, s * 0.14f, s * 0.86f, s * 0.86f)
+                cv.drawArc(r, -60f, 270f, false, p)
+                p.style = Paint.Style.FILL
+                path.reset()
+                path.moveTo(s * 0.238f, s * 0.233f); path.lineTo(s * 0.236f, s * 0.417f); path.lineTo(s * 0.080f, s * 0.327f); path.close()
+                cv.drawPath(path, p)
+                p.style = Paint.Style.STROKE
+            }
+            Kind.HELP -> {
+                cv.drawCircle(s * 0.5f, s * 0.5f, s * 0.42f, p)
+                p.style = Paint.Style.FILL
+                p.textAlign = Paint.Align.CENTER
+                p.textSize = s * 0.58f
+                cv.drawText("?", s * 0.5f, s * 0.70f, p)
+            }
+            Kind.CLOSE -> {
+                cv.drawLine(s * 0.24f, s * 0.24f, s * 0.76f, s * 0.76f, p)
+                cv.drawLine(s * 0.76f, s * 0.24f, s * 0.24f, s * 0.76f, p)
+            }
+            Kind.GAMEPAD -> {
+                r.set(s * 0.06f, s * 0.26f, s * 0.94f, s * 0.78f)
+                cv.drawRoundRect(r, s * 0.24f, s * 0.24f, p)
+                cv.drawLine(s * 0.20f, s * 0.52f, s * 0.40f, s * 0.52f, p)
+                cv.drawLine(s * 0.30f, s * 0.42f, s * 0.30f, s * 0.62f, p)
+                p.style = Paint.Style.FILL
+                cv.drawCircle(s * 0.64f, s * 0.46f, s * 0.05f, p)
+                cv.drawCircle(s * 0.76f, s * 0.58f, s * 0.05f, p)
+                p.style = Paint.Style.STROKE
+            }
+            Kind.HOME -> {
+                path.reset()
+                path.moveTo(s * 0.12f, s * 0.50f); path.lineTo(s * 0.5f, s * 0.16f); path.lineTo(s * 0.88f, s * 0.50f)
+                path.moveTo(s * 0.24f, s * 0.42f); path.lineTo(s * 0.24f, s * 0.84f); path.lineTo(s * 0.76f, s * 0.84f); path.lineTo(s * 0.76f, s * 0.42f)
+                path.moveTo(s * 0.42f, s * 0.84f); path.lineTo(s * 0.42f, s * 0.60f); path.lineTo(s * 0.58f, s * 0.60f); path.lineTo(s * 0.58f, s * 0.84f)
+                cv.drawPath(path, p)
+            }
+            Kind.CHEVRON -> {
+                path.reset()
+                path.moveTo(s * 0.24f, s * 0.38f); path.lineTo(s * 0.5f, s * 0.64f); path.lineTo(s * 0.76f, s * 0.38f)
+                cv.drawPath(path, p)
             }
             Kind.GEAR -> {
                 cv.drawCircle(s * 0.5f, s * 0.5f, s * 0.17f, p)
