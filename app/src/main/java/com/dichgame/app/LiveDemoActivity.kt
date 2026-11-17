@@ -1,0 +1,85 @@
+package com.dichgame.app
+
+import android.app.Activity
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.Gravity
+import android.view.SurfaceHolder
+import android.view.SurfaceView
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.widget.FrameLayout
+
+/**
+ * Chỉ bản debug, dùng trong ci/smoke.sh: thử chuỗi "lấy hình từ SurfaceView, đọc chữ, dịch, hiện phụ đề" của dịch phụ đề
+ * trong màn chơi mà không cần máy PS5. SurfaceView ở đây vẽ sẵn một câu phụ đề tiếng Anh như video game thật.
+ * Từng bước ghi vào nhật ký DG_LIVE.
+ */
+class LiveDemoActivity : Activity(), SurfaceHolder.Callback {
+    private var sv: SurfaceView? = null
+    private var live: LiveSubs? = null
+    private val ui = Handler(Looper.getMainLooper())
+    private val redraw = object : Runnable {
+        override fun run() {
+            draw()
+            ui.postDelayed(this, 700)
+        }
+    }
+
+    override fun onCreate(b: Bundle?) {
+        super.onCreate(b)
+        if (!BuildConfig.DEBUG) { finish(); return }
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val root = FrameLayout(this)
+        root.setBackgroundColor(Color.BLACK)
+        val v = SurfaceView(this)
+        sv = v
+        v.holder.addCallback(this)
+        val vid = FrameLayout(this)
+        vid.addView(v, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        val h = (240 * resources.displayMetrics.density).toInt()
+        root.addView(vid, FrameLayout.LayoutParams(MATCH_PARENT, h, Gravity.CENTER))
+        setContentView(root)
+        Prefs(this).lang = "en"
+        val l = LiveSubs(this) { sv }
+        live = l
+        l.attach(vid)
+        ui.postDelayed({ l.start() }, 1500)
+    }
+
+    private fun draw() {
+        val v = sv ?: return
+        val holder = v.holder
+        if (!holder.surface.isValid) return
+        try {
+            val c = holder.lockCanvas() ?: return
+            try {
+                c.drawColor(Color.rgb(24, 30, 44))
+                val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    typeface = Typeface.DEFAULT_BOLD
+                    textAlign = Paint.Align.CENTER
+                    textSize = c.height * 0.085f
+                }
+                c.drawText("Where are you going tonight?", c.width / 2f, c.height * 0.80f, p)
+                c.drawText("Stay close to me.", c.width / 2f, c.height * 0.92f, p)
+            } finally {
+                holder.unlockCanvasAndPost(c)
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
+    override fun surfaceCreated(holder: SurfaceHolder) { ui.removeCallbacks(redraw); ui.post(redraw) }
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+    override fun surfaceDestroyed(holder: SurfaceHolder) { ui.removeCallbacks(redraw) }
+
+    override fun onDestroy() {
+        ui.removeCallbacksAndMessages(null)
+        runCatching { live?.release() }
+        super.onDestroy()
+    }
+}

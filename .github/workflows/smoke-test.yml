@@ -77,3 +77,9 @@ jobs:
           if [ -s shots/selftest-fail.txt ]; then
             echo "Giọng offline lỗi:"; cat shots/selftest.txt; exit 1
           fi
+          if [ -s shots/ocr-fail.txt ]; then
+            echo "Dịch video web bằng OCR lỗi:"; cat shots/ocr-fail.txt; cat shots/ocr-web.txt; exit 1
+          fi
+          if [ -s shots/live-fail.txt ]; then
+            echo "Dịch phụ đề trong màn chơi lỗi:"; cat shots/live-fail.txt; cat shots/live.txt; exit 1
+          fi

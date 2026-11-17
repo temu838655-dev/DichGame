@@ -156,7 +156,7 @@ class CaptureService : Service() {
             try {
                 housekeeping()
                 capture()
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 reportFrameError()
             } finally {
                 if (running) handler.postDelayed(this, scanDelay())
@@ -180,6 +180,31 @@ class CaptureService : Service() {
             return START_NOT_STICKY
         }
         if (running) return START_NOT_STICKY
+        CrashLog.mark("capture:bat-dau")
+        // Android 14 trở lên bắt buộc gọi startForeground ngay khi dịch vụ khởi động, trước cả việc nạp bộ đọc chữ.
+        val micReq = intent.getBooleanExtra("phoneaudio", false) && !intent.getBooleanExtra("narrate", false)
+        val micFgs = try {
+            startAsForeground(micReq)
+        } catch (e: Throwable) {
+            return failStart("Không bật được dịch vụ dịch màn hình: ${e.message ?: e.javaClass.simpleName}")
+        }
+        return try {
+            startUp(intent, micFgs)
+        } catch (e: Throwable) {
+            failStart("Không bật được dịch màn hình: ${e.message ?: e.javaClass.simpleName}")
+        }
+    }
+
+    /** Bắt đầu thất bại: ghi lại, báo cho người dùng và dừng gọn thay vì để app đóng đột ngột. */
+    private fun failStart(msg: String): Int {
+        CrashLog.mark("capture:loi $msg")
+        try { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show() } catch (_: Throwable) {}
+        stopSelf()
+        return START_NOT_STICKY
+    }
+
+    @Suppress("DEPRECATION")
+    private fun startUp(intent: Intent, micFgs: Boolean): Int {
         running = true
         active = true
         stats.reset(System.currentTimeMillis(), batteryPct())
@@ -200,7 +225,6 @@ class CaptureService : Service() {
         ocr = o
         // Đọc chữ bằng Gemini thì không tự quét liên tục (tốn lượt dùng); vẫn dùng được "Dịch menu" và "Vùng dịch".
         if (o.isCloud) autoMenu = false
-        val micFgs = startAsForeground(wantPhoneAudio)
 
         val data = intent.getParcelableExtra<Intent>("data")
         if (data == null) { stopSelf(); return START_NOT_STICKY }
@@ -353,7 +377,7 @@ class CaptureService : Service() {
         override fun run() {
             try {
                 autoScan()
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 reportFrameError()
             } finally {
                 if (running && autoMenu) handler.postDelayed(this, 2000)
@@ -549,13 +573,15 @@ class CaptureService : Service() {
 
     /** Hẹn giờ kiểm tra có thể ẩn dòng đang hiện chưa (hết thời gian đọc, màn hình không còn chữ). */
     private val hideCheck = Runnable {
-        if (running && !editing) {
-            val now = System.currentTimeMillis()
-            pump()
-            if (pacer.showing != null) {
-                if (pacer.mayHide(now)) { if (canHide(now)) softHide() else if (!textOnScreen) scheduleHide() } else scheduleHide()
+        try {
+            if (running && !editing) {
+                val now = System.currentTimeMillis()
+                pump()
+                if (pacer.showing != null) {
+                    if (pacer.mayHide(now)) { if (canHide(now)) softHide() else if (!textOnScreen) scheduleHide() } else scheduleHide()
+                }
             }
-        }
+        } catch (_: Throwable) {}
     }
 
     private fun scheduleHide() {

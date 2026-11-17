@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.util.Log
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -94,9 +95,10 @@ class RegionBox(c: Context) : View(c) {
             fill.style = Paint.Style.FILL
             cv.drawRoundRect(rect, 10f * d, 10f * d, fill)
         }
-        if (adjusting || active) {
-            line.strokeWidth = if (adjusting) 3f * d else 1.6f * d
-            line.alpha = if (adjusting) 255 else 110
+        // Chỉ vẽ viền khi đang chọn khung. Đang dịch thì khung ẩn hẳn, không đè lên video.
+        if (adjusting) {
+            line.strokeWidth = 3f * d
+            line.alpha = 255
             cv.drawRoundRect(rect, 10f * d, 10f * d, line)
         }
         if (adjusting) {
@@ -159,6 +161,7 @@ class RegionBox(c: Context) : View(c) {
  * Nút dịch bắt đầu / tạm dừng, chọn ngôn ngữ, đọc to, cỡ chữ và các tùy chọn nằm ở thanh công cụ dưới cùng.
  */
 class WebTranslateActivity : Activity() {
+    private val TAG = "DG_OCR"
     private lateinit var p: Prefs
     private lateinit var sp: SharedPreferences
     private lateinit var web: WebView
@@ -201,6 +204,12 @@ class WebTranslateActivity : Activity() {
     private var lastCand = ""
     private var lastShown = ""
     private var miss = 0
+    // chẩn đoán lần quét OCR: để báo rõ vì sao chưa dịch thay vì im lặng
+    private var gotText = false
+    private var emptyScans = 0
+    private var blankScans = 0
+    private var failScans = 0
+    private var copyFails = 0
 
     private val js = """
 (function(){
@@ -450,12 +459,30 @@ class WebTranslateActivity : Activity() {
             "adjust" -> ui.postDelayed({ enterAdjust() }, 800)
             "menu" -> ui.postDelayed({ showSourceMenu(srcPill) }, 800)
             "settings" -> ui.postDelayed({ showSettingsSheet() }, 800)
+            "ocrtest" -> ui.postDelayed({ runOcrDemo() }, 800)
             "running" -> ui.postDelayed({
                 running = true; everStarted = true; refresh()
                 setPanel("Xin chào, đây là bản dịch thử.", "Hello, this is a test.")
                 showFallback()
             }, 800)
         }
+    }
+
+    /**
+     * Bài thử tự động (ci/smoke.sh, extra demo=ocrtest): nạp trang có chữ tiếng Anh cỡ lớn, đặt khung trùm lên chữ,
+     * bật OCR và dịch thật; từng bước ghi vào nhật ký DG_OCR để máy chủ CI biết chuỗi chụp hình, đọc chữ, dịch có chạy.
+     */
+    private fun runOcrDemo() {
+        Log.i(TAG, "demo: bat dau")
+        val html = "<html><body style='margin:0;background:#202830'><div style='position:absolute;left:5%;top:24%;width:90%;" +
+            "color:#fff;font:bold 26px sans-serif;text-align:center'>Where are you going tonight? Stay close to me.</div></body></html>"
+        web.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+        p.lang = "en"
+        sp.edit().putString("source", "ocr").putBoolean("langAsked", true).apply()
+        source = "ocr"
+        box.load("0.03,0.15,0.97,0.50")
+        refresh()
+        ui.postDelayed({ Log.i(TAG, "demo: bam dich"); start() }, 2500)
     }
 
     // ---------------- giao diện nhỏ ----------------
@@ -524,7 +551,8 @@ class WebTranslateActivity : Activity() {
 
     private fun setPanel(vi: String, orig: String) {
         applyFont()
-        val grey = vi.startsWith("Bấm nút dịch") || vi.startsWith("Đang ") || vi.startsWith("Đã tạm") || vi.startsWith("Không ")
+        val grey = vi.startsWith("Bấm nút dịch") || vi.startsWith("Đang ") || vi.startsWith("Đã tạm") || vi.startsWith("Không ") ||
+            vi.startsWith("Khung đang") || vi.startsWith("Chưa thấy") || vi.startsWith("Máy không") || vi.startsWith("Bộ đọc chữ")
         if (grey) textView.setTextColor(Ui.SUB)
         textView.text = vi
         origView.text = orig
@@ -580,6 +608,7 @@ class WebTranslateActivity : Activity() {
         running = true
         everStarted = true
         lastProcessed = ""; lastShown = ""; lastCand = ""; miss = 0; lastThumb = null
+        resetScanDiag()
         refresh()
         setPanel(if (source == "ocr") "Đang quét chữ trên video..." else "Đang chờ phụ đề của video...", "")
         applyHide()
@@ -651,6 +680,7 @@ class WebTranslateActivity : Activity() {
     private fun process(text: String) {
         if (!running || text == lastProcessed) return
         lastProcessed = text
+        Log.i(TAG, "src: $text")
         if (p.narrate) {
             setPanel(text, "")
             if (p.speak) speaker?.speak(text)
@@ -659,6 +689,7 @@ class WebTranslateActivity : Activity() {
         val t = translator ?: return
         val my = ++seq
         t.translateEx(text) { vi, d ->
+            Log.i(TAG, "vi: $vi")
             if (my == seq && running) {
                 setPanel(vi, if (p.showOrig) text else "")
                 if (p.speak) speaker?.speak(vi, false, d)
@@ -705,8 +736,13 @@ class WebTranslateActivity : Activity() {
             try {
                 PixelCopy.request(window, r, bmp, { res ->
                     if (hideOrig) { box.covering = true }
-                    if (res != PixelCopy.SUCCESS) { bmp.recycle(); scanBusy = false; scheduleScan(1000) }
-                    else readBitmap(bmp)
+                    if (res != PixelCopy.SUCCESS) {
+                        bmp.recycle(); scanBusy = false
+                        copyFails++
+                        Log.i(TAG, "pixelcopy loi $res (lan $copyFails)")
+                        if (copyFails >= 3 && !gotText) setPanel("Máy không chụp được khung hình video (mã $res). Thử nguồn CC trong menu A文.", "")
+                        scheduleScan(1000)
+                    } else { copyFails = 0; readBitmap(bmp) }
                 }, ui)
             } catch (_: Throwable) {
                 bmp.recycle(); scanBusy = false
@@ -726,31 +762,56 @@ class WebTranslateActivity : Activity() {
         if (isDestroyed || !running) { bmp.recycle(); scanBusy = false; return }
         val th = Ocr.thumb(bmp)
         if (lastThumb != null && Ocr.same(th, lastThumb)) { bmp.recycle(); scanBusy = false; scheduleScan(); return }
-        lastThumb = th
+        val blank = isBlank(th)
         engine().read(bmp,
             { m ->
                 bmp.recycle(); scanBusy = false
-                if (m.isNotEmpty()) setPanel(m, "")
-                scheduleScan(if (m.isNotEmpty()) 4000 else interval())
+                failScans++
+                Log.i(TAG, "ocr loi '$m' (lan $failScans)")
+                // lần đọc lỗi thì chưa coi là đã đọc ảnh này: ảnh đứng yên vẫn được thử lại
+                if (m.isNotEmpty()) { setPanel(m, ""); scheduleScan(4000) }
+                else {
+                    if (failScans >= 3 && !gotText) setPanel("Bộ đọc chữ trên máy chưa chạy được. Đang thử lại…", "")
+                    scheduleScan(if (failScans >= 3) 2000 else interval())
+                }
             },
             { blocks ->
                 bmp.recycle(); scanBusy = false
-                onOcr(blocks)
+                failScans = 0
+                lastThumb = th
+                onOcr(blocks, blank)
                 scheduleScan()
             })
     }
 
-    private fun onOcr(blocks: List<Blk>) {
+    /** Ảnh thu nhỏ gần như một màu (đen hoặc trống): không có chữ cũng không có hình. */
+    private fun isBlank(th: IntArray): Boolean {
+        var lo = 255; var hi = 0
+        for (v in th) { if (v < lo) lo = v; if (v > hi) hi = v }
+        return hi - lo < 10
+    }
+
+    private fun resetScanDiag() { gotText = false; emptyScans = 0; blankScans = 0; failScans = 0; copyFails = 0 }
+
+    private fun onOcr(blocks: List<Blk>, blank: Boolean = false) {
         if (!running) return
         val text = blocks.joinToString(" ") { it.text.replace(Regex("\\s+"), " ").trim() }.trim()
         if (text.length < 2 || text.none { it.isLetterOrDigit() }) {
             miss++
+            emptyScans++
+            if (blank) blankScans++ else blankScans = 0
             if (miss >= 3 && lastShown.isNotEmpty()) {
                 lastShown = ""; lastCand = ""; lastProcessed = ""
                 setPanel("Đang quét chữ trên video...", "")
             }
+            if (!gotText) {
+                if (blankScans >= 6) setPanel("Khung đang trống hoặc đen: video có thể được bảo vệ bản quyền hay chạy ở lớp riêng nên app không chụp được hình. Thử nguồn CC (menu A文), hoặc kéo khung trúng dòng chữ.", "")
+                else if (emptyScans >= 8) setPanel("Chưa thấy chữ trong khung. Bật phụ đề của video rồi bấm Chọn khung để kéo khung trùm đúng dòng chữ.", "")
+            }
             return
         }
+        Log.i(TAG, "ocr doc duoc: $text")
+        gotText = true; emptyScans = 0; blankScans = 0
         miss = 0
         if (p.slow && text != lastCand) { lastCand = text; return } // "Kỹ": chờ chữ ổn định qua hai lần đọc liên tiếp
         lastCand = text
@@ -775,6 +836,8 @@ class WebTranslateActivity : Activity() {
         toolsRow.visibility = View.VISIBLE
         adjustRow.visibility = View.GONE
         lastThumb = null
+        resetScanDiag()
+        Toast.makeText(this, "Đã chọn khung. Khung sẽ ẩn khi đang dịch; bấm Chọn khung để chỉnh lại.", Toast.LENGTH_SHORT).show()
         if (!running) start() else scheduleScan(200)
     }
 

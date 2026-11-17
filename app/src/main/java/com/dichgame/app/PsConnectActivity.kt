@@ -3,12 +3,9 @@ package com.dichgame.app
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
-import android.media.projection.MediaProjectionManager
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.ImageView
@@ -269,11 +266,6 @@ class PsConnectActivity : Activity() {
         val con = c ?: return
         if (!PsNative.available) { toast("Máy này chưa hỗ trợ chơi PS5 trong app (cần điện thoại chip arm64)."); return }
         if (con.players.isEmpty()) { startActivity(Intent(this, PsPairActivity::class.java)); return }
-        if (mode != "plain" && !Settings.canDrawOverlays(this)) {
-            toast("Hãy bật \"Hiển thị trên các ứng dụng khác\" cho Dịch game, rồi quay lại.")
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-            return
-        }
         if (mode != "plain" && Prefs.isCloudOcr(p.lang) && p.geminiKey.isEmpty()) {
             toast("Chữ ${Prefs.srcNameOf(p.lang)} cần khóa Gemini. Nhập trong mục Cách dịch.")
             startActivity(Intent(this, TranslateActivity::class.java))
@@ -317,39 +309,21 @@ class PsConnectActivity : Activity() {
         try { DiscoveryService.wakeup(discovery, con.host, cred, con.ps5) } catch (_: Throwable) {}
     }
 
+    /**
+     * Chơi trong app: dịch phụ đề chạy ngay trong màn chơi (lấy hình thẳng từ video Remote Play), nên không cần quyền
+     * "Hiển thị trên các ứng dụng khác" và không cần ghi màn hình. Nếu dịch nền đang chạy sẵn (bật từ màn hình chính) thì dùng luôn cái đó.
+     */
     private fun proceed() {
-        if (pendingMode == "plain" || CaptureService.active) { if (pendingMode != "plain") p.playOn = pendingMode; openPlay(); return }
-        val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        @Suppress("DEPRECATION")
-        startActivityForResult(mpm.createScreenCaptureIntent(), 100)
-    }
-
-    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
-    override fun onActivityResult(req: Int, res: Int, data: Intent?) {
-        super.onActivityResult(req, res, data)
-        if (req == 100 && res == RESULT_OK && data != null) {
-            val q = Prefs(this)
-            q.playOn = pendingMode
-            val started = runCatching {
-                startForegroundService(Intent(this, CaptureService::class.java)
-                    .putExtra("code", res).putExtra("data", data)
-                    .putExtra("speak", q.speak).putExtra("lang", q.lang)
-                    .putExtra("automenu", q.autoMenu).putExtra("slow", q.slow).putExtra("narrate", q.narrate))
-            }.isSuccess
-            if (!started) {
-                CaptureService.active = false
-                toast("Không thể khởi động dịch nền. Hãy kiểm tra quyền thông báo, quyền ghi màn hình và thử lại.")
-                return
-            }
-            CaptureService.active = true
-            openPlay()
-        }
+        if (pendingMode != "plain") p.playOn = pendingMode
+        openPlay()
     }
 
     private fun openPlay() {
+        val translate = pendingMode != "plain" && !CaptureService.active
         startActivity(Intent(this, PsPlayActivity::class.java)
             .putExtra(PsPlayActivity.EXTRA_MODE, if (pendingMode == "tv") "tv" else "phone")
-            .putExtra(PsPlayActivity.EXTRA_PLAYER, pendingPlayer))
+            .putExtra(PsPlayActivity.EXTRA_PLAYER, pendingPlayer)
+            .putExtra(PsPlayActivity.EXTRA_TRANSLATE, translate))
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()

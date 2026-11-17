@@ -46,6 +46,36 @@ run_screens a-default
 set_prefs ci/prefs-full.xml
 run_screens b-full
 
+# Dịch video web bằng OCR, thử thật: trang có chữ tiếng Anh -> chụp khung -> đọc chữ -> dịch ra tiếng Việt (nhật ký DG_OCR)
+adb shell am force-stop "$PKG"
+adb logcat -c
+adb shell am start -W -n "$PKG/.WebTranslateActivity" --es demo ocrtest >/dev/null 2>&1
+for i in $(seq 1 60); do
+  sleep 5
+  adb logcat -d -s DG_OCR:I > "$OUT/ocr-web.txt" 2>&1
+  grep -q "DG_OCR.*vi: " "$OUT/ocr-web.txt" && break
+done
+shot web-ocrtest
+cat "$OUT/ocr-web.txt"
+grep -q "DG_OCR.*ocr doc duoc" "$OUT/ocr-web.txt" || echo "OCR video web không đọc được chữ trong khung" >> "$OUT/ocr-fail.txt"
+grep -q "DG_OCR.*vi: " "$OUT/ocr-web.txt" || echo "Dịch video web bằng OCR không ra bản dịch" >> "$OUT/ocr-fail.txt"
+adb shell am force-stop "$PKG"
+
+# Dịch phụ đề trong màn chơi (không cần ghi màn hình): SurfaceView vẽ sẵn phụ đề -> PixelCopy -> OCR -> dịch -> hiện (nhật ký DG_LIVE)
+adb logcat -c
+adb shell am start -W -n "$PKG/.LiveDemoActivity" >/dev/null 2>&1
+for i in $(seq 1 60); do
+  sleep 5
+  adb logcat -d -s DG_LIVE:I > "$OUT/live.txt" 2>&1
+  grep -q "DG_LIVE.*dich: " "$OUT/live.txt" && break
+done
+sleep 2
+shot live-demo
+cat "$OUT/live.txt"
+grep -q "DG_LIVE.*doc: " "$OUT/live.txt" || echo "Dịch trong màn chơi: không đọc được chữ từ SurfaceView" >> "$OUT/live-fail.txt"
+grep -q "DG_LIVE.*dich: " "$OUT/live.txt" || echo "Dịch trong màn chơi: không ra bản dịch" >> "$OUT/live-fail.txt"
+adb shell am force-stop "$PKG"
+
 # Kho game Việt hoá: lọc theo nền tảng và bảng chi tiết một game (extra chỉ có ở bản debug)
 adb shell am force-stop "$PKG"
 # ảnh bìa tải từ Steam: chờ lâu hơn lần đầu, các lần sau lấy từ bộ nhớ đệm

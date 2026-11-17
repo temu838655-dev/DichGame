@@ -38,6 +38,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         render()
+        CrashLog.showIfAny(this)
         // "Chọn và dịch ngay" trong Kho game: mở luôn bước bắt đầu
         if (intent?.getBooleanExtra("go", false) == true) {
             intent.removeExtra("go")

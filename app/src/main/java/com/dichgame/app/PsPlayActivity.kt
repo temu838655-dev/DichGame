@@ -8,8 +8,6 @@ import android.hardware.input.InputManager
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Color
-import android.media.projection.MediaProjectionManager
-import android.net.Uri
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -17,7 +15,6 @@ import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
 import android.text.InputFilter
 import android.text.InputType
 import android.view.Gravity
@@ -55,7 +52,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     companion object {
         const val EXTRA_MODE = "mode"       // "tv" hoặc "phone"
         const val EXTRA_PLAYER = "player"
-        private const val REQ_CAPTURE = 911
+        const val EXTRA_TRANSLATE = "translate"   // bật dịch phụ đề ngay khi vào chơi
     }
 
     private var console: PsConsole? = null
@@ -98,6 +95,12 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var statusView: TextView? = null
     private var chipView: TextView? = null
     private var transBtn: TextView? = null
+    // Dịch phụ đề chạy ngay trong màn chơi (chụp hình thẳng từ SurfaceView), không cần quyền ghi màn hình.
+    @Volatile private var live: LiveSubs? = null
+    private var videoView: SurfaceView? = null
+    // Người dùng muốn dịch: bật lại tự động mỗi khi kết nối (kể cả sau khi rời màn hình rồi quay lại)
+    private var wantTranslate = false
+    private var vidFrame: FrameLayout? = null
     private val ui = Handler(Looper.getMainLooper())
     private var inputListenerRegistered = false
     private var networkCallbackRegistered = false
@@ -159,6 +162,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         super.onCreate(b)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         mode = intent.getStringExtra(EXTRA_MODE) ?: "phone"
+        wantTranslate = intent.getBooleanExtra(EXTRA_TRANSLATE, false)
         player = intent.getIntExtra(EXTRA_PLAYER, 0)
         padOn = mode != "tv"
         val c = PsStore.load(this)
@@ -168,6 +172,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             return
         }
         console = c
+        CrashLog.mark("choi:vao mode=$mode")
         player = player.coerceIn(0, c.players.size - 1)
         try {
             val prof = PsStore.profile(this)
@@ -209,6 +214,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             networkCallbackRegistered = false
         }
         super.onStop()
+        live?.let { l -> if (l.running) { l.stop(); transBtn?.text = "🌐" } }
         // Rời màn hình thì dừng phiên: PS5 không cần giữ luồng hình cho một app đang ẩn.
         resetPhysicalControllerState()
         padState = ControllerState(); pad?.releaseAll()
@@ -225,8 +231,11 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     override fun onDestroy() {
         activityStarted = false
         reconnectPending = false
+        runCatching { live?.release() }
+        live = null
         shutdownSession()
         ui.removeCallbacksAndMessages(null)
+        CrashLog.mark("choi:xong")
         super.onDestroy()
     }
 
@@ -269,6 +278,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             else View.SYSTEM_UI_FLAG_VISIBLE
 
         val sv = SurfaceView(this)
+        videoView = sv
         sv.holder.addCallback(this)
         val st = Ui.tv(this, "", 16f, Color.WHITE, true).apply { gravity = Gravity.CENTER }
         statusView = st
@@ -276,10 +286,12 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         vid.setBackgroundColor(Color.BLACK)
         vid.addView(sv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         vid.addView(st, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        vidFrame = vid
+        live?.attach(vid)
 
         val padV = PadView(this) { s -> padState = s; push() }
         pad = padV
-        padV.visibility = if (padOn) View.VISIBLE else View.GONE
+        padV.visibility = if (padOn && live?.isAdjusting != true) View.VISIBLE else View.GONE
 
         val chip = Ui.tv(this, "", 12f, Ui.SUB).apply {
             setPadding(Ui.dp(this@PsPlayActivity, 10), Ui.dp(this@PsPlayActivity, 5), Ui.dp(this@PsPlayActivity, 10), Ui.dp(this@PsPlayActivity, 5))
@@ -340,7 +352,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             bar.addView(t, Ui.lp(0, WRAP_CONTENT, 1f))
             return t
         }
-        transBtn = item(if (CaptureService.active) "💬" else "🌐") { toggleTranslate() }
+        transBtn = item(if (live?.running == true) "💬" else "🌐") { toggleTranslate() }
+        item("🔲") { toggleAdjust() }
         item("🎮") { padOn = !padOn; pad?.visibility = if (padOn) View.VISIBLE else View.GONE; if (!padOn) pad?.releaseAll() }
         item("⟳") {
             requestedOrientation = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
@@ -360,7 +373,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     private fun refreshStatus() {
         if (connected) setStatus("", false) else setStatus(if (manual) "Đã ngắt kết nối" else "Đang vào game…", true)
-        transBtn?.text = if (CaptureService.active) "💬" else "🌐"
+        transBtn?.text = if (live?.running == true) "💬" else "🌐"
     }
 
     private fun help() {
@@ -420,6 +433,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         manual = false
         connected = false
         refreshStatus()
+        CrashLog.mark("choi:ket-noi")
         var candidate: Session? = null
         var candidateAudioQueue: GameAudioPcmQueue? = null
         try {
@@ -449,6 +463,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 else ended(message, true)
                 return
             }
+            CrashLog.mark("choi:phien-da-mo")
             session = s
             gameAudioPcmQueue = candidateAudioQueue
             candidateAudioQueue = null
@@ -459,8 +474,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     queue = gameAudioPcmQueue!!,
                     modelDirectory = modelDirectory,
                     language = Prefs(this).lang,
-                    onTranscript = { text -> CaptureService.submitAudioTranscript(this, text) },
-                    onTranscriptMeta = { text, ms, rms -> CaptureService.submitAudioTranscript(this, text, ms, rms) },
+                    onTranscript = { text -> routeAudio(text, 0L, 1f) },
+                    onTranscriptMeta = { text, ms, rms -> routeAudio(text, ms, rms) },
                     onError = { message ->
                         ui.post {
                             if (!isFinishing && !isDestroyed) {
@@ -488,7 +503,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private fun onEvent(ev: Event) {
         when (ev) {
             is ConnectedEvent -> {
+                CrashLog.mark("choi:da-ket-noi")
                 connected = true
+                if (wantTranslate) ui.post { if (!isFinishing && !isDestroyed && live?.running != true) startTranslate() }
                 reconnectAttempt = 0
                 reconnectPending = false
                 reconnectRunnable?.let(ui::removeCallbacks)
@@ -782,37 +799,72 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     // ---------------- Dịch ----------------
 
-    private fun toggleTranslate() {
-        if (CaptureService.active) {
-            startService(Intent(this, CaptureService::class.java).setAction(CaptureService.STOP))
-            CaptureService.active = false
-            transBtn?.text = "🌐"
-            Toast.makeText(this, "Đã tắt dịch phụ đề.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (!Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Hãy bật \"Hiển thị trên các ứng dụng khác\" cho Dịch game, rồi quay lại.", Toast.LENGTH_LONG).show()
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-            return
-        }
-        val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        @Suppress("DEPRECATION")
-        startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE)
+    private fun routeAudio(text: String, ms: Long, rms: Float) {
+        val l = live
+        if (l != null && l.running) l.acceptAudio(text, ms, rms)
+        else CaptureService.submitAudioTranscript(this, text, ms, rms)
     }
 
-    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
-    override fun onActivityResult(req: Int, res: Int, data: Intent?) {
-        super.onActivityResult(req, res, data)
-        if (req == REQ_CAPTURE && res == RESULT_OK && data != null) {
-            val q = Prefs(this)
-            q.playOn = if (mode == "tv") "tv" else "phone"
-            startForegroundService(Intent(this, CaptureService::class.java)
-                .putExtra("code", res).putExtra("data", data)
-                .putExtra("speak", q.speak).putExtra("lang", q.lang)
-                .putExtra("automenu", q.autoMenu).putExtra("slow", q.slow).putExtra("narrate", q.narrate))
-            CaptureService.active = true
-            transBtn?.text = "💬"
-            Toast.makeText(this, "Đang dịch. Bật phụ đề tiếng Anh trong game, kéo khung xanh tới dòng phụ đề.", Toast.LENGTH_LONG).show()
+    private fun ensureLive(): LiveSubs {
+        var l = live
+        if (l == null) { l = LiveSubs(this) { videoView }; live = l }
+        return l
+    }
+
+    /** Bật/tắt dịch phụ đề ngay trong màn chơi: hình lấy thẳng từ video Remote Play, không cần ghi màn hình. */
+    private fun toggleTranslate() {
+        try {
+            val l = ensureLive()
+            if (l.running) {
+                wantTranslate = false
+                l.stop()
+                transBtn?.text = "🌐"
+                Toast.makeText(this, "Đã tắt dịch phụ đề.", Toast.LENGTH_SHORT).show()
+                return
+            }
+            wantTranslate = true
+            startTranslate()
+        } catch (e: Throwable) {
+            CrashLog.mark("choi:dich-loi " + e.javaClass.simpleName)
+            transBtn?.text = "🌐"
+            Toast.makeText(this, "Không bật được dịch phụ đề: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun startTranslate() {
+        try {
+            val l = ensureLive()
+            if (l.running) return
+            if (l.isAdjusting) toggleAdjust()
+            vidFrame?.let { l.attach(it) }
+            Prefs(this).playOn = if (mode == "tv") "tv" else "phone"
+            l.start()
+            transBtn?.text = if (l.running) "💬" else "🌐"
+            if (l.running) Toast.makeText(this, "Đang dịch phụ đề ngay trong màn chơi. Bật phụ đề trong game, bấm 🔲 để kéo khung tới đúng dòng phụ đề.", Toast.LENGTH_LONG).show()
+        } catch (e: Throwable) {
+            CrashLog.mark("choi:dich-loi " + e.javaClass.simpleName)
+            transBtn?.text = "🌐"
+            Toast.makeText(this, "Không bật được dịch phụ đề: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Chọn khung đọc phụ đề: tay cầm ảo tạm ẩn để kéo khung cho dễ, bấm lần nữa để xong. */
+    private fun toggleAdjust() {
+        try {
+            val l = ensureLive()
+            vidFrame?.let { l.attach(it) }
+            val on = !l.isAdjusting
+            l.setAdjusting(on)
+            pad?.visibility = if (!on && padOn) View.VISIBLE else View.GONE
+            if (on) pad?.releaseAll()
+            Toast.makeText(
+                this,
+                if (on) "Kéo khung tới đúng chỗ phụ đề của game, kéo chấm tròn để đổi cỡ. Bấm 🔲 lần nữa để xong."
+                else "Đã chọn khung. Khung ẩn đi khi đang dịch.",
+                Toast.LENGTH_LONG
+            ).show()
+        } catch (e: Throwable) {
+            Toast.makeText(this, "Không mở được khung chọn vùng: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
         }
     }
 }
