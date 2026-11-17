@@ -201,6 +201,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             if (prof.height > 0) ratio = prof.width.toFloat() / prof.height
         } catch (_: Throwable) {}
         build()
+        if (demo) android.util.Log.i("DG_PLAY", "tao man choi act=${System.identityHashCode(this)} mode=$demoMode")
         // Chỉ bản debug: tự thao tác vài bước để CI chụp được ảnh giao diện.
         if (demoMode == "adjust") {
             ui.postDelayed({ if (!isFinishing && !isDestroyed) toggleAdjust() }, 1500)
@@ -258,6 +259,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun onDestroy() {
+        if (demo) android.util.Log.i("DG_PLAY", "huy man choi act=${System.identityHashCode(this)}")
         activityStarted = false
         reconnectPending = false
         runCatching { live?.release() }
@@ -440,16 +442,14 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             root.addView(vid, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
             padV.alpha = 0.8f
             root.addView(padV, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+            // Hàng điều khiển ở giữa phía trên, nằm giữa hai cụm L2/L1 và R2/R1 của tay cầm nên không đè lên nút nào.
             bar.background = Ui.bg(this, Color.parseColor("#C017120D"), 22, Color.parseColor("#44F2B84B"), 1)
-            root.addView(bar, FrameLayout.LayoutParams(dpi(396), WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dpi(6) })
-            val left = Ui.hbox(this)
-            left.addView(closeBtn)
-            left.addView(padBtn, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(8) })
-            root.addView(left, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.START).apply { topMargin = dpi(6); leftMargin = dpi(10) })
-            val right = Ui.hbox(this)
-            right.addView(chip)
-            right.addView(pill, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(8) })
-            root.addView(right, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.END).apply { topMargin = dpi(8); rightMargin = dpi(12) })
+            val topRow = Ui.hbox(this)
+            topRow.addView(closeBtn)
+            topRow.addView(padBtn, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(8) })
+            topRow.addView(bar, Ui.lp(dpi(312), WRAP_CONTENT).apply { leftMargin = dpi(8) })
+            topRow.addView(pill, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(8) })
+            root.addView(topRow, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dpi(6) })
             setContentView(root)
         }
         refreshStatus()
@@ -1128,6 +1128,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             pad?.visibility = if (!on && padOn) View.VISIBLE else View.GONE
             if (on) pad?.releaseAll()
             syncTools()
+            if (demo) android.util.Log.i("DG_PLAY", "chinh khung on=$on pad=${pad?.visibility} act=${System.identityHashCode(this)} vid=${System.identityHashCode(vidFrame)}")
             Toast.makeText(
                 this,
                 if (on) "Kéo khung tới đúng chỗ phụ đề của game, kéo chấm tròn để đổi cỡ. Bấm ⛶ lần nữa hoặc ✓ Xong để ẩn khung."

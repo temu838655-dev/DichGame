@@ -478,6 +478,9 @@ class WebTranslateActivity : Activity() {
             "color:#fff;font:bold 26px sans-serif;text-align:center'>Where are you going tonight? Stay close to me.</div></body></html>"
         web.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
         p.lang = "en"
+        // Bài thử phải dịch thật bằng bộ dịch trên máy, bất kể cấu hình sẵn có (CI nạp cấu hình đầy đủ có bật Thuyết minh và AI giả).
+        p.narrate = false
+        p.engine = Prefs.ENGINE_LOCAL
         sp.edit().putString("source", "ocr").putBoolean("langAsked", true).apply()
         source = "ocr"
         box.load("0.03,0.15,0.97,0.50")

@@ -81,11 +81,14 @@ adb shell am force-stop "$PKG"
 adb logcat -c
 adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo adjust >/dev/null 2>&1
 sleep 1; shot play-demo
-sleep 2.5; shot play-demo-adjust
-sleep 3.5; shot play-demo-hidden
+sleep 1; shot play-demo-adjust
+sleep 1; shot play-demo-adjust2
+sleep 3; shot play-demo-hidden
 adb shell am force-stop "$PKG"
 adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo land >/dev/null 2>&1
 sleep 3; shot play-demo-land
+adb logcat -d -s DG_PLAY:I > "$OUT/play.txt" 2>&1
+cat "$OUT/play.txt"
 adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 > "$OUT/play-fail.txt"
 [ -s "$OUT/play-fail.txt" ] || rm -f "$OUT/play-fail.txt"
 adb shell settings put system user_rotation 0 >/dev/null 2>&1
