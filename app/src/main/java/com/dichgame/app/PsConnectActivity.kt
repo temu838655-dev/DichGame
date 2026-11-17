@@ -12,11 +12,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import com.metallic.chiaki.lib.CreateError
-import com.metallic.chiaki.lib.DiscoveryHost
 import com.metallic.chiaki.lib.DiscoveryService
-import com.metallic.chiaki.lib.DiscoveryServiceOptions
-import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
 
 /**
@@ -27,10 +23,10 @@ import java.nio.charset.StandardCharsets
 class PsConnectActivity : Activity() {
     private lateinit var p: Prefs
     private var c: PsConsole? = null
-    private var discovery: DiscoveryService? = null
+    private var finder: PsFinder? = null
     // Mỗi lượt dò có một thế hệ riêng để loại callback đến muộn từ dịch vụ cũ.
     private var discoveryGeneration = 0
-    private var hostState: DiscoveryHost.State? = null
+    private var hostReady = false
     private var hostSeen = false
     private var discoveryStartFailed = false
     private var statusView: TextView? = null
@@ -60,39 +56,35 @@ class PsConnectActivity : Activity() {
     // ---------------- Tìm trạng thái máy ----------------
 
     private fun startDiscovery() {
-        if (discovery != null || c == null || !PsNative.available) return
+        if (finder != null || c == null || !PsNative.available) return
         val generation = ++discoveryGeneration
-        hostState = null
+        hostReady = false
         hostSeen = false
         discoveryStartFailed = false
-        try {
-            discovery = DiscoveryService(DiscoveryServiceOptions(16UL, 3UL, 500UL, InetSocketAddress("255.255.255.255", 987))) { hosts ->
-                runOnUiThread {
-                    // Không nhận callback của lượt dò trước sau pause/resume hoặc đổi địa chỉ máy.
-                    if (isFinishing || isDestroyed || generation != discoveryGeneration || discovery == null) return@runOnUiThread
-                    val h = hosts.firstOrNull { it.hostAddr == c?.host }
-                    hostSeen = h != null
-                    hostState = h?.state
-                    drawStatus()
-                }
+        val target = c?.host ?: ""
+        // Bộ dò riêng của app: gửi thẳng qua Wi-Fi/LAN, broadcast của mạng, quét từng IP và gửi thẳng tới IP đã lưu.
+        val f = PsFinder(this, listOf(target)) { hosts ->
+            runOnUiThread {
+                // Không nhận kết quả của lượt dò trước sau pause/resume hoặc đổi địa chỉ máy.
+                if (isFinishing || isDestroyed || generation != discoveryGeneration || finder == null) return@runOnUiThread
+                val h = hosts.firstOrNull { it.addr == c?.host }
+                hostSeen = h != null
+                hostReady = h?.ready == true
+                drawStatus()
             }
-        } catch (_: CreateError) {
-            discovery = null
-            discoveryStartFailed = true
-            drawStatus()
-        } catch (_: Throwable) {
-            discovery = null
-            discoveryStartFailed = true
-            drawStatus()
         }
+        finder = f
+        try { f.start() } catch (_: Throwable) { discoveryStartFailed = true }
+        if (f.failed) discoveryStartFailed = true
+        drawStatus()
     }
 
     private fun stopDiscovery() {
-        // Vô hiệu hóa callback trước khi dispose bất đồng bộ dịch vụ hiện tại.
+        // Vô hiệu hóa kết quả trước khi dừng bất đồng bộ bộ dò hiện tại.
         discoveryGeneration++
-        val d = discovery ?: return
-        discovery = null
-        Thread { try { d.dispose() } catch (_: Throwable) {} }.start()
+        val f = finder ?: return
+        finder = null
+        Thread { try { f.stop() } catch (_: Throwable) {} }.start()
     }
 
     private fun drawStatus() {
@@ -100,9 +92,9 @@ class PsConnectActivity : Activity() {
         val con = c ?: return
         val (txt, col) = when {
             !PsNative.available -> "Máy này chưa hỗ trợ chơi PS5 trong app" to Ui.DANGER
-            discoveryStartFailed -> "Không thể khởi động dò mạng · vẫn có thể thử kết nối bằng địa chỉ đã lưu" to Ui.GOLD
-            hostSeen && hostState == DiscoveryHost.State.READY -> "Sẵn sàng · ${con.host}" to Ui.OK
-            hostSeen && hostState == DiscoveryHost.State.STANDBY -> "Đang nghỉ · sẽ tự bật khi bấm kết nối" to Ui.GOLD
+            hostSeen && hostReady -> "Sẵn sàng · ${con.host}" to Ui.OK
+            hostSeen && !hostReady -> "Đang nghỉ · sẽ tự bật khi bấm kết nối" to Ui.GOLD
+            discoveryStartFailed -> (finder?.info ?: "Không thể khởi động dò mạng") + " · vẫn có thể bấm kết nối bằng địa chỉ đã lưu" to Ui.GOLD
             else -> "Đang tìm kiếm ${if (con.ps5) "PS5" else "PS4"} tại ${con.host}…" to Ui.SUB
         }
         v.text = "●  $txt"
@@ -278,7 +270,7 @@ class PsConnectActivity : Activity() {
 
     private fun go() {
         val con = c ?: return
-        if (hostSeen && hostState == DiscoveryHost.State.STANDBY) {
+        if (hostSeen && !hostReady) {
             wake(con)
             val dlg = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle("Đang bật máy")
@@ -291,7 +283,7 @@ class PsConnectActivity : Activity() {
                 override fun run() {
                     if (waiting !== dlg) return
                     tries++
-                    if (hostState == DiscoveryHost.State.READY) { dlg.dismiss(); waiting = null; proceed(); return }
+                    if (hostSeen && hostReady) { dlg.dismiss(); waiting = null; proceed(); return }
                     if (tries > 75) { dlg.dismiss(); waiting = null; toast("Máy chưa bật. Kiểm tra \"Giữ kết nối Internet\" và \"Cho phép bật máy qua mạng\", hoặc bật máy bằng tay."); return }
                     ui.postDelayed(this, 1000)
                 }
@@ -306,7 +298,7 @@ class PsConnectActivity : Activity() {
         val end = key.indexOfFirst { it == 0.toByte() }
         val s = key.copyOfRange(0, if (end >= 0) end else key.size).toString(StandardCharsets.UTF_8)
         val cred = s.toULongOrNull(16) ?: return
-        try { DiscoveryService.wakeup(discovery, con.host, cred, con.ps5) } catch (_: Throwable) {}
+        try { DiscoveryService.wakeup(null, con.host, cred, con.ps5) } catch (_: Throwable) {}
     }
 
     /**

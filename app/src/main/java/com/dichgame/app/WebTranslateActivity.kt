@@ -588,6 +588,10 @@ class WebTranslateActivity : Activity() {
         t.onFallback = { showFallback() }
         translator = t
         setPanel("Đang chuẩn bị bộ dịch...", "")
+        // dựng sẵn bộ nhớ câu thoại ở luồng nền để lần dịch đầu không làm đứng màn hình
+        val appCtx = applicationContext
+        val prefs = p
+        Thread { try { PackStore.memory(appCtx, prefs).warm() } catch (_: Throwable) {} }.start()
         t.prepare { ok ->
             if (ok) done(true) else {
                 translator = null
@@ -686,14 +690,21 @@ class WebTranslateActivity : Activity() {
             if (p.speak) speaker?.speak(text)
             return
         }
-        val t = translator ?: return
+        val t = translator
+        if (t == null) { Log.i(TAG, "chua co bo dich"); return }
         val my = ++seq
-        t.translateEx(text) { vi, d ->
-            Log.i(TAG, "vi: $vi")
-            if (my == seq && running) {
-                setPanel(vi, if (p.showOrig) text else "")
-                if (p.speak) speaker?.speak(vi, false, d)
+        val t0 = System.currentTimeMillis()
+        try {
+            t.translateEx(text) { vi, d ->
+                Log.i(TAG, "vi: $vi (${System.currentTimeMillis() - t0} ms)")
+                if (my == seq && running) {
+                    setPanel(vi, if (p.showOrig) text else "")
+                    if (p.speak) speaker?.speak(vi, false, d)
+                }
             }
+        } catch (e: Throwable) {
+            Log.e(TAG, "dich loi", e)
+            setPanel("Không dịch được: ${e.message ?: e.javaClass.simpleName}", "")
         }
     }
 

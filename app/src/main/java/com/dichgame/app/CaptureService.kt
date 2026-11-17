@@ -139,6 +139,7 @@ class CaptureService : Service() {
     private var aiWarned = false
     private var frame: FrameLayout? = null
     private var handle: View? = null
+    private var doneBtn: View? = null
     private var region: FrameLayout? = null
     private lateinit var rlp: WindowManager.LayoutParams
     private lateinit var flp: WindowManager.LayoutParams
@@ -793,6 +794,17 @@ class CaptureService : Service() {
         }
     }
 
+    /** Dịch xong thì gỡ khung cam ngay (khung chỉ để chọn vùng, không để lù lù trên game); bản dịch vẫn hiện. Bấm "Vùng dịch" để chọn vùng khác. */
+    private fun hideRegionFrame() {
+        val old = region ?: return
+        try { wm.removeView(old) } catch (_: Exception) {}
+        region = null
+        // giữ bản dịch vùng thêm một lúc rồi tự quay lại dịch phụ đề
+        menuUntil = System.currentTimeMillis() + 15000
+        handler.postDelayed({ if (running && region == null && !editing && System.currentTimeMillis() >= menuUntil) show("") }, 15200)
+        placeTranslation()
+    }
+
     private fun translateRegion() {
         val box = region ?: return
         if (busy || !ready) return
@@ -851,6 +863,7 @@ class CaptureService : Service() {
             if (text.length < minLen) { show("Không thấy chữ trong khung."); finishBusy(); return@read }
             translateText(text) { vi ->
                 show(vi)
+                hideRegionFrame()
                 sendTv("region", vi, speak && tvSpeakOn() && !tvVoiceOn())
                 if (speak && tvVoiceOn()) tvVoice(vi)
                 finishBusy()
@@ -1090,6 +1103,17 @@ class CaptureService : Service() {
         val box = FrameLayout(this)
         val grip = View(this).apply { setBackgroundColor(0xFF00E5FF.toInt()) }
         box.addView(grip, FrameLayout.LayoutParams((32 * d).toInt(), (32 * d).toInt(), Gravity.BOTTOM or Gravity.END))
+        // Nút "Xong" ngay trên khung: bấm là khóa khung và ẩn khung đi, khỏi phải kéo thông báo xuống.
+        val done = TextView(this).apply {
+            text = "✓ Xong"
+            setTextColor(0xFF001417.toInt())
+            setBackgroundColor(0xFF00E5FF.toInt())
+            textSize = 14f
+            setPadding((12 * d).toInt(), (6 * d).toInt(), (12 * d).toInt(), (6 * d).toInt())
+            setOnClickListener { try { setEditing(false) } catch (_: Throwable) {} }
+        }
+        box.addView(done, FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END))
+        doneBtn = done
         var lx = 0f; var ly = 0f; var resize = false
         box.setOnTouchListener { _, e ->
             when (e.actionMasked) {
@@ -1128,6 +1152,7 @@ class CaptureService : Service() {
         flp.flags = if (on) base else base or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         f.background = if (on) border else null
         handle?.visibility = if (on) View.VISIBLE else View.INVISIBLE
+        doneBtn?.visibility = if (on) View.VISIBLE else View.GONE
         wm.updateViewLayout(f, flp)
         last = ""; cand = ""; stable = 0; lastFine = null
         if (on) { jobs.clear(); fusion.clear() }

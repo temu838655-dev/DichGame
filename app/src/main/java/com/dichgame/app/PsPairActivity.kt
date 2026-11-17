@@ -18,16 +18,12 @@ import android.widget.TextView
 import android.widget.Toast
 import com.metallic.chiaki.lib.ChiakiLog
 import com.metallic.chiaki.lib.CreateError
-import com.metallic.chiaki.lib.DiscoveryHost
-import com.metallic.chiaki.lib.DiscoveryService
-import com.metallic.chiaki.lib.DiscoveryServiceOptions
 import com.metallic.chiaki.lib.Regist
 import com.metallic.chiaki.lib.RegistEvent
 import com.metallic.chiaki.lib.RegistEventCanceled
 import com.metallic.chiaki.lib.RegistEventFailed
 import com.metallic.chiaki.lib.RegistEventSuccess
 import com.metallic.chiaki.lib.RegistInfo
-import java.net.InetSocketAddress
 
 /**
  * Ghép nối PS5/PS4 trong 3 bước: Tìm máy, Mã người chơi (PSN account ID), Mã 8 số hiện trên máy.
@@ -41,10 +37,20 @@ class PsPairActivity : Activity() {
     private var accountId: ByteArray? = null
     private var pin = ""
 
-    private var discovery: DiscoveryService? = null
+    private var finder: PsFinder? = null
     private var discoveryGeneration = 0
     private var foundBox: LinearLayout? = null
-    private var found: List<DiscoveryHost> = emptyList()
+    private var found: List<PsHost> = emptyList()
+    private var scanStartedAt = 0L
+    private val ui = android.os.Handler(android.os.Looper.getMainLooper())
+    private val tick = object : Runnable {
+        override fun run() {
+            if (finder == null || step != 1 || isFinishing || isDestroyed) return
+            // Chỉ vẽ lại theo giây khi chưa có máy nào (cập nhật bộ đếm); có máy rồi thì không đụng vào nút để khỏi mất lần chạm.
+            if (found.isEmpty()) drawFound()
+            ui.postDelayed(this, 1000)
+        }
+    }
 
     private var regist: Regist? = null
     private var running = false
@@ -81,52 +87,71 @@ class PsPairActivity : Activity() {
     // ---------------- Tìm máy trong mạng ----------------
 
     private fun startDiscovery() {
-        if (discovery != null || !PsNative.available) return
+        if (finder != null || !PsNative.available) return
         val generation = ++discoveryGeneration
-        try {
-            discovery = DiscoveryService(DiscoveryServiceOptions(16UL, 3UL, 500UL, InetSocketAddress("255.255.255.255", 987))) { hosts ->
-                runOnUiThread {
-                    // Bỏ qua callback của dịch vụ cũ sau onPause(), onDestroy() hoặc khi đã tạo lượt tìm mới.
-                    if (isFinishing || isDestroyed || step != 1 ||
-                        generation != discoveryGeneration || discovery == null) return@runOnUiThread
-                    found = hosts
-                    drawFound()
-                }
+        found = emptyList()
+        scanStartedAt = System.currentTimeMillis()
+        // Dò bằng bộ dò riêng của app: gửi thẳng qua Wi-Fi/LAN, gửi broadcast của mạng và quét từng IP (xem PsFinder).
+        val f = PsFinder(this, listOf(host)) { hosts ->
+            runOnUiThread {
+                // Bỏ qua kết quả của lượt dò cũ sau onPause(), onDestroy() hoặc khi đã tạo lượt dò mới.
+                if (isFinishing || isDestroyed || step != 1 || generation != discoveryGeneration || finder == null) return@runOnUiThread
+                found = hosts
+                drawFound()
             }
-        } catch (_: CreateError) { discovery = null } catch (_: Throwable) { discovery = null }
+        }
+        finder = f
+        try { f.start() } catch (_: Throwable) { }
+        ui.removeCallbacks(tick)
+        ui.postDelayed(tick, 1000)
     }
 
     private fun stopDiscovery() {
-        // Tăng thế hệ trước khi dispose để callback đang nằm trong hàng đợi không cập nhật UI.
+        // Tăng thế hệ trước khi dừng để kết quả đang nằm trong hàng đợi không cập nhật giao diện.
         discoveryGeneration++
-        val d = discovery ?: return
-        discovery = null
-        Thread { try { d.dispose() } catch (_: Throwable) {} }.start()
+        ui.removeCallbacks(tick)
+        val f = finder ?: return
+        finder = null
+        Thread { try { f.stop() } catch (_: Throwable) {} }.start()
+    }
+
+    private fun rescan() {
+        stopDiscovery()
+        found = emptyList()
+        drawFound()
+        startDiscovery()
     }
 
     private fun drawFound() {
         val box = foundBox ?: return
         box.removeAllViews()
-        val list = found.filter { !it.hostAddr.isNullOrEmpty() }
-        if (list.isEmpty()) {
-            box.addView(Ui.tv(this, "Đang tìm máy trong mạng Wi-Fi…", 13f, Ui.SUB))
-            return
-        }
+        val list = found.filter { it.addr.isNotEmpty() }
+        val f = finder
+        val secs = if (scanStartedAt > 0) ((System.currentTimeMillis() - scanStartedAt) / 1000).toInt() else 0
         for (h in list) {
-            val state = when (h.state) {
-                DiscoveryHost.State.READY -> "Sẵn sàng"
-                DiscoveryHost.State.STANDBY -> "Đang nghỉ"
-                else -> ""
-            }
-            val label = (h.hostName ?: if (h.isPS5) "PS5" else "PS4") + "  ·  " + h.hostAddr + (if (state.isNotEmpty()) "  ·  $state" else "")
+            val label = h.name + "  ·  " + h.addr + "  ·  " + (if (h.ready) "Sẵn sàng" else "Đang nghỉ")
             box.addView(Ui.button(this, label) {
-                host = h.hostAddr ?: ""
-                ps5 = h.isPS5
+                host = h.addr
+                ps5 = h.ps5
                 step = 2
                 stopDiscovery()
                 render()
             }, Ui.lpm(this, 6, 0))
         }
+        if (list.isEmpty()) {
+            box.addView(Ui.tv(this, if (f != null && f.failed) "Chưa tìm được máy" else "Đang tìm máy trong mạng Wi-Fi/LAN… ${secs}s", 13f, Ui.SUB))
+        }
+        if (f != null) box.addView(Ui.tv(this, f.info, 11.5f, Ui.SUB), Ui.lpm(this, 6, 0))
+        if (list.isEmpty() && (secs >= 8 || (f != null && f.failed))) {
+            box.addView(Ui.tv(this,
+                "Chưa thấy máy? Kiểm tra lần lượt:\n" +
+                    "• Máy chơi game đã bật hoặc ở chế độ nghỉ, và đã bật \"Chơi từ xa\".\n" +
+                    "• Điện thoại và máy chơi game cùng một Wi-Fi/dây mạng (không dùng Wi-Fi khách, không dùng \"cách ly thiết bị\" trên router).\n" +
+                    "• Tắt VPN/DNS riêng; nếu router có hai dải 2.4G và 5G thì thử nối cả hai vào cùng một dải.\n" +
+                    "• Cách chắc chắn nhất: nhập địa chỉ IP của máy ở khung bên dưới.",
+                12.5f, Ui.GOLD), Ui.lpm(this, 8, 0))
+        }
+        box.addView(Ui.button(this, "Quét lại") { rescan() }, Ui.lpm(this, 8, 0))
     }
 
     // ---------------- Giao diện ----------------

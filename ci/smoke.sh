@@ -57,6 +57,7 @@ for i in $(seq 1 60); do
 done
 shot web-ocrtest
 cat "$OUT/ocr-web.txt"
+adb logcat -d 2>&1 | grep -E "ANR|FATAL|AndroidRuntime|DG_OCR|mlkit|Translat" | tail -60 > "$OUT/ocr-web-full.txt"
 grep -q "DG_OCR.*ocr doc duoc" "$OUT/ocr-web.txt" || echo "OCR video web không đọc được chữ trong khung" >> "$OUT/ocr-fail.txt"
 grep -q "DG_OCR.*vi: " "$OUT/ocr-web.txt" || echo "Dịch video web bằng OCR không ra bản dịch" >> "$OUT/ocr-fail.txt"
 adb shell am force-stop "$PKG"

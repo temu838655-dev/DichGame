@@ -183,30 +183,79 @@ class TvSetupActivity : Activity() {
         }.start()
     }
 
-    /** Tìm TV tự động: gửi gói UDP quảng bá, app TV trả lời kèm địa chỉ. */
+    /**
+     * Tìm TV tự động: gửi gói UDP hỏi tới cổng 8766, app TV trả lời kèm địa chỉ. Gửi qua đúng mạng Wi-Fi/LAN, theo ba cách
+     * (255.255.255.255, broadcast của mạng, gửi thẳng từng IP) để vẫn thấy TV khi router chặn broadcast.
+     */
     private fun findTv() {
         status.setTextColor(Ui.SUB)
         status.text = "Đang tìm TV..."
         Thread {
             var ip = ""
+            val legs = try { PsFinder.openLegs(this) } catch (_: Throwable) { emptyList() }
             try {
-                java.net.DatagramSocket().use { ds ->
-                    ds.broadcast = true
-                    ds.soTimeout = 2500
-                    val q = "DICHGAME?".toByteArray()
-                    ds.send(java.net.DatagramPacket(q, q.size, java.net.InetAddress.getByName("255.255.255.255"), 8766))
-                    val pk = java.net.DatagramPacket(ByteArray(64), 64)
-                    ds.receive(pk)
-                    if (String(pk.data, 0, pk.length).startsWith("DICHGAME:")) ip = pk.address.hostAddress.orEmpty()
+                val q = "DICHGAME?".toByteArray()
+                val found = java.util.concurrent.atomic.AtomicReference<String?>(null)
+                val readers = legs.map { leg ->
+                    Thread {
+                        val buf = ByteArray(64)
+                        val end = System.currentTimeMillis() + 6000
+                        try { leg.socket.soTimeout = 300 } catch (_: Throwable) {}
+                        while (System.currentTimeMillis() < end && found.get() == null) {
+                            try {
+                                val pk = java.net.DatagramPacket(buf, buf.size)
+                                leg.socket.receive(pk)
+                                if (String(pk.data, 0, pk.length).startsWith("DICHGAME:")) found.compareAndSet(null, pk.address.hostAddress.orEmpty())
+                            } catch (_: java.net.SocketTimeoutException) {
+                            } catch (_: Throwable) { break }
+                        }
+                    }.apply { isDaemon = true; start() }
                 }
-            } catch (_: Exception) {}
+                fun send(leg: PsLeg, to: String) {
+                    try { leg.socket.send(java.net.DatagramPacket(q, q.size, java.net.InetAddress.getByName(to), 8766)) } catch (_: Throwable) {}
+                }
+                for (round in 0 until 2) {
+                    for (leg in legs) {
+                        send(leg, "255.255.255.255")
+                        for (bc in leg.broadcasts) send(leg, bc)
+                        var n = 0
+                        for (t in leg.sweep) {
+                            if (found.get() != null) break
+                            send(leg, t)
+                            if (++n % 32 == 0) try { Thread.sleep(4) } catch (_: InterruptedException) {}
+                        }
+                    }
+                    try { Thread.sleep(1500) } catch (_: InterruptedException) {}
+                    if (found.get() != null) break
+                }
+                for (r in readers) try { r.join(6500) } catch (_: InterruptedException) {}
+                ip = found.get().orEmpty()
+            } catch (_: Exception) {
+            } finally {
+                for (l in legs) try { l.socket.close() } catch (_: Throwable) {}
+            }
+            if (ip.isEmpty() && legs.isEmpty()) {
+                // Không đọc được thông tin mạng: dùng cách cũ (một gói quảng bá).
+                try {
+                    java.net.DatagramSocket().use { ds ->
+                        ds.broadcast = true
+                        ds.soTimeout = 2500
+                        val q = "DICHGAME?".toByteArray()
+                        ds.send(java.net.DatagramPacket(q, q.size, java.net.InetAddress.getByName("255.255.255.255"), 8766))
+                        val pk = java.net.DatagramPacket(ByteArray(64), 64)
+                        ds.receive(pk)
+                        if (String(pk.data, 0, pk.length).startsWith("DICHGAME:")) ip = pk.address.hostAddress.orEmpty()
+                    }
+                } catch (_: Exception) {}
+            }
             runOnUiThread {
                 if (ip.isNotEmpty()) {
                     ipField.setText(ip)
+                    status.setTextColor(Ui.SUB)
                     status.text = "Thấy TV ở $ip. Nhập mã 8 số đang hiện trên TV rồi bấm Ghép TV."
                 } else {
                     status.setTextColor(Ui.DANGER)
-                    status.text = "Không thấy TV. Mở app TV, kiểm tra cùng Wi-Fi, hoặc nhập IP thủ công."
+                    status.text = "Không thấy TV. Mở app TV (màn hình hiện mã 8 số), kiểm tra TV và điện thoại cùng Wi-Fi/LAN, hoặc nhập IP của TV."
                 }
             }
         }.start()
