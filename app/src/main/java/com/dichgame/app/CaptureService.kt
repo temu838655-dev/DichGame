@@ -419,6 +419,7 @@ class CaptureService : Service() {
     /** Dịch menu tự động: màn hình đứng yên với từ 2 đoạn chữ dài trở lên (ngoài khung phụ đề) thì tự dịch. */
     private fun autoScan() {
         if (busy || !ready || editing || narrate || region != null || System.currentTimeMillis() < menuUntil) return
+        val ocrNow = ocr ?: return
         ensureSize()
         val img = reader?.acquireLatestImage() ?: return
         val bmp = try {
@@ -434,7 +435,7 @@ class CaptureService : Service() {
         } finally { img.close() }
         busy = true
         val skip = listOfNotNull(rectOf(frame), rectOf(overlay))
-        ocr!!.read(bmp, { m -> ocrFail(m) }) { r ->
+        ocrNow.read(bmp, { m -> ocrFail(m) }) { r ->
                 val blocks = r.filter { b ->
                     val bb = b.box
                     b.text.length >= longLen && (bb == null || skip.none { it.contains(bb.centerX(), bb.centerY()) })
@@ -1183,6 +1184,7 @@ class CaptureService : Service() {
         val dm = DisplayMetrics()
         (getSystemService(DISPLAY_SERVICE) as DisplayManager).getDisplay(0).getRealMetrics(dm)
         if (dm.widthPixels == cw && dm.heightPixels == ch) return
+        if (display == null && projection == null) return // dịch vụ đang dừng: không có gì để tạo
         cw = dm.widthPixels; ch = dm.heightPixels
         val newReader = ImageReader.newInstance(cw, ch, PixelFormat.RGBA_8888, 2)
         if (display == null) {
@@ -1201,6 +1203,7 @@ class CaptureService : Service() {
 
     private fun capture() {
         if (busy || !ready || editing || System.currentTimeMillis() < menuUntil) return
+        val fr = frame ?: return
         ensureSize()
         val img = reader?.acquireLatestImage() ?: return
         val crop = try {
@@ -1209,11 +1212,11 @@ class CaptureService : Service() {
             try {
                 full.copyPixelsFromBuffer(p.buffer)
                 val loc = IntArray(2)
-                frame!!.getLocationOnScreen(loc)
+                fr.getLocationOnScreen(loc)
                 val x = loc[0].coerceIn(0, img.width - 1)
                 val y = loc[1].coerceIn(0, img.height - 1)
-                val w = frame!!.width.coerceIn(1, img.width - x)
-                val h = frame!!.height.coerceIn(1, img.height - y)
+                val w = fr.width.coerceIn(1, img.width - x)
+                val h = fr.height.coerceIn(1, img.height - y)
                 cropAndRecycle(full, x, y, w, h)
             } finally {
                 // cropAndRecycle đã giải phóng ảnh gốc khi thành công; nhánh lỗi

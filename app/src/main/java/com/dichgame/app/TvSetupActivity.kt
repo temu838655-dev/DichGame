@@ -221,9 +221,9 @@ class TvSetupActivity : Activity() {
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (err == null) {
+                    render() // dựng lại trang (công tắc gửi phụ đề, nút Bỏ ghép) rồi mới ghi kết quả vào dòng trạng thái mới
                     status.setTextColor(Ui.OK)
                     status.text = "Đã ghép TV LG $ip." + (if (toastErr != null) " Nhưng gửi thông báo thử bị lỗi: $toastErr" else " TV vừa hiện thông báo thử.")
-                    render()
                 } else {
                     status.setTextColor(Ui.DANGER)
                     status.text = "Không ghép được: $err"

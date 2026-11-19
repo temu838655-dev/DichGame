@@ -25,7 +25,7 @@ class WebSubServer(private val port: Int = 8780) {
 
     /** Mở cổng, trả về cổng thật (khi truyền 0 thì hệ điều hành chọn). Ném lỗi nếu cổng bị chiếm. */
     fun start(): Int {
-        if (running) return server!!.localPort
+        server?.takeIf { !it.isClosed }?.let { return it.localPort }
         stopped = false
         val s = ServerSocket(port, 20, null)
         server = s
