@@ -13,7 +13,7 @@ import android.view.View
  * [color] là màu nét, [knock] là màu nền để khoét chữ trên biểu tượng dịch.
  */
 class ToolIcon(c: Context, var kind: Kind, var color: Int, private val knock: Int = 0) : View(c) {
-    enum class Kind { TRANSLATE, SCAN, CC, CROP, TEXT_SIZE, SPEAKER_ON, SPEAKER_OFF, PAUSE, PLAY, SEARCH, GEAR, SUBS, DIAL, ZOOM, ROTATE, HELP, CLOSE, GAMEPAD, HOME, CHEVRON }
+    enum class Kind { TRANSLATE, SCAN, CC, CROP, TEXT_SIZE, SPEAKER_ON, SPEAKER_OFF, PAUSE, PLAY, SEARCH, GEAR, SUBS, DIAL, ZOOM, ROTATE, HELP, CLOSE, GAMEPAD, HOME, CHEVRON, BACK }
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
@@ -180,6 +180,11 @@ class ToolIcon(c: Context, var kind: Kind, var color: Int, private val knock: In
                 path.moveTo(s * 0.12f, s * 0.50f); path.lineTo(s * 0.5f, s * 0.16f); path.lineTo(s * 0.88f, s * 0.50f)
                 path.moveTo(s * 0.24f, s * 0.42f); path.lineTo(s * 0.24f, s * 0.84f); path.lineTo(s * 0.76f, s * 0.84f); path.lineTo(s * 0.76f, s * 0.42f)
                 path.moveTo(s * 0.42f, s * 0.84f); path.lineTo(s * 0.42f, s * 0.60f); path.lineTo(s * 0.58f, s * 0.60f); path.lineTo(s * 0.58f, s * 0.84f)
+                cv.drawPath(path, p)
+            }
+            Kind.BACK -> {
+                path.reset()
+                path.moveTo(s * 0.62f, s * 0.18f); path.lineTo(s * 0.32f, s * 0.50f); path.lineTo(s * 0.62f, s * 0.82f)
                 cv.drawPath(path, p)
             }
             Kind.CHEVRON -> {

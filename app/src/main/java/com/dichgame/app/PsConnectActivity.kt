@@ -209,7 +209,7 @@ class PsConnectActivity : Activity() {
         val pad = Ui.dp(this, 20)
         box.setPadding(pad, pad / 2, pad, 0)
         box.addView(et)
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Địa chỉ máy")
             .setView(box)
             .setPositiveButton("Lưu") { _, _ ->
@@ -238,7 +238,7 @@ class PsConnectActivity : Activity() {
         con.players.forEach { opts.add("Xóa ${it.label}") }
         opts.add("Xóa máy này và mọi người chơi")
         Ui.pick(this, "Quản lý ghép nối", opts) { i ->
-            AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            AlertDialog.Builder(this, R.style.DgDialog)
                 .setMessage("${opts[i]}? Muốn dùng lại phải ghép nối lại. Nên xóa cả ghép nối cũ trong Cài đặt › Hệ thống › Chơi từ xa trên máy chơi game.")
                 .setPositiveButton("Xóa") { _, _ ->
                     if (i < con.players.size) {
@@ -272,7 +272,7 @@ class PsConnectActivity : Activity() {
         val con = c ?: return
         if (hostSeen && !hostReady) {
             wake(con)
-            val dlg = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            val dlg = AlertDialog.Builder(this, R.style.DgDialog)
                 .setTitle("Đang bật máy")
                 .setMessage("Máy đang nghỉ, đợi khoảng 30 giây…")
                 .setNegativeButton("Hủy") { _, _ -> waiting = null }

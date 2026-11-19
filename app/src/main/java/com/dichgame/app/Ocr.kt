@@ -74,7 +74,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
             }
             return
         }
-        val key = p.geminiKey
+        val key = p.geminiActive()
         if (key.isEmpty()) {
             recycleInput(bmp)
             fail("Chữ ${Prefs.srcNameOf(lang)} cần khóa Google Gemini. Vào Cách dịch để nhập khóa.")

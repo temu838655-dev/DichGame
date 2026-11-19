@@ -71,7 +71,7 @@ class PackActivity : Activity() {
                 editDialog("Thẻ nhân vật · ${p.profile}", "Tên = mô tả giọng, xưng hô; nhịp: chậm", "Ví dụ:\nGeralt = trầm, ít lời, hay mỉa mai; xưng \"tôi\"; nhịp: chậm\nCiri = trẻ, bộc trực; gọi Geralt thân mật; nhịp: nhanh", p.cast) { p.cast = it }
             }, Ui.lpm(this@PackActivity, 8, 0))
             if (lines > 0) m.addView(Ui.button(this@PackActivity, "Xóa $lines câu thoại đã nhập") {
-                AlertDialog.Builder(this@PackActivity, android.R.style.Theme_Material_Dialog_Alert)
+                AlertDialog.Builder(this@PackActivity, R.style.DgDialog)
                     .setMessage("Xóa các câu thoại đã nhập cho hồ sơ ${p.profile}? Gói có sẵn không bị ảnh hưởng.")
                     .setPositiveButton("Xóa") { _, _ -> PackStore.deleteLines(this@PackActivity, p.profile); render() }
                     .setNegativeButton("Hủy", null).show()
@@ -124,7 +124,7 @@ class PackActivity : Activity() {
         box.setPadding(pad, pad / 2, pad, 0)
         box.addView(Ui.tv(this, example, 12.5f, Ui.SUB))
         box.addView(et)
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle(title).setView(box)
             .setPositiveButton("Lưu") { _, _ -> save(et.text.toString().trim()); render() }
             .setNegativeButton("Hủy", null).show()
@@ -138,7 +138,7 @@ class PackActivity : Activity() {
     /** Hỏi cách nhập file Việt hoá (mở từ Kho game). */
     private fun importMenu() {
         val items = arrayOf("🔀  Ghép 2 file: file gốc + file Việt hoá", "📂  Một file gói hoặc file có sẵn cả hai ngôn ngữ", "🔗  Từ link")
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Nhập file Việt hoá cho ${p.profile}")
             .setItems(items) { _, w -> when (w) { 0 -> joinStart(); 1 -> pickFile(31); else -> linkDialog() } }
             .setNegativeButton("Hủy", null).show()
@@ -146,7 +146,7 @@ class PackActivity : Activity() {
 
     private fun joinStart() {
         origText = null
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Ghép 2 file")
             .setMessage("Bước 1: chọn file chữ GỐC của game (tiếng Anh, Nhật...).\nBước 2: chọn file đã VIỆT HOÁ cùng cấu trúc.\n\n" +
                 "App ghép hai file theo khoá (hoặc theo thứ tự dòng nếu là .srt hay file từng dòng) rồi nhập vào hồ sơ ${p.profile}.")
@@ -192,7 +192,7 @@ class PackActivity : Activity() {
         val pad = Ui.dp(this, 20)
         box.setPadding(pad, pad / 2, pad, 0)
         box.addView(et)
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Nhập gói từ link").setView(box)
             .setPositiveButton("Tải và nhập") { _, _ ->
                 val u = et.text.toString().trim()
@@ -207,7 +207,7 @@ class PackActivity : Activity() {
     }
 
     private fun done(msg: String) {
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setMessage(msg).setPositiveButton("Đã hiểu", null).show()
+        AlertDialog.Builder(this, R.style.DgDialog).setMessage(msg).setPositiveButton("Đã hiểu", null).show()
         render()
     }
 

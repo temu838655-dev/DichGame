@@ -12,7 +12,7 @@ import android.graphics.Shader
 import android.view.View
 
 /** Nền màn hình chính: xanh đậm, quầng sáng xanh ở góc, vài đường vàng cong và vòng cung xanh quanh nút tay cầm. */
-class GlowBackground(c: Context) : View(c) {
+class GlowBackground(c: Context, private val calm: Boolean = false) : View(c) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
 
@@ -45,6 +45,7 @@ class GlowBackground(c: Context) : View(c) {
         p.shader = RadialGradient(0f, h * 0.2f, w * 0.7f, Color.parseColor("#302EE06B"), Color.TRANSPARENT, Shader.TileMode.CLAMP)
         cv.drawRect(0f, 0f, w, h * 0.6f, p)
 
+        if (calm) { p.shader = null; return }
         val gold = Color.parseColor("#FFD54A")
         streak(cv, d, w * 0.52f, 0f, w * 0.98f, h * 0.02f, w * 1.04f, h * 0.17f, gold, 0.75f)
         streak(cv, d, -0.04f * w, h * 0.19f, w * 0.10f, h * 0.10f, w * 0.36f, h * 0.10f, Color.parseColor("#9CFF6B"), 0.5f)

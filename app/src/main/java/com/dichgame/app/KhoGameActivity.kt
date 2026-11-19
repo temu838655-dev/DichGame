@@ -323,7 +323,7 @@ class KhoGameActivity : Activity() {
         val pad = Ui.dp(this, 20)
         box.setPadding(pad, pad / 2, pad, 0)
         box.addView(et)
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Game khác")
             .setView(box)
             .setPositiveButton("Chọn") { _, _ ->

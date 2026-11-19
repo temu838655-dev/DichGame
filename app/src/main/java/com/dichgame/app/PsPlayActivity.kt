@@ -641,7 +641,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun help() {
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Mẹo khi chơi")
             .setMessage(
                 "Thanh công cụ, từ trái sang phải:\n" +
@@ -823,7 +823,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         refreshStatus()
         setStatus(message, true)
         if (isFinishing || isDestroyed) return
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle(if (error) "Không vào được game" else "Đã ngắt kết nối")
             .setMessage(message + if (error)
                 "\n\nThử: tắt Chơi từ xa ở thiết bị khác rồi đợi 30 giây; kiểm tra máy chơi game đã bật và cùng Wi-Fi; nếu vẫn lỗi, xóa ghép nối cũ trên máy chơi game rồi ghép lại." else "")
@@ -900,7 +900,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     private fun leave() {
         if (session == null) { finish(); return }
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Thoát phiên Remote Play?")
             .setMessage("Hình và tay cầm sẽ dừng. Máy đã ghép nối vẫn được lưu để kết nối lại nhanh.")
             .setNegativeButton("Tiếp tục chơi", null)
@@ -920,7 +920,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         val box = Ui.vbox(this)
         box.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), 0)
         box.addView(et)
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle(if (incorrect) "Mã chưa đúng" else "Nhập mã đăng nhập")
             .setView(box)
             .setCancelable(false)

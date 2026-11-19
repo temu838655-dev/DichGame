@@ -387,7 +387,7 @@ class PsPairActivity : Activity() {
         val sv = android.widget.ScrollView(this)
         sv.addView(tv)
         sv.setPadding(Ui.dp(this, 16), Ui.dp(this, 8), Ui.dp(this, 16), 0)
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Chi tiết")
             .setView(sv)
             .setPositiveButton("Sao chép") { _, _ ->

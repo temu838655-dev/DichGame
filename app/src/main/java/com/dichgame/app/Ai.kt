@@ -10,7 +10,7 @@ class AiException(val code: Int, message: String) : Exception(message)
 /** Dịch bằng AI đám mây: Google Gemini hoặc CloudAPI (chuẩn OpenAI /chat/completions). Hàm ở đây chặn luồng, hãy gọi từ luồng nền. */
 object Ai {
     fun enabled(p: Prefs): Boolean = when (p.engine) {
-        Prefs.ENGINE_GEMINI -> p.geminiKey.isNotEmpty()
+        Prefs.ENGINE_GEMINI -> p.geminiKeys().isNotEmpty()
         Prefs.ENGINE_CLOUD -> p.cloudKey.isNotEmpty() && p.cloudUrl.isNotEmpty()
         else -> false
     }
@@ -68,6 +68,20 @@ object Ai {
         }
     }
 
+    /** Gọi Gemini; hết lượt (429) thì tự đổi sang khóa dự phòng kế tiếp (nếu có) rồi thử lại. */
+    private fun geminiPost(p: Prefs, url: String, body: JSONObject): String {
+        var left = maxOf(1, p.geminiKeys().size)
+        while (true) {
+            try {
+                return post(url, body, mapOf("x-goog-api-key" to p.geminiActive()))
+            } catch (e: AiException) {
+                left--
+                if (e.code == 429 && left > 0 && p.geminiRotate()) continue
+                throw e
+            }
+        }
+    }
+
     fun translate(p: Prefs, prompt: String): String {
         val out: String = if (p.engine == Prefs.ENGINE_CLOUD) {
             val body = JSONObject()
@@ -79,10 +93,7 @@ object Ai {
             val body = JSONObject().put("contents", JSONArray().put(
                 JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))
             ))
-            val r = post(
-                "https://generativelanguage.googleapis.com/v1beta/models/${p.geminiModel}:generateContent",
-                body, mapOf("x-goog-api-key" to p.geminiKey)
-            )
+            val r = geminiPost(p, "https://generativelanguage.googleapis.com/v1beta/models/${p.geminiModel}:generateContent", body)
             JSONObject(r).getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
                 .getJSONArray("parts").getJSONObject(0).getString("text")
         }

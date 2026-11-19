@@ -34,7 +34,7 @@ object AiSpeech {
             .put("input", JSONArray().put(JSONObject().put("type", "user_input").put("content", JSONArray().put(item))))
             .put("response_format", JSONObject().put("type", "audio"))
             .put("generation_config", JSONObject().put("speech_config", JSONArray().put(JSONObject().put("voice", p.aiVoice))))
-        val r = Ai.post("$BASE/interactions", body, mapOf("x-goog-api-key" to p.geminiKey))
+        val r = Ai.post("$BASE/interactions", body, mapOf("x-goog-api-key" to p.geminiActive()))
         val steps = JSONObject(r).optJSONArray("steps") ?: throw AiException(0, "Phản hồi không có âm thanh")
         var data = ""
         for (i in 0 until steps.length()) {
@@ -58,7 +58,7 @@ object AiSpeech {
             .put("generationConfig", JSONObject()
                 .put("responseModalities", JSONArray().put("AUDIO"))
                 .put("speechConfig", JSONObject().put("voiceConfig", voice)))
-        val r = Ai.post("$BASE/models/${p.ttsModel}:generateContent", body, mapOf("x-goog-api-key" to p.geminiKey))
+        val r = Ai.post("$BASE/models/${p.ttsModel}:generateContent", body, mapOf("x-goog-api-key" to p.geminiActive()))
         val b64 = JSONObject(r).getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
             .getJSONArray("parts").getJSONObject(0).getJSONObject("inlineData").getString("data")
         return parse(Base64.decode(b64, Base64.DEFAULT))

@@ -154,7 +154,7 @@ object CrashLog {
     fun showIfAny(a: Activity) {
         val msg = try { pending(a) } catch (_: Throwable) { null } ?: return
         try {
-            AlertDialog.Builder(a, android.R.style.Theme_Material_Dialog_Alert)
+            AlertDialog.Builder(a, R.style.DgDialog)
                 .setTitle("Lần trước app bị đóng đột ngột")
                 .setMessage(msg)
                 .setPositiveButton("Đóng", null)

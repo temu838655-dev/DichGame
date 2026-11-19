@@ -19,6 +19,7 @@ adb logcat -c
 shot() { adb exec-out screencap -p > "$OUT/$1.png"; }
 start() { adb shell am start -W -n "$PKG/.$1" >/dev/null 2>&1; sleep 3; }
 swipe_up() { adb shell input swipe 540 1800 540 600 400; sleep 1; }
+start_page() { adb shell am start -W -n "$PKG/.SettingsActivity" --es page "$1" >/dev/null 2>&1; sleep 3; }
 set_prefs() {  # $1 = tệp XML cài đặt, không truyền = xóa sạch (cài đặt mặc định)
   adb shell am force-stop "$PKG"
   adb shell "run-as $PKG sh -c 'mkdir -p shared_prefs && rm -f shared_prefs/dg.xml'"
@@ -31,6 +32,10 @@ run_screens() {  # $1 = tiền tố tên ảnh
   start MainActivity; shot "$1-home"; swipe_up; shot "$1-home-2"
   for a in TranslateActivity SettingsActivity TvSetupActivity GuideActivity FeaturesActivity KhoGameActivity PackActivity LicensesActivity PsConnectActivity PsPairActivity; do
     start "$a"; shot "$1-$a-1"; swipe_up; shot "$1-$a-2"; swipe_up; shot "$1-$a-3"
+    adb shell am force-stop "$PKG"
+  done
+  for pg in voice subs profile about; do
+    start_page "$pg"; shot "$1-set-$pg-1"; swipe_up; shot "$1-set-$pg-2"; swipe_up; shot "$1-set-$pg-3"
     adb shell am force-stop "$PKG"
   done
   start WebTranslateActivity; sleep 6; shot "$1-web"
@@ -108,11 +113,11 @@ adb shell am force-stop "$PKG"
 
 # Thử giọng offline thật trên máy giả lập: app tự tải gói giọng, nạp sherpa-onnx và đọc thử một câu (SelfTest.kt)
 set_prefs ci/prefs-offline.xml
-start SettingsActivity; shot offline-chua-tai
+start_page voice; shot offline-chua-tai
 adb shell settings put global hide_error_dialogs 1 2>/dev/null || true  # ẩn hộp thoại "không phản hồi" của launcher giả lập khỏi ảnh chụp
 adb logcat -c
 adb shell am force-stop "$PKG"
-adb shell am start -W -n "$PKG/.SettingsActivity" --ez selftest true >/dev/null 2>&1
+adb shell am start -W -n "$PKG/.SettingsActivity" --es page voice --ez selftest true >/dev/null 2>&1
 for i in $(seq 1 90); do
   sleep 5
   adb logcat -d -s DG_SELFTEST:I > "$OUT/selftest.txt" 2>&1
@@ -122,7 +127,7 @@ cat "$OUT/selftest.txt"
 grep -qE "DG_SELFTEST.*OK" "$OUT/selftest.txt" || echo "Giọng offline không chạy được trên máy giả lập" > "$OUT/selftest-fail.txt"
 adb exec-out run-as "$PKG" cat files/selftest.wav > "$OUT/selftest.wav" 2>/dev/null || true
 adb shell am force-stop "$PKG"
-start SettingsActivity; shot offline-da-tai
+start_page voice; shot offline-da-tai
 
 adb logcat -d -b crash > "$OUT/crash.txt" 2>&1
 adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime|ANR in|dichgame" > "$OUT/logcat-filtered.txt" 2>&1

@@ -71,24 +71,17 @@ class MainActivity : Activity() {
             put(navCard("▶", "Dịch video trên web", "Mở trang video, phụ đề tự sang tiếng Việt", "MIỄN PHÍ") {
                 open(WebTranslateActivity::class.java)
             }, 0, 12)
-            val row1 = Ui.hbox(this@MainActivity)
-            row1.addView(tile("🌐", "Cách dịch", engineLabel(), "AI") { open(TranslateActivity::class.java) }, Ui.lp(0, MATCH_PARENT, 1f))
-            row1.addView(tile("🎙", "Giọng đọc", voiceLabel(), null) { open(SettingsActivity::class.java) }, tileLp())
-            put(row1, 0, 12)
-            val gameName = PackStore.gameName(p)
-            val row2 = Ui.hbox(this@MainActivity)
-            row2.addView(tile("🕹", "Kho game", gameName.ifEmpty { "PS5 · PS4 · Xbox · PC · Steam" }, "MỚI") { open(KhoGameActivity::class.java) }, Ui.lp(0, MATCH_PARENT, 1f))
-            row2.addView(tile("🔗", "Ghép nối", if (con != null) "${con.name} · ${con.players.size} người chơi" else "Chưa ghép nối",
-                null, statusBadge(if (con != null) "ĐÃ GHÉP" else "CHƯA", con != null)) { open(PsConnectActivity::class.java) }, tileLp())
-            put(row2, 0, 14)
+            // bốn mục cài đặt gom trong một thẻ kính: Cách dịch, Giọng đọc, Phụ đề, Hồ sơ game
+            put(Hub.card(this@MainActivity, p), 0, 14)
             put(Ui.hbox(this@MainActivity).apply {
                 addView(Ui.tv(this@MainActivity, "✨", 18f))
                 addView(Ui.tv(this@MainActivity, "Thêm", 16f, Ui.TEXT, true).apply { setPadding(Ui.dp(this@MainActivity, 10), 0, 0, 0) })
             }, 4, 8)
             val more = Ui.hbox(this@MainActivity)
-            more.addView(chip("📦", "Gói Việt hoá") { open(PackActivity::class.java) }, Ui.lp(0, MATCH_PARENT, 1f))
-            more.addView(chip("💡", "Hướng dẫn") { open(GuideActivity::class.java) }, tileLp())
-            more.addView(chip("👑", "Tính năng") { open(FeaturesActivity::class.java) }, tileLp())
+            more.addView(chip("🕹", "Kho game") { open(KhoGameActivity::class.java) }, Ui.lp(0, MATCH_PARENT, 1f))
+            more.addView(chip("📦", "Gói Việt hoá") { open(PackActivity::class.java) }, tileLp(8))
+            more.addView(chip("💡", "Hướng dẫn") { open(GuideActivity::class.java) }, tileLp(8))
+            more.addView(chip("👑", "Tính năng") { open(FeaturesActivity::class.java) }, tileLp(8))
             put(more, 0, 12)
             put(Ui.tv(this@MainActivity, "Dịch game ${versionName()} · Chạy hoàn toàn trên máy bạn, chỉ gửi chữ ra ngoài khi bạn bật dịch AI.", 12f, Ui.SUB).apply { gravity = Gravity.CENTER }, 8, 0)
         }
@@ -104,22 +97,7 @@ class MainActivity : Activity() {
 
     private fun versionName(): String = try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (_: Exception) { "" }
 
-    private fun tileLp() = Ui.lp(0, MATCH_PARENT, 1f).apply { leftMargin = Ui.dp(this@MainActivity, 12) }
-
-    private fun engineLabel() = when (p.engine) {
-        Prefs.ENGINE_CLOUD -> "CloudAPI"
-        Prefs.ENGINE_GEMINI -> "Google Gemini"
-        else -> "Dịch trên máy"
-    }
-
-    private fun voiceLabel(): String {
-        val v = when {
-            p.voiceEngine == "offline" -> if (Voices.installed(this, p.offlineVoice)) "Offline" else "Chưa tải giọng"
-            p.aiVoiceOn -> "Giọng AI"
-            else -> p.voice.ifEmpty { "Mặc định" }
-        }
-        return "$v · ${String.format("%.1f", p.rate10 / 10f).replace('.', ',')}x"
-    }
+    private fun tileLp(gap: Int = 12) = Ui.lp(0, MATCH_PARENT, 1f).apply { leftMargin = Ui.dp(this@MainActivity, gap) }
 
     private fun header(connected: Boolean): View {
         val row = Ui.hbox(this)
@@ -145,17 +123,6 @@ class MainActivity : Activity() {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (connected || CaptureService.active) Ui.OK else Color.parseColor("#6B6B73")) }
         }, Ui.lp(Ui.dp(this, 9), Ui.dp(this, 9)))
         return row
-    }
-
-    /** Nhãn nhỏ kiểu "● CHƯA" / "● ĐÃ GHÉP": chấm màu và chữ trên nền tối. */
-    private fun statusBadge(text: String, ok: Boolean): TextView {
-        val dot = if (ok) Ui.OK else Color.parseColor("#8E8E96")
-        val sp = SpannableString("● $text")
-        sp.setSpan(ForegroundColorSpan(dot), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        return Ui.tv(this, sp, 11f, Ui.TEXT, true).apply {
-            background = Ui.bg(this@MainActivity, Ui.CARD2, 12, Ui.LINE, 1)
-            setPadding(Ui.dp(this@MainActivity, 8), Ui.dp(this@MainActivity, 3), Ui.dp(this@MainActivity, 8), Ui.dp(this@MainActivity, 3))
-        }
     }
 
     /** Dòng trạng thái: ghép nối / đang chạy, chọn Dịch hoặc Thuyết minh, nút trợ giúp. */
@@ -301,7 +268,7 @@ class MainActivity : Activity() {
     private fun busyToast() = Toast.makeText(this, "Hãy dừng trước khi đổi chế độ.", Toast.LENGTH_SHORT).show()
 
     private fun help() {
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Hai chế độ")
             .setMessage("Dịch: đọc chữ trên màn hình (Anh, Nhật, Hàn, Trung, Pháp, Đức, Tây Ban Nha, Nga, Thái, Ả Rập... tổng cộng 28 thứ tiếng) rồi dịch sang tiếng Việt.\n\n" +
                 "Thuyết minh: game hoặc phim đã có phụ đề tiếng Việt, app chỉ đọc to phụ đề, không dịch.\n\n" +
@@ -324,26 +291,13 @@ class MainActivity : Activity() {
         return c
     }
 
-    private fun tile(icon: String, title: String, sub: String, badge: String?, custom: View? = null, onClick: () -> Unit): View {
-        val c = Ui.card(this, 14)
-        val top = Ui.hbox(this)
-        top.addView(Ui.tv(this, icon, 22f))
-        top.addView(View(this), Ui.lp(0, 1, 1f))
-        if (custom != null) top.addView(custom) else if (badge != null) top.addView(Ui.badge(this, badge))
-        c.addView(top)
-        c.addView(Ui.tv(this, title, 17f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(this@MainActivity, 18), 0, 0) })
-        c.addView(Ui.tv(this, sub, 13f, Ui.SUB).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
-        c.setOnClickListener { onClick() }
-        return c
-    }
-
     private fun chip(icon: String, label: String, onClick: () -> Unit): View {
         val c = Ui.vbox(this)
         c.gravity = Gravity.CENTER
         c.background = Ui.bg(this, Ui.CARD, 20, Ui.LINE, 1)
         c.setPadding(Ui.dp(this, 6), Ui.dp(this, 12), Ui.dp(this, 6), Ui.dp(this, 12))
         c.addView(Ui.tv(this, icon, 22f).apply { gravity = Gravity.CENTER })
-        c.addView(Ui.tv(this, label, 12.5f, Ui.TEXT, true).apply { gravity = Gravity.CENTER; maxLines = 1; setPadding(0, Ui.dp(this@MainActivity, 4), 0, 0) })
+        c.addView(Ui.tv(this, label, 12f, Ui.TEXT, true).apply { gravity = Gravity.CENTER; maxLines = 2; setPadding(0, Ui.dp(this@MainActivity, 4), 0, 0) })
         c.setOnClickListener { onClick() }
         return c
     }
@@ -364,7 +318,7 @@ class MainActivity : Activity() {
         }
         if (!p.narrate && Prefs.isCloudOcr(p.lang)) {
             if (p.geminiKey.isEmpty()) {
-                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                AlertDialog.Builder(this, R.style.DgDialog)
                     .setTitle("Cần khóa Gemini")
                     .setMessage("Chữ ${Prefs.srcNameOf(p.lang)} không đọc được trên máy, nên app gửi ảnh phần màn hình cần đọc cho Google Gemini để lấy chữ. " +
                         "Hãy nhập khóa Gemini (lấy miễn phí ở aistudio.google.com) trong mục Cách dịch. Ảnh chỉ được gửi khi bạn chọn ngôn ngữ này.")
@@ -403,7 +357,7 @@ class MainActivity : Activity() {
     private fun chooseTv() {
         p.playOn = "tv"
         if (p.tvPaired) { capture(); return }
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Chưa ghép TV")
             .setMessage("Ghép TV để phụ đề hiện ngay trên hình game ở TV. Bạn cũng có thể tiếp tục, bản dịch sẽ chỉ hiện trên điện thoại.")
             .setPositiveButton("Ghép TV") { _, _ -> open(TvSetupActivity::class.java) }
