@@ -248,6 +248,21 @@ class Prefs(ctx: Context) {
     fun saveTv(ip: String, token: String) = sp.edit().putString("tvip", ip).putString("tvtoken", token).apply()
     fun clearTv() = sp.edit().remove("tvtoken").apply()
 
+    // ---- TV LG (webOS): ghép qua LG Connect Apps, gửi phụ đề bằng thông báo trên TV (thử nghiệm) ----
+    val lgIp: String get() = sp.getString("lgip", "").orEmpty()
+    val lgKey: String get() = sp.getString("lgkey", "").orEmpty()
+    val lgPaired: Boolean get() = lgIp.isNotEmpty() && lgKey.isNotEmpty()
+    fun saveLg(ip: String, key: String) = sp.edit().putString("lgip", ip).putString("lgkey", key).apply()
+    fun clearLg() = sp.edit().remove("lgkey").apply()
+    var lgSubs: Boolean
+        get() = sp.getBoolean("lgsubs", true)
+        set(v) = sp.edit().putBoolean("lgsubs", v).apply()
+
+    /** Bật trang web phụ đề phát từ điện thoại (xem bằng trình duyệt TV/iPhone/máy tính bảng). */
+    var webSub: Boolean
+        get() = sp.getBoolean("websub", false)
+        set(v) = sp.edit().putBoolean("websub", v).apply()
+
     // ---- Hồ sơ game: mỗi hồ sơ có tên game riêng và vùng quét riêng (CaptureService đọc "game" theo hồ sơ hiện tại) ----
     var profiles: List<String>
         get() {

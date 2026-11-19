@@ -908,6 +908,7 @@ class CaptureService : Service() {
 
     /** Gửi phụ đề lên app Dịch game TV (nếu đã ghép). kind: sub | region | clear. */
     private fun sendTv(kind: String, text: String, speakIt: Boolean = false, force: Boolean = false) {
+        TvOut.publish(this, kind, text)
         val p = getSharedPreferences("dg", MODE_PRIVATE)
         val ip = p.getString("tvip", "").orEmpty()
         val tok = p.getString("tvtoken", "").orEmpty()

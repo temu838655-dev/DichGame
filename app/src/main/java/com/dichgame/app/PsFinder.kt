@@ -88,6 +88,10 @@ class PsFinder(
             return legs
         }
 
+        /** Địa chỉ IPv4 của điện thoại trong mạng Wi-Fi/LAN (để hiện đường dẫn trang web phụ đề). */
+        fun localIps(ctx: Context): List<String> =
+            (try { interfaces(ctx) } catch (_: Throwable) { emptyList() }).map { PsDiscoverProto.intToIp(it.ip) }
+
         private fun interfaces(ctx: Context): List<Iface> {
             val out = ArrayList<Iface>()
             val seen = HashSet<Int>()

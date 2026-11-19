@@ -143,4 +143,6 @@ dependencies {
     // Âm thanh độ trễ thấp cho Remote Play (engine chiaki-ng tìm thư viện này qua prefab)
     implementation("com.google.oboe:oboe:1.10.0")
     testImplementation("junit:junit:4.13.2")
+    // org.json thật cho bài thử LgTv (trong test đơn vị, org.json của android.jar chỉ là bản rỗng)
+    testImplementation("org.json:json:20231013")
 }

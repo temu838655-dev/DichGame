@@ -1,6 +1,7 @@
 package com.dichgame.app
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -19,7 +20,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
 
-/** Phụ đề trên TV: chọn hãng TV, hướng dẫn cài app TV, ghép nối qua Wi-Fi bằng mã 8 số. */
+/**
+ * Phụ đề trên TV: chọn hãng TV rồi làm theo các bước.
+ *  - Google TV / Android TV: cài app Dịch game TV, ghép bằng mã 8 số (đã chạy được).
+ *  - TV LG: ghép qua LG Connect Apps và hiện phụ đề bằng thông báo của TV, đè lên cả hình HDMI (THỬ NGHIỆM, chưa thử trên TV thật).
+ *  - TV Samsung: chưa có cách hiện chữ đè lên hình HDMI; chiếu màn hình hoặc mở trang web phụ đề.
+ * Hướng dẫn Developer Mode của LG/Samsung nằm trong "Hướng dẫn chi tiết".
+ */
 class TvSetupActivity : Activity() {
     private lateinit var p: Prefs
     private var brand = 0
@@ -30,105 +37,75 @@ class TvSetupActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         p = Prefs(this)
+        brand = when (intent?.getStringExtra("brand")) { "lg" -> 1; "samsung" -> 2; else -> if (p.lgPaired && !p.tvPaired) 1 else 0 }
         render()
     }
 
     private fun render() {
+        val a = this
+        if (p.webSub) TvOut.startWeb()
         screen("Phụ đề trên TV") {
-            put(Ui.tv(this@TvSetupActivity, "Bản dịch hiện ngay trên màn hình TV, phía trên hình game. Giọng đọc cũng phát ra loa TV được.", 14f, Ui.SUB), 0, 12)
+            put(Ui.tv(a, "Bản dịch hiện ngay trên màn hình TV, phía trên hình game. Giọng đọc cũng phát ra loa TV được (Android TV).", 14f, Ui.SUB), 0, 4)
 
-            val warn = Ui.card(this@TvSetupActivity)
-            warn.background = Ui.bg(this@TvSetupActivity, Color.parseColor("#2A1F14"), 20, Ui.GOLD2, 1)
-            warn.addView(Ui.tv(this@TvSetupActivity, if (brand == 0) "⬇  Phải cài thêm app lên TV" else "📲  TV LG, Samsung: chiếu màn hình điện thoại", 17f, Ui.TEXT, true))
-            warn.addView(Ui.tv(this@TvSetupActivity,
-                if (brand == 0) "Phụ đề chỉ hiện trên TV khi TV có app Dịch game TV (miễn phí). Hãy chọn hãng TV bên dưới rồi làm theo hướng dẫn cài."
-                else "App Dịch game TV chỉ chạy trên Android TV / Google TV nên chưa cài được lên TV LG và Samsung. Cách dùng được ngay: chơi PS4/PS5 trong app rồi chiếu điện thoại lên TV (xem hướng dẫn bên dưới).", 14f, Ui.SUB).apply {
-                setPadding(0, Ui.dp(this@TvSetupActivity, 6), 0, 0)
-            })
-            put(warn, 0, 12)
+            group("TV CỦA BẠN HÃNG GÌ?", 14) {
+                val row = Ui.hbox(a)
+                row.addView(brandTile("Google TV", "Cài bằng Downloader", 0), Ui.lp(0, MATCH_PARENT, 1f))
+                row.addView(brandTile("TV LG", "Thông báo trên TV", 1), tileLp())
+                row.addView(brandTile("TV Samsung", "Chiếu / trình duyệt", 2), tileLp())
+                addView(row)
+                addView(Ui.tv(a, brandInfo(), 13.5f, if (brand == 0) Ui.SUB else Ui.GOLD2).apply {
+                    setPadding(Ui.dp(a, 2), Ui.dp(a, 12), 0, Ui.dp(a, 2))
+                })
+                addView(Ui.tv(a, "📶  TV và điện thoại phải dùng chung một mạng Wi-Fi", 13.5f, Ui.SUB).apply {
+                    setPadding(Ui.dp(a, 2), Ui.dp(a, 6), 0, 0)
+                })
+            }
 
-            val brands = Ui.card(this@TvSetupActivity)
-            brands.addView(Ui.section(this@TvSetupActivity, "📺", "TV của bạn hãng gì?"))
-            val row = Ui.hbox(this@TvSetupActivity)
-            row.addView(brandTile("Android TV", "Bằng remote TV", 0), Ui.lp(0, WRAP_CONTENT, 1f))
-            row.addView(brandTile("TV LG", "Bằng điện thoại", 1), tileLp())
-            row.addView(brandTile("TV Samsung", "Bằng điện thoại", 2), tileLp())
-            brands.addView(row)
-            brands.addView(Ui.tv(this@TvSetupActivity,
-                if (brand == 0) "TV Sony, TCL, Xiaomi... chạy Android TV hoặc Google TV, Android 8 trở lên. Cài app ngay trên TV bằng remote, không cần máy tính."
-                else "Chưa có app cài lên TV LG và TV Samsung. Hai hãng này không cho app của bên thứ ba vẽ chữ đè lên cổng HDMI của máy chơi game, nên phải dùng cách chiếu màn hình bên dưới.",
-                13.5f, if (brand == 0) Ui.SUB else Ui.GOLD2).apply {
-                setPadding(0, Ui.dp(this@TvSetupActivity, 12), 0, Ui.dp(this@TvSetupActivity, 4))
-            })
-            brands.addView(Ui.tv(this@TvSetupActivity, "📶  TV và điện thoại phải dùng chung một mạng Wi-Fi", 13.5f, Ui.SUB).apply {
-                setPadding(0, Ui.dp(this@TvSetupActivity, 6), 0, 0)
-            })
-            put(brands, 0, 12)
-
-            if (brand == 0) {
-                put(stepsCard(), 0, 12)
-                put(pairCard(), 0, 12)
-            } else put(mirrorCard(), 0, 12)
+            when (brand) {
+                0 -> {
+                    group("CÁCH DÙNG") { stepsGoogle(this) }
+                    group("KẾT NỐI TV") { pairGoogle(this) }
+                }
+                1 -> {
+                    group("CÁCH DÙNG") { stepsLg(this) }
+                    group("KẾT NỐI TV LG (THỬ NGHIỆM)") { connectLg(this) }
+                    group("XEM PHỤ ĐỀ BẰNG TRÌNH DUYỆT (THỬ NGHIỆM)") { webCard(this) }
+                }
+                else -> {
+                    group("CÁCH DÙNG") { stepsSamsung(this) }
+                    group("XEM PHỤ ĐỀ BẰNG TRÌNH DUYỆT (THỬ NGHIỆM)") { webCard(this) }
+                    group("CHIẾU MÀN HÌNH ĐIỆN THOẠI LÊN TV") { mirrorBlock(this) }
+                }
+            }
+            group(null, 0) {
+                addView(Ui.navRow(a, null, "Hướng dẫn chi tiết", "Bật Developer Mode trên TV, cài app từ Android hoặc iPhone") { showGuide() })
+            }
         }
     }
 
-    private fun tileLp() = Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@TvSetupActivity, 8) }
+    private fun tileLp() = Ui.lp(0, MATCH_PARENT, 1f).apply { leftMargin = Ui.dp(this@TvSetupActivity, 8) }
+
+    private fun brandInfo(): String = when (brand) {
+        0 -> "TV Sony, TCL, Xiaomi... chạy Android TV hoặc Google TV, Android 8 trở lên. Cài app ngay trên TV bằng remote, không cần máy tính."
+        1 -> "TV LG webOS: Dịch game ghép với TV qua LG Connect Apps rồi gửi phụ đề thành thông báo chữ của TV, nằm đè lên cả hình HDMI của máy chơi game. (thử nghiệm, chưa thử trên TV LG thật; chưa có app riêng cài lên TV LG)"
+        else -> "TV Samsung (Tizen): Samsung không cho app ngoài hiện chữ đè lên hình HDMI, và app Tizen phải ký bằng chứng chỉ Samsung nên chưa có app cài lên TV. Dùng chiếu màn hình hoặc trang web phụ đề. (thử nghiệm)"
+    }
 
     private fun brandTile(name: String, how: String, idx: Int): View {
         val on = brand == idx
         val v = Ui.vbox(this)
         v.gravity = Gravity.CENTER
-        v.background = if (on) Ui.goldBg(this, 18) else Ui.bg(this, Ui.CARD2, 18, Ui.LINE, 1)
+        v.background = if (on) Ui.goldBg(this, 20) else Ui.bg(this, Ui.CARD2, 20, Ui.LINE, 1)
         val pad = Ui.dp(this, 12)
         v.setPadding(pad / 2, pad, pad / 2, pad)
         val fg = if (on) Color.parseColor("#2A1A08") else Ui.TEXT
-        v.addView(Ui.tv(this, name, 14f, fg, true).apply { gravity = Gravity.CENTER })
-        v.addView(Ui.tv(this, if (idx == 0) "🎛" else "📱", 24f).apply { gravity = Gravity.CENTER })
-        v.addView(Ui.tv(this, how, 12f, if (on) fg else Ui.SUB).apply { gravity = Gravity.CENTER })
+        v.addView(Ui.tv(this, if (idx == 0) "📺" else if (idx == 1) "📡" else "🖥", 24f).apply { gravity = Gravity.CENTER })
+        v.addView(Ui.tv(this, name, 14f, fg, true).apply { gravity = Gravity.CENTER; setPadding(0, Ui.dp(this@TvSetupActivity, 4), 0, 0) })
+        v.addView(Ui.tv(this, how, 11.5f, if (on) fg else Ui.SUB).apply { gravity = Gravity.CENTER })
+        v.isClickable = true
+        Ui.ripple(v, 20)
         v.setOnClickListener { brand = idx; render() }
         return v
-    }
-
-    /** Hướng dẫn cho TV không chạy Android TV: chơi trong app rồi chiếu màn hình điện thoại, phụ đề nằm sẵn trên hình. */
-    private fun mirrorCard(): View {
-        val c = Ui.card(this)
-        c.addView(Ui.section(this, "📲", "Chiếu màn hình lên TV LG, Samsung"))
-        val steps = listOf(
-            "Ghép nối PS4/PS5 trong app một lần: Trang chủ, Ghép nối máy chơi game.",
-            "Vào chơi trong app, bấm 🌐 để bật dịch phụ đề rồi kéo khung tới dòng phụ đề của game.",
-            "Chiếu điện thoại lên TV: Samsung dùng Smart View, LG dùng Screen Share, TV khác dùng Chromecast hoặc AirPlay. Có cáp USB-C ra HDMI thì cắm thẳng vào TV (điện thoại phải hỗ trợ xuất hình).",
-            "TV hiện đúng hình game kèm phụ đề tiếng Việt, vì phụ đề nằm sẵn trên màn hình điện thoại."
-        )
-        steps.forEachIndexed { i, t ->
-            c.addView(Ui.tv(this, "${i + 1}.  $t", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(this@TvSetupActivity, 8), 0, 0) })
-        }
-        c.addView(Ui.tv(this, "Chiếu không dây trễ khoảng 0,1 đến 0,3 giây: hợp game cốt truyện hơn game đối kháng. Cáp gần như không trễ. Chơi PS4/PS5 trong app còn là bản thử nghiệm.", 12.5f, Ui.SUB).apply {
-            setPadding(0, Ui.dp(this@TvSetupActivity, 10), 0, Ui.dp(this@TvSetupActivity, 6))
-        })
-        c.addView(Ui.button(this, "Mở ghép nối PS4/PS5", true) { startActivity(Intent(this, PsConnectActivity::class.java)) })
-        return c
-    }
-
-    private fun stepsCard(): View {
-        val c = Ui.card(this)
-        c.addView(Ui.section(this, "📋", "Cách dùng"))
-        c.addView(step(1, "Trên TV, mở app Downloader (hoặc cài bằng USB), tải file DichGame-TV.apk trong mục Releases của dự án này trên GitHub để cài app Dịch game TV."))
-        val urlRow = Ui.hbox(this)
-        val url = Ui.field(this, "Dán đường dẫn tải APK TV để lưu lại", p.sp.getString("tvapkurl", "").orEmpty())
-        urlRow.addView(url, Ui.lp(0, WRAP_CONTENT, 1f))
-        urlRow.addView(Ui.button(this, "Chép") {
-            val s = url.text.toString().trim()
-            p.sp.edit().putString("tvapkurl", s).apply()
-            val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText("apk", s))
-            Toast.makeText(this, if (s.isEmpty()) "Chưa có đường dẫn." else "Đã chép đường dẫn.", Toast.LENGTH_SHORT).show()
-        }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = Ui.dp(this@TvSetupActivity, 8) })
-        c.addView(urlRow, Ui.lpm(this, 0, 6))
-        c.addView(step(2, "Mở app trên TV, cấp quyền hiển thị trên ứng dụng khác. TV hiện mã 8 số."))
-        c.addView(step(3, "Trên điện thoại, bấm Tìm TV rồi nhập mã 8 số bên dưới. Chỉ cần làm một lần."))
-        c.addView(step(4, "Chuyển TV sang cổng HDMI của máy chơi game. Phụ đề hiện ngay trên hình game."))
-        c.addView(Ui.tv(this, "TV và điện thoại cùng Wi-Fi. Máy chơi game vẫn cắm thẳng vào TV nên hình không trễ. Không hỗ trợ Android Box.", 12.5f, Ui.SUB), Ui.lpm(this, 8, 0))
-        return c
     }
 
     private fun step(n: Int, text: String): View {
@@ -146,25 +123,213 @@ class TvSetupActivity : Activity() {
         return row
     }
 
-    // ---------------- Ghép nối ----------------
+    private fun copy(label: String, text: String) {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText(label, text))
+        Toast.makeText(this, "Đã chép.", Toast.LENGTH_SHORT).show()
+    }
 
-    private fun pairCard(): View {
-        val c = Ui.card(this)
-        c.addView(Ui.section(this, "🔗", "Ghép TV"))
+    // ---------------- Google TV / Android TV ----------------
+
+    private fun stepsGoogle(c: LinearLayout) {
+        c.addView(step(1, "Trên TV, mở app Downloader (hoặc cài bằng USB), tải file DichGame-TV.apk trong mục Releases của dự án này trên GitHub để cài app Dịch game TV."))
+        val urlRow = Ui.hbox(this)
+        val url = Ui.field(this, "Dán đường dẫn tải APK TV để lưu lại", p.sp.getString("tvapkurl", "").orEmpty())
+        urlRow.addView(url, Ui.lp(0, WRAP_CONTENT, 1f))
+        urlRow.addView(Ui.button(this, "Chép") {
+            val s = url.text.toString().trim()
+            p.sp.edit().putString("tvapkurl", s).apply()
+            if (s.isEmpty()) Toast.makeText(this, "Chưa có đường dẫn.", Toast.LENGTH_SHORT).show() else copy("apk", s)
+        }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = Ui.dp(this@TvSetupActivity, 8) })
+        c.addView(urlRow, Ui.lpm(this, 0, 6))
+        c.addView(step(2, "Mở app trên TV, cấp quyền hiển thị trên ứng dụng khác. TV hiện mã 8 số."))
+        c.addView(step(3, "Trên điện thoại, bấm Kết nối TV rồi nhập mã 8 số. Chuyển TV sang cổng HDMI của máy chơi game: phụ đề hiện ngay trên hình game."))
+        c.addView(Ui.tv(this, "Máy chơi game vẫn cắm thẳng vào TV nên hình không trễ. Không hỗ trợ Android Box.", 12.5f, Ui.SUB), Ui.lpm(this, 8, 0))
+    }
+
+    private fun pairGoogle(c: LinearLayout) {
         status = Ui.tv(this, if (p.tvPaired) "Đã ghép TV ${p.tvIp}." else "Chưa ghép TV.", 14f, if (p.tvPaired) Ui.OK else Ui.SUB)
         c.addView(status, Ui.lpm(this, 0, 10))
-        c.addView(Ui.button(this, "Tìm TV trong mạng") { findTv() }, Ui.lpm(this, 0, 8))
         ipField = Ui.field(this, "Địa chỉ IP của TV (vd 192.168.1.40)", p.tvIp)
         codeField = Ui.field(this, "Mã 8 số đang hiện trên TV", "")
         codeField.inputType = InputType.TYPE_CLASS_NUMBER
+        c.addView(Ui.button(this, "Tìm TV trong mạng") { findTv() }, Ui.lpm(this, 0, 8))
         c.addView(ipField, Ui.lpm(this, 0, 8))
         c.addView(codeField, Ui.lpm(this, 0, 8))
-        c.addView(Ui.button(this, "Ghép TV", true) { pairTv() }, Ui.lpm(this, 0, 8))
+        c.addView(Ui.button(this, "Kết nối TV", true) { pairTv() }, Ui.lpm(this, 4, 8))
         c.addView(Ui.button(this, "Gửi câu thử lên TV") { testTv() }, Ui.lpm(this, 0, 8))
-        if (p.tvPaired) c.addView(Ui.button(this, "Bỏ ghép TV") {
-            p.clearTv(); render()
+        if (p.tvPaired) c.addView(Ui.button(this, "Bỏ ghép TV") { p.clearTv(); render() })
+    }
+
+    // ---------------- TV LG ----------------
+
+    private fun stepsLg(c: LinearLayout) {
+        c.addView(step(1, "Trên TV LG, bật cho phép điều khiển từ điện thoại: mục \"LG Connect Apps\" (tên và vị trí khác nhau tuỳ đời TV, thường trong Cài đặt, Kết nối hoặc Chung)."))
+        c.addView(step(2, "Trên điện thoại bấm Tìm TV LG (hoặc nhập IP của TV), rồi bấm Kết nối TV LG."))
+        c.addView(step(3, "TV hiện hộp hỏi cho phép kết nối: chọn Có. Bấm Gửi câu thử, thấy thông báo hiện trên TV là xong. Khi dịch, phụ đề sẽ hiện trên TV như thông báo chữ."))
+        c.addView(Ui.tv(this, "Không cần bật Developer Mode để dùng cách này. Thông báo của TV là chữ ngắn, hiện vài giây rồi mất, không chỉnh được cỡ chữ hay màu.", 12.5f, Ui.SUB), Ui.lpm(this, 8, 0))
+    }
+
+    private fun connectLg(c: LinearLayout) {
+        status = Ui.tv(this, if (p.lgPaired) "Đã ghép TV LG ${p.lgIp}." else "Chưa ghép TV LG.", 14f, if (p.lgPaired) Ui.OK else Ui.SUB)
+        c.addView(status, Ui.lpm(this, 0, 10))
+        ipField = Ui.field(this, "Địa chỉ IP của TV LG (vd 192.168.1.50)", p.lgIp)
+        c.addView(Ui.button(this, "Tìm TV LG trong mạng") { findLg() }, Ui.lpm(this, 0, 8))
+        c.addView(ipField, Ui.lpm(this, 0, 8))
+        c.addView(Ui.button(this, "Kết nối TV", true) { connectLgNow() }, Ui.lpm(this, 4, 8))
+        c.addView(Ui.button(this, "Gửi câu thử lên TV") { testLg() }, Ui.lpm(this, 0, 8))
+        if (p.lgPaired) {
+            c.divide()
+            c.addView(Ui.switchRow(this, "Gửi phụ đề lên TV LG khi đang dịch", "Tắt nếu chỉ muốn thử ghép.", p.lgSubs) { p.lgSubs = it }, Ui.lpm(this, 12, 12))
+            c.addView(Ui.button(this, "Bỏ ghép TV LG") { p.clearLg(); TvOut.resetLg(); render() })
+        }
+    }
+
+    private fun findLg() {
+        status.setTextColor(Ui.SUB)
+        status.text = "Đang tìm TV LG..."
+        Thread {
+            val legs = try { PsFinder.openLegs(this) } catch (_: Throwable) { emptyList() }
+            val found = try { LgDiscover.search(legs, 3500) } catch (_: Throwable) { emptyList() }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (found.isNotEmpty()) {
+                    ipField.setText(found[0])
+                    status.setTextColor(Ui.SUB)
+                    status.text = "Thấy TV LG ở ${found[0]}" + (if (found.size > 1) " (và ${found.size - 1} TV khác)" else "") + ". Bấm Kết nối TV."
+                } else {
+                    status.setTextColor(Ui.DANGER)
+                    status.text = "Không thấy TV LG. Bật TV, bật LG Connect Apps, cùng Wi-Fi/LAN; hoặc nhập IP của TV (xem trong cài đặt mạng của TV)."
+                }
+            }
+        }.start()
+    }
+
+    private fun connectLgNow() {
+        val ip = ipField.text.toString().trim()
+        if (ip.isEmpty()) { status.setTextColor(Ui.DANGER); status.text = "Hãy nhập IP của TV hoặc bấm Tìm TV LG."; return }
+        status.setTextColor(Ui.SUB)
+        status.text = "Đang kết nối TV LG..."
+        Thread {
+            val tv = LgTv(ip, if (ip == p.lgIp) p.lgKey else "")
+            val err = tv.connect(60_000) {
+                runOnUiThread { status.text = "Nhìn lên TV và chọn Có (Cho phép) trong hộp hỏi kết nối..." }
+            }
+            if (err == null) { p.saveLg(ip, tv.key); TvOut.resetLg() }
+            val toastErr = if (err == null) tv.toast("Dịch game đã kết nối ✓") else null
+            tv.close()
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (err == null) {
+                    status.setTextColor(Ui.OK)
+                    status.text = "Đã ghép TV LG $ip." + (if (toastErr != null) " Nhưng gửi thông báo thử bị lỗi: $toastErr" else " TV vừa hiện thông báo thử.")
+                    render()
+                } else {
+                    status.setTextColor(Ui.DANGER)
+                    status.text = "Không ghép được: $err"
+                }
+            }
+        }.start()
+    }
+
+    private fun testLg() {
+        if (!p.lgPaired) { status.setTextColor(Ui.DANGER); status.text = "Hãy ghép TV LG trước."; return }
+        status.setTextColor(Ui.SUB)
+        status.text = "Đang gửi..."
+        Thread {
+            val tv = LgTv(p.lgIp, p.lgKey)
+            var err = tv.connect(10_000)
+            if (err == null) err = tv.toast("Đây là câu thử phụ đề trên TV LG.")
+            tv.close()
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                status.setTextColor(if (err == null) Ui.OK else Ui.DANGER)
+                status.text = if (err == null) "Đã gửi câu thử. Xem trên TV." else "Gửi không được: $err"
+            }
+        }.start()
+    }
+
+    // ---------------- TV Samsung ----------------
+
+    private fun stepsSamsung(c: LinearLayout) {
+        c.addView(step(1, "Ghép nối PS4/PS5 trong app một lần: Trang chủ, Ghép nối máy chơi game."))
+        c.addView(step(2, "Vào chơi trong app, bấm 🌐 để bật dịch phụ đề rồi kéo khung tới dòng phụ đề của game."))
+        c.addView(step(3, "Chiếu điện thoại lên TV Samsung bằng Smart View (xem khung chiếu bên dưới), hoặc mở trang web phụ đề trên trình duyệt của TV để xem chữ dịch ở màn hình thứ hai."))
+        c.addView(Ui.tv(this, "Chưa có app Dịch game cài được lên TV Samsung. Bật Developer Mode trên TV chỉ có tác dụng khi bạn có gói app Tizen đã ký riêng cho TV của mình (xem Hướng dẫn chi tiết).", 12.5f, Ui.SUB), Ui.lpm(this, 8, 0))
+    }
+
+    /** Hướng dẫn chiếu màn hình điện thoại lên TV: phụ đề nằm sẵn trên hình điện thoại nên TV nào cũng thấy. */
+    private fun mirrorBlock(c: LinearLayout) {
+        c.addView(Ui.tv(this, "Samsung dùng Smart View, LG dùng Screen Share, TV khác dùng Chromecast hoặc AirPlay. Có cáp USB-C ra HDMI thì cắm thẳng vào TV (điện thoại phải hỗ trợ xuất hình). TV hiện đúng hình game kèm phụ đề tiếng Việt vì phụ đề nằm sẵn trên màn hình điện thoại.", 14f, Ui.TEXT), Ui.lpm(this, 0, 8))
+        c.addView(Ui.tv(this, "Chiếu không dây trễ khoảng 0,1 đến 0,3 giây: hợp game cốt truyện hơn game đối kháng. Cáp gần như không trễ. Chơi PS4/PS5 trong app còn là bản thử nghiệm.", 12.5f, Ui.SUB), Ui.lpm(this, 0, 10))
+        c.addView(Ui.button(this, "Mở ghép nối PS4/PS5", true) { startActivity(Intent(this, PsConnectActivity::class.java)) })
+    }
+
+    // ---------------- Trang web phụ đề ----------------
+
+    private fun webCard(c: LinearLayout) {
+        val ips = try { PsFinder.localIps(this) } catch (_: Throwable) { emptyList() }
+        val urls = ips.map { "http://$it:${TvOut.WEB_PORT}" }
+        c.addView(Ui.switchRow(this, "Bật trang web phụ đề",
+            "Mở địa chỉ bên dưới bằng trình duyệt của TV, iPhone, máy tính bảng hoặc máy tính trong cùng Wi-Fi để xem chữ dịch cỡ lớn, cập nhật liền. Chỉ chạy trong mạng nhà, không lưu gì.", p.webSub) { on ->
+            p.webSub = on
+            if (on && TvOut.startWeb() == null) {
+                Toast.makeText(this, "Không mở được cổng ${TvOut.WEB_PORT}. Thử tắt rồi bật lại.", Toast.LENGTH_LONG).show()
+                p.webSub = false
+            }
+            if (!on) TvOut.stopWeb()
+            render()
         })
-        return c
+        if (p.webSub) {
+            c.divide()
+            if (urls.isEmpty()) {
+                c.addView(Ui.tv(this, "Chưa thấy địa chỉ Wi-Fi của điện thoại. Hãy kết nối Wi-Fi rồi mở lại trang này.", 13f, Ui.DANGER), Ui.lpm(this, 10, 0))
+            } else for (u in urls) {
+                val row = Ui.hbox(this)
+                row.addView(Ui.tv(this, u, 16f, Ui.GOLD, true), Ui.lp(0, WRAP_CONTENT, 1f))
+                row.addView(Ui.button(this, "Chép") { copy("url", u) })
+                c.addView(row, Ui.lpm(this, 10, 0))
+            }
+            c.addView(Ui.tv(this, "Phụ đề chỉ hiện khi bạn bấm bắt đầu dịch từ màn hình chính. Trang tự nối lại nếu mất mạng.", 12.5f, Ui.SUB), Ui.lpm(this, 8, 0))
+        }
+    }
+
+    // ---------------- Hướng dẫn chi tiết ----------------
+
+    private fun showGuide() {
+        val txt = when (brand) {
+            0 -> "GOOGLE TV / ANDROID TV\n\n" +
+                "1. Trên TV vào cửa hàng, cài app Downloader (hoặc dùng USB).\n" +
+                "2. Trong Downloader nhập đường dẫn tải DichGame-TV.apk (mục Releases của dự án trên GitHub), cài đặt.\n" +
+                "3. Lần đầu mở app TV, cấp quyền \"Hiển thị trên ứng dụng khác\". TV hiện mã 8 số đổi mỗi 60 giây.\n" +
+                "4. Trên điện thoại bấm Tìm TV trong mạng, nhập mã, bấm Kết nối TV.\n\n" +
+                "Không dùng được trên Android Box không có chế độ hiển thị đè lên ứng dụng khác."
+            1 -> "TV LG (webOS)\n\n" +
+                "A. Phụ đề bằng thông báo (không cần Developer Mode)\n" +
+                "Bật LG Connect Apps trên TV, ghép ở trang này. Dịch game gửi lệnh tạo thông báo chữ qua cổng điều khiển của TV (3001, hoặc 3000 với TV đời cũ). Chưa thử trên TV LG thật; nếu TV báo lỗi, trang này hiện nguyên văn lỗi của TV.\n\n" +
+                "B. Developer Mode (chỉ cần khi cài app webOS tự đóng gói)\n" +
+                "1. Tạo tài khoản LG Developer (webostv.developer.lge.com), miễn phí.\n" +
+                "2. Trên TV mở LG Content Store, cài app \"Developer Mode\".\n" +
+                "3. Mở app, đăng nhập tài khoản đó, bật \"Dev Mode Status\" và \"Key Server\"; TV khởi động lại. Ghi lại địa chỉ IP và mã (passphrase) trên màn hình.\n" +
+                "4. Chế độ này tự hết hạn sau một thời gian, phải mở app và gia hạn (Extend).\n" +
+                "5. Cài gói .ipk bằng ares-cli trên máy tính (ares-setup-device, ares-install).\n\n" +
+                "Dịch game hiện CHƯA có gói .ipk cho LG và điện thoại chưa cài được app lên TV LG, nên bước B chưa cần.\n\n" +
+                "iPhone: Dịch game chỉ có bản Android, nên không cài hay ghép từ iPhone được. iPhone vẫn xem được phụ đề bằng trang web phụ đề."
+            else -> "TV SAMSUNG (Tizen)\n\n" +
+                "A. Xem phụ đề\n" +
+                "Chiếu màn hình điện thoại bằng Smart View, hoặc mở trang web phụ đề ở trình duyệt của TV. Samsung không có đường nào cho app ngoài hiện chữ đè lên hình HDMI.\n\n" +
+                "B. Developer Mode (chỉ cần khi cài app Tizen tự ký)\n" +
+                "1. Trên TV vào Apps, trên remote bấm lần lượt 1 2 3 4 5, cửa sổ Developer mode hiện ra.\n" +
+                "2. Chọn On, nhập IP của máy bạn dùng để cài (Host PC IP), khởi động lại TV.\n" +
+                "3. Cài gói .wgt bằng Tizen Studio hoặc công cụ sdb (cổng 26101).\n" +
+                "4. App Tizen phải ký bằng chứng chỉ Samsung gắn với mã DUID của đúng TV bạn, nên không thể làm sẵn một gói chung cho mọi người, và điện thoại cũng không tự cài được.\n\n" +
+                "Dịch game hiện CHƯA có app Tizen. iPhone: Dịch game chỉ có bản Android; iPhone xem được phụ đề bằng trang web phụ đề."
+        }
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Hướng dẫn chi tiết")
+            .setMessage(txt)
+            .setPositiveButton("Đóng", null)
+            .show()
     }
 
     private fun tvPost(path: String, body: String, token: String?, ip: String, onDone: (Int, String) -> Unit) {

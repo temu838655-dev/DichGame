@@ -681,6 +681,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     }
 
     private fun sendTv(kind: String, text: String, speakIt: Boolean = false, force: Boolean = false) {
+        TvOut.publish(act, kind, text)
         val p = act.getSharedPreferences("dg", Context.MODE_PRIVATE)
         val ip = p.getString("tvip", "").orEmpty()
         val tok = p.getString("tvtoken", "").orEmpty()
