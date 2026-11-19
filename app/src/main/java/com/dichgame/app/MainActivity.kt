@@ -66,8 +66,8 @@ class MainActivity : Activity() {
             put(statusRow(con != null), 0, 12)
             put(consoleCard(con), 0, 12)
             put(navCard("📺", "Phụ đề trên TV",
-                if (p.tvPaired) "Đã ghép TV ${p.tvIp}" else "Bật dịch hiện ngay trên hình game của TV",
-                if (p.tvPaired) "ĐÃ GHÉP" else "MIỄN PHÍ") { open(TvSetupActivity::class.java) }, 0, 12)
+                if (p.tvPaired) "Đã ghép TV ${p.tvIp}" else if (p.lgPaired) "Đã ghép TV LG ${p.lgIp} (thử nghiệm)" else "Google TV, LG, Samsung: hiện phụ đề trên TV",
+                if (p.tvPaired || p.lgPaired) "ĐÃ GHÉP" else "MIỄN PHÍ") { open(TvSetupActivity::class.java) }, 0, 12)
             put(navCard("▶", "Dịch video trên web", "Mở trang video, phụ đề tự sang tiếng Việt", "MIỄN PHÍ") {
                 open(WebTranslateActivity::class.java)
             }, 0, 12)

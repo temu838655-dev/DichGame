@@ -29,9 +29,14 @@ set_prefs() {  # $1 = tệp XML cài đặt, không truyền = xóa sạch (cài
 }
 
 run_screens() {  # $1 = tiền tố tên ảnh
-  start MainActivity; shot "$1-home"; swipe_up; shot "$1-home-2"
+  start MainActivity; sleep 4; shot "$1-home"; swipe_up; shot "$1-home-2"; swipe_up; shot "$1-home-3"
   for a in TranslateActivity SettingsActivity TvSetupActivity GuideActivity FeaturesActivity KhoGameActivity PackActivity LicensesActivity PsConnectActivity PsPairActivity; do
     start "$a"; shot "$1-$a-1"; swipe_up; shot "$1-$a-2"; swipe_up; shot "$1-$a-3"
+    adb shell am force-stop "$PKG"
+  done
+  for br in lg samsung; do
+    adb shell am start -W -n "$PKG/.TvSetupActivity" --es brand "$br" >/dev/null 2>&1; sleep 3
+    shot "$1-tv-$br-1"; swipe_up; shot "$1-tv-$br-2"; swipe_up; shot "$1-tv-$br-3"
     adb shell am force-stop "$PKG"
   done
   for pg in voice subs profile about; do
