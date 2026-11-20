@@ -1,5 +1,6 @@
 package com.dichgame.app
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -9,7 +10,11 @@ import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
+import android.graphics.Typeface
 import android.view.View
+import android.view.animation.LinearInterpolator
+import kotlin.math.PI
+import kotlin.math.sin
 
 /** Nền màn hình chính: xanh đậm, quầng sáng xanh ở góc, vài đường vàng cong và vòng cung xanh quanh nút tay cầm. */
 class GlowBackground(c: Context, private val calm: Boolean = false) : View(c) {
@@ -84,7 +89,7 @@ class GamepadGlyph(c: Context, private val body: Int, private val detail: Int) :
 }
 
 /** Đáy màn hình chính: phủ mờ nội dung phía dưới, vòng cung xanh và cánh vàng hai bên nút tay cầm. */
-class DockWings(c: Context) : View(c) {
+class DockWings(c: Context, private val gapDp: Float = 52f, private val lenScale: Float = 1f) : View(c) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val r = RectF()
     private val path = Path()
@@ -116,12 +121,12 @@ class DockWings(c: Context) : View(c) {
         p.style = Paint.Style.FILL
         // ba thanh vàng mỗi bên, ngắn dần ra xa nút, như cánh
         val rows = floatArrayOf(0f, 9f, 18f)
-        val lens = floatArrayOf(92f, 70f, 46f)
-        val y0 = h * 0.43f
+        val lens = floatArrayOf(92f * lenScale, 70f * lenScale, 46f * lenScale)
+        val y0 = h * (if (gapDp > 60f) 0.385f else 0.43f)
         for (side in intArrayOf(-1, 1)) {
             for (i in rows.indices) {
-                val inner = cx + side * (52f + i * 6f) * d
-                val outer = cx + side * (52f + i * 6f + lens[i]) * d
+                val inner = cx + side * (gapDp + i * 6f) * d
+                val outer = cx + side * (gapDp + i * 6f + lens[i]) * d
                 val l = minOf(inner, outer)
                 val rr = maxOf(inner, outer)
                 p.shader = LinearGradient(inner, 0f, outer, 0f, gold, gold2, Shader.TileMode.CLAMP)
@@ -133,5 +138,204 @@ class DockWings(c: Context) : View(c) {
         }
         p.shader = null
         p.alpha = 255
+    }
+}
+
+/**
+ * Logo "Xin chào các anh em" ở giữa đáy màn hình chính: huy hiệu kính tối viền vàng có vương miện, chữ vàng có viền và bóng đổ,
+ * ánh sáng chạy qua chữ mỗi vài giây, quầng sáng thở nhẹ. Đang dịch thì viền và quầng chuyển xanh lá, nút nhỏ ở góc đổi từ ▶ sang ■.
+ * Chạm vào logo để bắt đầu hoặc dừng dịch (việc do màn hình chính gắn vào).
+ */
+class HelloLogo(c: Context, private val running: Boolean) : View(c) {
+    private val d = resources.displayMetrics.density
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; strokeJoin = Paint.Join.ROUND }
+    private val pill = RectF()
+    private val r = RectF()
+    private val path = Path()
+    private var phase = 0.7f
+    private var anim: ValueAnimator? = null
+    private val titleFace: Typeface = Typeface.create("sans-serif-black", Typeface.ITALIC)
+    private val subFace: Typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+
+    private val gold1 = Color.parseColor("#FFF3B0")
+    private val gold2 = Color.parseColor("#FFD54A")
+    private val gold3 = Color.parseColor("#F2A900")
+    private val gold4 = Color.parseColor("#B97800")
+    private val green1 = Color.parseColor("#B8FFD0")
+    private val green2 = Color.parseColor("#2EE06B")
+    private val green3 = Color.parseColor("#0E8A3A")
+    private val brown = Color.parseColor("#3A2200")
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        anim?.cancel()
+        anim = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 3800
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = LinearInterpolator()
+            addUpdateListener { phase = it.animatedValue as Float; invalidate() }
+            start()
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        anim?.cancel()
+        anim = null
+        super.onDetachedFromWindow()
+    }
+
+    private fun alpha(a: Int, c: Int) = (a.coerceIn(0, 255) shl 24) or (c and 0xFFFFFF)
+
+    override fun onDraw(cv: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        val cx = w / 2f
+        val rim1 = if (running) green1 else gold1
+        val rim2 = if (running) green2 else gold2
+        val rim3 = if (running) green3 else gold3
+        pill.set(10f * d, 17f * d, w - 10f * d, h - 10f * d)
+        val rad = 22f * d
+        val pulse = 0.75f + 0.25f * sin(phase * 2f * PI.toFloat())
+
+        // quầng sáng quanh huy hiệu
+        p.style = Paint.Style.STROKE
+        p.shader = null
+        for (i in 1..5) {
+            p.strokeWidth = (3f + i * 3.2f) * d
+            p.color = alpha((70f * pulse / (i * 0.9f + 0.4f)).toInt(), rim2)
+            cv.drawRoundRect(pill, rad, rad, p)
+        }
+        // nền kính tối ám vàng
+        p.style = Paint.Style.FILL
+        p.shader = LinearGradient(0f, pill.top, 0f, pill.bottom,
+            intArrayOf(Color.parseColor("#3D2B08"), Color.parseColor("#1B1307"), Color.parseColor("#0C0903")), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+        cv.drawRoundRect(pill, rad, rad, p)
+        // ánh kính nửa trên
+        p.shader = LinearGradient(0f, pill.top, 0f, pill.centerY(), 0x3CFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP)
+        r.set(pill.left + 3f * d, pill.top + 3f * d, pill.right - 3f * d, pill.centerY())
+        cv.drawRoundRect(r, rad - 3f * d, rad - 3f * d, p)
+        // viền chính (chuyển màu chéo) và viền trong mảnh
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 2.6f * d
+        p.shader = LinearGradient(pill.left, pill.top, pill.right, pill.bottom,
+            intArrayOf(rim1, rim2, rim3, rim2, rim1), floatArrayOf(0f, 0.3f, 0.55f, 0.8f, 1f), Shader.TileMode.CLAMP)
+        cv.drawRoundRect(pill, rad, rad, p)
+        p.shader = null
+        p.strokeWidth = 1f * d
+        p.color = alpha(70, rim1)
+        r.set(pill.left + 4f * d, pill.top + 4f * d, pill.right - 4f * d, pill.bottom - 4f * d)
+        cv.drawRoundRect(r, rad - 4f * d, rad - 4f * d, p)
+
+        // dòng lớn "Xin chào"
+        val s1 = "Xin chào"
+        tp.typeface = titleFace
+        tp.letterSpacing = 0f
+        var sz = 31f * d
+        tp.textSize = sz
+        val maxW = pill.width() - 30f * d
+        val tw = tp.measureText(s1)
+        if (tw > maxW) { sz *= maxW / tw; tp.textSize = sz }
+        val base1 = pill.top + pill.height() * 0.57f
+        tp.style = Paint.Style.FILL
+        tp.shader = null
+        tp.color = 0xAA000000.toInt()
+        cv.drawText(s1, cx, base1 + 2.2f * d, tp)
+        tp.style = Paint.Style.STROKE
+        tp.strokeWidth = 4.2f * d
+        tp.color = 0xFF000000.toInt() or brown
+        cv.drawText(s1, cx, base1, tp)
+        tp.style = Paint.Style.FILL
+        tp.shader = LinearGradient(0f, base1 - sz * 0.78f, 0f, base1 + 0.05f * sz,
+            intArrayOf(Color.parseColor("#FFFBD6"), gold2, Color.parseColor("#F59A00")), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        cv.drawText(s1, cx, base1, tp)
+        // ánh sáng quét qua chữ (chỉ nửa đầu chu kỳ, nghỉ nửa sau)
+        if (phase < 0.45f) {
+            val t = phase / 0.45f
+            val x = pill.left - 20f * d + t * (pill.width() + 40f * d)
+            tp.shader = LinearGradient(x - 22f * d, base1 - sz * 0.8f, x + 22f * d, base1 + 0.1f * sz,
+                intArrayOf(0x00FFFFFF, 0xDDFFFFFF.toInt(), 0x00FFFFFF), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+            cv.drawText(s1, cx, base1, tp)
+        }
+        tp.shader = null
+
+        // dòng nhỏ "CÁC ANH EM" giữa hai gạch vàng
+        val s2 = "CÁC ANH EM"
+        tp.typeface = subFace
+        tp.textSize = 11.5f * d
+        tp.letterSpacing = 0.14f
+        tp.style = Paint.Style.FILL
+        tp.color = Color.parseColor("#FFF1C2")
+        val base2 = pill.bottom - 13f * d
+        cv.drawText(s2, cx, base2, tp)
+        val tw2 = tp.measureText(s2)
+        val ly = base2 - 4f * d
+        p.style = Paint.Style.FILL
+        p.color = rim2
+        for (side in intArrayOf(-1, 1)) {
+            val near = cx + side * (tw2 / 2f + 6f * d)
+            val far = near + side * 12f * d
+            r.set(minOf(near, far), ly - 0.8f * d, maxOf(near, far), ly + 0.8f * d)
+            cv.drawRoundRect(r, 0.8f * d, 0.8f * d, p)
+            cv.drawCircle(far + side * 3f * d, ly, 1.8f * d, p)
+        }
+
+        // vương miện đặt lên viền trên
+        val cw = 40f * d
+        val ch = 24f * d
+        val cl = cx - cw / 2f
+        val ct = 1f * d
+        path.reset()
+        path.moveTo(cl + 0.10f * cw, ct + ch)
+        path.lineTo(cl, ct + 0.22f * ch)
+        path.lineTo(cl + 0.27f * cw, ct + 0.58f * ch)
+        path.lineTo(cl + 0.5f * cw, ct)
+        path.lineTo(cl + 0.73f * cw, ct + 0.58f * ch)
+        path.lineTo(cl + cw, ct + 0.22f * ch)
+        path.lineTo(cl + 0.90f * cw, ct + ch)
+        path.close()
+        p.style = Paint.Style.FILL
+        p.shader = LinearGradient(0f, ct, 0f, ct + ch, intArrayOf(gold1, gold2, gold3), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+        cv.drawPath(path, p)
+        p.shader = null
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 1.4f * d
+        p.strokeJoin = Paint.Join.ROUND
+        p.color = 0xFF000000.toInt() or brown
+        cv.drawPath(path, p)
+        p.style = Paint.Style.FILL
+        p.color = 0x99FFFFFF.toInt()
+        r.set(cl + 0.14f * cw, ct + 0.80f * ch, cl + 0.86f * cw, ct + 0.80f * ch + 1.2f * d)
+        cv.drawRoundRect(r, 0.6f * d, 0.6f * d, p)
+        p.color = Color.parseColor("#FFFBE3")
+        cv.drawCircle(cl, ct + 0.22f * ch, 2.4f * d, p)
+        cv.drawCircle(cl + 0.5f * cw, ct, 2.6f * d, p)
+        cv.drawCircle(cl + cw, ct + 0.22f * ch, 2.4f * d, p)
+
+        // nút nhỏ ở góc trên phải: ▶ khi chờ, ■ khi đang dịch
+        val bx = pill.right - 7f * d
+        val by = pill.top + 7f * d
+        p.style = Paint.Style.FILL
+        p.shader = LinearGradient(bx - 9f * d, by - 9f * d, bx + 9f * d, by + 9f * d, rim1, rim3, Shader.TileMode.CLAMP)
+        cv.drawCircle(bx, by, 9f * d, p)
+        p.shader = null
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 1.6f * d
+        p.color = Color.parseColor("#0C0903")
+        cv.drawCircle(bx, by, 9f * d, p)
+        p.style = Paint.Style.FILL
+        p.color = if (running) Color.parseColor("#06260F") else Color.parseColor("#2A1A08")
+        if (running) {
+            r.set(bx - 3.2f * d, by - 3.2f * d, bx + 3.2f * d, by + 3.2f * d)
+            cv.drawRoundRect(r, 1f * d, 1f * d, p)
+        } else {
+            path.reset()
+            path.moveTo(bx - 2.6f * d, by - 4.2f * d)
+            path.lineTo(bx - 2.6f * d, by + 4.2f * d)
+            path.lineTo(bx + 4.2f * d, by)
+            path.close()
+            cv.drawPath(path, p)
+        }
     }
 }

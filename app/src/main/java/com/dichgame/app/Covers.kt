@@ -143,7 +143,15 @@ object Covers {
 /** Ô ảnh bìa dọc: ảnh thật nếu có, không thì ảnh vẽ sẵn. Có nhãn "VIỆT HÓA" và viền vàng khi đang chọn. */
 class CoverView(c: Context, private val title: String) : View(c) {
     var bmp: Bitmap? = null
-        set(v) { field = v; invalidate() }
+        set(v) {
+            field = v
+            // mipmap: thu nhỏ ảnh 600x900 xuống ô nhỏ vẫn nét, không răng cưa
+            v?.setHasMipMap(true)
+            // ảnh ngang (game không có ảnh dọc trên Steam): làm nền mờ từ chính ảnh để đặt ảnh gốc nét vào giữa, không phóng to
+            backdrop = if (v != null && v.width > v.height * 1.1f) Bitmap.createScaledBitmap(v, 24, 16, true) else null
+            invalidate()
+        }
+    private var backdrop: Bitmap? = null
     var chosen = false
         set(v) { field = v; invalidate() }
     var vietHoa = false
@@ -151,6 +159,8 @@ class CoverView(c: Context, private val title: String) : View(c) {
 
     private val d = resources.displayMetrics.density
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    /** Vẽ ảnh với lọc song tuyến và khử nhiễu màu: thiếu cờ này ảnh bị thu phóng thô, trông vỡ và mờ. */
+    private val sharp = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
     private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.DEFAULT_BOLD; textAlign = Paint.Align.CENTER }
     private val clip = Path()
     private val dst = RectF()
@@ -173,12 +183,14 @@ class CoverView(c: Context, private val title: String) : View(c) {
         cv.clipPath(clip)
         val b = bmp
         if (b != null) {
-            val s = max(w / b.width, h / b.height)
-            val dw = b.width * s
-            val dh = b.height * s
-            dst.set((w - dw) / 2f, (h - dh) / 2f, (w + dw) / 2f, (h + dh) / 2f)
-            p.shader = null
-            cv.drawBitmap(b, null, dst, p)
+            if (backdrop != null) landscape(cv, b, w, h) else {
+                val s = max(w / b.width, h / b.height)
+                val dw = b.width * s
+                val dh = b.height * s
+                dst.set((w - dw) / 2f, (h - dh) / 2f, (w + dw) / 2f, (h + dh) / 2f)
+                p.shader = null
+                cv.drawBitmap(b, null, dst, sharp)
+            }
         } else poster(cv, w, h)
         cv.restore()
         if (vietHoa) {
@@ -200,6 +212,27 @@ class CoverView(c: Context, private val title: String) : View(c) {
             cv.drawRoundRect(tmp, r, r, p)
             p.style = Paint.Style.FILL
         }
+    }
+
+    /**
+     * Ảnh ngang (460x215...): không cắt giữa rồi phóng to 2 lần như trước (vỡ, mờ). Nền là bản mờ của chính ảnh, phủ tối;
+     * ảnh gốc đặt vừa chiều ngang ở giữa, chỉ thu nhỏ nên nét.
+     */
+    private fun landscape(cv: Canvas, b: Bitmap, w: Float, h: Float) {
+        dst.set(0f, 0f, w, h)
+        backdrop?.let { cv.drawBitmap(it, null, dst, sharp) }
+        p.style = Paint.Style.FILL
+        p.shader = LinearGradient(0f, 0f, 0f, h, intArrayOf(0xB8000000.toInt(), 0x70000000, 0xD0000000.toInt()), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        cv.drawRect(0f, 0f, w, h, p)
+        p.shader = null
+        val ih = w * b.height / b.width
+        val top = Math.round((h - ih) / 2f).toFloat()
+        dst.set(0f, top, w, top + ih)
+        cv.drawBitmap(b, null, dst, sharp)
+        // viền sáng mảnh trên và dưới ảnh cho gọn mắt
+        p.color = 0x33FFFFFF
+        cv.drawRect(0f, top, w, top + 1f, p)
+        cv.drawRect(0f, top + ih - 1f, w, top + ih, p)
     }
 
     /** Ảnh bìa vẽ sẵn khi chưa có ảnh thật: nền chuyển màu theo tên game, chữ cái đầu to ở giữa. */

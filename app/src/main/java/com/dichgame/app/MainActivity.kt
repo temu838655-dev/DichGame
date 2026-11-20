@@ -60,7 +60,7 @@ class MainActivity : Activity() {
         val con = PsStore.load(this)?.takeIf { it.players.isNotEmpty() }
         val content = Ui.vbox(this)
         val pad = Ui.dp(this, 16)
-        content.setPadding(pad, Ui.dp(this, 10), pad, Ui.dp(this, 118))
+        content.setPadding(pad, Ui.dp(this, 10), pad, Ui.dp(this, 126))
         content.apply {
             put(header(con != null), 4, 14)
             put(statusRow(con != null), 0, 12)
@@ -91,7 +91,7 @@ class MainActivity : Activity() {
         sv.isVerticalScrollBarEnabled = false
         sv.addView(content)
         root.addView(sv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-        root.addView(dock(), FrameLayout.LayoutParams(MATCH_PARENT, Ui.dp(this, 104), Gravity.BOTTOM))
+        root.addView(dock(), FrameLayout.LayoutParams(MATCH_PARENT, Ui.dp(this, 112), Gravity.BOTTOM))
         setContentView(root)
     }
 
@@ -222,27 +222,23 @@ class MainActivity : Activity() {
         return c
     }
 
-    /** Đáy màn hình chính: cánh vàng và nút tay cầm tròn, bấm để bắt đầu hoặc dừng dịch. */
+    /** Đáy màn hình chính: cánh vàng hai bên và logo "Xin chào các anh em"; chạm vào logo để bắt đầu hoặc dừng dịch. */
     private fun dock(): View {
         val running = CaptureService.active
         val box = FrameLayout(this)
-        box.addView(DockWings(this), FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-        val btn = FrameLayout(this)
-        btn.background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Color.parseColor("#FFE27A"), Ui.GOLD2)).apply {
-            shape = GradientDrawable.OVAL
-            setStroke(Ui.dp(this@MainActivity, 3), Color.parseColor("#FFF3B0"))
+        box.addView(DockWings(this, 96f, 0.75f), FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        val logo = HelloLogo(this, running)
+        logo.contentDescription = "Xin chào các anh em. " + if (running) "Chạm để dừng dịch" else if (p.narrate) "Chạm để bắt đầu thuyết minh" else "Chạm để bắt đầu dịch"
+        logo.isClickable = true
+        logo.setOnClickListener { if (CaptureService.active) stopService() else begin() }
+        logo.setOnTouchListener { v, e ->
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.95f).scaleY(0.95f).setDuration(90).start()
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
+            }
+            false
         }
-        btn.elevation = Ui.dp(this, 8).toFloat()
-        if (running) {
-            btn.addView(View(this).apply { background = Ui.bg(this@MainActivity, Color.parseColor("#2A1A08"), 4) },
-                FrameLayout.LayoutParams(Ui.dp(this, 24), Ui.dp(this, 24), Gravity.CENTER))
-        } else {
-            btn.addView(GamepadGlyph(this, Color.parseColor("#2A1A08"), Color.parseColor("#F2B600")), FrameLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 30), Gravity.CENTER))
-        }
-        btn.setOnClickListener { if (CaptureService.active) stopService() else begin() }
-        box.addView(btn, FrameLayout.LayoutParams(Ui.dp(this, 70), Ui.dp(this, 70), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = Ui.dp(this@MainActivity, 6) })
-        box.addView(Ui.tv(this, if (running) "Dừng" else if (p.narrate) "Bắt đầu thuyết minh" else "Bắt đầu dịch", 11.5f, Ui.GOLD, true),
-            FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = Ui.dp(this@MainActivity, 6) })
+        box.addView(logo, FrameLayout.LayoutParams(Ui.dp(this, 176), Ui.dp(this, 90), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = Ui.dp(this@MainActivity, 6) })
         return box
     }
 
