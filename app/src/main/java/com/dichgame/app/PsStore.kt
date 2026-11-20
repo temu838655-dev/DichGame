@@ -48,6 +48,7 @@ object PsStore {
     private const val K_RES = "res"
     private const val K_RATE = "rate"
     private const val K_ASK = "noask"
+    private const val K_ORIENT = "orient"
     private const val KEY_ALIAS = "dichgame.remoteplay.storage"
     private const val ENVELOPE_VERSION = 1
     private const val GCM_TAG_BITS = 128
@@ -251,6 +252,30 @@ object PsStore {
     internal fun bitrateKbps(mbps: Int): Int =
         if (mbps in RATE_PRESETS) mbps * 1_000 else 0
 
+
+    // ---- hướng màn hình khi chơi ----
+    const val ORIENT_LANDSCAPE = 0   // ưu tiên ngang (mặc định): hình lớn, tay cầm trong suốt phủ lên hình
+    const val ORIENT_AUTO = 1        // theo cảm biến xoay tự động của máy
+    const val ORIENT_PORTRAIT = 2    // dọc: hình ở trên, tay cầm ở dưới
+
+    fun orient(ctx: Context): Int {
+        val v = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(K_ORIENT, ORIENT_LANDSCAPE)
+        return if (v in ORIENT_LANDSCAPE..ORIENT_PORTRAIT) v else ORIENT_LANDSCAPE
+    }
+    fun setOrient(ctx: Context, v: Int) {
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putInt(K_ORIENT, if (v in ORIENT_LANDSCAPE..ORIENT_PORTRAIT) v else ORIENT_LANDSCAPE).apply()
+    }
+    /** Ngang dùng SENSOR_LANDSCAPE để lật được cả hai chiều ngang mà không rơi về dọc. */
+    internal fun orientFlag(sel: Int): Int = when (sel) {
+        ORIENT_PORTRAIT -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        ORIENT_AUTO -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        else -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    }
+    fun applyOrient(a: android.app.Activity) {
+        val flag = orientFlag(orient(a))
+        if (a.requestedOrientation != flag) a.requestedOrientation = flag
+    }
 
     /** Không hỏi lại bảng chất lượng khi bấm Chơi. */
     fun noAsk(ctx: Context): Boolean = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(K_ASK, false)

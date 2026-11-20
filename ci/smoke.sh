@@ -104,6 +104,30 @@ adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 > "$OUT
 adb shell settings put system user_rotation 0 >/dev/null 2>&1
 adb shell am force-stop "$PKG"
 
+# Xoay màn hình liên tiếp trong màn chơi: Activity và SurfaceView phải giữ nguyên (không tạo lại), không văng
+adb logcat -c
+adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo spin >/dev/null 2>&1
+sleep 2; shot spin-1
+sleep 2; shot spin-2
+sleep 6
+adb logcat -d -s DG_PLAY:I > "$OUT/spin.txt" 2>&1
+cat "$OUT/spin.txt"
+shot spin-end
+tao=$(grep -c "tao man choi" "$OUT/spin.txt" || true)
+huy=$(grep -c "huy man choi" "$OUT/spin.txt" || true)
+xoay=$(grep -c " xoay land=" "$OUT/spin.txt" || true)
+sv_tao=$(grep -c "surface-tao" "$OUT/spin.txt" || true)
+sv_huy=$(grep -c "surface-huy" "$OUT/spin.txt" || true)
+echo "spin: activity tao=$tao huy=$huy; xoay=$xoay; surface tao=$sv_tao huy=$sv_huy"
+[ "$tao" = "1" ] || echo "Xoay màn hình: Activity bị tạo $tao lần (phải đúng 1)" >> "$OUT/spin-fail.txt"
+[ "$huy" = "0" ] || echo "Xoay màn hình: Activity bị huỷ $huy lần (phải 0)" >> "$OUT/spin-fail.txt"
+[ "$xoay" -ge 4 ] || echo "Xoay màn hình: chỉ nhận $xoay lần đổi hướng (cần ít nhất 4)" >> "$OUT/spin-fail.txt"
+[ "$sv_huy" = "0" ] || echo "Xoay màn hình: surface video bị huỷ $sv_huy lần (phải 0)" >> "$OUT/spin-fail.txt"
+[ "$sv_tao" = "1" ] || echo "Xoay màn hình: surface video bị tạo $sv_tao lần (phải đúng 1)" >> "$OUT/spin-fail.txt"
+adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/spin-fail.txt"
+[ -s "$OUT/spin-fail.txt" ] || rm -f "$OUT/spin-fail.txt"
+adb shell am force-stop "$PKG"
+
 # Kho game Việt hoá: lọc theo nền tảng và bảng chi tiết một game (extra chỉ có ở bản debug)
 adb shell am force-stop "$PKG"
 # ảnh bìa tải từ Steam: chờ lâu hơn lần đầu, các lần sau lấy từ bộ nhớ đệm

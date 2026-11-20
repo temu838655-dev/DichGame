@@ -381,6 +381,30 @@ object PsQuality {
             c2.addView(desc2, Ui.lpm(a, 8, 0))
             addView(c2, Ui.lpm(a, 12, 0))
 
+            val c3 = Ui.card(a)
+            c3.addView(Ui.tv(a, "Hướng màn hình khi chơi", 16f, Ui.TEXT, true))
+            val h3 = Ui.vbox(a)
+            val desc3 = Ui.tv(a, "", 12.5f, Ui.SUB)
+            fun drawOrient() {
+                h3.removeAllViews()
+                val sel = PsStore.orient(a)
+                h3.addView(Ui.segmented(a, listOf("Ngang", "Tự động", "Dọc"), sel) {
+                    PsStore.setOrient(a, it)
+                    // Đang ở màn chơi thì đổi hướng ngay; ở màn khác thì lần chơi sau mới áp dụng.
+                    if (a is PsPlayActivity) PsStore.applyOrient(a)
+                    drawOrient()
+                })
+                desc3.text = when (sel) {
+                    PsStore.ORIENT_AUTO -> "Theo cảm biến xoay của máy (tôn trọng khoá xoay màn hình). Xoay thoải mái, phiên chơi không bị ngắt."
+                    PsStore.ORIENT_PORTRAIT -> "Luôn dọc: hình ở trên, tay cầm ảo ở dưới."
+                    else -> "Ưu tiên ngang (khuyên dùng): hình lớn, tay cầm trong suốt phủ lên hình, lật được cả hai chiều ngang."
+                }
+            }
+            drawOrient()
+            c3.addView(h3, Ui.lpm(a, 8, 0))
+            c3.addView(desc3, Ui.lpm(a, 8, 0))
+            addView(c3, Ui.lpm(a, 12, 0))
+
             if (play != null) {
                 addView(Ui.switchRow(a, "Không hỏi lại khi bấm Chơi", "Đổi lại ở nút ⚙ cạnh nút Chơi trên điện thoại.", PsStore.noAsk(a)) { PsStore.setNoAsk(a, it) }, Ui.lpm(a, 14, 0))
                 addView(Ui.button(a, "🎮  Chơi", true) { d.dismiss(); play() }, Ui.lpm(a, 14, 0))

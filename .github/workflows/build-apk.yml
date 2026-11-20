@@ -35,6 +35,10 @@ jobs:
       - name: Áp dụng cầu nối âm thanh PCM cho Chiaki
         run: python3 tools/patch-chiaki-audio-pcm.py
 
+      # Sửa lỗi treo cứng bộ giải mã hình khi surface bị huỷ (xoay màn hình, tắt màn hình).
+      - name: Vá bộ giải mã hình của Chiaki (treo khi xoay màn hình)
+        run: python3 tools/patch-chiaki-video-decoder.py
+
       # Công cụ để sinh mã giao thức (nanopb cần protoc và gói Python protobuf).
       - uses: actions/setup-python@v5
         with:

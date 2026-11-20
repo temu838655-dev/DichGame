@@ -86,3 +86,6 @@ jobs:
           if [ -s shots/play-fail.txt ]; then
             echo "Màn chơi (xem thử) bị lỗi:"; cat shots/play-fail.txt; exit 1
           fi
+          if [ -s shots/spin-fail.txt ]; then
+            echo "Xoay màn hình trong màn chơi bị lỗi:"; cat shots/spin-fail.txt; cat shots/spin.txt; exit 1
+          fi

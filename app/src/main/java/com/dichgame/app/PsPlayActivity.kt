@@ -203,12 +203,24 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         build()
         if (demo) android.util.Log.i("DG_PLAY", "tao man choi act=${System.identityHashCode(this)} mode=$demoMode")
         // Chỉ bản debug: tự thao tác vài bước để CI chụp được ảnh giao diện.
-        if (demoMode == "adjust") {
-            ui.postDelayed({ if (!isFinishing && !isDestroyed) toggleAdjust() }, 1500)
-            ui.postDelayed({ if (!isFinishing && !isDestroyed) toggleAdjust() }, 5000)
-        } else if (demoMode == "land") {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        }
+        if (demo) {
+            when (demoMode) {
+                "adjust" -> {
+                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    ui.postDelayed({ if (!isFinishing && !isDestroyed) toggleAdjust() }, 1500)
+                    ui.postDelayed({ if (!isFinishing && !isDestroyed) toggleAdjust() }, 5000)
+                }
+                "land" -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                // Xoay liên tiếp dọc ↔ ngang: CI kiểm tra Activity và SurfaceView không bị tạo lại.
+                "spin" -> {
+                    val seq = listOf(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)
+                    seq.forEachIndexed { i, o -> ui.postDelayed({ if (!isFinishing && !isDestroyed) requestedOrientation = o }, 1500L * (i + 1)) }
+                }
+                else -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+        } else PsStore.applyOrient(this)
     }
 
     override fun onStart() {
@@ -282,7 +294,11 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     override fun onConfigurationChanged(n: Configuration) {
         super.onConfigurationChanged(n)
-        build()
+        // Chỉ đổi cách xếp chỗ; SurfaceView, phiên Remote Play và tay cầm ảo giữ nguyên.
+        // Ngón đang giữ nút bị hệ thống huỷ khi xoay: nhả hết để không kẹt nút.
+        pad?.releaseAll()
+        applyOrientation()
+        if (demo) android.util.Log.i("DG_PLAY", "xoay land=${n.orientation == Configuration.ORIENTATION_LANDSCAPE} act=${System.identityHashCode(this)} sv=${System.identityHashCode(videoView)}")
     }
 
     // ---------------- Giao diện ----------------
@@ -342,16 +358,109 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     private fun dpi(n: Number): Int = Ui.dp(this, n)
 
+    private var playRoot: PlayLayout? = null
+    private var vcardView: FrameLayout? = null
+    private var barView: View? = null
+    private var chipHolder: View? = null
+    private var gripView: View? = null
+    private var pillLabel: TextView? = null
+    private var viewsBuilt = false
+
+    /**
+     * Xếp chỗ cho các phần của màn chơi. Mọi view (SurfaceView, hình, tay cầm ảo, nút) chỉ được tạo MỘT lần; xoay màn hình chỉ
+     * đổi cách xếp chỗ ở đây. Trước đây mỗi lần xoay là dựng lại toàn bộ giao diện và tạo SurfaceView mới, nên surface cũ bị huỷ,
+     * bộ giải mã hình bị tháo ra (có lúc treo hẳn) và tay cầm ảo bị thay nên có thể kẹt nút.
+     */
+    private inner class PlayLayout(c: Context) : ViewGroup(c) {
+        var land = false
+        var vcard: View? = null
+        var pad: View? = null
+        var close: View? = null
+        var padBtn: View? = null
+        var chip: View? = null
+        var pill: View? = null
+        var bar: View? = null
+        var grip: View? = null
+
+        override fun onMeasure(w: Int, h: Int) {
+            setMeasuredDimension(MeasureSpec.getSize(w), MeasureSpec.getSize(h))
+        }
+
+        private fun measureChild(v: View, w: Int, wMode: Int, h: Int, hMode: Int) =
+            v.measure(MeasureSpec.makeMeasureSpec(maxOf(0, w), wMode), MeasureSpec.makeMeasureSpec(maxOf(0, h), hMode))
+
+        private fun put(v: View, x: Int, y: Int) = v.layout(x, y, x + v.measuredWidth, y + v.measuredHeight)
+
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+            val vc = vcard ?: return
+            val pd = pad ?: return
+            val cl = close ?: return
+            val pb = padBtn ?: return
+            val pl = pill ?: return
+            val ch = chip ?: return
+            val br = bar ?: return
+            val gr = grip ?: return
+            val w = r - l
+            val h = b - t
+            val ex = MeasureSpec.EXACTLY
+            val am = MeasureSpec.AT_MOST
+            val m8 = dpi(8)
+            val m10 = dpi(10)
+            val btn = dpi(40)
+            measureChild(cl, btn, ex, btn, ex)
+            measureChild(pb, btn, ex, btn, ex)
+            measureChild(pl, w, am, h, am)
+            if (!land) {
+                // Dọc: hàng trên (đóng, tay cầm, trạng thái, người chơi), hình trong khung vàng, thanh công cụ, thanh kéo, tay cầm ảo.
+                val pillLeft = w - m10 - pl.measuredWidth
+                val chipLeft = m10 + btn * 2 + m8 * 2
+                measureChild(ch, pillLeft - m8 - chipLeft, ex, h, am)
+                val rowTop = dpi(8)
+                val rowH = maxOf(btn, ch.measuredHeight, pl.measuredHeight)
+                fun cy(v: View) = rowTop + (rowH - v.measuredHeight) / 2
+                put(cl, m10, cy(cl)); put(pb, m10 + btn + m8, cy(pb)); put(ch, chipLeft, cy(ch)); put(pl, pillLeft, cy(pl))
+                var y = rowTop + rowH + dpi(6)
+                measureChild(vc, w - 2 * m10, ex, 0, MeasureSpec.UNSPECIFIED)
+                put(vc, m10, y); y += vc.measuredHeight
+                if (br.visibility != View.GONE) {
+                    y += m10
+                    measureChild(br, w - 2 * m10, ex, h, am)
+                    put(br, m10, y); y += br.measuredHeight
+                }
+                measureChild(gr, w, ex, dpi(22), ex)
+                put(gr, 0, y); y += dpi(22)
+                measureChild(pd, w, ex, h - y, ex)
+                put(pd, 0, y)
+            } else {
+                // Ngang: hình giữa màn hình, tay cầm trong suốt phủ lên, hàng điều khiển ở giữa phía trên.
+                measureChild(vc, w, am, h, am)
+                put(vc, (w - vc.measuredWidth) / 2, (h - vc.measuredHeight) / 2)
+                measureChild(pd, w, ex, h, ex)
+                put(pd, 0, 0)
+                val barOn = br.visibility != View.GONE
+                if (barOn) measureChild(br, dpi(312), ex, h, am)
+                val total = btn * 2 + m8 + m8 + (if (barOn) dpi(312) + m8 else 0) + pl.measuredWidth
+                var x = (w - total) / 2
+                val rowTop = dpi(6)
+                val rowH = maxOf(btn, if (barOn) br.measuredHeight else 0, pl.measuredHeight)
+                fun cy(v: View) = rowTop + (rowH - v.measuredHeight) / 2
+                put(cl, x, cy(cl)); x += btn + m8
+                put(pb, x, cy(pb)); x += btn + m8
+                if (barOn) { put(br, x, cy(br)); x += dpi(312) + m8 }
+                put(pl, x, cy(pl))
+            }
+            // Hai view chỉ dùng ở chế độ dọc: không đo, không xếp khi đang ngang (đã ẩn bằng visibility)
+            if (land) { measureChild(ch, 0, ex, 0, ex); put(ch, 0, 0); measureChild(gr, 0, ex, 0, ex); put(gr, 0, 0) }
+        }
+    }
+
     @Suppress("DEPRECATION")
     private fun build() {
-        val land = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        window.statusBarColor = Color.BLACK
-        window.navigationBarColor = Color.BLACK
-        window.decorView.systemUiVisibility =
-            if (land) (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
-            else View.SYSTEM_UI_FLAG_VISIBLE
+        if (!viewsBuilt) { createViews(); viewsBuilt = true }
+        applyOrientation()
+    }
 
+    private fun createViews() {
         val sv = SurfaceView(this)
         videoView = sv
         sv.holder.addCallback(this)
@@ -375,9 +484,16 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         vid.setBackgroundColor(Color.BLACK)
         vid.addView(sv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         vid.addView(card, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        // Phóng hình quanh tâm khung, tính lại mỗi khi khung đổi kích thước (xoay màn hình).
+        vid.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+            v.pivotX = v.width / 2f
+            v.pivotY = v.height / 2f
+        }
         vidFrame = vid
+        val vcard = FrameLayout(this)
+        vcard.addView(vid, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        vcardView = vcard
         live?.attach(vid)
-        applyZoom()
 
         val padV = PadView(this) { st -> padState = st; push() }
         pad = padV
@@ -391,6 +507,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             background = Ui.bg(this@PsPlayActivity, Ui.CARD2, 14)
         }
         chipView = chip
+        chipHolder = chip
 
         val (closeBtn, _) = roundIcon(ToolIcon.Kind.CLOSE) { leave() }
         val (padBtn, padIc) = roundIcon(ToolIcon.Kind.GAMEPAD) { togglePad() }
@@ -398,60 +515,64 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         val pill = playerPill()
         val bar = toolbar()
         toolsBar = bar
+        barView = bar
         bar.visibility = if (toolsOpen) View.VISIBLE else View.GONE
 
-        if (!land) {
-            val root = Ui.vbox(this)
-            root.setBackgroundColor(Color.parseColor("#0B0F0C"))
-            val top = Ui.hbox(this)
-            top.setPadding(dpi(10), dpi(8), dpi(10), dpi(6))
-            top.addView(closeBtn)
-            top.addView(padBtn, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(8) })
-            top.addView(chip, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = dpi(8); rightMargin = dpi(8) })
-            top.addView(pill)
-            root.addView(top)
+        // Thanh kéo (chỉ ở chế độ dọc): bấm để thu gọn hoặc mở lại thanh công cụ, dành chỗ cho tay cầm.
+        val grip = FrameLayout(this).apply {
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Thu gọn hoặc mở thanh công cụ"
+            setOnClickListener { toggleTools() }
+            addView(View(this@PsPlayActivity).apply { background = Ui.bg(this@PsPlayActivity, Color.parseColor("#88F2B84B"), 3) },
+                FrameLayout.LayoutParams(dpi(44), dpi(5), Gravity.CENTER))
+        }
+        gripView = grip
 
-            // Khung video viền vàng, bo góc; phóng hình thì phần thừa bị cắt trong khung.
-            val vcard = FrameLayout(this).apply {
+        val root = PlayLayout(this)
+        root.vcard = vcard; root.pad = padV; root.close = closeBtn; root.padBtn = padBtn
+        root.chip = chip; root.pill = pill; root.bar = bar; root.grip = grip
+        // Thứ tự vẽ: hình, tay cầm phủ lên hình, rồi các nút điều khiển nằm trên cùng.
+        root.addView(vcard); root.addView(padV); root.addView(closeBtn); root.addView(padBtn)
+        root.addView(bar); root.addView(pill); root.addView(chip); root.addView(grip)
+        playRoot = root
+        setContentView(root)
+    }
+
+    /** Áp dụng kiểu dáng theo hướng màn hình hiện tại; không tạo lại view nào. */
+    @Suppress("DEPRECATION")
+    private fun applyOrientation() {
+        val root = playRoot ?: return
+        val land = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        window.statusBarColor = Color.BLACK
+        window.navigationBarColor = Color.BLACK
+        window.decorView.systemUiVisibility =
+            if (land) (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
+            else View.SYSTEM_UI_FLAG_VISIBLE
+        root.land = land
+        root.setBackgroundColor(if (land) Color.BLACK else Color.parseColor("#0B0F0C"))
+        vcardView?.apply {
+            if (land) {
+                background = null
+                setPadding(0, 0, 0, 0)
+                clipToOutline = false
+            } else {
+                // Khung video viền vàng, bo góc; phóng hình thì phần thừa bị cắt trong khung.
                 background = Ui.bg(this@PsPlayActivity, Color.BLACK, 16, Ui.GOLD, 2)
                 setPadding(dpi(2), dpi(2), dpi(2), dpi(2))
                 clipToOutline = true
                 outlineProvider = ViewOutlineProvider.BACKGROUND
             }
-            vcard.addView(vid, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-            root.addView(vcard, Ui.lp(MATCH_PARENT, WRAP_CONTENT).apply { leftMargin = dpi(10); rightMargin = dpi(10) })
-
-            bar.background = Ui.bg(this, Color.parseColor("#17120D"), 24, Color.parseColor("#44F2B84B"), 1)
-            root.addView(bar, Ui.lpm(this, 10, 0).apply { leftMargin = dpi(10); rightMargin = dpi(10) })
-
-            // Thanh kéo: bấm để thu gọn hoặc mở lại thanh công cụ, dành chỗ cho tay cầm.
-            val grip = FrameLayout(this).apply {
-                isClickable = true
-                isFocusable = true
-                contentDescription = "Thu gọn hoặc mở thanh công cụ"
-                setOnClickListener { toggleTools() }
-                addView(View(this@PsPlayActivity).apply { background = Ui.bg(this@PsPlayActivity, Color.parseColor("#88F2B84B"), 3) },
-                    FrameLayout.LayoutParams(dpi(44), dpi(5), Gravity.CENTER))
-            }
-            root.addView(grip, Ui.lp(MATCH_PARENT, dpi(22)))
-            root.addView(padV, Ui.lp(MATCH_PARENT, 0, 1f))
-            setContentView(root)
-        } else {
-            val root = FrameLayout(this)
-            root.setBackgroundColor(Color.BLACK)
-            root.addView(vid, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
-            padV.alpha = 0.8f
-            root.addView(padV, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-            // Hàng điều khiển ở giữa phía trên, nằm giữa hai cụm L2/L1 và R2/R1 của tay cầm nên không đè lên nút nào.
-            bar.background = Ui.bg(this, Color.parseColor("#C017120D"), 22, Color.parseColor("#44F2B84B"), 1)
-            val topRow = Ui.hbox(this)
-            topRow.addView(closeBtn)
-            topRow.addView(padBtn, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(8) })
-            topRow.addView(bar, Ui.lp(dpi(312), WRAP_CONTENT).apply { leftMargin = dpi(8) })
-            topRow.addView(pill, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(8) })
-            root.addView(topRow, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dpi(6) })
-            setContentView(root)
         }
+        barView?.background = if (land) Ui.bg(this, Color.parseColor("#C017120D"), 22, Color.parseColor("#44F2B84B"), 1)
+        else Ui.bg(this, Color.parseColor("#17120D"), 24, Color.parseColor("#44F2B84B"), 1)
+        pad?.alpha = if (land) 0.8f else 1f
+        chipHolder?.visibility = if (land) View.GONE else View.VISIBLE
+        gripView?.visibility = if (land) View.GONE else View.VISIBLE
+        vidFrame?.let { v -> live?.attach(v) }
+        applyZoom()
+        root.requestLayout()
         refreshStatus()
     }
 
@@ -481,6 +602,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             ellipsize = android.text.TextUtils.TruncateAt.END
             maxWidth = dpi(120)
         }
+        pillLabel = label
         pill.addView(label)
         pill.addView(ToolIcon(this, ToolIcon.Kind.CHEVRON, Ui.GOLD), Ui.lp(dpi(14), dpi(14)).apply { leftMargin = dpi(4) })
         pill.setOnClickListener { pickPlayer() }
@@ -497,7 +619,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         Ui.pick(this, "Chọn người chơi", labels) { i ->
             if (i != player) {
                 player = i
-                build()
+                pillLabel?.text = console?.players?.getOrNull(player)?.label ?: "Người chơi 1"
                 if (!demo) reconnect()
             }
         }
@@ -525,8 +647,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         tool(ToolIcon.Kind.DIAL, "Tốc độ quét phụ đề") { showScanDialog() }
         tool(ToolIcon.Kind.ZOOM, "Phóng to hình") { toggleZoom() }
         tool(ToolIcon.Kind.ROTATE, "Xoay ngang hoặc dọc") {
-            requestedOrientation = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
-                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            // Đổi qua lại ngang ↔ dọc và nhớ lựa chọn; chọn "Tự động" ở bảng chất lượng (⚙) để theo cảm biến xoay của máy.
+            val toPortrait = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            PsStore.setOrient(this, if (toPortrait) PsStore.ORIENT_PORTRAIT else PsStore.ORIENT_LANDSCAPE)
+            PsStore.applyOrient(this)
         }
         tool(ToolIcon.Kind.GEAR, "Cài đặt chất lượng hình") { PsQuality.sheet(this, null) { reconnect() } }
         tool(ToolIcon.Kind.HELP, "Trợ giúp") { help() }
@@ -567,12 +691,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private fun applyZoom() {
         val f = vidFrame ?: return
         val z = zooms[zoomLevel.coerceIn(0, zooms.size - 1)]
-        f.post {
-            f.pivotX = f.width / 2f
-            f.pivotY = f.height / 2f
-            f.scaleX = z
-            f.scaleY = z
-        }
+        f.pivotX = f.width / 2f
+        f.pivotY = f.height / 2f
+        f.scaleX = z
+        f.scaleY = z
     }
 
     private fun toggleZoom() {
@@ -935,19 +1057,22 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     // ---------------- Hình và điều khiển ----------------
 
     override fun surfaceCreated(holder: SurfaceHolder) {
+        if (demo) android.util.Log.i("DG_PLAY", "surface-tao act=${System.identityHashCode(this)} sv=${System.identityHashCode(videoView)}")
         activeSurfaceHolder = holder
         surface = holder.surface
         session?.setSurface(holder.surface)
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        // Callback từ SurfaceView cũ có thể đến trễ sau khi build() thay giao diện lúc xoay màn hình.
         if (activeSurfaceHolder !== holder) return
+        // Chỉ đổi kích thước (xoay màn hình) thì surface vẫn là surface đã giao cho bộ giải mã: không giao lại.
+        if (surface === holder.surface) return
         surface = holder.surface
         session?.setSurface(holder.surface)
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
+        if (demo) android.util.Log.i("DG_PLAY", "surface-huy act=${System.identityHashCode(this)} sv=${System.identityHashCode(videoView)}")
         // Không để holder cũ tháo surface mới đã được gắn vào phiên Remote Play.
         if (activeSurfaceHolder !== holder) return
         activeSurfaceHolder = null
