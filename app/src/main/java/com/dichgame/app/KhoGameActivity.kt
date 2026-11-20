@@ -72,8 +72,8 @@ class KhoGameActivity : Activity() {
             put(row, 0, 14)
             grid = Ui.vbox(this@KhoGameActivity)
             put(grid, 0, 0)
-            put(Ui.switchRow(this@KhoGameActivity, "Tải ảnh bìa dọc",
-                "Chỉ gửi tên game tới Steam và Wikipedia để lấy ảnh bìa dọc, rồi lưu trên máy. Game không tìm được ảnh dùng ảnh vẽ sẵn. Ảnh bìa thuộc về nhà phát hành.", p.covers) { p.covers = it; fill() }, 14, 0)
+            put(Ui.switchRow(this@KhoGameActivity, "Tải ảnh bìa game",
+                "Chỉ gửi tên game tới Steam và Wikipedia để lấy ảnh bìa (ưu tiên ảnh dọc, không có thì ảnh ngang), rồi lưu trên máy. Game không tìm được ảnh dùng ảnh vẽ sẵn. Ảnh bìa thuộc về nhà phát hành.", p.covers) { p.covers = it; fill() }, 14, 0)
             drawChips()
             drawTabs()
             fill()

@@ -26,10 +26,10 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Ảnh bìa game cho Kho game. Không đóng gói sẵn ảnh nào trong app: khi có mạng, app tìm ảnh bìa **dọc** theo tên game
- * (không cần khóa): trước hết Steam, nếu game không có trên Steam hoặc Steam không có ảnh dọc thì thử ảnh bìa hộp game ở trang
- * Wikipedia của game. Chỉ khi không tìm được ảnh dọc nào mới dùng ảnh ngang của Steam (đặt giữa nền mờ), còn không thì dùng
- * ảnh vẽ sẵn (màu theo tên game). Ảnh tải về lưu trên máy (thư mục đệm), lần sau dùng lại không cần mạng.
+ * Ảnh bìa game cho Kho game. Không đóng gói sẵn ảnh nào trong app: khi có mạng, app tìm ảnh bìa theo tên game (không cần khóa),
+ * ưu tiên ảnh **dọc**: Steam trước, rồi ảnh bìa hộp game ở trang Wikipedia của game (cho game ngoài Steam). Game nào không có
+ * ảnh dọc thì dùng ảnh **ngang** (Steam, rồi Wikipedia), đặt vừa khung trên nền mờ. Không tìm được ảnh nào thì dùng ảnh vẽ sẵn
+ * (màu theo tên game). Ảnh tải về lưu trên máy (thư mục đệm), lần sau dùng lại không cần mạng.
  * Ảnh bìa thuộc về nhà phát hành game. Tắt được trong Kho game.
  */
 object Covers {
@@ -43,6 +43,8 @@ object Covers {
     private const val NONE_MS = 14L * 24 * 3600 * 1000
     /** Tên file ảnh bìa dọc của Steam: bản thường, rồi bản 2x cho game chỉ có bản này. */
     private val PORTRAIT_FILES = listOf("library_600x900.jpg", "library_600x900_2x.jpg")
+    /** Ảnh ngang của Steam khi game không có ảnh dọc: bản 616x353 lớn hơn, không có thì bản 460x215. */
+    private val WIDE_FILES = listOf("capsule_616x353.jpg", "header.jpg")
     private val BASES = listOf(
         "https://cdn.cloudflare.steamstatic.com/steam/apps/",
         "https://cdn.akamai.steamstatic.com/steam/apps/"
@@ -69,9 +71,9 @@ object Covers {
     }
 
     private fun load(ctx: Context, name: String, k: String): Bitmap? {
-        // bản cũ lưu cả ảnh ngang và dấu "không có": xoá đi để tìm lại ảnh dọc
-        File(ctx.cacheDir, "covers").takeIf { it.exists() }?.deleteRecursively()
-        val dir = File(ctx.cacheDir, "covers2").apply { mkdirs() }
+        // các bản cũ lưu ảnh ngang hoặc dấu "không có" theo cách khác: xoá đi để tìm lại
+        for (old in listOf("covers", "covers2")) File(ctx.cacheDir, old).takeIf { it.exists() }?.deleteRecursively()
+        val dir = File(ctx.cacheDir, "covers3").apply { mkdirs() }
         val img = File(dir, "$k.jpg")
         if (img.exists()) return decode(img)
         val none = File(dir, "$k.none")
@@ -79,24 +81,21 @@ object Covers {
         if (!Prefs(ctx).covers) return null
         // lỗi mạng ném IOException: không đánh dấu "không có", lần sau thử lại
         var bytes: ByteArray? = null
-        var wide: ByteArray? = null
+        var sid: Int? = null
         // game đã biết là không có trên Steam thì khỏi hỏi Steam
         val ps = Catalog.platformsOf(name)
         if (ps.isEmpty() || Plat.STEAM in ps) {
-            val id = steamId(name)
-            if (id != null) {
-                for (file in PORTRAIT_FILES) {
-                    for (b in BASES) {
-                        bytes = fetch("$b$id/$file")?.takeIf { usable(it) }
-                        if (bytes != null) break
-                    }
-                    if (bytes != null) break
-                }
-                if (bytes == null) wide = fetch("${BASES[0]}$id/header.jpg")?.takeIf { usable(it) }
-            }
+            sid = steamId(name)
+            if (sid != null) bytes = steamFile(sid, PORTRAIT_FILES)
         }
-        if (bytes == null) bytes = wikiCover(name)?.takeIf { usable(it) }
-        if (bytes == null) bytes = wide     // không có ảnh dọc nào: dùng ảnh ngang của Steam
+        // 1) ảnh dọc ở Steam, 2) ảnh dọc ở Wikipedia, 3) ảnh ngang ở Steam, 4) ảnh ngang ở Wikipedia
+        var art: Art? = null
+        if (bytes == null) {
+            art = wikiArt(name)
+            if (art != null && art.portrait) bytes = fetch(art.url)?.takeIf { usable(it) }
+        }
+        if (bytes == null && sid != null) bytes = steamFile(sid, WIDE_FILES)
+        if (bytes == null && art != null && !art.portrait) bytes = fetch(art.url)?.takeIf { usable(it) }
         if (bytes == null) { none.writeText("x"); return null }
         val tmp = File(dir, "$k.tmp")
         tmp.writeBytes(bytes)
@@ -106,11 +105,22 @@ object Covers {
         return bm
     }
 
+    /** Tải file ảnh đầu tiên dùng được trong [files] của game Steam [id]; thử cả hai máy chủ. */
+    private fun steamFile(id: Int, files: List<String>): ByteArray? {
+        for (file in files) for (b in BASES) {
+            val bytes = fetch("$b$id/$file")?.takeIf { usable(it) }
+            if (bytes != null) return bytes
+        }
+        return null
+    }
+
+    private class Art(val url: String, val portrait: Boolean)
+
     /**
-     * Ảnh bìa hộp game ở trang Wikipedia của game (ảnh đầu bài). Chỉ nhận khi tên bài khớp tên game và ảnh là ảnh dọc,
-     * để khỏi nhầm sang phim, nhạc, game khác cùng tên hay ảnh logo ngang.
+     * Ảnh đầu bài ở trang Wikipedia của game (thường là bìa hộp game). Chỉ nhận khi tên bài khớp tên game, để khỏi nhầm sang
+     * phim, nhạc, game khác cùng tên. Có ảnh dọc (cao hơn rộng ít nhất 15%) thì lấy ảnh dọc, không thì lấy ảnh đầu tiên khớp.
      */
-    private fun wikiCover(name: String): ByteArray? {
+    private fun wikiArt(name: String): Art? {
         val want = CoverMatch.norm(name)
         if (want.isEmpty()) return null
         val q = URLEncoder.encode("$name video game", "UTF-8")
@@ -121,17 +131,18 @@ object Covers {
         val cand = ArrayList<JSONObject>()
         for (i in 0 until pages.length()) cand.add(pages.getJSONObject(i))
         cand.sortBy { it.optInt("index", 99) }
+        var other: Art? = null
         for (o in cand) {
             if (!CoverMatch.same(CoverMatch.norm(CoverMatch.stripGameSuffix(o.optString("title"))), want)) continue
             val th = o.optJSONObject("thumbnail") ?: continue
             val src = th.optString("source")
             val tw = th.optInt("width")
             val tl = th.optInt("height")
-            // ảnh dọc: cao hơn rộng ít nhất 15% (bìa hộp game); ảnh vuông hay ngang là logo, bỏ
-            if (src.isEmpty() || !src.startsWith("https://") || tw <= 0 || tl < tw * 1.15f) continue
-            return fetch(src)
+            if (src.isEmpty() || !src.startsWith("https://") || tw <= 0 || tl <= 0) continue
+            if (tl >= tw * 1.15f) return Art(src, true)
+            if (other == null) other = Art(src, false)
         }
-        return null
+        return other
     }
 
     /** Đủ lớn, giải mã được và không phải ảnh trơn một màu (Steam có lúc trả ảnh xám chờ thay vì ảnh bìa thật). */
@@ -199,8 +210,8 @@ class CoverView(c: Context, private val title: String) : View(c) {
             field = v
             // mipmap: thu nhỏ ảnh 600x900 xuống ô nhỏ vẫn nét, không răng cưa
             v?.setHasMipMap(true)
-            // ảnh ngang (game không có ảnh dọc trên Steam): làm nền mờ từ chính ảnh để đặt ảnh gốc nét vào giữa, không phóng to
-            backdrop = if (v != null && v.width > v.height * 1.1f) Bitmap.createScaledBitmap(v, 24, 16, true) else null
+            // ảnh ngang hoặc vuông (game không có ảnh dọc): làm nền mờ từ chính ảnh để đặt ảnh gốc nét vào giữa, không cắt, không phóng to
+            backdrop = if (v != null && v.width > v.height * 0.95f) Bitmap.createScaledBitmap(v, 24, 16, true) else null
             invalidate()
         }
     private var backdrop: Bitmap? = null
