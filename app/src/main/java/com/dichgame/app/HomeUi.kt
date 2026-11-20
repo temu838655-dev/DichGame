@@ -106,7 +106,10 @@ class DockWings(c: Context, private val gapDp: Float = 52f, private val lenScale
         val bg = Ui.BG
         val bgClear = bg and 0x00FFFFFF
         p.style = Paint.Style.FILL
-        p.shader = LinearGradient(0f, 0f, 0f, h, intArrayOf(bgClear, (bg and 0x00FFFFFF) or 0xF2000000.toInt(), bg), floatArrayOf(0f, 0.4f, 1f), Shader.TileMode.CLAMP)
+        // đặc dần từ trên xuống: tới khoảng 1/3 chiều cao là che hẳn chữ phía sau, logo nằm trên nền đặc
+        p.shader = LinearGradient(0f, 0f, 0f, h,
+            intArrayOf(bgClear, bgClear or 0xE6000000.toInt(), bgClear or 0xFF000000.toInt(), bgClear or 0xFF000000.toInt()),
+            floatArrayOf(0f, 0.17f, 0.32f, 1f), Shader.TileMode.CLAMP)
         cv.drawRect(0f, 0f, w, h, p)
         // vòng cung xanh ôm quanh nút
         path.reset()
