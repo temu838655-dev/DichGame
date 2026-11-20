@@ -176,7 +176,8 @@ object LocFormat {
             if (rest.isBlank()) { stack.add(indent to key); continue }
             val v = yamlValue(rest) ?: continue
             // khoá gốc "l_english"/"vi" chỉ là tên ngôn ngữ, bỏ ra khỏi đường dẫn để hai file ngôn ngữ ghép được theo khoá
-            val path = stack.map { it.second }.filterIndexed { i, k -> !(i == 0 && (k.startsWith("l_") || k.length <= 5 && stack.size > 1 && k.all { c -> c.isLetter() || c == '-' || c == '_' } && out.isEmpty().not().or(true) && k.length <= 5 && isLangKey(k))) } + key
+            val keys = stack.map { it.second }
+            val path = (if (keys.isNotEmpty() && (keys[0].startsWith("l_") || isLangKey(keys[0]))) keys.drop(1) else keys) + key
             out.add(path.joinToString(".") to v)
         }
         return if (out.isEmpty()) null else Table(out, "yml")

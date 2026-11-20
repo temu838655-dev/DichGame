@@ -97,10 +97,15 @@ object PackStore {
     // ---- nhập, xuất ----
 
     /** Nhập một gói (văn bản) vào hồ sơ hiện tại. Phần đã có được giữ nguyên. Trả về câu báo kết quả. */
-    fun importText(ctx: Context, p: Prefs, text: String): String {
+    fun importText(ctx: Context, p: Prefs, text: String, fileName: String = ""): String {
         val pack = PackText.parseAny(text)
         if (pack.isEmpty) {
-            val t = LocFormat.parse(text)
+            // file có cả chữ gốc lẫn bản Việt hoá bên trong (cột en + vi, XLIFF, TMX, .srt hai dòng, Ren'Py...)
+            Bilingual.parse(text, fileName)?.let { return importFound(ctx, p, it) }
+            val vo = Bilingual.viOnlyCount(text, fileName)
+            if (vo > 0) return "File này chỉ có tiếng Việt ($vo câu), không có câu gốc đi kèm nên app không biết câu nào trên màn hình khớp với câu nào. " +
+                "Cần file có cả hai ngôn ngữ, hoặc dùng \"Ghép 2 file\" với file gốc của game (cùng cấu trúc) và file Việt hoá này."
+            val t = LocFormat.parse(text, fileName)
             if (t != null) return "File này là file chữ một ngôn ngữ của game (${t.size} mục), chưa có cặp \"gốc = Việt hoá\" để nhập. " +
                 "Nếu có cả file gốc và file đã Việt hoá, dùng \"Ghép 2 file\" và chọn lần lượt hai file."
             return "File không có gì để nhập. Cần các mục [thuật ngữ], [nhân vật] hoặc [câu thoại], hoặc dùng \"Ghép 2 file\" với file gốc và file Việt hoá."
@@ -114,6 +119,76 @@ object PackStore {
         val total = if (j.pairs.isEmpty()) beforeL else addLines(ctx, p.profile, j.pairs)
         val who = if (pack.name.isNotBlank()) " \"${pack.name}\"" else ""
         return "Đã nhập gói$who vào hồ sơ ${p.profile}: thêm $addedTerms thuật ngữ, ${pack.cast.size} nhân vật, ${total - beforeL} câu thoại." + skipNote(j)
+    }
+
+    /** Nhập các cặp (gốc, Việt) đọc được từ một file có sẵn cả hai ngôn ngữ. */
+    private fun importFound(ctx: Context, p: Prefs, f: Bilingual.Found): String {
+        val j = f.join ?: LocFormat.filter(f.pairs, f.how ?: "file")
+        if (j.pairs.isEmpty()) return "Đọc được ${j.total} cặp (${f.how}) nhưng không cặp nào dùng được." + skipNote(j)
+        val before = lineCount(ctx, p.profile)
+        val total = addLines(ctx, p.profile, j.pairs)
+        return "Đã đọc file hai ngôn ngữ (${f.how}): ${j.pairs.size} câu đưa vào hồ sơ ${p.profile} (hồ sơ có $total câu thoại, thêm mới ${total - before})." + skipNote(j) +
+            "\nKhi chơi, câu nào trên màn hình khớp một câu gốc trong file thì hiện đúng bản Việt hoá trong file, không qua bộ dịch."
+    }
+
+    /**
+     * Nhập một file người dùng chọn, tự nhận dạng: gói của app, file có cả hai ngôn ngữ, gettext .mo, .zip chứa file Việt hoá.
+     * [file] là bản chép tạm của file đã chọn. File nhị phân (.exe, .pak, .xdelta...) và Office thì nói rõ vì sao không đọc được.
+     */
+    fun importFile(ctx: Context, p: Prefs, name: String, file: File): String {
+        val len = file.length()
+        if (len == 0L) return "File \"$name\" trống."
+        val head = file.inputStream().use { ins -> val b = ByteArray(4096); val n = ins.read(b); if (n <= 0) ByteArray(0) else b.copyOf(n) }
+        Bilingual.officeKind(name)?.let {
+            return "\"$name\" là $it, app không đọc trực tiếp được. Hãy xuất ra file .csv (hai cột: câu gốc, câu Việt) hoặc .json rồi nhập lại."
+        }
+        when (Bilingual.archiveKind(head)) {
+            "zip" -> return importZip(ctx, p, name, file)
+            "rar", "7z" -> return "\"$name\" là file nén .${Bilingual.archiveKind(head)}, app chỉ giải nén được .zip. Hãy giải nén trên máy rồi chọn file chữ bên trong (.json, .csv, .po, .srt...), hoặc nén lại thành .zip."
+        }
+        if (Bilingual.isMo(head)) {
+            if (len > MAX_PLAIN) return tooBig(name)
+            val f = Bilingual.fromMo(file.readBytes())
+                ?: return "File gettext \"$name\" không có cả câu gốc và bản Việt hoá đọc được (hoặc cột gốc không phải chữ hiển thị)."
+            return importFound(ctx, p, f)
+        }
+        Bilingual.binaryKind(name, head)?.let {
+            return "\"$name\" là $it: bản vá loại này sửa thẳng file của game nên app không đọc được chữ bên trong. " +
+                "Hãy cài bản vá vào game như bình thường (app vẫn dịch những chỗ còn lại). Nếu nhóm Việt hoá có kèm file chữ (.json, .csv, .po, .srt, .zip...) thì nhập file đó."
+        }
+        if (len > MAX_PLAIN) return tooBig(name)
+        return importText(ctx, p, PackText.decode(file.readBytes()), name)
+    }
+
+    private const val MAX_PLAIN = 24_000_000L
+
+    private fun tooBig(name: String) = "File \"$name\" quá lớn (tối đa ${MAX_PLAIN / 1_000_000} MB cho file chữ)."
+
+    /** Nhập file .zip: ghép file gốc với file Việt hoá cùng tên trong đó và đọc file có sẵn cả hai ngôn ngữ. */
+    private fun importZip(ctx: Context, p: Prefs, name: String, file: File): String {
+        val z = try { Bilingual.fromZipFile(file) } catch (e: Exception) {
+            return "Không mở được \"$name\" như file .zip: " + (e.message ?: e.javaClass.simpleName)
+        }
+        val sb = StringBuilder()
+        if (z.pairs.isEmpty()) {
+            sb.append("Trong \"$name\" không tìm được cặp câu (gốc, Việt) nào dùng được.")
+        } else {
+            val before = lineCount(ctx, p.profile)
+            val total = addLines(ctx, p.profile, z.pairs)
+            sb.append("Đã đọc \"$name\": ${z.pairs.size} câu đưa vào hồ sơ ${p.profile} (hồ sơ có $total câu thoại, thêm mới ${total - before}).")
+            for ((label, n) in z.sources.take(8)) sb.append("\n• $label: $n câu")
+            if (z.sources.size > 8) sb.append("\n• …và ${z.sources.size - 8} nguồn khác")
+        }
+        val skip = ArrayList<String>()
+        if (z.untranslated > 0) skip.add("${z.untranslated} câu chưa dịch (giống hệt câu gốc)")
+        if (z.withVariables > 0) skip.add("${z.withVariables} câu có biến số mà app không biết điền")
+        if (z.noText > 0) skip.add("${z.noText} dòng không có chữ")
+        if (skip.isNotEmpty()) sb.append("\nBỏ qua: ").append(skip.joinToString("; ")).append('.')
+        if (z.viOnly.isNotEmpty()) sb.append("\nFile chỉ có tiếng Việt, không có file gốc cùng tên để ghép: ").append(z.viOnly.take(6).joinToString(", ")).append(if (z.viOnly.size > 6) "…" else "").append('.')
+        if (z.failed.isNotEmpty()) sb.append("\nKhông ghép được: ").append(z.failed.take(6).joinToString(", ")).append(if (z.failed.size > 6) "…" else "").append('.')
+        if (z.skippedFiles > 0) sb.append("\nBỏ qua ${z.skippedFiles} file không phải file chữ (ảnh, âm thanh, chương trình...) hoặc quá lớn.")
+        if (z.pairs.isNotEmpty()) sb.append("\nKhi chơi, câu nào trên màn hình khớp một câu gốc thì hiện đúng bản Việt hoá trong file, không qua bộ dịch.")
+        return sb.toString()
     }
 
     private fun skipNote(j: LocFormat.Join): String {

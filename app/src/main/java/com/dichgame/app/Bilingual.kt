@@ -11,7 +11,7 @@ object Viet {
         c == 'đ' || c == 'Đ' || c == 'ơ' || c == 'Ơ' || c == 'ư' || c == 'Ư' || c == 'ĩ' || c == 'Ĩ' || c == 'ũ' || c == 'Ũ' || c in 'Ạ'..'ỹ'
 
     fun has(s: String): Boolean {
-        val t = if (s.any { it in '̀'..'ͯ' }) Normalizer.normalize(s, Normalizer.Form.NFC) else s
+        val t = if (s.any { it in '\u0300'..'\u036F' }) Normalizer.normalize(s, Normalizer.Form.NFC) else s
         return t.any { strong(it) }
     }
 
@@ -89,7 +89,7 @@ object Bilingual {
 
     /** Một file: nhận ra cách bố trí, trả các cặp (gốc, Việt) hoặc null nếu không phải file hai ngôn ngữ. */
     fun parse(raw0: String, fileName: String = ""): Found? {
-        val raw = raw0.removePrefix("﻿")
+        val raw = raw0.removePrefix("\uFEFF")
         if (raw.isBlank()) return null
         val ext = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
         val t = raw.trimStart()
@@ -159,12 +159,12 @@ object Bilingual {
         }
         val n = u32(8)
         val oo = u32(12)
-        val to = u32(16)
-        if (n <= 0 || n > 400_000 || oo < 0 || to < 0) return null
+        val tr = u32(16)
+        if (n <= 0 || n > 400_000 || oo < 0 || tr < 0) return null
         val out = ArrayList<Pair<String, String>>()
         for (i in 0 until n.toInt()) {
             val ol = u32((oo + 8 * i).toInt()); val of = u32((oo + 8 * i + 4).toInt())
-            val tl = u32((to + 8 * i).toInt()); val tf = u32((to + 8 * i + 4).toInt())
+            val tl = u32((tr + 8 * i).toInt()); val tf = u32((tr + 8 * i + 4).toInt())
             if (ol < 0 || of < 0 || tl < 0 || tf < 0 || of + ol > b.size || tf + tl > b.size) return null
             var a = String(b, of.toInt(), ol.toInt(), Charsets.UTF_8).substringBefore('\u0000')
             val v = String(b, tf.toInt(), tl.toInt(), Charsets.UTF_8).substringBefore('\u0000')
@@ -301,7 +301,7 @@ object Bilingual {
 
     /** Số câu nếu file có vẻ chỉ có tiếng Việt (không có câu gốc để đối chiếu), ngược lại 0. */
     fun viOnlyCount(raw0: String, fileName: String = ""): Int {
-        val raw = raw0.removePrefix("﻿")
+        val raw = raw0.removePrefix("\uFEFF")
         val texts: List<String> = LocFormat.parse(raw, fileName)?.entries?.map { it.second }
             ?: raw.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
         if (texts.size < 3) return 0
@@ -461,5 +461,49 @@ object Bilingual {
             if (e.lang == "vi" || viOnlyCount(e.text, e.path) > 0) viOnly.add(e.path.substringAfterLast('/'))
         }
         return ZipFound(pairs.take(PackText.MAX_LINES), sources, viOnly, failed, skipped, un, vars, nt)
+    }
+
+    // ---------------- file nhị phân và file Office: nói rõ vì sao không đọc được ----------------
+
+    private val OFFICE_EXT = mapOf(
+        "xlsx" to "bảng tính Excel", "xls" to "bảng tính Excel", "ods" to "bảng tính LibreOffice",
+        "docx" to "văn bản Word", "doc" to "văn bản Word", "odt" to "văn bản LibreOffice", "pdf" to "file PDF",
+    )
+
+    private val BIN_EXT = mapOf(
+        "exe" to "chương trình Windows (.exe), thường là trình cài đặt bản vá", "dll" to "thư viện chương trình (.dll)", "msi" to "trình cài đặt Windows (.msi)",
+        "pak" to "gói dữ liệu game (.pak)", "utoc" to "gói dữ liệu Unreal (.utoc)", "ucas" to "gói dữ liệu Unreal (.ucas)", "locres" to "bảng chữ biên dịch của Unreal (.locres)",
+        "uasset" to "dữ liệu Unreal (.uasset)", "bundle" to "gói dữ liệu Unity", "assets" to "dữ liệu Unity (.assets)", "unity3d" to "gói dữ liệu Unity",
+        "pkg" to "gói cài đặt PlayStation/macOS (.pkg)", "xdelta" to "bản vá nhị phân (.xdelta)", "vcdiff" to "bản vá nhị phân (.vcdiff)",
+        "ips" to "bản vá nhị phân (.ips)", "bps" to "bản vá nhị phân (.bps)", "ppf" to "bản vá nhị phân (.ppf)",
+        "iso" to "ảnh đĩa (.iso)", "arc" to "gói dữ liệu game (.arc)",
+        "wad" to "gói dữ liệu game (.wad)", "psarc" to "gói dữ liệu PlayStation (.psarc)", "self" to "chương trình PlayStation (.self)", "bsa" to "gói dữ liệu game (.bsa)",
+    )
+
+    /** Tên loại file Office/PDF nếu tên file là thế (kể cả khi bên trong là .zip). */
+    fun officeKind(fileName: String): String? = OFFICE_EXT[fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)]
+
+    /** Phần đầu file ([head] vài KB) trông như nhị phân, không phải chữ? File chữ UTF-16 có BOM vẫn là chữ. */
+    fun looksBinary(head: ByteArray): Boolean {
+        if (head.size >= 2 && ((head[0] == 0xFF.toByte() && head[1] == 0xFE.toByte()) || (head[0] == 0xFE.toByte() && head[1] == 0xFF.toByte()))) return false
+        val n = minOf(head.size, 4096)
+        if (n == 0) return false
+        var ctl = 0
+        for (i in 0 until n) {
+            val c = head[i].toInt() and 0xFF
+            if (c == 0) return true
+            if (c < 9 || (c in 14..31)) ctl++
+        }
+        return ctl * 50 > n
+    }
+
+    /** Nếu file là loại nhị phân đã biết (hoặc trông như nhị phân) thì trả tên loại, ngược lại null. */
+    fun binaryKind(fileName: String, head: ByteArray): String? {
+        BIN_EXT[fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)]?.let { return it }
+        if (head.size >= 2 && head[0] == 'M'.code.toByte() && head[1] == 'Z'.code.toByte()) return "chương trình Windows (.exe)"
+        if (head.size >= 5 && String(head, 0, 5, Charsets.ISO_8859_1) == "PATCH") return "bản vá nhị phân (.ips)"
+        if (head.size >= 4 && String(head, 0, 4, Charsets.ISO_8859_1) == "BPS1") return "bản vá nhị phân (.bps)"
+        if (head.size >= 3 && head[0] == 0xD6.toByte() && head[1] == 0xC3.toByte() && head[2] == 0xC4.toByte()) return "bản vá nhị phân (xdelta)"
+        return if (looksBinary(head)) "file nhị phân" else null
     }
 }
