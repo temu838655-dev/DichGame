@@ -138,7 +138,7 @@ class PackActivity : Activity() {
 
     /** Hỏi cách nhập file Việt hoá (mở từ Kho game). */
     private fun importMenu() {
-        val items = arrayOf("🔀  Ghép 2 file: file gốc + file Việt hoá", "📂  Một file gói hoặc file có sẵn cả hai ngôn ngữ", "🔗  Từ link")
+        val items = arrayOf("🔀  Ghép 2 file: file gốc + file Việt hoá", "📂  Một file (gói, hai ngôn ngữ, hoặc .zip)", "🔗  Từ link")
         AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Nhập file Việt hoá cho ${p.profile}")
             .setItems(items) { _, w -> when (w) { 0 -> joinStart(); 1 -> pickFile(31); else -> linkDialog() } }
