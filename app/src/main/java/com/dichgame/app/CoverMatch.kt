@@ -30,4 +30,13 @@ object CoverMatch {
         val extra = longer.replaceFirst(shorter, "")
         return extra.none { it.isDigit() } && !ROMAN.matches(extra)
     }
+
+    /** Ảnh trơn một màu (độ sáng gần như không đổi) thì không phải ảnh bìa. [lum] là độ sáng 0..255 của các điểm ảnh. */
+    fun isFlat(lum: IntArray): Boolean {
+        if (lum.isEmpty()) return true
+        val mean = lum.sum().toDouble() / lum.size
+        var v = 0.0
+        for (x in lum) v += (x - mean) * (x - mean)
+        return Math.sqrt(v / lum.size) < 6.0
+    }
 }

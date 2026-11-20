@@ -87,21 +87,23 @@ object Covers {
             if (id != null) {
                 for (file in PORTRAIT_FILES) {
                     for (b in BASES) {
-                        bytes = fetch("$b$id/$file")
+                        bytes = fetch("$b$id/$file")?.takeIf { usable(it) }
                         if (bytes != null) break
                     }
                     if (bytes != null) break
                 }
-                if (bytes == null) wide = fetch("${BASES[0]}$id/header.jpg")
+                if (bytes == null) wide = fetch("${BASES[0]}$id/header.jpg")?.takeIf { usable(it) }
             }
         }
-        if (bytes == null || bytes.size < 1024) bytes = wikiCover(name)
-        if (bytes == null || bytes.size < 1024) bytes = wide     // không có ảnh dọc nào: dùng ảnh ngang của Steam
-        if (bytes == null || bytes.size < 1024) { none.writeText("x"); return null }
+        if (bytes == null) bytes = wikiCover(name)?.takeIf { usable(it) }
+        if (bytes == null) bytes = wide     // không có ảnh dọc nào: dùng ảnh ngang của Steam
+        if (bytes == null) { none.writeText("x"); return null }
         val tmp = File(dir, "$k.tmp")
         tmp.writeBytes(bytes)
         tmp.renameTo(img)
-        return decode(img)
+        val bm = decode(img)
+        if (bm == null) none.writeText("x")
+        return bm
     }
 
     /**
@@ -130,6 +132,18 @@ object Covers {
             return fetch(src)
         }
         return null
+    }
+
+    /** Đủ lớn, giải mã được và không phải ảnh trơn một màu (Steam có lúc trả ảnh xám chờ thay vì ảnh bìa thật). */
+    private fun usable(b: ByteArray?): Boolean {
+        if (b == null || b.size < 1024) return false
+        val bm = BitmapFactory.decodeByteArray(b, 0, b.size, BitmapFactory.Options().apply { inSampleSize = 8 }) ?: return false
+        return try {
+            val px = IntArray(bm.width * bm.height)
+            bm.getPixels(px, 0, bm.width, 0, 0, bm.width, bm.height)
+            val lum = IntArray(px.size) { i -> (Color.red(px[i]) * 3 + Color.green(px[i]) * 6 + Color.blue(px[i])) / 10 }
+            !CoverMatch.isFlat(lum)
+        } finally { bm.recycle() }
     }
 
     private fun decode(f: File): Bitmap? {

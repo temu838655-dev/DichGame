@@ -43,4 +43,13 @@ class CoverMatchTest {
         assertEquals("Doom (franchise)", CoverMatch.stripGameSuffix("Doom (franchise)"))
         assertEquals("Animal Crossing: New Horizons", CoverMatch.stripGameSuffix("Animal Crossing: New Horizons"))
     }
+
+    @Test fun flatImageIsDetected() {
+        assertTrue(CoverMatch.isFlat(IntArray(500) { 75 }))
+        assertTrue(CoverMatch.isFlat(IntArray(500) { if (it == 0) 77 else 75 }))
+        assertTrue(CoverMatch.isFlat(IntArray(0)))
+        // bìa đen có ít chữ trắng vẫn là ảnh thật
+        assertFalse(CoverMatch.isFlat(IntArray(1000) { if (it % 20 == 0) 255 else 0 }))
+        assertFalse(CoverMatch.isFlat(IntArray(500) { (it * 7) % 256 }))
+    }
 }
