@@ -319,7 +319,7 @@ class Prefs(ctx: Context) {
     var speak: Boolean
         get() = sp.getBoolean("speak", true)
         set(v) = sp.edit().putBoolean("speak", v).apply()
-    /** Tải ảnh bìa game từ Steam cho Kho game (chỉ gửi tên game). */
+    /** Tải ảnh bìa game từ Steam và Wikipedia cho Kho game (chỉ gửi tên game). */
     var covers: Boolean
         get() = sp.getBoolean("covers", true)
         set(v) = sp.edit().putBoolean("covers", v).apply()
