@@ -1328,12 +1328,16 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     /** Chỉ bản debug: vẽ vài khối chữ giả để CI chụp ảnh kiểm tra lớp phủ (không kiểm tra OCR). */
-    private fun demoUiOverlay() {
+    private fun demoUiOverlay(tries: Int = 0) {
         val u = ensureUiTr()
         val vf = vidFrame ?: return
         val w = vf.width.toFloat()
         val h = vf.height.toFloat()
-        if (w < 10f || h < 10f) return
+        // Lớp phủ chưa được bố cục xong (máy giả lập chậm): bố cục lần đầu sẽ xoá bản dịch cũ, nên đợi rồi mới vẽ
+        if (w < 10f || h < 10f || u.overlay.width < 10 || u.overlay.height < 10) {
+            if (tries < 40 && !isFinishing && !isDestroyed) ui.postDelayed({ demoUiOverlay(tries + 1) }, 250)
+            return
+        }
         fun r(l: Float, t: Float, rr: Float, b: Float) = RectF(l * w, t * h, rr * w, b * h)
         u.overlay.set(listOf(
             UiOverlay.Draw(r(0.06f, 0.06f, 0.36f, 0.13f), "Kho đồ", 0xFF1B2A3A.toInt(), Color.WHITE, false),
