@@ -87,6 +87,24 @@ grep -q "DG_LIVE.*doc: " "$OUT/live.txt" || echo "Dịch trong màn chơi: khôn
 grep -q "DG_LIVE.*dich: " "$OUT/live.txt" || echo "Dịch trong màn chơi: không ra bản dịch" >> "$OUT/live-fail.txt"
 adb shell am force-stop "$PKG"
 
+# Chế độ Thuyết minh trong màn chơi, thử thật: phụ đề tiếng Việt vẽ sẵn -> PixelCopy -> đọc chữ -> KHÔNG dịch, đi thẳng tới đọc to (nhật ký DG_LIVE)
+adb logcat -c
+adb shell am start -W -n "$PKG/.LiveDemoActivity" --es mode narrate >/dev/null 2>&1
+for i in $(seq 1 40); do
+  sleep 4
+  adb logcat -d -s DG_LIVE:I > "$OUT/narrate.txt" 2>&1
+  grep -q "DG_LIVE.*thuyet minh: " "$OUT/narrate.txt" && break
+done
+sleep 3
+adb logcat -d -s DG_LIVE:I > "$OUT/narrate.txt" 2>&1
+shot narrate-live
+cat "$OUT/narrate.txt" | cut -c1-200
+grep -qiE "thuyet minh: .*(đâu|dau|tối|toi|bạn|ban|gần|gan)" "$OUT/narrate.txt" || echo "Thuyết minh: không đọc được phụ đề tiếng Việt vẽ sẵn" >> "$OUT/narrate-fail.txt"
+grep -q "DG_LIVE.*dich: " "$OUT/narrate.txt" && echo "Thuyết minh: câu tiếng Việt bị đem đi dịch" >> "$OUT/narrate-fail.txt"
+adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/narrate-fail.txt"
+[ -s "$OUT/narrate-fail.txt" ] || rm -f "$OUT/narrate-fail.txt"
+adb shell am force-stop "$PKG"
+
 # Dịch chữ giao diện game, thử thật: SurfaceView vẽ menu tiếng Anh -> PixelCopy -> OCR -> lọc (bỏ ID/chỉ số) -> dịch (nhật ký DG_UITR)
 adb logcat -c
 adb shell am start -W -n "$PKG/.LiveDemoActivity" --es mode ui >/dev/null 2>&1
@@ -121,6 +139,31 @@ cat "$OUT/play.txt"
 adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 > "$OUT/play-fail.txt"
 [ -s "$OUT/play-fail.txt" ] || rm -f "$OUT/play-fail.txt"
 adb shell settings put system user_rotation 0 >/dev/null 2>&1
+adb shell am force-stop "$PKG"
+
+# Chỉnh khung đọc phụ đề: kéo quá to -> bấm Đặt lại -> bấm Xong (bấm đúng các nút thật; nhật ký DG_PLAY)
+adb logcat -c
+adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo adjust2 >/dev/null 2>&1
+sleep 3.4; shot adjust-big
+sleep 2.4; shot adjust-reset
+sleep 3.4
+adb logcat -d -s DG_PLAY:I > "$OUT/adjust.txt" 2>&1
+cat "$OUT/adjust.txt"
+grep -q "to khung=0.0,0.02,1.0,1.0 thanh=true" "$OUT/adjust.txt" || echo "Chỉnh khung: không thấy thanh Xong/Đặt lại khi đang chỉnh" >> "$OUT/adjust-fail.txt"
+grep -q "dat-lai khung=0.05,0.7,0.95,0.97" "$OUT/adjust.txt" || echo "Chỉnh khung: nút Đặt lại không đưa khung về mặc định" >> "$OUT/adjust-fail.txt"
+grep -q "sau-xong dang-chinh=false thanh=false" "$OUT/adjust.txt" || echo "Chỉnh khung: nút Xong không kết thúc chỉnh khung" >> "$OUT/adjust-fail.txt"
+adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/adjust-fail.txt"
+[ -s "$OUT/adjust-fail.txt" ] || rm -f "$OUT/adjust-fail.txt"
+adb shell am force-stop "$PKG"
+
+# Bảng Cài đặt trong màn chơi (Dịch/Thuyết minh, giọng đọc, chất lượng hình): chụp đầu bảng rồi cuộn xuống
+adb logcat -c
+adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo settings >/dev/null 2>&1
+sleep 4; adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; sleep 1; shot settings-1
+swipe_up; shot settings-2
+swipe_up; shot settings-3
+adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/settings-fail.txt"
+[ -s "$OUT/settings-fail.txt" ] || rm -f "$OUT/settings-fail.txt"
 adb shell am force-stop "$PKG"
 
 # Xoay màn hình liên tiếp trong màn chơi: Activity và SurfaceView phải giữ nguyên (không tạo lại), không văng

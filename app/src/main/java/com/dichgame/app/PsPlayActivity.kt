@@ -105,6 +105,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var subsIcon: ToolIcon? = null
     private var scanIcon: ToolIcon? = null
     private var uiIcon: ToolIcon? = null
+    private var adjustBar: View? = null
     private var speakIcon: ToolIcon? = null
     private var padIcon: ToolIcon? = null
     private var toolsBar: View? = null
@@ -215,6 +216,24 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     ui.postDelayed({ if (!isFinishing && !isDestroyed) toggleAdjust() }, 5000)
                 }
                 "land" -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                "adjust2" -> {
+                    // Chỉnh khung: kéo quá to → bấm Đặt lại → bấm Xong (bấm đúng các nút thật), ghi nhật ký từng bước
+                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    ui.postDelayed({ if (!isFinishing && !isDestroyed) toggleAdjust() }, 1200)
+                    ui.postDelayed({
+                        if (!isFinishing && !isDestroyed) live?.box?.let { b ->
+                            b.fl = 0.0f; b.ft = 0.02f; b.fr = 1f; b.fb = 1f; b.invalidate()
+                            android.util.Log.i("DG_PLAY", "to khung=${b.save()} thanh=${adjustBar?.visibility == View.VISIBLE}")
+                        }
+                    }, 2200)
+                    ui.postDelayed({ if (!isFinishing && !isDestroyed) ((adjustBar as? ViewGroup)?.getChildAt(1))?.performClick() }, 4200)
+                    ui.postDelayed({ if (!isFinishing && !isDestroyed) ((adjustBar as? ViewGroup)?.getChildAt(2))?.performClick() }, 6500)
+                    ui.postDelayed({ android.util.Log.i("DG_PLAY", "sau-xong dang-chinh=${live?.isAdjusting} thanh=${adjustBar?.visibility == View.VISIBLE}") }, 7200)
+                }
+                "settings" -> {
+                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    ui.postDelayed({ if (!isFinishing && !isDestroyed) showSettings() }, 1500)
+                }
                 "uitr" -> {
                     requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                     // dựng lớp phủ trước, đợi nó được bố cục xong rồi mới vẽ (bố cục lần đầu xoá bản dịch cũ)
@@ -394,6 +413,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         var pill: View? = null
         var bar: View? = null
         var grip: View? = null
+        /** Thanh "Xong / Đặt lại" hiện khi đang chỉnh khung đọc phụ đề. */
+        var adj: View? = null
 
         override fun onMeasure(w: Int, h: Int) {
             setMeasuredDimension(MeasureSpec.getSize(w), MeasureSpec.getSize(h))
@@ -442,6 +463,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 }
                 measureChild(gr, w, ex, dpi(22), ex)
                 put(gr, 0, y); y += dpi(22)
+                // đang chỉnh khung phụ đề: tay cầm ảo đã ẩn nên thanh Xong/Đặt lại nằm đúng chỗ đó
+                adj?.takeIf { it.visibility != View.GONE }?.let { av -> measureChild(av, w - 2 * m10, ex, h, am); put(av, m10, y + dpi(4)) }
                 measureChild(pd, w, ex, h - y, ex)
                 put(pd, 0, y)
             } else {
@@ -461,6 +484,11 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 put(pb, x, cy(pb)); x += btn + m8
                 if (barOn) { put(br, x, cy(br)); x += dpi(346) + m8 }
                 put(pl, x, cy(pl))
+                // thanh Xong/Đặt lại nằm giữa mép dưới (tay cầm ảo đã ẩn khi đang chỉnh khung)
+                adj?.takeIf { it.visibility != View.GONE }?.let { av ->
+                    measureChild(av, minOf(w - 2 * m10, dpi(520)), ex, h, am)
+                    put(av, (w - av.measuredWidth) / 2, h - av.measuredHeight - dpi(16))
+                }
             }
             // Hai view chỉ dùng ở chế độ dọc: không đo, không xếp khi đang ngang (đã ẩn bằng visibility)
             if (land) { measureChild(ch, 0, ex, 0, ex); put(ch, 0, 0); measureChild(gr, 0, ex, 0, ex); put(gr, 0, 0) }
@@ -543,12 +571,34 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         }
         gripView = grip
 
+        // Thanh hiện khi đang chỉnh khung đọc phụ đề: kéo khung xong thì bấm Xong, lỡ kéo quá to hoặc lệch thì bấm Đặt lại.
+        val adjBar = Ui.hbox(this).apply {
+            setPadding(dpi(14), dpi(10), dpi(10), dpi(10))
+            background = Ui.bg(this@PsPlayActivity, Color.parseColor("#F017120D"), 22, Color.parseColor("#66F2B84B"), 1)
+            addView(Ui.tv(this@PsPlayActivity, "Kéo khung tới chỗ phụ đề, kéo chấm tròn để đổi cỡ.", 13f, Ui.SUB), Ui.lp(0, WRAP_CONTENT, 1f))
+            addView(Ui.tv(this@PsPlayActivity, "Đặt lại", 15f, Ui.TEXT, true).apply {
+                background = Ui.bg(this@PsPlayActivity, Ui.CARD2, 20, Ui.LINE, 1)
+                setPadding(dpi(16), dpi(10), dpi(16), dpi(10))
+                contentDescription = "Đặt lại khung về dải phụ đề phía dưới"
+                setOnClickListener { resetRegion() }
+            }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(8) })
+            addView(Ui.tv(this@PsPlayActivity, "Xong", 15f, Color.parseColor("#2A1A08"), true).apply {
+                background = Ui.bg(this@PsPlayActivity, Ui.GOLD, 20)
+                setPadding(dpi(20), dpi(10), dpi(20), dpi(10))
+                contentDescription = "Xong, ẩn khung chọn vùng"
+                setOnClickListener { if (live?.isAdjusting == true) toggleAdjust() }
+            }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(8) })
+            visibility = View.GONE
+        }
+        adjustBar = adjBar
+
         val root = PlayLayout(this)
+        root.adj = adjBar
         root.vcard = vcard; root.pad = padV; root.close = closeBtn; root.padBtn = padBtn
         root.chip = chip; root.pill = pill; root.bar = bar; root.grip = grip
         // Thứ tự vẽ: hình, tay cầm phủ lên hình, rồi các nút điều khiển nằm trên cùng.
         root.addView(vcard); root.addView(padV); root.addView(closeBtn); root.addView(padBtn)
-        root.addView(bar); root.addView(pill); root.addView(chip); root.addView(grip)
+        root.addView(bar); root.addView(pill); root.addView(chip); root.addView(grip); root.addView(adjBar)
         playRoot = root
         setContentView(root)
     }
@@ -668,7 +718,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             PsStore.setOrient(this, if (toPortrait) PsStore.ORIENT_PORTRAIT else PsStore.ORIENT_LANDSCAPE)
             PsStore.applyOrient(this)
         }
-        tool(ToolIcon.Kind.GEAR, "Cài đặt chất lượng hình") { PsQuality.sheet(this, null) { reconnect() } }
+        tool(ToolIcon.Kind.GEAR, "Cài đặt: Dịch hoặc Thuyết minh, giọng đọc, chất lượng hình") { showSettings() }
         tool(ToolIcon.Kind.HELP, "Trợ giúp") { help() }
         syncTools()
         return bar
@@ -678,7 +728,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private fun syncTools() {
         val running = live?.running == true
         val adjusting = live?.isAdjusting == true
-        val sp = Prefs(this).speak
+        val pr0 = Prefs(this)
+        val sp = pr0.speak || pr0.narrate
         fun mark(ic: ToolIcon?, kind: ToolIcon.Kind, on: Boolean, offColor: Int = Ui.GOLD) {
             ic ?: return
             ic.set(kind, if (on) Ui.GOLD else offColor)
@@ -722,6 +773,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     private fun toggleSpeak() {
         val pr = Prefs(this)
+        if (pr.narrate) {
+            Toast.makeText(this, "Đang ở chế độ Thuyết minh: luôn đọc to phụ đề. Muốn tắt tiếng thì bấm ⚙ và chọn Dịch.", Toast.LENGTH_LONG).show()
+            return
+        }
         pr.speak = !pr.speak
         live?.setSpeak(pr.speak)
         syncTools()
@@ -784,7 +839,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             .setTitle("Mẹo khi chơi")
             .setMessage(
                 "Thanh công cụ, từ trái sang phải:\n" +
-                    "⛶  Khung chọn vùng phụ đề: kéo khung tới đúng dòng phụ đề của game, bấm lần nữa hoặc ✓ Xong để ẩn khung.\n" +
+                    "⛶  Khung chọn vùng phụ đề: kéo khung tới đúng dòng phụ đề của game, kéo chấm tròn để đổi cỡ. Bấm Đặt lại nếu lỡ kéo quá to, bấm Xong để ẩn khung.\n" +
                     "▭  Bật hoặc tắt dịch phụ đề ngay trên hình game.\n" +
                     "☰  Dịch chữ giao diện của game (menu, vật phẩm, kỹ năng, nhiệm vụ, mô tả…): bản dịch hiện đè đúng chỗ chữ gốc. Giữ nút này để xem chuỗi chưa dịch được; viền vàng là bản dịch còn nghi ngờ.\n" +
                     "🔊  Đọc to bản dịch (bật/tắt).\n" +
@@ -792,12 +847,12 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     "◔  Tốc độ quét: quét nhiều đỡ sót câu nhưng hao pin hơn.\n" +
                     "⊕  Phóng to hình.\n" +
                     "⟳  Xoay ngang để xem hình lớn, tay cầm trong suốt phủ lên hình.\n" +
-                    "⚙  Chất lượng hình, áp dụng bằng cách kết nối lại.\n\n" +
+                    "⚙  Cài đặt: chọn Dịch hoặc Thuyết minh, ngôn ngữ trong game, giọng đọc (cơ bản, AI offline, Gemini), tốc độ đọc, nghe thử và chất lượng hình (chất lượng hình áp dụng bằng cách kết nối lại).\n\n" +
                     "• Nút tay cầm ở góc trên: ẩn hoặc hiện tay cầm ảo (tay cầm thật nối với điện thoại vẫn dùng được).\n" +
                     "• Ô người chơi ở góc trên bên phải: đổi sang tài khoản đã ghép khác.\n" +
                     "• Thanh nhỏ dưới hình: thu gọn hoặc mở thanh công cụ.\n" +
                     "• Máy báo đang bận: tắt Chơi từ xa ở thiết bị khác, đợi 30 giây rồi thử lại.\n" +
-                    "• Hình giật: dùng Wi-Fi 5 GHz hoặc dây LAN cho máy chơi game, hạ chất lượng ở ⚙."
+                    "• Hình giật: dùng Wi-Fi 5 GHz hoặc dây LAN cho máy chơi game, hạ chất lượng hình ở ⚙."
             )
             .setPositiveButton("Đã hiểu", null).show()
     }
@@ -1349,6 +1404,181 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         android.util.Log.i("DG_PLAY", "demo lop-phu-giao-dien da ve")
     }
 
+    /** Đặt khung đọc phụ đề về dải phụ đề mặc định ở phía dưới hình (khi lỡ kéo quá to hoặc lệch). */
+    private fun resetRegion() {
+        val l = ensureLive()
+        l.resetRegion()
+        Toast.makeText(this, "Đã đặt lại khung về dải phụ đề phía dưới hình.", Toast.LENGTH_SHORT).show()
+        if (demo) android.util.Log.i("DG_PLAY", "dat-lai khung=${l.box.save()}")
+    }
+
+    /** Đổi chế độ hoặc ngôn ngữ: dịch phụ đề và dịch giao diện đang chạy thì khởi động lại để nhận cài đặt mới. */
+    private fun restartTranslation() {
+        live?.let { l -> if (l.running) { l.stop(); l.start() } }
+        uiTr?.let { u -> if (u.running) { u.stop(); u.start() } }
+        syncTools()
+    }
+
+    /**
+     * Bảng cài đặt ngay trong màn chơi (không rời màn nên phiên Remote Play được giữ nguyên): chọn Dịch hoặc Thuyết minh,
+     * ngôn ngữ trong game, giọng đọc (cơ bản / AI offline / Gemini, chọn giọng, tốc độ, nghe thử) và lối vào chất lượng hình.
+     */
+    private fun showSettings() {
+        val a = this
+        val pr = Prefs(a)
+        var tester: Speaker? = null
+        fun testerSp(): Speaker? {
+            if (tester == null) tester = try {
+                Speaker(a, pr).also { sp -> sp.onAiError = { m -> Toast.makeText(a, m, Toast.LENGTH_LONG).show() } }
+            } catch (_: Throwable) { null }
+            return tester
+        }
+        Ui.sheet(a) { dlg ->
+            addView(Ui.tv(a, "Cài đặt", 26f, Ui.TEXT, true))
+
+            val cMode = Ui.card(a)
+            cMode.addView(Ui.tv(a, "Chế độ", 16f, Ui.TEXT, true))
+            val hMode = Ui.vbox(a)
+            cMode.addView(hMode, Ui.lpm(a, 8, 0))
+            addView(cMode, Ui.lpm(a, 12, 0))
+
+            val cVoice = Ui.card(a)
+            cVoice.addView(Ui.tv(a, "Giọng đọc", 16f, Ui.TEXT, true))
+            val hVoice = Ui.vbox(a)
+            cVoice.addView(hVoice, Ui.lpm(a, 8, 0))
+            addView(cVoice, Ui.lpm(a, 12, 0))
+
+            val cQ = Ui.card(a, 4)
+            cQ.addView(Ui.navRow(a, null, "Chất lượng hình", PsQuality.summary(a)) {
+                dlg.dismiss()
+                PsQuality.sheet(a, null) { reconnect() }
+            })
+            addView(cQ, Ui.lpm(a, 12, 0))
+
+            fun drawVoice() {
+                hVoice.removeAllViews()
+                if (pr.narrate) {
+                    hVoice.addView(Ui.tv(a, "Thuyết minh luôn đọc to phụ đề tiếng Việt của game.", 13f, Ui.SUB), Ui.lpm(a, 0, 6))
+                } else {
+                    hVoice.addView(Ui.switchRow(a, "Đọc to bản dịch", "Tắt nếu chỉ muốn xem chữ.", pr.speak) {
+                        pr.speak = it
+                        live?.setSpeak(it)
+                        syncTools()
+                    })
+                }
+                hVoice.addView(Ui.segmented(a, listOf("Cơ bản", "AI offline", "Gemini AI"),
+                    when (pr.voiceEngine) { "offline" -> 1; "ai" -> 2; else -> 0 }) { i ->
+                    pr.voiceEngine = when (i) { 1 -> "offline"; 2 -> "ai"; else -> "system" }
+                    runCatching { tester?.shutdown() }
+                    tester = null
+                    live?.reloadVoice()
+                    drawVoice()
+                }, Ui.lpm(a, 6, 6))
+                when (pr.voiceEngine) {
+                    "offline" -> {
+                        val pack = Voices.pack(pr.offlineVoice) ?: Voices.PACKS[0]
+                        if (Voices.installed(a, pack.id)) {
+                            hVoice.addView(Ui.tv(a, "${pack.name}: ✔ đã tải về máy (${Voices.sizeMb(a, pack.id)} MB).", 13.5f, Ui.OK), Ui.lpm(a, 2, 6))
+                        } else {
+                            hVoice.addView(Ui.tv(a, "Chưa tải giọng nên app đang đọc bằng giọng cơ bản. Cần khoảng ${pack.downloadMb} MB, nên dùng Wi-Fi.", 13f, Ui.SUB), Ui.lpm(a, 2, 6))
+                            val btn = Ui.button(a, "⬇  Tải giọng (${pack.downloadMb} MB)", true) {}
+                            var downloading = false
+                            btn.setOnClickListener {
+                                if (downloading) return@setOnClickListener
+                                downloading = true
+                                btn.text = "Đang tải 0%…"
+                                val app = applicationContext
+                                Thread {
+                                    val err = Voices.download(app, pack, java.util.concurrent.atomic.AtomicBoolean(false)) { pct ->
+                                        runOnUiThread { btn.text = "Đang tải $pct%…" }
+                                    }
+                                    runOnUiThread {
+                                        downloading = false
+                                        if (isFinishing || isDestroyed) return@runOnUiThread
+                                        if (err == null) {
+                                            Toast.makeText(a, "Đã tải xong giọng đọc.", Toast.LENGTH_SHORT).show()
+                                            live?.reloadVoice()
+                                            runCatching { tester?.shutdown() }
+                                            tester = null
+                                            drawVoice()
+                                        } else {
+                                            btn.text = "⬇  Tải giọng (${pack.downloadMb} MB)"
+                                            Toast.makeText(a, err, Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                }.start()
+                            }
+                            hVoice.addView(btn, Ui.lpm(a, 0, 6))
+                        }
+                    }
+                    "ai" -> {
+                        hVoice.addView(Ui.dropRow(a, "Giọng Gemini",
+                            { Prefs.AI_VOICES.firstOrNull { it.first == pr.aiVoice }?.let { "${it.first} · ${it.second}" } ?: pr.aiVoice },
+                            { Prefs.AI_VOICES.map { "${it.first} · ${it.second}" } }
+                        ) { i -> pr.aiVoice = Prefs.AI_VOICES[i].first; live?.reloadVoice() })
+                        if (pr.geminiKeys().isEmpty())
+                            hVoice.addView(Ui.tv(a, "Chưa có khóa Gemini nên app đọc bằng giọng cơ bản. Thêm khóa ở Cài đặt › Cách dịch (ngoài màn chơi).", 12.5f, Ui.DANGER), Ui.lpm(a, 2, 6))
+                        else
+                            hVoice.addView(Ui.tv(a, "Mỗi câu đọc tốn một lượt gọi Gemini; mất mạng hoặc hết lượt thì tự lùi về giọng của máy.", 12.5f, Ui.SUB), Ui.lpm(a, 2, 6))
+                    }
+                    else -> hVoice.addView(Ui.dropRow(a, "Chọn giọng",
+                        { pr.voice.ifEmpty { "Mặc định" } },
+                        { listOf("Mặc định") + (testerSp()?.voices() ?: emptyList()) }
+                    ) { i ->
+                        val list = listOf("") + (testerSp()?.voices() ?: emptyList())
+                        pr.voice = list.getOrElse(i) { "" }
+                        testerSp()?.applyVoice()
+                        live?.reloadVoice()
+                    })
+                }
+                val rateLabel = { v: Int -> String.format("%.1f", v / 10f).replace('.', ',') + "x" }
+                val vt = Ui.tv(a, rateLabel(pr.rate10), 14f, Ui.SUB)
+                val head = Ui.hbox(a)
+                head.addView(Ui.tv(a, "Tốc độ đọc", 15f, Ui.TEXT, true), Ui.lp(0, WRAP_CONTENT, 1f))
+                head.addView(vt)
+                hVoice.addView(head, Ui.lpm(a, 6, 0))
+                hVoice.addView(Ui.seekIcons(a, "🐢", "🐇", 5, 30, pr.rate10) { pr.rate10 = it; vt.text = rateLabel(it) }, Ui.lpm(a, 6, 0))
+                hVoice.addView(Ui.switchRow(a, "Tự đọc nhanh khi câu dồn lại",
+                    "Câu thoại mới tới lúc câu cũ chưa đọc xong thì đọc nhanh hơn để kịp hình.", pr.autoFast) { pr.autoFast = it })
+                hVoice.addView(Ui.switchRow(a, "Đọc theo cảm xúc",
+                    "Nhận ra câu giận, buồn, vui hay sợ qua câu chữ để đổi nhịp và giọng đọc.", pr.emotion) { pr.emotion = it })
+                hVoice.addView(Ui.button(a, "▶  Nghe thử", true) {
+                    testerSp()?.speak("Xin chào, đây là giọng đọc bản dịch trong game.")
+                }, Ui.lpm(a, 6, 0))
+            }
+
+            fun drawMode() {
+                hMode.removeAllViews()
+                hMode.addView(Ui.segmented(a, listOf("Dịch sang tiếng Việt", "Thuyết minh"), if (pr.narrate) 1 else 0) { i ->
+                    val n = i == 1
+                    if (n != pr.narrate) {
+                        pr.narrate = n
+                        restartTranslation()
+                    }
+                    drawMode()
+                    drawVoice()
+                })
+                hMode.addView(Ui.tv(a,
+                    if (pr.narrate) "Thuyết minh: game hoặc phim đã có phụ đề tiếng Việt, app chỉ đọc to phụ đề, không dịch."
+                    else "Dịch: đọc chữ ${Prefs.srcNameOf(pr.lang)} trong game rồi dịch sang tiếng Việt.", 12.5f, Ui.SUB), Ui.lpm(a, 8, 2))
+                if (!pr.narrate) {
+                    val codes = Prefs.LANGS.map { it.first }.filter { it != "vi" }
+                    hMode.addView(Ui.dropRow(a, "Ngôn ngữ trong game",
+                        { Prefs.langName(pr.lang) },
+                        { codes.map { Prefs.langLabel(it) } }
+                    ) { i ->
+                        val c = codes[i]
+                        if (c != pr.lang) { pr.lang = c; restartTranslation() }
+                        drawMode()
+                    })
+                }
+            }
+            drawMode()
+            drawVoice()
+            dlg.setOnDismissListener { runCatching { tester?.shutdown() }; tester = null }
+        }
+    }
+
     /** Chọn khung đọc phụ đề: tay cầm ảo tạm ẩn để kéo khung cho dễ, bấm lần nữa để xong. */
     private fun toggleAdjust() {
         try {
@@ -1356,13 +1586,15 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             vidFrame?.let { l.attach(it) }
             val on = !l.isAdjusting
             l.setAdjusting(on)
+            adjustBar?.visibility = if (on) View.VISIBLE else View.GONE
+            playRoot?.requestLayout()
             pad?.visibility = if (!on && padOn) View.VISIBLE else View.GONE
             if (on) pad?.releaseAll()
             syncTools()
             if (demo) android.util.Log.i("DG_PLAY", "chinh khung on=$on pad=${pad?.visibility} act=${System.identityHashCode(this)} vid=${System.identityHashCode(vidFrame)}")
             Toast.makeText(
                 this,
-                if (on) "Kéo khung tới đúng chỗ phụ đề của game, kéo chấm tròn để đổi cỡ. Bấm ⛶ lần nữa hoặc ✓ Xong để ẩn khung."
+                if (on) "Kéo khung tới đúng chỗ phụ đề của game, kéo chấm tròn để đổi cỡ. Lỡ kéo quá to thì bấm Đặt lại, xong thì bấm Xong."
                 else "Đã chọn khung. Khung ẩn đi khi đang dịch.",
                 Toast.LENGTH_LONG
             ).show()

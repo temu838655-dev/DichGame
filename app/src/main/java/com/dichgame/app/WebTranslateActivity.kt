@@ -66,7 +66,10 @@ class RegionBox(c: Context) : View(c) {
     private var lastX = 0f
     private var lastY = 0f
 
-    fun reset() { fl = 0.04f; ft = 0.20f; fr = 0.96f; fb = 0.36f; invalidate(); onChanged?.invoke() }
+    fun reset() = reset(0.04f, 0.20f, 0.96f, 0.36f)
+
+    /** Đặt khung về vị trí mặc định [l],[t],[r],[b] (tỉ lệ 0..1) và lưu lại. */
+    fun reset(l: Float, t: Float, r: Float, b: Float) { fl = l; ft = t; fr = r; fb = b; invalidate(); onChanged?.invoke() }
 
     fun load(s: String?) {
         val a = s?.split(",")?.mapNotNull { it.toFloatOrNull() } ?: return
