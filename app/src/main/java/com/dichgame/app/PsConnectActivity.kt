@@ -345,7 +345,7 @@ object PsQuality {
             fun drawRes() {
                 h1.removeAllViews()
                 // Thứ tự giữ nguyên ba lựa chọn cũ; 540p/360p dùng các chỉ số mới để không đổi cài đặt đã lưu.
-                h1.addView(Ui.segmented(a, listOf("Tự động", "720p", "1080p", "540p", "360p"), PsStore.res(a)) { PsStore.setRes(a, it); drawRes() })
+                h1.addView(Ui.segmented(a, listOf("Auto", "720p", "1080p", "540p", "360p"), PsStore.res(a)) { PsStore.setRes(a, it); drawRes() })
                 desc1.text = when (PsStore.res(a)) {
                     2 -> "1080p: hình nét nhất trong các mức hiện có, cần mạng ổn định và thiết bị giải mã tốt." +
                         (if (DecoderCaps.avc1080p60) "" else " Máy này không báo giải mã phần cứng 1080p 60 FPS, có thể giật; thử 720p nếu vậy.") +
