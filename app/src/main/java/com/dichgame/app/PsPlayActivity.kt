@@ -226,12 +226,15 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                             android.util.Log.i("DG_PLAY", "to khung=${b.save()} thanh=${adjustBar?.visibility == View.VISIBLE}")
                         }
                     }, 2200)
-                    ui.postDelayed({ if (!isFinishing && !isDestroyed) ((adjustBar as? ViewGroup)?.getChildAt(1))?.performClick() }, 4200)
-                    ui.postDelayed({ if (!isFinishing && !isDestroyed) ((adjustBar as? ViewGroup)?.getChildAt(2))?.performClick() }, 6500)
-                    ui.postDelayed({ android.util.Log.i("DG_PLAY", "sau-xong dang-chinh=${live?.isAdjusting} thanh=${adjustBar?.visibility == View.VISIBLE}") }, 7200)
+                    ui.postDelayed({ if (!isFinishing && !isDestroyed) ((adjustBar as? ViewGroup)?.getChildAt(1))?.performClick() }, 12000)
+                    ui.postDelayed({ if (!isFinishing && !isDestroyed) ((adjustBar as? ViewGroup)?.getChildAt(2))?.performClick() }, 20000)
+                    ui.postDelayed({ android.util.Log.i("DG_PLAY", "sau-xong dang-chinh=${live?.isAdjusting} thanh=${adjustBar?.visibility == View.VISIBLE}") }, 20700)
                 }
                 "settings" -> {
                     requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    // Cho CI chụp các dạng khác nhau của bảng (chế độ + loại giọng) mà không phải bấm tay
+                    intent.getStringExtra("dg_engine")?.let { Prefs(this).voiceEngine = it }
+                    if (intent.hasExtra("dg_narrate")) Prefs(this).narrate = intent.getBooleanExtra("dg_narrate", false)
                     ui.postDelayed({ if (!isFinishing && !isDestroyed) showSettings() }, 1500)
                 }
                 "uitr" -> {

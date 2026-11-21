@@ -97,6 +97,7 @@ for i in $(seq 1 40); do
 done
 sleep 3
 adb logcat -d -s DG_LIVE:I > "$OUT/narrate.txt" 2>&1
+adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; sleep 1
 shot narrate-live
 cat "$OUT/narrate.txt" | cut -c1-200
 grep -qiE "thuyet minh: .*(đâu|dau|tối|toi|bạn|ban|gần|gan)" "$OUT/narrate.txt" || echo "Thuyết minh: không đọc được phụ đề tiếng Việt vẽ sẵn" >> "$OUT/narrate-fail.txt"
@@ -144,9 +145,10 @@ adb shell am force-stop "$PKG"
 # Chỉnh khung đọc phụ đề: kéo quá to -> bấm Đặt lại -> bấm Xong (bấm đúng các nút thật; nhật ký DG_PLAY)
 adb logcat -c
 adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo adjust2 >/dev/null 2>&1
-sleep 3.4; shot adjust-big
-sleep 2.4; shot adjust-reset
-sleep 3.4
+# Mốc của bản xem thử: 1,2s bật chỉnh khung · 2,2s kéo quá to · 12s bấm Đặt lại · 20s bấm Xong · 20,7s ghi nhật ký
+sleep 5; adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; sleep 1; shot adjust-big
+sleep 6; adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; sleep 1; shot adjust-reset
+sleep 10
 adb logcat -d -s DG_PLAY:I > "$OUT/adjust.txt" 2>&1
 cat "$OUT/adjust.txt"
 grep -q "to khung=0.0,0.02,1.0,1.0 thanh=true" "$OUT/adjust.txt" || echo "Chỉnh khung: không thấy thanh Xong/Đặt lại khi đang chỉnh" >> "$OUT/adjust-fail.txt"
@@ -160,11 +162,18 @@ adb shell am force-stop "$PKG"
 adb logcat -c
 adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo settings >/dev/null 2>&1
 sleep 4; adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; sleep 1; shot settings-1
-swipe_up; shot settings-2
-swipe_up; shot settings-3
+adb shell am force-stop "$PKG"
+# Thuyết minh + giọng AI offline (chưa tải gói giọng)
+adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo settings --es dg_engine offline --ez dg_narrate true >/dev/null 2>&1
+sleep 4; adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; sleep 1; shot settings-narrate
+adb shell am force-stop "$PKG"
+# Dịch + giọng cơ bản của máy
+adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo settings --es dg_engine system --ez dg_narrate false >/dev/null 2>&1
+sleep 4; adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; sleep 1; shot settings-system
 adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/settings-fail.txt"
 [ -s "$OUT/settings-fail.txt" ] || rm -f "$OUT/settings-fail.txt"
 adb shell am force-stop "$PKG"
+set_prefs ci/prefs-full.xml
 
 # Xoay màn hình liên tiếp trong màn chơi: Activity và SurfaceView phải giữ nguyên (không tạo lại), không văng
 adb logcat -c
