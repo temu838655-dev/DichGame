@@ -28,16 +28,48 @@ import android.widget.Toast
 class MainActivity : Activity() {
     private lateinit var p: Prefs
 
+    private var bannerKind = ""
+    private val updListener = com.dichgame.update.Updater.Listener { s ->
+        // chỉ vẽ lại màn hình khi thẻ nhắc cập nhật đổi loại, không vẽ lại theo từng nhịp tải
+        val k = UpdateUi.bannerKind(s)
+        if (k != bannerKind && !isFinishing && !isDestroyed) render()
+        // có bản mới thì tự hiện tấm cập nhật, mỗi bản dựng chỉ hỏi một lần trong mỗi lần mở app (thẻ nhắc vẫn ở màn hình chính)
+        if (s is com.dichgame.update.Updater.S.Available && com.dichgame.update.Updater.prompted != s.info.no &&
+            !UpdateUi.showing && !isFinishing && !isDestroyed) {
+            com.dichgame.update.Updater.prompted = s.info.no
+            UpdateUi.show(this)
+        }
+    }
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         if (Build.VERSION.SDK_INT >= 33) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
         }
+        // Chỉ bản debug (kiểm thử trên máy giả lập): kiểm tra bản mới ở máy chủ giả thay vì GitHub
+        if (BuildConfig.DEBUG) intent?.getStringExtra("dg_update_api")?.let {
+            com.dichgame.update.Update.testApi = it
+            com.dichgame.update.Updater.resetForTest()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        com.dichgame.update.Updater.setVisible(true)
+        com.dichgame.update.Updater.addListener(updListener)
+    }
+
+    override fun onStop() {
+        com.dichgame.update.Updater.removeListener(updListener)
+        com.dichgame.update.Updater.setVisible(false)
+        super.onStop()
     }
 
     override fun onResume() {
         super.onResume()
         render()
+        com.dichgame.update.Updater.onResume()
+        com.dichgame.update.Updater.check(false)
         CrashLog.showIfAny(this)
         // "Chọn và dịch ngay" trong Kho game: mở luôn bước bắt đầu
         if (intent?.getBooleanExtra("go", false) == true) {
@@ -55,6 +87,7 @@ class MainActivity : Activity() {
 
     private fun render() {
         p = Prefs(this)
+        bannerKind = UpdateUi.bannerKind(com.dichgame.update.Updater.state)
         window.statusBarColor = Ui.BG
         window.navigationBarColor = Ui.BG
         val con = PsStore.load(this)?.takeIf { it.players.isNotEmpty() }
@@ -63,6 +96,7 @@ class MainActivity : Activity() {
         content.setPadding(pad, Ui.dp(this, 10), pad, Ui.dp(this, 126))
         content.apply {
             put(header(con != null), 4, 14)
+            UpdateUi.banner(this@MainActivity)?.let { put(it, 0, 12) }
             put(statusRow(con != null), 0, 12)
             put(consoleCard(con), 0, 12)
             put(navCard("📺", "Phụ đề trên TV",
@@ -222,22 +256,15 @@ class MainActivity : Activity() {
         return c
     }
 
-    /** Đáy màn hình chính: cánh vàng hai bên và logo "Xin chào các anh em"; chạm vào logo để bắt đầu hoặc dừng dịch. */
+    /** Đáy màn hình chính: cánh vàng hai bên và logo "Xin chào các anh em". Logo chỉ để trang trí, chạm vào không làm gì. */
     private fun dock(): View {
         val running = CaptureService.active
         val box = FrameLayout(this)
         box.addView(DockWings(this, 96f, 0.75f), FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         val logo = HelloLogo(this, running)
-        logo.contentDescription = "Xin chào các anh em. " + if (running) "Chạm để dừng dịch" else if (p.narrate) "Chạm để bắt đầu thuyết minh" else "Chạm để bắt đầu dịch"
-        logo.isClickable = true
-        logo.setOnClickListener { if (CaptureService.active) stopService() else begin() }
-        logo.setOnTouchListener { v, e ->
-            when (e.actionMasked) {
-                android.view.MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.95f).scaleY(0.95f).setDuration(90).start()
-                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
-            }
-            false
-        }
+        logo.contentDescription = "Xin chào các anh em"
+        logo.isClickable = false
+        logo.isFocusable = false
         box.addView(logo, FrameLayout.LayoutParams(Ui.dp(this, 176), Ui.dp(this, 90), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = Ui.dp(this@MainActivity, 6) })
         return box
     }

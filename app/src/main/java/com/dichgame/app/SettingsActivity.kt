@@ -520,14 +520,13 @@ class SettingsActivity : Activity() {
             val ver = try { packageManager.getPackageInfo(packageName, 0).versionName.orEmpty() } catch (_: Exception) { "?" }
             group("PHIÊN BẢN", 16, 4) {
                 addView(Ui.tv(a, "Dịch game $ver" + (if (BuildConfig.BUILD_NO > 0) " (bản dựng ${BuildConfig.BUILD_NO})" else ""), 16f, Ui.TEXT, true))
-                val status = Ui.tv(a, "", 13.5f, Ui.SUB)
-                row(Ui.button(a, "Kiểm tra bản mới") { checkUpdate(status) }, 12, 6)
-                addView(status)
+                addView(Ui.tv(a, "Có bản mới thì app tự báo khi mở, và cập nhật ngay trong app, không cần ra trình duyệt.", 13.5f, Ui.SUB), Ui.lpm(a, 6, 0))
+                row(Ui.button(a, "Kiểm tra bản mới") { UpdateUi.show(a, check = true) }, 12, 6)
             }
             group("HỖ TRỢ", 0) {
                 addView(Ui.navRow(a, null, "Báo lỗi / yêu cầu game", "Mở trang tạo báo cáo trên GitHub, đã điền sẵn thông tin máy") { report() })
                 divide(16)
-                addView(Ui.navRow(a, null, "Trang dự án trên GitHub", Update.REPO) { openUrl("https://github.com/" + Update.REPO) })
+                addView(Ui.navRow(a, null, "Trang dự án trên GitHub", com.dichgame.update.Update.REPO) { openUrl("https://github.com/" + com.dichgame.update.Update.REPO) })
                 divide(16)
                 addView(Ui.navRow(a, null, "Giấy phép và ghi công", "Chiaki, sherpa-onnx, Piper và các thư viện khác") {
                     startActivity(Intent(a, LicensesActivity::class.java))
@@ -541,33 +540,6 @@ class SettingsActivity : Activity() {
         catch (_: Exception) { Toast.makeText(this, "Không mở được trình duyệt.", Toast.LENGTH_SHORT).show() }
     }
 
-    private fun checkUpdate(status: TextView) {
-        status.text = "Đang kiểm tra..."
-        Thread {
-            var info: Update.Info? = null
-            var err = false
-            try { info = Update.latest() } catch (_: Exception) { err = true }
-            val got = info
-            runOnUiThread {
-                when {
-                    err -> status.text = "Không kiểm tra được. Kiểm tra mạng rồi thử lại."
-                    got == null -> status.text = "Chưa có bản phát hành nào trên GitHub."
-                    BuildConfig.BUILD_NO == 0 -> status.text = "Bản này tự build nên không so sánh được. Bản mới nhất trên GitHub là bản dựng ${got.no}."
-                    got.no > BuildConfig.BUILD_NO -> { status.text = "Có bản mới: bản dựng ${got.no}."; offerUpdate(got) }
-                    else -> status.text = "Bạn đang dùng bản mới nhất."
-                }
-            }
-        }.start()
-    }
-
-    private fun offerUpdate(i: Update.Info) {
-        AlertDialog.Builder(this, R.style.DgDialog)
-            .setTitle("Có bản mới")
-            .setMessage("Bản dựng ${i.no} đã có trên GitHub. Tải file về rồi mở để cài đè, cài đặt và hồ sơ game của bạn được giữ nguyên.")
-            .setPositiveButton("Tải về") { _, _ -> openUrl(i.apk ?: i.page) }
-            .setNegativeButton("Để sau", null).show()
-    }
-
     /** Mở trang tạo báo cáo trên GitHub, điền sẵn thông tin máy. Bạn xem lại rồi mới gửi. */
     private fun report() {
         val body = "Mô tả (lỗi gặp phải, hoặc tên game cần hỗ trợ):\n\n\n---\n" +
@@ -576,6 +548,6 @@ class SettingsActivity : Activity() {
             "Máy: " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + "\n" +
             "Ngôn ngữ game: " + Prefs.langName(p.lang) + "\n" +
             "Game: " + p.game
-        openUrl("https://github.com/" + Update.REPO + "/issues/new?title=" + android.net.Uri.encode("[Lỗi/Yêu cầu game] ") + "&body=" + android.net.Uri.encode(body))
+        openUrl("https://github.com/" + com.dichgame.update.Update.REPO + "/issues/new?title=" + android.net.Uri.encode("[Lỗi/Yêu cầu game] ") + "&body=" + android.net.Uri.encode(body))
     }
 }

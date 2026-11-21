@@ -175,5 +175,7 @@ class DgApp : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashLog.install(this)
+        // Cập nhật ngay trong app (số bản dựng và tên file APK trong bản phát hành của app điện thoại)
+        com.dichgame.update.Updater.init(this, BuildConfig.BUILD_NO, "DichGame.apk")
     }
 }

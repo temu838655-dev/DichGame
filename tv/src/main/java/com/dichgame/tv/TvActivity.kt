@@ -16,12 +16,18 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
+import android.view.View
+import com.dichgame.update.Updater
+import com.dichgame.update.Updater.S
 
 /** Màn hình ghép nối: hiện địa chỉ TV và mã 8 số để nhập vào app Dịch game trên điện thoại. */
 class TvActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var codeView: TextView
     private lateinit var info: TextView
+    private lateinit var updBtn: Button
+    private val updListener = Updater.Listener { showUpdate(it) }
     private val gold = Color.parseColor("#F4C38C")
     private val tick = object : Runnable {
         override fun run() { refresh(); handler.postDelayed(this, 1000) }
@@ -52,6 +58,13 @@ class TvActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        // Cập nhật ngay trong app: số bản dựng và tên file APK của app TV trong bản phát hành
+        Updater.init(applicationContext, BuildConfig.BUILD_NO, "DichGame-TV.apk")
+        // Chỉ bản debug (kiểm thử trên máy giả lập): kiểm tra bản mới ở máy chủ giả thay vì GitHub
+        if (BuildConfig.DEBUG) intent?.getStringExtra("dg_update_api")?.let {
+            com.dichgame.update.Update.testApi = it
+            Updater.resetForTest()
+        }
         startForegroundService(Intent(this, TvService::class.java))
         window.statusBarColor = Color.parseColor("#111113")
         window.navigationBarColor = Color.parseColor("#111113")
@@ -86,6 +99,9 @@ class TvActivity : Activity() {
             })
         }
 
+        // Nút cập nhật: chỉ hiện khi có bản mới; chọn bằng remote rồi bấm OK, app tải và cài ngay tại đây
+        updBtn = btn("") {}.apply { visibility = View.GONE }
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#111113"))
@@ -94,14 +110,56 @@ class TvActivity : Activity() {
             addView(hint)
             addView(codeView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
             addView(info, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
+            addView(updBtn)
             addView(buttons)
         }
         setContentView(ScrollView(this).apply { setBackgroundColor(Color.parseColor("#111113")); addView(root) })
         buttons.getChildAt(0).requestFocus()
     }
 
-    override fun onResume() { super.onResume(); handler.post(tick) }
+    override fun onStart() { super.onStart(); Updater.setVisible(true); Updater.addListener(updListener) }
+    override fun onStop() { Updater.removeListener(updListener); Updater.setVisible(false); super.onStop() }
+
+    override fun onResume() {
+        super.onResume()
+        handler.post(tick)
+        Updater.onResume()
+        showUpdate(Updater.state)
+        Updater.check(false)
+    }
+
     override fun onPause() { handler.removeCallbacks(tick); super.onPause() }
+
+    private fun showUpdate(s: S) {
+        fun show(text: String, click: () -> Unit) {
+            val first = updBtn.visibility != View.VISIBLE
+            updBtn.visibility = View.VISIBLE
+            updBtn.text = text
+            updBtn.setOnClickListener { click() }
+            if (first) updBtn.requestFocus()
+        }
+        when (s) {
+            is S.Available -> show("⬆ Có bản mới (bản dựng ${s.info.no}): bấm OK để cập nhật ngay trong app") { Updater.start(s.info) }
+            is S.Downloading -> {
+                val pct = if (s.total > 0) " ${(s.done * 100 / s.total).toInt()}%" else ""
+                show("Đang tải bản mới$pct… (bấm OK để hủy)") { Updater.cancel() }
+            }
+            is S.Downloaded -> show("Đã tải xong: bấm OK để cài đặt") { Updater.installNow() }
+            is S.NeedPermission -> show("Cho phép cài đặt: bấm OK để mở cài đặt, bật \"Dịch game TV\" rồi quay lại") {
+                try { startActivity(Updater.permissionIntent()) }
+                catch (_: Exception) {
+                    Toast.makeText(this, "TV không mở được trang này. Dùng máy tính: adb shell appops set $packageName REQUEST_INSTALL_PACKAGES allow", Toast.LENGTH_LONG).show()
+                }
+            }
+            is S.Installing -> show("Đang cài đặt… hãy bấm Cập nhật ở hộp thoại của TV") {}
+            is S.Failed -> {
+                val i = s.info
+                if (i != null) show("Cập nhật chưa được: ${s.msg} (bấm OK để thử lại)") { Updater.start(i) }
+                else updBtn.visibility = View.GONE
+            }
+            else -> updBtn.visibility = View.GONE
+        }
+    }
 
     private fun refresh() {
         val ok = Settings.canDrawOverlays(this)

@@ -1,0 +1,97 @@
+name: Thử cập nhật trong app (máy giả lập)
+
+# Dựng hai bản của app (cũ mã 21, mới mã 22) cho cả điện thoại và TV, cài bản cũ lên máy giả lập Android 14,
+# rồi để app tự tìm bản mới ở một máy chủ giả, tải về và cài đè qua trình cài đặt của Android.
+# Ảnh chụp và nhật ký được đẩy lên nhánh ci-shots-update.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["**", "!ci-shots", "!ci-shots-update"]
+    paths: ["update-common/**", "app/src/main/java/com/dichgame/app/UpdateUi.kt", "ci/update-test.sh", "ci/uitap.py", ".github/workflows/update-test.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      # Hai lần build chỉ khác số bản dựng (-PbuildNo): mã phiên bản 21 và 22 cho điện thoại, 4 và 5 cho TV. Cùng khóa ký như bản phát hành.
+      - name: Build bản cũ (số bản dựng 1)
+        run: |
+          gradle :app:assembleDebug :tv:assembleDebug -PnoNative -PbuildNo=1 --no-daemon --stacktrace
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-universal-debug.apk dist/old.apk
+          cp tv/build/outputs/apk/debug/tv-debug.apk dist/tv-old.apk
+
+      - name: Build bản mới (số bản dựng 2)
+        run: |
+          gradle :app:assembleDebug :tv:assembleDebug -PnoNative -PbuildNo=2 --no-daemon --stacktrace
+          cp app/build/outputs/apk/debug/app-universal-debug.apk dist/new.apk
+          cp tv/build/outputs/apk/debug/tv-debug.apk dist/tv-new.apk
+          ls -la dist
+
+      - name: Bật KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Chạy trên máy giả lập
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: bash ci/update-test.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: update-shots
+          path: shots-update
+          if-no-files-found: warn
+
+      - name: Đẩy ảnh lên nhánh ci-shots-update
+        if: always()
+        run: |
+          cd shots-update
+          rm -f ui.xml server.pid
+          git init -q
+          git checkout -q -b ci-shots-update
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Ảnh chụp thử cập nhật, commit $GITHUB_SHA"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ci-shots-update
+
+      - name: Báo lỗi nếu cập nhật không chạy
+        run: |
+          if [ ! -d shots-update ]; then echo "Không có kết quả từ máy giả lập"; exit 1; fi
+          if [ -s shots-update/update-fail.txt ]; then
+            echo "Cập nhật trong app lỗi:"; cat shots-update/update-fail.txt
+            echo ---; cat shots-update/update-log.txt 2>/dev/null; echo ---; cat shots-update/update-phone-log-all.txt 2>/dev/null; cat shots-update/update-tv-log.txt 2>/dev/null
+            exit 1
+          fi
+          if [ -s shots-update/crash.txt ]; then
+            echo "App bị crash:"; cat shots-update/crash.txt; exit 1
+          fi
+          cat shots-update/update-log.txt

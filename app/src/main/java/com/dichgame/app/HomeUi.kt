@@ -146,8 +146,8 @@ class DockWings(c: Context, private val gapDp: Float = 52f, private val lenScale
 
 /**
  * Logo "Xin chào các anh em" ở giữa đáy màn hình chính: huy hiệu kính tối viền vàng có vương miện, chữ vàng có viền và bóng đổ,
- * ánh sáng chạy qua chữ mỗi vài giây, quầng sáng thở nhẹ. Đang dịch thì viền và quầng chuyển xanh lá, nút nhỏ ở góc đổi từ ▶ sang ■.
- * Chạm vào logo để bắt đầu hoặc dừng dịch (việc do màn hình chính gắn vào).
+ * ánh sáng chạy qua chữ mỗi vài giây, quầng sáng thở nhẹ. Đang dịch thì viền và quầng chuyển xanh lá.
+ * Chỉ để trang trí: không có nút nào, chạm vào không làm gì.
  */
 class HelloLogo(c: Context, private val running: Boolean) : View(c) {
     private val d = resources.displayMetrics.density
@@ -315,30 +315,5 @@ class HelloLogo(c: Context, private val running: Boolean) : View(c) {
         cv.drawCircle(cl, ct + 0.22f * ch, 2.4f * d, p)
         cv.drawCircle(cl + 0.5f * cw, ct, 2.6f * d, p)
         cv.drawCircle(cl + cw, ct + 0.22f * ch, 2.4f * d, p)
-
-        // nút nhỏ ở góc trên phải: ▶ khi chờ, ■ khi đang dịch
-        val bx = pill.right - 7f * d
-        val by = pill.top + 7f * d
-        p.style = Paint.Style.FILL
-        p.shader = LinearGradient(bx - 9f * d, by - 9f * d, bx + 9f * d, by + 9f * d, rim1, rim3, Shader.TileMode.CLAMP)
-        cv.drawCircle(bx, by, 9f * d, p)
-        p.shader = null
-        p.style = Paint.Style.STROKE
-        p.strokeWidth = 1.6f * d
-        p.color = Color.parseColor("#0C0903")
-        cv.drawCircle(bx, by, 9f * d, p)
-        p.style = Paint.Style.FILL
-        p.color = if (running) Color.parseColor("#06260F") else Color.parseColor("#2A1A08")
-        if (running) {
-            r.set(bx - 3.2f * d, by - 3.2f * d, bx + 3.2f * d, by + 3.2f * d)
-            cv.drawRoundRect(r, 1f * d, 1f * d, p)
-        } else {
-            path.reset()
-            path.moveTo(bx - 2.6f * d, by - 4.2f * d)
-            path.lineTo(bx - 2.6f * d, by + 4.2f * d)
-            path.lineTo(bx + 4.2f * d, by)
-            path.close()
-            cv.drawPath(path, p)
-        }
     }
 }

@@ -63,6 +63,8 @@ android {
         }
     }
     ndkVersion = "28.2.13676358"
+    // Phần cập nhật trong app dùng chung với app TV (update-common/)
+    sourceSets.getByName("main").java.srcDir("$rootDir/update-common/src")
     if (withNative) {
         externalNativeBuild {
             cmake {

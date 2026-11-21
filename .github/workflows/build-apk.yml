@@ -103,16 +103,26 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
 
+      # Ghi chú "Có gì mới" hiện trong app khi có bản cập nhật: lấy từ lời nhắn commit, bỏ các dòng ký tên tự động.
+      - name: Soạn ghi chú bản phát hành
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+        run: |
+          git log -1 --format=%B "$GITHUB_SHA" | grep -v -E '^(Co-Authored-By|Claude-Session):' > "$RUNNER_TEMP/notes.md" || true
+          echo "--- ghi chú:"; cat "$RUNNER_TEMP/notes.md"
+
+      # Tag của bản phát hành luôn có dạng build-<số lần chạy> (cũng là số bản dựng ghi trong app) để app biết bản nào mới hơn;
+      # app cũ tự đối chiếu số này rồi báo cập nhật ngay trong app. Bản gắn tag v* thì số nằm ở tên "Bản dựng <số> · v...".
       - name: Tạo bản phát hành (Releases)
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('build-{0}', github.run_number) }}"
-          name: "${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('Bản dựng {0}', github.run_number) }}"
+          name: "${{ startsWith(github.ref, 'refs/tags/') && format('Bản dựng {0} · {1}', github.run_number, github.ref_name) || format('Bản dựng {0}', github.run_number) }}"
           target_commitish: "${{ github.sha }}"
           prerelease: false
           make_latest: true
-          generate_release_notes: true
+          generate_release_notes: false
+          body_path: "${{ runner.temp }}/notes.md"
           files: dist/*.apk
 
       # Chỉ giữ 2 bản dựng mới nhất (bản mới và bản trước đó để quay lại khi cần), xóa các bản build-N cũ hơn.
