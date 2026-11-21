@@ -1,0 +1,6 @@
+--------- beginning of main
+11-21 16:59:30.625  9903  9903 I DG_OCR  : demo: bat dau
+11-21 16:59:33.133  9903  9903 I DG_OCR  : demo: bam dich
+11-21 16:59:41.259  9903  9903 I DG_OCR  : ocr doc duoc: Where are you going tonight? Stay close to me.
+11-21 16:59:41.259  9903  9903 I DG_OCR  : src: Where are you going tonight? Stay close to me.
+11-21 16:59:41.776  9903  9903 I DG_OCR  : vi: Bạn đi đâu tối nay? Ở gần tôi. (516 ms)

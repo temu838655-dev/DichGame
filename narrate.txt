@@ -1,0 +1,4 @@
+--------- beginning of main
+11-21 17:00:02.803 10223 10223 I DG_LIVE : san sang (thuyet minh)
+11-21 17:00:06.225 10223 10223 I DG_LIVE : doc: Bạn định đi đâu tối nay? Hãy ở gần tôi.
+11-21 17:00:06.225 10223 10223 I DG_LIVE : thuyet minh: Bạn định đi đâu tối nay? Hãy ở gần tôi.

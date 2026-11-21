@@ -1,0 +1,10 @@
+--------- beginning of main
+11-21 17:00:15.160 10346 10346 I DG_UITR : khung doi kich thuoc 0x0 -> 1080x630, xoa lop phu cu
+11-21 17:00:21.188 10346 10346 I DG_UITR : dich: Inventory => Túi đồ [goi]
+11-21 17:00:21.343 10346 10346 I DG_UITR : bo qua ABBREVIATION: ATK 42
+11-21 17:00:21.343 10346 10346 I DG_UITR : bo qua ID_LIKE: ID4521
+11-21 17:00:21.345 10346 10346 I DG_UITR : ve 1 khoi, khung 1080x630, vi tri 1/2
+11-21 17:00:21.726 10346 10346 I DG_UITR : dich: Skill Tree => Cây kỹ năng [may]
+11-21 17:00:21.729 10346 10346 I DG_UITR : dich: Iron Sword => Kiếm sắt [may]
+11-21 17:00:21.731 10346 10346 I DG_UITR : dich: Health Potion => Bình máu [may]
+11-21 17:00:21.741 10346 10346 I DG_UITR : ve 4 khoi, khung 1080x630, vi tri 1/2

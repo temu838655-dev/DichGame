@@ -1,0 +1,8 @@
+--------- beginning of main
+11-21 17:00:46.144 10602 10602 I DG_PLAY : tao man choi act=155606356 mode=adjust2
+11-21 17:00:46.237 10602 10602 I DG_PLAY : surface-tao act=155606356 sv=157311448
+11-21 17:00:47.644 10602 10602 I DG_PLAY : chinh khung on=true pad=8 act=155606356 vid=117462067
+11-21 17:00:48.345 10602 10602 I DG_PLAY : to khung=0.0,0.02,1.0,1.0 thanh=true
+11-21 17:00:58.158 10602 10602 I DG_PLAY : dat-lai khung=0.05,0.7,0.95,0.97
+11-21 17:01:06.152 10602 10602 I DG_PLAY : chinh khung on=false pad=0 act=155606356 vid=117462067
+11-21 17:01:06.845 10602 10602 I DG_PLAY : sau-xong dang-chinh=false thanh=false

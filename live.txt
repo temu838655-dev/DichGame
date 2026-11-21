@@ -1,0 +1,4 @@
+--------- beginning of main
+11-21 16:59:48.965 10108 10108 I DG_LIVE : san sang
+11-21 16:59:52.113 10108 10108 I DG_LIVE : doc: Where are you going tonight? Stay close to me.
+11-21 16:59:52.614 10108 10108 I DG_LIVE : dich: Bạn đi đâu tối nay? Ở gần tôi.

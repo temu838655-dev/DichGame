@@ -1,0 +1,6 @@
+--------- beginning of main
+11-21 17:01:48.201 10966 10966 I DG_PLAY : tao man choi act=155606356 mode=uitr
+11-21 17:01:48.273 10966 10966 I DG_PLAY : surface-tao act=155606356 sv=157311448
+11-21 17:01:49.700 10966 10966 I DG_UITR : khung doi kich thuoc 0x0 -> 1018x572, xoa lop phu cu
+11-21 17:01:50.005 10966 10966 I DG_PLAY : demo lop-phu-giao-dien da ve
+11-21 17:01:50.008 10966 10966 I DG_UITR : ve 5 khoi, khung 1018x572, vi tri 2/3
