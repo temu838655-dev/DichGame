@@ -48,6 +48,17 @@ Cooldown = Thời gian hồi chiêu
 Game Over = Thua cuộc
 Autosave = Tự động lưu
 Mission Complete = Hoàn thành nhiệm vụ
+Health Potion = Bình máu
+Mana Potion = Bình mana
+Stamina Potion = Bình thể lực
+Iron Sword = Kiếm sắt
+Steel Sword = Kiếm thép
+Leather Armor = Giáp da
+Skill Point = Điểm kỹ năng
+Skill Points = Điểm kỹ năng
+Open Map = Mở bản đồ
+Unlock = Mở khoá
+Required Level = Cấp yêu cầu
 """)
 
     /** Gói theo thể loại: (các từ khoá có trong chuỗi thể loại, thuật ngữ). */
