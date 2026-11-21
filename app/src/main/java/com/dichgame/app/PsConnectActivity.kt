@@ -38,6 +38,9 @@ class PsConnectActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         render()
+        // Bản debug: mở thẳng bảng chất lượng hình để CI chụp ảnh (adb ... --es dg_demo quality)
+        if (BuildConfig.DEBUG && intent.getStringExtra("dg_demo") == "quality")
+            window.decorView.postDelayed({ if (!isFinishing && !isDestroyed) PsQuality.sheet(this, null) {} }, 1200)
     }
 
     override fun onResume() {

@@ -161,6 +161,16 @@ adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OU
 [ -s "$OUT/uitr-fail.txt" ] || rm -f "$OUT/uitr-fail.txt"
 adb shell am force-stop "$PKG"
 
+# Bảng "Chất lượng hình" (độ phân giải, FPS, codec, tốc độ mạng, hướng màn hình): chụp đầu bảng rồi cuộn xuống
+adb logcat -c
+adb shell am start -W -n "$PKG/.PsConnectActivity" --es dg_demo quality >/dev/null 2>&1
+sleep 4; adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; sleep 1; shot quality-1
+swipe_up; shot quality-2
+swipe_up; shot quality-3
+adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/quality-fail.txt"
+[ -s "$OUT/quality-fail.txt" ] || rm -f "$OUT/quality-fail.txt"
+adb shell am force-stop "$PKG"
+
 # Kho game Việt hoá: lọc theo nền tảng và bảng chi tiết một game (extra chỉ có ở bản debug)
 adb shell am force-stop "$PKG"
 # ảnh bìa tải từ Steam: chờ lâu hơn lần đầu, các lần sau lấy từ bộ nhớ đệm

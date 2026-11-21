@@ -83,6 +83,9 @@ jobs:
           if [ -s shots/live-fail.txt ]; then
             echo "Dịch phụ đề trong màn chơi lỗi:"; cat shots/live-fail.txt; cat shots/live.txt; exit 1
           fi
+          if [ -s shots/quality-fail.txt ]; then
+            echo "Bảng chất lượng hình bị lỗi:"; cat shots/quality-fail.txt; exit 1
+          fi
           if [ -s shots/uitr-live-fail.txt ]; then
             echo "Dịch chữ giao diện (đọc thật trên máy giả lập) lỗi:"; cat shots/uitr-live-fail.txt; cat shots/uitr-live.txt; exit 1
           fi
