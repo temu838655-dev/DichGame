@@ -41,8 +41,11 @@ class UiOverlay(ctx: Context) : View(ctx) {
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
+    private var logDraw = false
+
     fun set(list: List<Draw>) {
         draws = list
+        logDraw = BuildConfig.DEBUG && list.isNotEmpty()
         invalidate()
     }
 
@@ -52,6 +55,7 @@ class UiOverlay(ctx: Context) : View(ctx) {
     private fun sp(v: Float) = v * dm.scaledDensity
 
     override fun onDraw(cv: Canvas) {
+        if (logDraw) { logDraw = false; Log.i("DG_UITR", "ve ${draws.size} khoi, khung ${width}x${height}, vi tri ${(parent as? ViewGroup)?.indexOfChild(this)}/${(parent as? ViewGroup)?.childCount}") }
         for (d in draws) drawOne(cv, d)
     }
 
@@ -126,7 +130,10 @@ class UiTranslate(
     val overlay = UiOverlay(act).also { ov ->
         // Khung hình đổi kích thước (xoay máy, phóng/thu): toạ độ bản dịch cũ không còn đúng → xoá, lượt quét sau vẽ lại
         ov.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, orr, ob ->
-            if (r - l != orr - ol || b - t != ob - ot) { items = emptyList(); ov.clear(); lastFine = null }
+            if (r - l != orr - ol || b - t != ob - ot) {
+                if (BuildConfig.DEBUG) Log.i(TAG, "khung doi kich thuoc ${orr - ol}x${ob - ot} -> ${r - l}x${b - t}, xoa lop phu cu")
+                items = emptyList(); ov.clear(); lastFine = null
+            }
         }
     }
     private val handler = Handler(Looper.getMainLooper())

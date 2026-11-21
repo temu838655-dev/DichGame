@@ -150,10 +150,13 @@ adb shell am force-stop "$PKG"
 # Lớp phủ dịch chữ giao diện (vẽ vài khối chữ giả lên hình đen: chỉ kiểm tra vẽ/bố cục/không văng, KHÔNG kiểm tra đọc chữ OCR)
 adb logcat -c
 adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo uitr >/dev/null 2>&1
-sleep 4; shot uitr-demo
-adb logcat -d -s DG_PLAY:I > "$OUT/uitr.txt" 2>&1
+sleep 4
+adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1  # tắt hộp thoại "launcher không phản hồi" của máy giả lập nếu có
+sleep 1; shot uitr-demo
+adb logcat -d -s DG_PLAY:I DG_UITR:I > "$OUT/uitr.txt" 2>&1
 cat "$OUT/uitr.txt"
 grep -q "lop-phu-giao-dien da ve" "$OUT/uitr.txt" || echo "Lớp phủ dịch giao diện: không vẽ được" >> "$OUT/uitr-fail.txt"
+grep -q "DG_UITR.*ve 5 khoi" "$OUT/uitr.txt" || echo "Lớp phủ dịch giao diện: đã đặt 5 khối nhưng View không vẽ (kích thước 0, bị xoá hoặc không hiện)" >> "$OUT/uitr-fail.txt"
 adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/uitr-fail.txt"
 [ -s "$OUT/uitr-fail.txt" ] || rm -f "$OUT/uitr-fail.txt"
 adb shell am force-stop "$PKG"
