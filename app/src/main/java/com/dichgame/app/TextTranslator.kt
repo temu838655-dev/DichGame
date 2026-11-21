@@ -111,12 +111,20 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      * (2) AI nếu đã bật, kèm thuật ngữ, thẻ nhân vật, người nói và chỉ dẫn cảm xúc; (3) dịch trên máy, vẫn ép đúng thuật ngữ.
      * Mọi bản dịch AI đều qua [TranslationGuard]: bị loại thì hỏi lại AI một lần với lời nhắc nghiêm hơn, vẫn hỏng thì dùng dịch trên máy.
      */
-    fun translateFull(text: String, speaker: String?, done: (Tr) -> Unit) {
+    fun translateFull(text: String, speaker: String?, done: (Tr) -> Unit) = translateFull(text, speaker, false, done)
+
+    /**
+     * [ui] = true: chữ giao diện game (menu, vật phẩm, kỹ năng...), không phải lời thoại: lời nhắc riêng, không ghi vào mạch thoại,
+     * không có người nói hay cảm xúc. Gói Việt hoá, bộ nhớ đệm, thuật ngữ và kiểm tra bản dịch vẫn áp dụng như cũ.
+     */
+    fun translateFull(text: String, speaker: String?, ui: Boolean, done: (Tr) -> Unit) {
         val st = SessionStats.live
-        val key = (speaker?.lowercase() ?: "") + "|" + OcrGuard.key(text)
-        val hist = history.takeLast(p.ctxCount)
-        history.add(if (speaker != null) "$speaker: $text" else text)
-        while (history.size > 10) history.removeAt(0)
+        val key = (if (ui) "ui|" else "") + (speaker?.lowercase() ?: "") + "|" + OcrGuard.key(text)
+        val hist = if (ui) emptyList() else history.takeLast(p.ctxCount)
+        if (!ui) {
+            history.add(if (speaker != null) "$speaker: $text" else text)
+            while (history.size > 10) history.removeAt(0)
+        }
         // gói Việt hoá (file đã nhập, bản người dùng sửa) đứng trước mọi thứ, kể cả bộ nhớ đệm: bản vừa sửa phải có hiệu lực ngay
         PackStore.memory(ctx, p).lookupEx(text)?.let { h ->
             st.inc("dich_goi"); if (h.fuzzy) st.inc("dich_goi_gan")
@@ -126,18 +134,18 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         val terms = PackStore.terms(p)
         val cast = PackStore.cast(p)
         val names = guardNames(terms, cast)
-        val pace = (Cast.byName(speaker, cast) ?: Cast.speakerOf(text, cast))?.pace
+        val pace = if (ui) null else (Cast.byName(speaker, cast) ?: Cast.speakerOf(text, cast))?.pace
         fun finish(t: Tr) {
             if (t.uncertain) st.inc("dich_nghi") else cache[key] = t
             done(t)
         }
         if (!Ai.enabled(p)) { translateLocal(text, names, pace, ::finish); return }
-        val emo = p.emoTr
+        val emo = p.emoTr && !ui
         Thread {
             var chosen: Tr? = null
             var strict: String? = null
             for (attempt in 0..1) {
-                val prompt = Ai.prompt(p, srcName(), p.game, hist, text, terms, cast, emo, speaker, strict)
+                val prompt = Ai.prompt(p, srcName(), p.game, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui)
                 var raw: String? = null
                 try {
                     raw = Ai.translate(p, prompt)

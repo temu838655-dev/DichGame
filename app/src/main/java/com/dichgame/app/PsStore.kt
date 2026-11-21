@@ -49,6 +49,8 @@ object PsStore {
     private const val K_RATE = "rate"
     private const val K_ASK = "noask"
     private const val K_ORIENT = "orient"
+    private const val K_FPS = "fps"
+    private const val K_CODEC = "codec"
     private const val KEY_ALIAS = "dichgame.remoteplay.storage"
     private const val ENVELOPE_VERSION = 1
     private const val GCM_TAG_BITS = 128
@@ -289,9 +291,27 @@ object PsStore {
         else -> VideoResolutionPreset.RES_720P
     }
 
+    /** 30 hoặc 60 FPS (mặc định 60). Engine không có mức cao hơn. */
+    fun fps(ctx: Context): Int = StreamPolicy.fps(ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(K_FPS, 60))
+    fun setFps(ctx: Context, v: Int) {
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putInt(K_FPS, StreamPolicy.fps(v)).apply()
+    }
+
+    /** 0 = H.264 (mặc định, ổn định nhất), 1 = H.265 (nét hơn khi cùng bitrate, chỉ PS5 và máy có bộ giải mã HEVC phần cứng). */
+    fun codec(ctx: Context): Int = StreamPolicy.codec(ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(K_CODEC, 0))
+    fun setCodec(ctx: Context, v: Int) {
+        ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putInt(K_CODEC, StreamPolicy.codec(v)).apply()
+    }
+
+    /** Mức độ phân giải thật sự dùng (1..4): lựa chọn "Tự động" được đổi thành 1080p hoặc 720p theo khả năng của máy. */
+    fun effectiveRes(ctx: Context): Int =
+        StreamPolicy.resolveRes(res(ctx), DecoderCaps.avc1080p60, DecoderCaps.displayLongEdge(ctx))
+
     fun profile(ctx: Context): ConnectVideoProfile {
-        val preset = resolutionPreset(res(ctx))
-        val base = ConnectVideoProfile.preset(preset, VideoFPSPreset.FPS_60, Codec.CODEC_H264)
+        val preset = resolutionPreset(effectiveRes(ctx))
+        val fps = if (fps(ctx) == 30) VideoFPSPreset.FPS_30 else VideoFPSPreset.FPS_60
+        val codec = if (codec(ctx) == StreamPolicy.CODEC_H265) Codec.CODEC_H265 else Codec.CODEC_H264
+        val base = ConnectVideoProfile.preset(preset, fps, codec)
         val bitrate = bitrateKbps(rate(ctx))
         return if (bitrate > 0) base.copy(bitrate = bitrate) else base
     }

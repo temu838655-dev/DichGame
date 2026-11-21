@@ -13,7 +13,7 @@ import android.view.View
  * [color] là màu nét, [knock] là màu nền để khoét chữ trên biểu tượng dịch.
  */
 class ToolIcon(c: Context, var kind: Kind, var color: Int, private val knock: Int = 0) : View(c) {
-    enum class Kind { TRANSLATE, SCAN, CC, CROP, TEXT_SIZE, SPEAKER_ON, SPEAKER_OFF, PAUSE, PLAY, SEARCH, GEAR, SUBS, DIAL, ZOOM, ROTATE, HELP, CLOSE, GAMEPAD, HOME, CHEVRON, BACK }
+    enum class Kind { TRANSLATE, SCAN, CC, CROP, TEXT_SIZE, SPEAKER_ON, SPEAKER_OFF, PAUSE, PLAY, SEARCH, GEAR, SUBS, DIAL, ZOOM, ROTATE, HELP, CLOSE, GAMEPAD, HOME, CHEVRON, BACK, UI_TEXT }
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
@@ -129,6 +129,21 @@ class ToolIcon(c: Context, var kind: Kind, var color: Int, private val knock: In
                 cv.drawLine(s * 0.22f, s * 0.46f, s * 0.50f, s * 0.46f, p)
                 cv.drawLine(s * 0.60f, s * 0.46f, s * 0.78f, s * 0.46f, p)
                 cv.drawLine(s * 0.22f, s * 0.64f, s * 0.64f, s * 0.64f, p)
+            }
+            Kind.UI_TEXT -> {
+                // cửa sổ menu của game: thanh tiêu đề + hai dòng danh sách (ô vuông nhỏ + chữ)
+                r.set(s * 0.08f, s * 0.12f, s * 0.92f, s * 0.88f)
+                cv.drawRoundRect(r, s * 0.12f, s * 0.12f, p)
+                cv.drawLine(s * 0.08f, s * 0.36f, s * 0.92f, s * 0.36f, p)
+                cv.drawLine(s * 0.24f, s * 0.24f, s * 0.58f, s * 0.24f, p)
+                p.style = Paint.Style.FILL
+                r.set(s * 0.22f, s * 0.50f, s * 0.32f, s * 0.60f)
+                cv.drawRect(r, p)
+                r.set(s * 0.22f, s * 0.68f, s * 0.32f, s * 0.78f)
+                cv.drawRect(r, p)
+                p.style = Paint.Style.STROKE
+                cv.drawLine(s * 0.42f, s * 0.55f, s * 0.78f, s * 0.55f, p)
+                cv.drawLine(s * 0.42f, s * 0.73f, s * 0.70f, s * 0.73f, p)
             }
             Kind.DIAL -> {
                 r.set(s * 0.08f, s * 0.18f, s * 0.92f, s * 1.02f)

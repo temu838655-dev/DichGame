@@ -83,9 +83,15 @@ jobs:
           if [ -s shots/live-fail.txt ]; then
             echo "Dịch phụ đề trong màn chơi lỗi:"; cat shots/live-fail.txt; cat shots/live.txt; exit 1
           fi
+          if [ -s shots/uitr-live-fail.txt ]; then
+            echo "Dịch chữ giao diện (đọc thật trên máy giả lập) lỗi:"; cat shots/uitr-live-fail.txt; cat shots/uitr-live.txt; exit 1
+          fi
           if [ -s shots/play-fail.txt ]; then
             echo "Màn chơi (xem thử) bị lỗi:"; cat shots/play-fail.txt; exit 1
           fi
           if [ -s shots/spin-fail.txt ]; then
             echo "Xoay màn hình trong màn chơi bị lỗi:"; cat shots/spin-fail.txt; cat shots/spin.txt; exit 1
+          fi
+          if [ -s shots/uitr-fail.txt ]; then
+            echo "Lớp phủ dịch giao diện bị lỗi:"; cat shots/uitr-fail.txt; cat shots/uitr.txt; exit 1
           fi

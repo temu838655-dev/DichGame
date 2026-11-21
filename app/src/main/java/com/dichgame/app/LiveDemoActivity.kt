@@ -21,6 +21,9 @@ import android.widget.FrameLayout
 class LiveDemoActivity : Activity(), SurfaceHolder.Callback {
     private var sv: SurfaceView? = null
     private var live: LiveSubs? = null
+    // mode=ui: thử dịch chữ giao diện (menu game) thay vì phụ đề
+    private var uiMode = false
+    private var uiTr: UiTranslate? = null
     private val ui = Handler(Looper.getMainLooper())
     private val redraw = object : Runnable {
         override fun run() {
@@ -44,10 +47,39 @@ class LiveDemoActivity : Activity(), SurfaceHolder.Callback {
         root.addView(vid, FrameLayout.LayoutParams(MATCH_PARENT, h, Gravity.CENTER))
         setContentView(root)
         Prefs(this).lang = "en"
+        uiMode = intent.getStringExtra("mode") == "ui"
+        if (uiMode) {
+            val u = UiTranslate(this, { sv }, { null })
+            uiTr = u
+            u.attach(vid)
+            ui.postDelayed({ u.start() }, 1500)
+            return
+        }
         val l = LiveSubs(this) { sv }
         live = l
         l.attach(vid)
         ui.postDelayed({ l.start() }, 1500)
+    }
+
+    /** Màn menu giả như trong game: tiêu đề, mục, mô tả (phải dịch) và chỉ số viết tắt, mã ID (phải bỏ qua). */
+    private fun drawMenu(c: android.graphics.Canvas) {
+        c.drawColor(Color.rgb(24, 30, 44))
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            typeface = Typeface.DEFAULT_BOLD
+            textAlign = Paint.Align.LEFT
+        }
+        val w = c.width.toFloat()
+        val h = c.height.toFloat()
+        p.textSize = h * 0.09f
+        c.drawText("Inventory", w * 0.06f, h * 0.15f, p)
+        c.drawText("Skill Tree", w * 0.06f, h * 0.33f, p)
+        c.drawText("Iron Sword", w * 0.06f, h * 0.51f, p)
+        c.drawText("Health Potion", w * 0.06f, h * 0.69f, p)
+        p.textSize = h * 0.075f
+        c.drawText("ATK 42", w * 0.62f, h * 0.33f, p)
+        c.drawText("ID4521", w * 0.62f, h * 0.60f, p)
+        c.drawText("Open the map", w * 0.06f, h * 0.88f, p)
     }
 
     private fun draw() {
@@ -57,6 +89,7 @@ class LiveDemoActivity : Activity(), SurfaceHolder.Callback {
         try {
             val c = holder.lockCanvas() ?: return
             try {
+                if (uiMode) { drawMenu(c); return }
                 c.drawColor(Color.rgb(24, 30, 44))
                 val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = Color.WHITE
@@ -80,6 +113,7 @@ class LiveDemoActivity : Activity(), SurfaceHolder.Callback {
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)
         runCatching { live?.release() }
+        runCatching { uiTr?.release() }
         super.onDestroy()
     }
 }

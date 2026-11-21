@@ -22,8 +22,9 @@ object Ai {
     fun prompt(
         p: Prefs, srcName: String, game: String, history: List<String>, text: String,
         terms: TermMap? = null, cast: List<Character> = emptyList(), emo: Boolean = false, speaker: String? = null,
-        strict: String? = null,
+        strict: String? = null, ui: Boolean = false,
     ): String =
+        if (ui) uiPrompt(p, srcName, game, text, terms, strict) else
         "Bạn dịch phụ đề game từ $srcName sang tiếng Việt." +
             (if (game.isNotEmpty()) " Game / phong cách: $game." else "") +
             " " + p.styleText() +
@@ -36,6 +37,17 @@ object Ai {
             (if (history.isNotEmpty()) "\nCác câu trước (chỉ để hiểu mạch truyện, không dịch lại):\n" + history.joinToString("\n") else "") +
             "\nCần dịch: $text" +
             (if (strict != null) "\nLƯU Ý NGHIÊM: bản dịch trước bị loại vì $strict. Chỉ trả về đúng một bản dịch tiếng Việt của câu cần dịch: không giải thích, không thêm hay bớt ý, giữ nguyên số và tên riêng." else "")
+
+    /** Lời nhắc cho chữ giao diện (menu, vật phẩm, kỹ năng, nhiệm vụ...): ngắn gọn, đúng thuật ngữ, giữ nguyên mã và số liệu. */
+    private fun uiPrompt(p: Prefs, srcName: String, game: String, text: String, terms: TermMap?, strict: String?): String =
+        "Bạn Việt hoá chữ trong giao diện game từ $srcName sang tiếng Việt (menu, cài đặt, vật phẩm, trang bị, kỹ năng, nhiệm vụ, mục tiêu, thông báo, hướng dẫn, mô tả)." +
+            (if (game.isNotEmpty()) " Game: $game." else "") +
+            glossaryLine(terms, p, text) +
+            " Tên vật phẩm, kỹ năng, chiêu thức: ngắn gọn, dễ hiểu, đúng phong cách game. Mô tả: rõ ràng, giữ đúng ý và cơ chế gameplay, không dịch từng chữ máy móc." +
+            " Giữ nguyên các mã dạng ⟦số⟧ (đúng vị trí tương ứng), các con số, đơn vị, ký hiệu, chữ viết tắt chỉ số (HP, MP, ATK, XP...), tên riêng và tên thương hiệu." +
+            " Không thêm giải thích. Chỉ trả về bản dịch." +
+            "\nCần dịch: $text" +
+            (if (strict != null) "\nLƯU Ý NGHIÊM: bản dịch trước bị loại vì $strict. Chỉ trả về đúng một bản dịch tiếng Việt, giữ nguyên các mã ⟦số⟧, số và tên riêng." else "")
 
     private fun glossaryLine(terms: TermMap?, p: Prefs, text: String): String {
         val list = terms?.relevant(text, 30)

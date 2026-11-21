@@ -87,6 +87,25 @@ grep -q "DG_LIVE.*doc: " "$OUT/live.txt" || echo "Dịch trong màn chơi: khôn
 grep -q "DG_LIVE.*dich: " "$OUT/live.txt" || echo "Dịch trong màn chơi: không ra bản dịch" >> "$OUT/live-fail.txt"
 adb shell am force-stop "$PKG"
 
+# Dịch chữ giao diện game, thử thật: SurfaceView vẽ menu tiếng Anh -> PixelCopy -> OCR -> lọc (bỏ ID/chỉ số) -> dịch (nhật ký DG_UITR)
+adb logcat -c
+adb shell am start -W -n "$PKG/.LiveDemoActivity" --es mode ui >/dev/null 2>&1
+for i in $(seq 1 60); do
+  sleep 5
+  adb logcat -d -s DG_UITR:I > "$OUT/uitr-live.txt" 2>&1
+  grep -q "DG_UITR.*dich: " "$OUT/uitr-live.txt" && break
+done
+sleep 4
+adb logcat -d -s DG_UITR:I > "$OUT/uitr-live.txt" 2>&1
+shot uitr-live
+cat "$OUT/uitr-live.txt"
+grep -q "DG_UITR.*dich: " "$OUT/uitr-live.txt" || echo "Dịch giao diện: không ra bản dịch nào cho menu thử" >> "$OUT/uitr-live-fail.txt"
+grep -q "DG_UITR.*dich: ID4521" "$OUT/uitr-live.txt" && echo "Dịch giao diện: mã ID bị đem đi dịch" >> "$OUT/uitr-live-fail.txt"
+grep -q "DG_UITR.*dich: ATK 42" "$OUT/uitr-live.txt" && echo "Dịch giao diện: chỉ số viết tắt bị đem đi dịch" >> "$OUT/uitr-live-fail.txt"
+adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/uitr-live-fail.txt"
+[ -s "$OUT/uitr-live-fail.txt" ] || rm -f "$OUT/uitr-live-fail.txt"
+adb shell am force-stop "$PKG"
+
 # Màn chơi Remote Play (xem thử, không kết nối máy thật): thẻ "Đang tìm máy…", thanh công cụ 9 nút, khung OCR hiện rồi ẩn đi, ngang
 adb logcat -c
 adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo adjust >/dev/null 2>&1
@@ -126,6 +145,17 @@ echo "spin: activity tao=$tao huy=$huy; xoay=$xoay; surface tao=$sv_tao huy=$sv_
 [ "$sv_tao" = "1" ] || echo "Xoay màn hình: surface video bị tạo $sv_tao lần (phải đúng 1)" >> "$OUT/spin-fail.txt"
 adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/spin-fail.txt"
 [ -s "$OUT/spin-fail.txt" ] || rm -f "$OUT/spin-fail.txt"
+adb shell am force-stop "$PKG"
+
+# Lớp phủ dịch chữ giao diện (vẽ vài khối chữ giả lên hình đen: chỉ kiểm tra vẽ/bố cục/không văng, KHÔNG kiểm tra đọc chữ OCR)
+adb logcat -c
+adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo uitr >/dev/null 2>&1
+sleep 4; shot uitr-demo
+adb logcat -d -s DG_PLAY:I > "$OUT/uitr.txt" 2>&1
+cat "$OUT/uitr.txt"
+grep -q "lop-phu-giao-dien da ve" "$OUT/uitr.txt" || echo "Lớp phủ dịch giao diện: không vẽ được" >> "$OUT/uitr-fail.txt"
+adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/uitr-fail.txt"
+[ -s "$OUT/uitr-fail.txt" ] || rm -f "$OUT/uitr-fail.txt"
 adb shell am force-stop "$PKG"
 
 # Kho game Việt hoá: lọc theo nền tảng và bảng chi tiết một game (extra chỉ có ở bản debug)

@@ -326,16 +326,9 @@ object PsQuality {
     // Thêm mức 2–3 Mbps để ưu tiên giữ hình khi đường truyền rất yếu.
     private val RATES = listOf(0, 2, 3, 5, 8, 10, 15, 20, 30)
 
-    fun summary(a: Activity): String {
-        val r = when (PsStore.res(a)) {
-            2 -> "1080p"
-            3 -> "540p"
-            4 -> "360p"
-            else -> "720p"
-        }
-        val m = PsStore.rate(a)
-        return r + " · " + if (m == 0) "tự động" else "$m Mbps"
-    }
+    /** Cấu hình đang yêu cầu máy chơi game (engine có thể tự hạ, ví dụ PS4 thường không chạy 1080p). */
+    fun summary(a: Activity): String =
+        StreamPolicy.summary(PsStore.effectiveRes(a), PsStore.fps(a), PsStore.codec(a), PsStore.rate(a))
 
     /** [play] khác null thì có nút "Chơi" (và công tắc không hỏi lại); null thì chỉ lưu cài đặt. [onChanged] gọi khi bấm nút cuối. */
     fun sheet(a: Activity, play: (() -> Unit)?, onChanged: () -> Unit) {
@@ -349,13 +342,15 @@ object PsQuality {
             fun drawRes() {
                 h1.removeAllViews()
                 // Thứ tự giữ nguyên ba lựa chọn cũ; 540p/360p dùng các chỉ số mới để không đổi cài đặt đã lưu.
-                h1.addView(Ui.segmented(a, listOf("Tự động · 720p", "720p", "1080p", "540p", "360p"), PsStore.res(a)) { PsStore.setRes(a, it); drawRes() })
+                h1.addView(Ui.segmented(a, listOf("Tự động", "720p", "1080p", "540p", "360p"), PsStore.res(a)) { PsStore.setRes(a, it); drawRes() })
                 desc1.text = when (PsStore.res(a)) {
-                    2 -> "1080p: hình nét nhất trong các mức hiện có, cần mạng ổn định và thiết bị giải mã tốt."
+                    2 -> "1080p: hình nét nhất trong các mức hiện có, cần mạng ổn định và thiết bị giải mã tốt." +
+                        (if (DecoderCaps.avc1080p60) "" else " Máy này không báo giải mã phần cứng 1080p 60 FPS, có thể giật; thử 720p nếu vậy.") +
+                        " PS4 thường chỉ chạy tới 720p nên engine tự hạ xuống."
                     3 -> "540p: giảm đáng kể lượng dữ liệu hình, phù hợp khi mạng yếu hoặc độ trễ dao động."
                     4 -> "360p: ưu tiên khả năng duy trì luồng trên mạng rất yếu; hình sẽ ít chi tiết hơn."
                     1 -> "720p: cân bằng độ nét và tải mạng, phù hợp với đa số thiết bị."
-                    else -> "Tự động hiện dùng profile 720p mặc định; chưa tự đổi độ phân giải theo tốc độ mạng."
+                    else -> "Tự động: chọn ${StreamPolicy.height(PsStore.effectiveRes(a))}p cho máy này (1080p khi máy giải mã được 1080p 60 FPS bằng phần cứng và màn hình đủ lớn, không thì 720p). Chưa tự đổi độ phân giải theo tốc độ mạng giữa chừng; mạng yếu thì chọn tay mức thấp hơn."
                 }
             }
             drawRes()
@@ -380,6 +375,36 @@ object PsQuality {
             c2.addView(h2, Ui.lpm(a, 8, 0))
             c2.addView(desc2, Ui.lpm(a, 8, 0))
             addView(c2, Ui.lpm(a, 12, 0))
+
+            val c4 = Ui.card(a)
+            c4.addView(Ui.tv(a, "Tốc độ khung hình", 16f, Ui.TEXT, true))
+            val h4 = Ui.vbox(a)
+            fun drawFps() {
+                h4.removeAllViews()
+                h4.addView(Ui.segmented(a, listOf("30 FPS", "60 FPS"), if (PsStore.fps(a) == 30) 0 else 1) { PsStore.setFps(a, if (it == 0) 30 else 60); drawFps() })
+            }
+            drawFps()
+            c4.addView(h4, Ui.lpm(a, 8, 0))
+            c4.addView(Ui.tv(a, "60 FPS mượt hơn (mặc định). 30 FPS giảm tải mạng và máy. Engine Remote Play không có mức cao hơn 60 FPS.", 12.5f, Ui.SUB), Ui.lpm(a, 8, 0))
+            addView(c4, Ui.lpm(a, 12, 0))
+
+            val c5 = Ui.card(a)
+            c5.addView(Ui.tv(a, "Chuẩn nén hình", 16f, Ui.TEXT, true))
+            val h5 = Ui.vbox(a)
+            val desc5 = Ui.tv(a, "", 12.5f, Ui.SUB)
+            fun drawCodec() {
+                h5.removeAllViews()
+                h5.addView(Ui.segmented(a, listOf("H.264", "H.265 (HEVC)"), PsStore.codec(a)) { PsStore.setCodec(a, it); drawCodec() })
+                desc5.text = if (PsStore.codec(a) == StreamPolicy.CODEC_H265)
+                    "H.265: ít vỡ hạt, giữ chi tiết tốt hơn khi cùng bitrate. Chỉ PS5 hỗ trợ (PS4 tự dùng H.264)." +
+                        (if (DecoderCaps.hevc1080p60) "" else " Máy này không báo có bộ giải mã HEVC phần cứng 1080p, nên dùng H.264.") +
+                        " Chưa thử trên mọi máy: nếu hình đen hoặc lỗi, quay lại H.264."
+                else "H.264: ổn định nhất, chạy trên mọi máy (mặc định)."
+            }
+            drawCodec()
+            c5.addView(h5, Ui.lpm(a, 8, 0))
+            c5.addView(desc5, Ui.lpm(a, 8, 0))
+            addView(c5, Ui.lpm(a, 12, 0))
 
             val c3 = Ui.card(a)
             c3.addView(Ui.tv(a, "Hướng màn hình khi chơi", 16f, Ui.TEXT, true))
