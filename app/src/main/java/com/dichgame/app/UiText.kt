@@ -46,6 +46,20 @@ object UiText {
         return Verdict.TRANSLATE
     }
 
+    /**
+     * Nhãn kiểu menu (nút, mục menu, tên vật phẩm/kỹ năng): ngắn, một hai dòng, không phải câu có dấu chấm câu cuối.
+     * Dùng cho nút "Dịch menu": câu dài, mô tả, lời thoại để cho "Dịch hết chữ". [lineCount] là số dòng chữ OCR của khối.
+     */
+    fun isMenuLabel(src: String, lineCount: Int, cjk: Boolean): Boolean {
+        val t = src.trim()
+        if (t.isEmpty() || lineCount > 2) return false
+        if (t.last() in ".!?…。！？") return false
+        val letters = t.count { it.isLetter() }
+        if (cjk) return letters <= 12
+        val words = Regex("\\p{L}+").findAll(t).count()
+        return words <= 4 && t.length <= 32
+    }
+
     /** "itemSword", "UIButton": chữ thường rồi chữ hoa liền nhau giữa một từ không có khoảng trắng là tên biến, không phải câu chữ. */
     private fun hasInnerCamel(t: String): Boolean {
         for (i in 1 until t.length) if (t[i - 1].isLowerCase() && t[i].isUpperCase()) return true

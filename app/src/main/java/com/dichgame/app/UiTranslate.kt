@@ -138,6 +138,22 @@ class UiTranslate(
     }
     private val handler = Handler(Looper.getMainLooper())
 
+    /** MENU: chỉ nhãn ngắn (nút, mục menu, tên vật phẩm). ALL: cả câu dài, mô tả, nhiệm vụ. */
+    enum class Scope { MENU, ALL }
+
+    @Volatile var scope = Scope.ALL
+        private set
+
+    /** Đổi phạm vi khi đang chạy: xoá lớp phủ cũ và đọc lại ngay lượt quét sau. */
+    fun setScope(s: Scope) {
+        if (scope == s) return
+        scope = s
+        items = emptyList()
+        overlay.clear()
+        lastFine = null
+        skipRun = 0
+    }
+
     var running = false
         private set
     private var ready = false
@@ -329,6 +345,10 @@ class UiTranslate(
             val vd = UiText.verdict(src, b.conf)
             if (vd != UiText.Verdict.TRANSLATE) {
                 if (BuildConfig.DEBUG) Log.i(TAG, "bo qua $vd: ${src.take(60)}")
+                continue
+            }
+            if (scope == Scope.MENU && !UiText.isMenuLabel(src, b.text.split('\n').count { it.isNotBlank() }, cjk)) {
+                if (BuildConfig.DEBUG) Log.i(TAG, "bo qua (khong phai nhan menu): ${src.take(60)}")
                 continue
             }
             if (ex != null) {

@@ -1,6 +1,7 @@
 package com.dichgame.app
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -77,5 +78,21 @@ class UiTextTest {
         assertEquals("Increases attack by 10% for 30 seconds.", UiText.joinLines("Increases attack by\n10% for 30\nseconds.", false))
         assertEquals("super-powered strike", UiText.joinLines("super-\npowered strike", false).replace("superpowered", "super-powered"))
         assertEquals("攻撃力が上がる", UiText.joinLines("攻撃力が\n上がる", true))
+    }
+
+    @Test fun menuLabelsAreShortLinesNotSentences() {
+        for (s in listOf("Inventory", "Skill Tree", "New Game", "Iron Sword", "Save and Quit", "Options"))
+            assertTrue(s, UiText.isMenuLabel(s, 1, false))
+        assertTrue(UiText.isMenuLabel("Skill\nTree", 2, false))
+        assertTrue(UiText.isMenuLabel("ニューゲーム", 1, true))
+    }
+
+    @Test fun sentencesAndDescriptionsAreNotMenuLabels() {
+        assertFalse(UiText.isMenuLabel("Increases attack by 10%.", 1, false))
+        assertFalse(UiText.isMenuLabel("Find the blacksmith in the northern village", 1, false))
+        assertFalse(UiText.isMenuLabel("Do you want to save?", 1, false))
+        assertFalse(UiText.isMenuLabel("Restores a small amount\nof health over time\nwhen used", 3, false))
+        assertFalse(UiText.isMenuLabel("攻撃力が10秒間上がる効果がある", 1, true))
+        assertFalse(UiText.isMenuLabel("", 1, false))
     }
 }

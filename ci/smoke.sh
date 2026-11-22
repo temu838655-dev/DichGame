@@ -158,6 +158,40 @@ adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OU
 [ -s "$OUT/adjust-fail.txt" ] || rm -f "$OUT/adjust-fail.txt"
 adb shell am force-stop "$PKG"
 
+# Thanh công cụ tự thu gọn (ngang rồi dọc): bấm Dịch menu → tự thu lại → nút nhỏ gọi lại → để yên tự thu lại → bấm Dịch hết chữ
+# (bấm đúng các nút thật; kết luận dựa vào nhật ký DG_PLAY, ảnh chụp để mắt người xem)
+for m in tools toolsp; do
+  adb logcat -c
+  adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo "$m" >/dev/null 2>&1
+  t0=$(date +%s.%N)
+  wait_until() { while awk -v a="$(date +%s.%N)" -v b="$t0" -v t="$1" 'BEGIN{exit !(a-b<t)}'; do sleep 0.25; done; }
+  wait_until 1.5; adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; shot "$m-1-mo"
+  wait_until 4.5; shot "$m-2-vua-bam"
+  wait_until 9; shot "$m-3-da-thu-gon"
+  wait_until 14.5; shot "$m-4-goi-lai"
+  wait_until 21; shot "$m-5-de-yen-tu-thu"
+  wait_until 31
+  adb logcat -d -s DG_PLAY:I > "$OUT/$m.txt" 2>&1
+  cat "$OUT/$m.txt"
+  f="$OUT/$m-fail.txt"
+  grep -q "tools ban-dau mo=true" "$OUT/$m.txt" || echo "Thanh công cụ ($m): lúc đầu không mở" >> "$f"
+  grep -q "bam dich-menu chay=true pham-vi=MENU" "$OUT/$m.txt" || echo "Thanh công cụ ($m): bấm Dịch menu không bật dịch ở phạm vi menu" >> "$f"
+  grep -q "tools sau-dich-menu mo=false" "$OUT/$m.txt" || echo "Thanh công cụ ($m): bấm Dịch menu xong mà thanh không tự thu gọn" >> "$f"
+  grep -q "tools goi-lai mo=true" "$OUT/$m.txt" || echo "Thanh công cụ ($m): chạm nút gọi lại mà thanh không mở" >> "$f"
+  grep -q "tools de-yen mo=false" "$OUT/$m.txt" || echo "Thanh công cụ ($m): để yên mà thanh không tự thu gọn" >> "$f"
+  grep -q "bam dich-het-chu chay=true pham-vi=ALL" "$OUT/$m.txt" || echo "Thanh công cụ ($m): bấm Dịch hết chữ không đổi sang phạm vi hết chữ" >> "$f"
+  grep -q "tools cuoi mo=false" "$OUT/$m.txt" || echo "Thanh công cụ ($m): bấm Dịch hết chữ xong mà thanh không tự thu gọn" >> "$f"
+  if [ "$m" = tools ]; then
+    grep -q "tools sau-dich-menu .*land=true tay-nho=true hang-tren=false" "$OUT/$m.txt" || echo "Thanh công cụ ngang: thu gọn mà không còn đúng nút nhỏ hoặc hàng trên chưa ẩn" >> "$f"
+  else
+    grep -q "tools sau-dich-menu .*land=false tay-nho=false hang-tren=true" "$OUT/$m.txt" || echo "Thanh công cụ dọc: hàng trên phải luôn hiện, nút nhỏ chỉ dùng khi ngang" >> "$f"
+  fi
+  adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$f"
+  [ -s "$f" ] || rm -f "$f"
+  adb shell am force-stop "$PKG"
+done
+adb shell settings put system user_rotation 0 >/dev/null 2>&1
+
 # Bảng Cài đặt trong màn chơi (Dịch/Thuyết minh, giọng đọc, chất lượng hình): chụp đầu bảng rồi cuộn xuống
 adb logcat -c
 adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo settings >/dev/null 2>&1

@@ -13,7 +13,7 @@ import android.view.View
  * [color] là màu nét, [knock] là màu nền để khoét chữ trên biểu tượng dịch.
  */
 class ToolIcon(c: Context, var kind: Kind, var color: Int, private val knock: Int = 0) : View(c) {
-    enum class Kind { TRANSLATE, SCAN, CC, CROP, TEXT_SIZE, SPEAKER_ON, SPEAKER_OFF, PAUSE, PLAY, SEARCH, GEAR, SUBS, DIAL, ZOOM, ROTATE, HELP, CLOSE, GAMEPAD, HOME, CHEVRON, BACK, UI_TEXT }
+    enum class Kind { TRANSLATE, SCAN, CC, CROP, TEXT_SIZE, SPEAKER_ON, SPEAKER_OFF, PAUSE, PLAY, SEARCH, GEAR, SUBS, DIAL, ZOOM, ROTATE, HELP, CLOSE, GAMEPAD, HOME, CHEVRON, BACK, UI_TEXT, BOLT, GRIP }
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
@@ -144,6 +144,23 @@ class ToolIcon(c: Context, var kind: Kind, var color: Int, private val knock: In
                 p.style = Paint.Style.STROKE
                 cv.drawLine(s * 0.42f, s * 0.55f, s * 0.78f, s * 0.55f, p)
                 cv.drawLine(s * 0.42f, s * 0.73f, s * 0.70f, s * 0.73f, p)
+            }
+            Kind.BOLT -> {
+                // tia chớp tô đặc: nút "Dịch menu"
+                p.style = Paint.Style.FILL
+                path.reset()
+                path.moveTo(s * 0.60f, s * 0.04f); path.lineTo(s * 0.20f, s * 0.56f); path.lineTo(s * 0.46f, s * 0.56f)
+                path.lineTo(s * 0.38f, s * 0.96f); path.lineTo(s * 0.80f, s * 0.40f); path.lineTo(s * 0.54f, s * 0.40f); path.close()
+                cv.drawPath(path, p)
+                p.style = Paint.Style.STROKE
+            }
+            Kind.GRIP -> {
+                // nút nhỏ gọi lại thanh công cụ: ba chấm ngang
+                p.style = Paint.Style.FILL
+                cv.drawCircle(s * 0.22f, s * 0.5f, s * 0.07f, p)
+                cv.drawCircle(s * 0.50f, s * 0.5f, s * 0.07f, p)
+                cv.drawCircle(s * 0.78f, s * 0.5f, s * 0.07f, p)
+                p.style = Paint.Style.STROKE
             }
             Kind.DIAL -> {
                 r.set(s * 0.08f, s * 0.18f, s * 0.92f, s * 1.02f)
