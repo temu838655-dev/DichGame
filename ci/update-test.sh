@@ -148,7 +148,7 @@ PY
   phone) run_case phone com.dichgame.app .MainActivity dist/old.apk ;;
   tv)    run_case tv com.dichgame.tv .TvActivity dist/tv-old.apk ;;
   finish)
-    A logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 > "$OUT/crash.txt"
+    A logcat -d 2>&1 | grep -E "FATAL EXCEPTION" -A8 | head -30 > "$OUT/crash.txt"
     A logcat -d 2>&1 | tail -250 > "$OUT/final-logcat.txt"
     kill "$(cat "$OUT/server.pid")" 2>/dev/null || true
     pkill -f "http.server $PORT" 2>/dev/null || true
