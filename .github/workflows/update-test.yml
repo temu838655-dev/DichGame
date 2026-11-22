@@ -61,10 +61,14 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
+          # hai app debug nặng ~150 MB, cài đè nhiều lần: cho máy giả lập thêm RAM và ổ đĩa để khỏi bị tắt giữa chừng
+          ram-size: 3072M
+          heap-size: 576M
+          disk-size: 8000M
           script: |
             bash ci/update-test.sh setup
-            timeout 600 bash ci/update-test.sh phone || echo "[phone] quá thời gian hoặc bị kẹt" >> shots-update/update-fail.txt
-            timeout 600 bash ci/update-test.sh tv || echo "[tv] quá thời gian hoặc bị kẹt" >> shots-update/update-fail.txt
+            timeout 420 bash ci/update-test.sh phone || echo "[phone] quá thời gian hoặc bị kẹt" >> shots-update/update-fail.txt
+            timeout 420 bash ci/update-test.sh tv || echo "[tv] quá thời gian hoặc bị kẹt" >> shots-update/update-fail.txt
             timeout 240 bash ci/update-test.sh real || echo "[real] quá thời gian hoặc bị kẹt" >> shots-update/update-fail.txt
             bash ci/update-test.sh finish
 
