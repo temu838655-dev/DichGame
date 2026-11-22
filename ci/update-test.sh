@@ -147,6 +147,26 @@ PY
     ;;
   phone) run_case phone com.dichgame.app .MainActivity dist/old.apk ;;
   tv)    run_case tv com.dichgame.tv .TvActivity dist/tv-old.apk ;;
+  real)
+    # Hỏi GitHub thật (không dùng máy chủ giả): bản cũ (số bản dựng 1) phải thấy bản phát hành mới nhất, qua HTTPS, đọc được dung lượng file.
+    echo "[real] bắt đầu $(date +%T)" >> "$OUT/update-log.txt"
+    A uninstall com.dichgame.app >/dev/null 2>&1
+    A install -r dist/old.apk >/dev/null 2>&1 || { fail "[real] cài bản cũ thất bại"; exit 0; }
+    A shell pm grant com.dichgame.app android.permission.POST_NOTIFICATIONS 2>/dev/null || true
+    A logcat -c
+    A shell am start -n com.dichgame.app/.MainActivity >/dev/null 2>&1
+    sleep 4; closedlg
+    if wait_log "co-ban-moi build=[0-9]+ size=[1-9]" 60; then
+      sleep 2; closedlg; shot update-real-1-found
+      A logcat -d -s DG_UPD:I | grep "co-ban-moi" | head -1 >> "$OUT/update-log.txt"
+      # máy giả lập là x86 còn APK trên GitHub chỉ có arm64: app phải nói rõ thay vì tải về file không cài được
+      has_text "không phải chip arm64" || fail "[real] máy x86 mà không thấy lời báo 'không phải chip arm64'"
+    else
+      fail "[real] hỏi GitHub thật mà không thấy bản mới (hoặc không đọc được dung lượng file)"
+      shot update-real-0-none
+    fi
+    savelog real
+    ;;
   finish)
     A logcat -d 2>&1 | grep -E "FATAL EXCEPTION" -A8 | head -30 > "$OUT/crash.txt"
     A logcat -d 2>&1 | tail -250 > "$OUT/final-logcat.txt"

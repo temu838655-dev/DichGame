@@ -65,6 +65,7 @@ jobs:
             bash ci/update-test.sh setup
             timeout 600 bash ci/update-test.sh phone || echo "[phone] quá thời gian hoặc bị kẹt" >> shots-update/update-fail.txt
             timeout 600 bash ci/update-test.sh tv || echo "[tv] quá thời gian hoặc bị kẹt" >> shots-update/update-fail.txt
+            timeout 240 bash ci/update-test.sh real || echo "[real] quá thời gian hoặc bị kẹt" >> shots-update/update-fail.txt
             bash ci/update-test.sh finish
 
       - uses: actions/upload-artifact@v4
