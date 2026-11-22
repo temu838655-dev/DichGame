@@ -138,7 +138,10 @@ rel = [{"tag_name": "build-2", "name": "Bản dựng 2", "html_url": f"http://{h
         "assets": [asset("DichGame.apk"), asset("DichGame-TV.apk")]}]
 json.dump(rel, open("srv/releases.json", "w"), ensure_ascii=False)
 PY
-    ( cd srv && nohup python3 -m http.server "$PORT" --bind 0.0.0.0 > "../$OUT/server.log" 2>&1 & echo $! > "../$OUT/server.pid" )
+    # chạy thẳng python ở nền (không bọc trong cd && ...) để $! là đúng tiến trình máy chủ, tắt được ở bước finish
+    python3 -m http.server "$PORT" --bind 0.0.0.0 --directory srv > "$OUT/server.log" 2>&1 < /dev/null &
+    echo $! > "$OUT/server.pid"
+    disown
     sleep 2
     curl -s "http://127.0.0.1:$PORT/releases.json" | head -c 300 > "$OUT/releases-served.txt"
     ;;
@@ -148,6 +151,7 @@ PY
     A logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 > "$OUT/crash.txt"
     A logcat -d 2>&1 | tail -250 > "$OUT/final-logcat.txt"
     kill "$(cat "$OUT/server.pid")" 2>/dev/null || true
+    pkill -f "http.server $PORT" 2>/dev/null || true
     rm -f "$OUT/ui.xml" "$OUT/server.pid"
     [ -s "$FAIL" ] || rm -f "$FAIL"
     ;;
