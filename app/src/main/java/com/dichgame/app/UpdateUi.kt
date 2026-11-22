@@ -72,8 +72,8 @@ object UpdateUi {
                     c.addView(Ui.tv(a, s.info.notes, 14f, Ui.TEXT).apply { maxLines = 9; ellipsize = android.text.TextUtils.TruncateAt.END }, Ui.lpm(a, 4, 0))
                     body.addView(c, Ui.lpm(a, 12, 0))
                 }
-                text("App tải bản mới ngay tại đây rồi nhờ Android cài đè. Cài đặt, hồ sơ game và giọng đã tải được giữ nguyên.", Ui.SUB, 12)
                 if (Updater.isArm64) {
+                    text("App tải bản mới ngay tại đây rồi nhờ Android cài đè. Cài đặt, hồ sơ game và giọng đã tải được giữ nguyên.", Ui.SUB, 12)
                     btn("Cập nhật ngay", true) { Updater.start(s.info) }
                 } else {
                     text("Máy này không phải chip arm64 nên cần tải bản phù hợp ở trang phát hành.", Ui.SUB, 8)
