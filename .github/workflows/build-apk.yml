@@ -23,6 +23,8 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 40   # đủ để lấy lời nhắn các commit của lần đẩy này làm ghi chú bản phát hành
 
       # Engine Remote Play (chiaki-ng) nằm trong third_party/chiaki-ng. Chỉ lấy đúng các thư viện con cần dùng, không lấy cả repo.
       - name: Lấy engine Remote Play (chiaki-ng)
@@ -103,12 +105,20 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
 
-      # Ghi chú "Có gì mới" hiện trong app khi có bản cập nhật: lấy từ lời nhắn commit, bỏ các dòng ký tên tự động.
+      # Ghi chú "Có gì mới" hiện trong app khi có bản cập nhật: lấy từ lời nhắn commit của lần đẩy này, bỏ các dòng ký tên tự động.
+      # Một commit thì lấy cả lời nhắn; nhiều commit thì liệt kê dòng đầu của từng commit.
       - name: Soạn ghi chú bản phát hành
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+        env:
+          BEFORE: ${{ github.event.before }}
         run: |
-          git log -1 --format=%B "$GITHUB_SHA" | grep -v -E '^(Co-Authored-By|Claude-Session):' > "$RUNNER_TEMP/notes.md" || true
-          echo "--- ghi chú:"; cat "$RUNNER_TEMP/notes.md"
+          n=$(git rev-list --count "$BEFORE..$GITHUB_SHA" 2>/dev/null || echo 0)
+          if [ "$n" -gt 1 ]; then
+            git log --no-merges --format='• %s' "$BEFORE..$GITHUB_SHA" | head -12 > "$RUNNER_TEMP/notes.md"
+          else
+            git log -1 --format=%B "$GITHUB_SHA" | grep -v -E '^(Co-Authored-By|Claude-Session):' > "$RUNNER_TEMP/notes.md" || true
+          fi
+          echo "--- ($n commit) ghi chú:"; cat "$RUNNER_TEMP/notes.md"
 
       # Tag của bản phát hành luôn có dạng build-<số lần chạy> (cũng là số bản dựng ghi trong app) để app biết bản nào mới hơn;
       # app cũ tự đối chiếu số này rồi báo cập nhật ngay trong app. Bản gắn tag v* thì số nằm ở tên "Bản dựng <số> · v...".
