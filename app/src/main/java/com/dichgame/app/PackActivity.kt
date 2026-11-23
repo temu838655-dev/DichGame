@@ -68,7 +68,7 @@ class PackActivity : Activity() {
                 editDialog("Từ điển · ${p.profile}", "Mỗi dòng một từ: gốc = tiếng Việt", "Ví dụ:\nBonfire = Lửa trại\nTarnished = Kẻ Hoen Ố", p.glossary) { p.glossary = it }
             })
             m.addView(Ui.button(this@PackActivity, "Sửa thẻ nhân vật") {
-                editDialog("Thẻ nhân vật · ${p.profile}", "Tên = mô tả giọng, xưng hô; nhịp: chậm", "Ví dụ:\nGeralt = trầm, ít lời, hay mỉa mai; xưng \"tôi\"; nhịp: chậm\nCiri = trẻ, bộc trực; gọi Geralt thân mật; nhịp: nhanh", p.cast) { p.cast = it }
+                editDialog("Thẻ nhân vật · ${p.profile}", "Tên = nam/nữ; giọng: tên Việt; nhịp: chậm/vừa/nhanh", "Ví dụ:\nJason = nam; giọng: Hùng; ít lời; nhịp: chậm\nLucia = nữ; giọng: Mai; bộc trực; nhịp: nhanh\nBạn có thể bỏ \"giọng: ...\" để app tự dùng giọng nam/nữ trong Cài đặt.", p.cast) { p.cast = it }
             }, Ui.lpm(this@PackActivity, 8, 0))
             if (lines > 0) m.addView(Ui.button(this@PackActivity, "Xóa $lines câu thoại đã nhập") {
                 AlertDialog.Builder(this@PackActivity, R.style.DgDialog)
