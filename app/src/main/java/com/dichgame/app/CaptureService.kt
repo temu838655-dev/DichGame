@@ -250,7 +250,7 @@ class CaptureService : Service() {
         sep = if (cjk) "" else " "
         minLen = if (cjk) 2 else 3
         longLen = if (cjk) 12 else 25
-        val o = Ocr(Prefs(this), lang)
+        val o = Ocr(Prefs(this), if (!narrate && Prefs(this).autoLang) "auto" else lang)
         ocr = o
         // Đọc chữ bằng Gemini thì không tự quét liên tục (tốn lượt dùng); vẫn dùng được "Dịch menu" và "Vùng dịch".
         if (o.isCloud) autoMenu = false
@@ -671,10 +671,10 @@ class CaptureService : Service() {
         if (v in 0..100) v else -1
     } catch (_: Exception) { -1 }
 
-    /** Game đổi sang ngôn ngữ Latin khác (Anh sang Pháp...): nạp bộ dịch mới ở nền, xong mới thay; trong lúc đó vẫn dịch bằng bộ cũ. */
+    /** Khi phụ đề thay ngôn ngữ (kể cả khác hệ chữ), nạp bộ dịch mới ở nền. */
     private fun switchLang(newLang: String) {
         val ok = newLang != lang && newLang != "vi" && newLang != pendingLang &&
-            LangDetect.scriptOfLang(newLang) == 'L' && LangDetect.scriptOfLang(lang) == 'L'
+            Prefs.LANGS.any { it.first == newLang }
         if (!ok) { langTrack?.current = lang; return }
         pendingLang = newLang
         val t2 = TextTranslator(this, Prefs(this), newLang)
@@ -691,6 +691,10 @@ class CaptureService : Service() {
             tt = t2
             lang = newLang
             srcName = Prefs.srcNameOf(newLang)
+            val cjk = Prefs.isCjk(newLang)
+            sep = if (cjk) "" else " "
+            minLen = if (cjk) 2 else 3
+            longLen = if (cjk) 12 else 25
             langTrack?.current = newLang
             stats.inc("doi_ngon_ngu")
             android.widget.Toast.makeText(this, "Chữ trong game đã đổi sang $srcName: đã chuyển bộ dịch.", android.widget.Toast.LENGTH_SHORT).show()
