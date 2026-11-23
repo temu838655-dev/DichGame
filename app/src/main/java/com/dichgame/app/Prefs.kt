@@ -241,6 +241,38 @@ class Prefs(ctx: Context) {
         rememberSpeaker(name)
     }
 
+    /**
+     * Đóng băng giọng tự động theo hồ sơ game. Danh sách nhân vật hiển thị chỉ lưu 100 tên gần nhất,
+     * vì vậy không được tính lại giọng theo vị trí trong danh sách này sau khi đã gán.
+     * Lần đầu nâng cấp, ghi nhận thứ tự cũ để những nhân vật đã chơi không bị đổi giọng.
+     */
+    private fun stableAutoVoice(name: String, aliases: List<String>): String = synchronized(sp) {
+        val key = "auto_voices_$profile"
+        val counterKey = "auto_voice_count_$profile"
+        val old = sp.getString(key, null)
+        val mapping = try { JSONObject(old ?: "{}") } catch (_: Exception) { JSONObject() }
+        val known = detectedSpeakers()
+        val normalize: (String) -> String = { it.trim().lowercase(java.util.Locale.ROOT) }
+        if (old == null) {
+            for ((i, candidate) in known.withIndex()) {
+                val k = normalize(candidate)
+                if (k.isNotEmpty() && !mapping.has(k))
+                    mapping.put(k, AI_VOICES[i % AI_VOICES.size].first)
+            }
+            sp.edit().putString(key, mapping.toString()).putInt(counterKey, known.size).apply()
+        }
+        val names = (listOf(name) + aliases).map(normalize).filter { it.isNotEmpty() }
+        val stored = names.firstNotNullOfOrNull { alias ->
+            mapping.optString(alias).takeIf { id -> AI_VOICES.any { it.first == id } }
+        }
+        if (stored != null) return@synchronized stored
+        val count = sp.getInt(counterKey, mapping.length()).coerceAtLeast(0)
+        val selected = AI_VOICES[count % AI_VOICES.size].first
+        mapping.put(names.first(), selected)
+        sp.edit().putString(key, mapping.toString()).putInt(counterKey, count + 1).apply()
+        selected
+    }
+
     /** Nhân vật được người chơi chọn khi game không hiển thị nhãn tên người nói. */
     var activeSpeaker: String
         get() = sp.getString("active_speaker_$profile", "").orEmpty()
@@ -279,15 +311,9 @@ class Prefs(ctx: Context) {
             listOf("đàn ông", "cậu bé", "anh chàng", "người cha", "con trai", "quý ông").any { it in desc }
         if (female && !male) return femaleAiVoice
         if (male && !female) return maleAiVoice
-        // Không suy luận nam/nữ từ tên (dễ sai). Các nhân vật được phát hiện lần lượt
-        // nhận giọng khác nhau cho tới khi dùng hết kho giọng; danh sách lưu theo hồ sơ.
-        val aliases = card?.names.orEmpty() + name
-        val order = detectedSpeakers().indexOfFirst { seen -> aliases.any { it.equals(seen, ignoreCase = true) } }
+        // Không suy luận giới tính từ tên. Giọng tự động được lưu cố định theo hồ sơ.
         val canonical = card?.names?.firstOrNull() ?: name
-        val index = if (order >= 0) order else
-            (((canonical.trim().lowercase(java.util.Locale.ROOT) + "|" + profile)
-                .hashCode().toLong() and 0xffffffffL) % AI_VOICES.size).toInt()
-        return AI_VOICES[index % AI_VOICES.size].first
+        return stableAutoVoice(canonical, card?.names.orEmpty() + name)
     }
     var ttsModel: String
         get() = sp.getString("ttsmodel", "gemini-3.8-flash-tts").orEmpty().ifBlank { "gemini-3.8-flash-tts" }
@@ -416,7 +442,8 @@ class Prefs(ctx: Context) {
         if (profile == name) profile = DEFAULT_PROFILE
         sp.edit().remove("game_$name").remove("gloss_$name").remove("cast_$name")
             .remove("detected_speakers_$name").remove("manual_voices_$name")
-            .remove("active_speaker_$name").apply()
+            .remove("active_speaker_$name").remove("auto_voices_$name")
+            .remove("auto_voice_count_$name").apply()
         PackStore.deleteLines(app, name)
     }
 
