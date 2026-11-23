@@ -142,7 +142,7 @@ class PackActivity : Activity() {
     }
 
     private fun pickCharacterVoice(name: String) {
-        val automatic = Prefs.aiVoiceLabel(p.aiVoiceFor(name, ""))
+        val automatic = Prefs.aiVoiceLabel(p.automaticAiVoiceFor(name, ""))
         val labels = (listOf("Tự động · $automatic") + Prefs.AI_VOICES.map { it.second }).toTypedArray()
         AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Giọng nhân vật: $name")
