@@ -213,13 +213,29 @@ class Prefs(ctx: Context) {
         return result
     }
 
-    /** Chỉ lưu nhãn người nói đã được bộ tách lời thoại xác nhận hoặc người dùng thêm. */
-    @Synchronized fun rememberSpeaker(raw: String) {
+    private fun ignoredSpeakers(): List<String> {
+        val raw = sp.getString("ignored_speakers_$profile", "[]").orEmpty()
+        return try {
+            val arr = JSONArray(raw)
+            (0 until arr.length().coerceAtMost(250)).mapNotNull { i ->
+                arr.optString(i).trim().takeIf { it.isNotEmpty() }
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    /** Chỉ lưu người nói được OCR xác nhận; tên đã xóa không tự xuất hiện lại nếu người dùng chưa thêm. */
+    @Synchronized fun rememberSpeaker(raw: String, fromUser: Boolean = false) {
         val name = raw.replace(Regex("\\s+"), " ").trim()
         if (name.length !in 2..40 || name.count { it.isLetter() } < 2 || '=' in name) return
+        val ignored = ignoredSpeakers()
+        if (!fromUser && ignored.any { it.equals(name, ignoreCase = true) }) return
+        val editor = sp.edit()
+        if (fromUser) editor.putString("ignored_speakers_$profile",
+            JSONArray(ignored.filterNot { it.equals(name, ignoreCase = true) }).toString())
         val names = detectedSpeakers()
-        if (names.any { it.equals(name, ignoreCase = true) }) return
-        sp.edit().putString("detected_speakers_$profile", JSONArray((names + name).takeLast(250)).toString()).apply()
+        if (names.none { it.equals(name, ignoreCase = true) })
+            editor.putString("detected_speakers_$profile", JSONArray((names + name).takeLast(250)).toString())
+        editor.apply()
     }
 
     /** Xóa một nhãn nhân vật OCR nhận nhầm khỏi hồ sơ, kèm giọng đã gán cho tên đó. */
@@ -228,6 +244,7 @@ class Prefs(ctx: Context) {
         if (name.isEmpty()) return@synchronized
         val key = name.lowercase(java.util.Locale.ROOT)
         val rest = detectedSpeakers().filterNot { it.equals(name, ignoreCase = true) }
+        val ignored = (ignoredSpeakers().filterNot { it.equals(name, ignoreCase = true) } + name).takeLast(250)
         fun withoutEntry(prefKey: String): String {
             val data = try { JSONObject(sp.getString(prefKey, "{}").orEmpty()) }
                 catch (_: Exception) { JSONObject() }
@@ -238,6 +255,7 @@ class Prefs(ctx: Context) {
             .putString("detected_speakers_$profile", JSONArray(rest).toString())
             .putString("manual_voices_$profile", withoutEntry("manual_voices_$profile"))
             .putString("auto_voices_$profile", withoutEntry("auto_voices_$profile"))
+            .putString("ignored_speakers_$profile", JSONArray(ignored).toString())
         if (activeSpeaker.equals(name, ignoreCase = true)) editor.putString("active_speaker_$profile", "")
         editor.apply()
     }
@@ -265,7 +283,7 @@ class Prefs(ctx: Context) {
         val key = name.trim().lowercase(java.util.Locale.ROOT)
         if (id == null) data.remove(key) else data.put(key, id)
         sp.edit().putString("manual_voices_$profile", data.toString()).apply()
-        rememberSpeaker(name)
+        rememberSpeaker(name, fromUser = true)
     }
 
     /**
@@ -465,7 +483,7 @@ class Prefs(ctx: Context) {
         sp.edit().remove("game_$name").remove("gloss_$name").remove("cast_$name")
             .remove("detected_speakers_$name").remove("manual_voices_$name")
             .remove("active_speaker_$name").remove("auto_voices_$name")
-            .remove("auto_voice_count_$name").apply()
+            .remove("auto_voice_count_$name").remove("ignored_speakers_$name").apply()
         PackStore.deleteLines(app, name)
     }
 
