@@ -895,9 +895,9 @@ class CaptureService : Service() {
 
     private var tvVoiceWarned = false
 
-    private fun tvVoice(text: String, d: Delivery? = null, speakerName: String? = null) {
+    private fun tvVoice(text: String, d: Delivery? = null, speakerName: String? = null, scene: List<VoiceLine>? = null) {
         val sp = speaker ?: return
-        sp.synthForTv(text, d, speakerName) { pcm, speed ->
+        val sendAudio: (Pcm?, Float) -> Unit = { pcm, speed ->
             val pf = getSharedPreferences("dg", MODE_PRIVATE)
             val err = if (pcm == null) "giọng đọc lỗi" else TvLink.postAudio(pf.getString("tvip", "").orEmpty(), pf.getString("tvtoken", "").orEmpty(), pcm, speed)
             if (err != null) {
@@ -909,6 +909,8 @@ class CaptureService : Service() {
                 }
             }
         }
+        if (scene != null) sp.synthForTvScene(scene, sendAudio)
+        else sp.synthForTv(text, d, speakerName, sendAudio)
     }
 
     /** Gửi phụ đề lên app Dịch game TV (nếu đã ghép). kind: sub | region | clear. */
@@ -984,8 +986,9 @@ class CaptureService : Service() {
         sendTv("sub", tvText, tvSpeaks)
         val d = cards.lastOrNull()?.tr?.delivery
         val speakerName = cards.lastOrNull()?.speaker
-        if (speak && tvVoiceOn()) tvVoice(vi, d, speakerName)
-        if (speak && ready && !editing && !tvSpeakOn()) speaker?.speak(vi, false, d, speakerName)
+        val scene = cards.map { VoiceLine(it.tr.text, it.speaker, it.tr.delivery) }
+        if (speak && tvVoiceOn()) tvVoice(vi, d, speakerName, scene)
+        if (speak && ready && !editing && !tvSpeakOn()) speaker?.speakScene(scene)
         prevVi = vi; prevOrig = cards.joinToString(" ") { it.orig }; autoShown = false
     }
 
