@@ -306,6 +306,7 @@ class KhoGameActivity : Activity() {
         val g = genreOf(name)
         if (p.profiles.contains(name)) p.profile = name else p.addProfile(name)
         p.game = if (g.isEmpty()) name else "$name, $g"
+        p.selectedGameTitle = name
         p.addPlayed(name)
     }
 
