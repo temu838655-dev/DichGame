@@ -1,0 +1,27 @@
+/* TV-safe HTML/CSS. The entire body is transparent to keep HDMI visible. */
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; color: #fff;
+  background: transparent !important; font-family: Arial, Helvetica, sans-serif; }
+#subtitleWrap { position: absolute; left: 4%; right: 4%; bottom: 6%; text-align: center; pointer-events: none; }
+#subtitle { display: inline-block; max-width: 96%; padding: .22em .55em; background: rgba(0,0,0,.78);
+  color: white; text-shadow: 0 2px 4px #000; font-size: 46px; line-height: 1.32;
+  font-weight: 700; white-space: pre-wrap; overflow-wrap: break-word; border-radius: 12px; }
+#subtitle:empty { display: none; }
+#details { position: absolute; right: 3%; top: 2%; font-size: 18px; font-weight: 500;
+  background: rgba(10,16,16,.65); border-radius: 28px; padding: 10px 18px; color: #d5e7d9; }
+#panel { position: absolute; z-index: 100; left: 4%; top: 5%; width: 660px; max-width: 85%;
+  padding: 28px 32px; border-radius: 24px; border: 1px solid rgba(240,198,131,.45);
+  background: rgba(13,22,23,.95); box-shadow: 0 18px 50px rgba(0,0,0,.5); }
+#panel h1 { margin: 0 0 5px; font-size: 34px; color: #f6d29e; letter-spacing: .3px; }
+#panel p { margin: 10px 0 18px; color: #bacacc; font-size: 19px; line-height: 1.45; }
+label { display:block; color:#d9e2e1; font-size: 20px; margin: 13px 0 8px; }
+input, select { width:100%; padding: 13px 16px; min-height: 58px; color:#fff; font-size: 22px;
+  background: #253133; border: 2px solid #496369; border-radius: 13px; }
+input:focus, button:focus, select:focus { outline: 4px solid #f9cb7a; outline-offset: 2px; }
+button { min-height: 56px; border: 0; border-radius: 13px; padding: 12px 20px; margin: 10px 8px 0 0;
+  font-size: 20px; font-weight: 700; background: #e8bd77; color: #1a211a; }
+button.secondary { color: #fff; background: #3c4a4d; }
+#hdmiRow { margin-top: 14px; display: flex; align-items:center; gap: 12px; }
+#hdmiRow select { width: 200px; }
+#status { color: #fae6c9; font-size: 18px; min-height: 24px; }
+footer { margin-top: 12px; font-size: 15px; color: #b3b9b5; }

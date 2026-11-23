@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets"
+  xmlns:tizen="http://tizen.org/ns/widgets"
+  id="https://dichgame.example/tv"
+  version="0.1.0" viewmodes="fullscreen">
+  <tizen:application id="DgTv01.DichGameTV" package="DgTv01" required_version="3.0"/>
+  <content src="index.html"/>
+  <feature name="http://tizen.org/feature/screen.size.all"/>
+  <name>Dịch Game TV</name>
+  <icon src="icon.png"/>
+  <tizen:profile name="tv"/>
+  <access origin="*" subdomains="true"/>
+  <tizen:privilege name="http://tizen.org/privilege/internet"/>
+  <tizen:privilege name="http://tizen.org/privilege/tv.window"/>
+  <tizen:privilege name="http://tizen.org/privilege/systeminfo"/>
+  <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="enable"/>
+</widget>

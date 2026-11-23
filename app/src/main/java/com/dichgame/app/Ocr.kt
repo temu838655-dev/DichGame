@@ -8,6 +8,7 @@ import android.util.Base64
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
+import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
 import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
@@ -32,7 +33,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
     private val main = Handler(Looper.getMainLooper())
     private val io by lazy { Executors.newSingleThreadExecutor() }
     private val local: TextRecognizer? =
-        if (Prefs.isCloudOcr(lang)) null
+        if (Prefs.isCloudOcr(lang) || lang == "auto-ai") null
         else TextRecognition.getClient(
             when (lang) {
                 "ja" -> JapaneseTextRecognizerOptions.Builder().build()
@@ -42,6 +43,24 @@ class Ocr(private val p: Prefs, private val lang: String) {
                 else -> TextRecognizerOptions.DEFAULT_OPTIONS
             }
         )
+
+    // Khi nguồn là "auto", OCR thử nhiều bộ đọc một lần và ưu tiên bộ có chữ viết
+    // phù hợp ở các khung sau. Không ép người dùng chọn tiếng Nhật/Hàn/Trung.
+    private val autoReaders by lazy {
+        autoStarted = true
+        listOf(
+            "en" to requireNotNull(local),
+            "ja" to TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build()),
+            "ko" to TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build()),
+            "zh" to TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build()),
+            "hi" to TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
+        )
+    }
+    private var autoStarted = false
+    private var autoPreferred = 0
+    private var autoProbeAt = 0L
+    private var autoEmpty = 0
+    private var autoCloudAt = 0L
 
     /** true nếu mỗi lần đọc phải gửi ảnh lên Gemini (chậm hơn và tốn lượt dùng). */
     val isCloud: Boolean get() = local == null
@@ -56,6 +75,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
     }
 
     fun read(bmp: Bitmap, fail: (String) -> Unit, ok: (List<Blk>) -> Unit) {
+        if (lang == "auto") { readAuto(bmp, fail, ok); return }
         val l = local
         if (l != null) {
             try {
@@ -76,7 +96,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
         }
         if (p.geminiKeys().isEmpty()) {
             recycleInput(bmp)
-            fail("Chữ ${Prefs.srcNameOf(lang)} cần khóa Google Gemini. Vào Cách dịch để nhập khóa.")
+            fail(if (lang == "auto-ai") "OCR AI tự nhận diện cần khóa Gemini. Mở Cách dịch để nhập khóa." else "Chữ ${Prefs.srcNameOf(lang)} cần khóa Google Gemini. Vào Cách dịch để nhập khóa.")
             return
         }
         val model = p.geminiModel
@@ -98,9 +118,92 @@ class Ocr(private val p: Prefs, private val lang: String) {
         }
     }
 
+    private fun autoScore(code: String, blocks: List<Blk>): Float {
+        val text = blocks.joinToString(" ") { it.text }.trim()
+        val counts = LangDetect.scriptCounts(text)
+        val total = counts.values.sum()
+        if (total < 2) return 0f
+        val matched = when (code) {
+            "ja" -> (counts['K'] ?: 0) + (counts['H'] ?: 0)
+            "zh" -> counts['H'] ?: 0
+            "ko" -> counts['G'] ?: 0
+            "hi" -> counts['D'] ?: 0
+            else -> counts['L'] ?: 0
+        }
+        val ratio = matched.toFloat() / total
+        if (ratio < 0.7f) return 0f
+        val confidence = blocks.map { it.conf }.average().toFloat().coerceIn(0f, 1f)
+        val kanaBonus = if (code == "ja" && (counts['K'] ?: 0) > 0) 15f else 0f
+        val chineseBonus = if (code == "zh" && (counts['K'] ?: 0) == 0) 4f else 0f
+        return 100f * ratio + minOf(text.length, 60) * 0.2f + confidence * 9f + kanaBonus + chineseBonus
+    }
+
+    private fun readAuto(bmp: Bitmap, fail: (String) -> Unit, ok: (List<Blk>) -> Unit) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        val readers = autoReaders
+        val probe = autoProbeAt == 0L || now - autoProbeAt > 8000L || autoEmpty >= 2
+        val indices = if (probe) readers.indices.toList() else listOf(autoPreferred)
+        if (probe) autoProbeAt = now
+        val input = try { InputImage.fromBitmap(bmp, 0) }
+        catch (e: Exception) { recycleInput(bmp); fail("Không mở được ảnh để quét OCR."); return }
+        try {
+            val tasks = indices.map { readers[it].second.process(input) }
+            Tasks.whenAllComplete(tasks).addOnCompleteListener {
+                var bestIndex = -1
+                var bestScore = 0f
+                var best = emptyList<Blk>()
+                for (j in tasks.indices) {
+                    val task = tasks[j]
+                    if (!task.isSuccessful) continue
+                    val b = task.result?.textBlocks?.map { Blk(it.text, it.boundingBox, confOf(it)) } ?: continue
+                    val score = autoScore(readers[indices[j]].first, b)
+                    if (score > bestScore) {
+                        bestIndex = indices[j]
+                        bestScore = score
+                        best = b
+                    }
+                }
+                if (bestIndex >= 0) {
+                    autoPreferred = bestIndex
+                    autoEmpty = 0
+                    recycleInput(bmp)
+                    ok(best)
+                } else {
+                    autoEmpty++
+                    val nowCloud = android.os.SystemClock.elapsedRealtime()
+                    if (p.geminiKeys().isNotEmpty() && autoEmpty >= 2 && nowCloud - autoCloudAt > 5000L) {
+                        autoCloudAt = nowCloud
+                        try {
+                            io.execute {
+                                try {
+                                    val blocks = cloudRead(bmp, p, p.geminiModel)
+                                    recycleInput(bmp)
+                                    main.post { ok(blocks) }
+                                } catch (e: Exception) {
+                                    recycleInput(bmp)
+                                    main.post { fail(errorText(e)) }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            recycleInput(bmp)
+                            fail("Không khởi động được OCR dự phòng.")
+                        }
+                    } else {
+                        recycleInput(bmp)
+                        ok(emptyList())
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            recycleInput(bmp)
+            fail("Bộ nhận dạng chữ không khởi động được.")
+        }
+    }
+
     fun close() {
-        local?.close()
-        if (isCloud) io.shutdown()
+        if (autoStarted) autoReaders.forEach { (_, reader) -> try { reader.close() } catch (_: Exception) {} }
+        else local?.close()
+        if (isCloud || lang == "auto") io.shutdown()
     }
 
     private fun cloudRead(bmp: Bitmap, prefs: Prefs, model: String): List<Blk> {
@@ -119,9 +222,14 @@ class Ocr(private val p: Prefs, private val lang: String) {
         } finally {
             if (small !== bmp && !small.isRecycled) runCatching { small.recycle() }
         }
-        val prompt = "Đây là ảnh chụp màn hình game. Đọc toàn bộ chữ ${Prefs.srcNameOf(lang)} trong ảnh, " +
-            "gộp mỗi câu thoại, mỗi đoạn văn thành một khối, xếp từ trên xuống dưới. " +
-            "Không dịch, không sửa, bỏ qua chữ không phải ${Prefs.srcNameOf(lang)} nếu đó chỉ là biểu tượng hay số liệu. " +
+        val instruction = if (lang == "auto" || lang == "auto-ai") {
+            "Tự xác định ngôn ngữ gốc trong ảnh rồi chép nguyên văn mọi phụ đề nhìn thấy. "
+        } else {
+            "Đọc toàn bộ chữ " + Prefs.srcNameOf(lang) + " trong ảnh. "
+        }
+        val prompt = "Đây là ảnh chụp màn hình game hoặc video. " + instruction +
+            "Gộp mỗi câu thoại, mỗi đoạn văn thành một khối, xếp từ trên xuống dưới. " +
+            "Không dịch, không tự viết thêm câu không có trong ảnh; bỏ qua biểu tượng và số liệu rời rạc. " +
             "Chỉ trả về JSON dạng {\"blocks\":[{\"t\":\"nội dung\",\"b\":[ymin,xmin,ymax,xmax]}]} " +
             "với b là khung bao chuẩn hóa từ 0 đến 1000. Không có chữ thì trả {\"blocks\":[]}."
         val parts = JSONArray()

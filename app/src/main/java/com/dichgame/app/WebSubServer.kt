@@ -7,6 +7,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
 import java.net.URLDecoder
+import java.security.SecureRandom
 import org.json.JSONObject
 
 /**
@@ -19,6 +20,11 @@ class WebSubServer(private val port: Int = 8780) {
     private val lock = Object()
     private var seq = 0L
     private var text = ""
+    // Đối với app Tizen/webOS: mã ghép và token chỉ sống trong phiên web server này.
+    // Trang phụ đề trình duyệt cũ vẫn dùng /poll theo yêu cầu người dùng.
+    val tvPairCode: String = String.format(java.util.Locale.ROOT, "%08d", SecureRandom().nextInt(100_000_000))
+    private val tvTokens = java.util.Collections.synchronizedSet(HashSet<String>())
+    private val attempts = HashMap<String, Pair<Long, Int>>()
     @Volatile private var stopped = false
 
     val running: Boolean get() = server?.isClosed == false
@@ -42,7 +48,7 @@ class WebSubServer(private val port: Int = 8780) {
         stopped = true
         try { server?.close() } catch (_: Exception) {}
         server = null
-        synchronized(lock) { lock.notifyAll() }
+        synchronized(lock) { lock.notifyAll(); tvTokens.clear(); attempts.clear() }
     }
 
     /** Đặt phụ đề hiện tại (chuỗi rỗng = xóa chữ). */
@@ -65,23 +71,40 @@ class WebSubServer(private val port: Int = 8780) {
             val target = parts.getOrElse(1) { "/" }
             val path = target.substringBefore('?')
             val query = target.substringAfter('?', "")
+            fun arg(name: String): String? = query.split('&').firstOrNull {
+                it.substringBefore('=') == name
+            }?.substringAfter('=', "")?.let {
+                try { URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null }
+            }
             when (path) {
-                "/poll" -> {
-                    val since = query.split('&').firstOrNull { it.startsWith("since=") }?.substringAfter('=')?.let {
-                        try { URLDecoder.decode(it, "UTF-8").toLongOrNull() } catch (_: Exception) { null }
-                    } ?: -1L
-                    val body: String
-                    synchronized(lock) {
-                        val end = System.currentTimeMillis() + 20_000
-                        while (seq <= since && !stopped) {
-                            val left = end - System.currentTimeMillis()
-                            if (left <= 0) break
-                            lock.wait(left)
-                        }
-                        body = JSONObject().put("seq", seq).put("text", text).toString()
+                "/tv-pair" -> {
+                    val ip = c.inetAddress?.hostAddress ?: "unknown"
+                    val accepted = synchronized(lock) {
+                        val now = System.currentTimeMillis()
+                        val old = attempts[ip]
+                        val n = if (old == null || now - old.first > 60_000L) 1 else old.second + 1
+                        // Tối đa 8 lần thử/60 giây/mỗi địa chỉ.
+                        if (attempts.size >= 128) attempts.entries.removeAll { now - it.value.first > 60_000L }
+                        if (attempts.size < 128 || attempts.containsKey(ip)) attempts[ip] = (if (n == 1) now else old!!.first) to n
+                        n <= 8 && attempts.containsKey(ip) && arg("code") == tvPairCode
                     }
-                    reply(c, 200, "application/json; charset=utf-8", body)
+                    if (!accepted) {
+                        reply(c, 403, "application/json; charset=utf-8", """{"error":"Sai mã hoặc ghép quá nhiều lần"}""", true)
+                    } else {
+                        val token = ByteArray(24).also { SecureRandom().nextBytes(it) }
+                            .joinToString("") { "%02x".format(it) }
+                        tvTokens.add(token)
+                        reply(c, 200, "application/json; charset=utf-8", JSONObject().put("token", token).toString(), true)
+                    }
                 }
+                "/tv-poll" -> {
+                    if (!tvTokens.contains(arg("token").orEmpty())) {
+                        reply(c, 403, "application/json; charset=utf-8", """{"error":"Cần ghép lại TV"}""", true)
+                    } else {
+                        pollReply(c, arg("since")?.toLongOrNull() ?: -1L, true)
+                    }
+                }
+                "/poll" -> pollReply(c, arg("since")?.toLongOrNull() ?: -1L, false)
                 "/", "/index.html" -> reply(c, 200, "text/html; charset=utf-8", PAGE)
                 else -> reply(c, 404, "text/plain; charset=utf-8", "404")
             }
@@ -91,10 +114,24 @@ class WebSubServer(private val port: Int = 8780) {
         }
     }
 
-    private fun reply(c: Socket, code: Int, type: String, body: String) {
+    private fun pollReply(c: Socket, since: Long, cors: Boolean) {
+        val body: String
+        synchronized(lock) {
+            val end = System.currentTimeMillis() + 20_000
+            while (seq <= since && !stopped) {
+                val left = end - System.currentTimeMillis()
+                if (left <= 0) break
+                lock.wait(left)
+            }
+            body = JSONObject().put("seq", seq).put("text", text).toString()
+        }
+        reply(c, 200, "application/json; charset=utf-8", body, cors)
+    }
+
+    private fun reply(c: Socket, code: Int, type: String, body: String, cors: Boolean = false) {
         val b = body.toByteArray(Charsets.UTF_8)
-        val head = "HTTP/1.1 $code ${if (code == 200) "OK" else "Not Found"}\r\nContent-Type: $type\r\nContent-Length: ${b.size}\r\n" +
-            "Cache-Control: no-store\r\nConnection: close\r\n\r\n"
+        val head = "HTTP/1.1 $code ${if (code == 200) "OK" else if (code == 403) "Forbidden" else "Not Found"}\r\nContent-Type: $type\r\nContent-Length: ${b.size}\r\n" +
+            (if (cors) "Access-Control-Allow-Origin: *\r\n" else "") + "Cache-Control: no-store\r\nConnection: close\r\n\r\n"
         val o = c.getOutputStream()
         o.write(head.toByteArray(Charsets.ISO_8859_1))
         o.write(b)

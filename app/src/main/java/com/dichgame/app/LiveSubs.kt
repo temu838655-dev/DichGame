@@ -210,7 +210,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         jobs.clear(); pacer.cleared(); fusion.clear()
         CrashLog.mark("dich:bat")
         try {
-            ocr = Ocr(pr, lang)
+            ocr = Ocr(pr, if (!narrate && pr.autoLang) "auto" else lang)
             if (speak) {
                 speaker = Speaker(act, pr).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() } }
             }
@@ -643,10 +643,10 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (canHide(now)) softHide()
     }
 
-    /** Game đổi sang ngôn ngữ Latin khác: nạp bộ dịch mới ở nền, xong mới thay. */
+    /** Khi phụ đề game đổi ngôn ngữ (kể cả khác hệ chữ), nạp bộ dịch mới ở nền. */
     private fun switchLang(newLang: String) {
         val ok = newLang != lang && newLang != "vi" && newLang != pendingLang &&
-            LangDetect.scriptOfLang(newLang) == 'L' && LangDetect.scriptOfLang(lang) == 'L'
+            Prefs.LANGS.any { it.first == newLang }
         if (!ok) { langTrack?.current = lang; return }
         pendingLang = newLang
         val t2 = TextTranslator(act, Prefs(act), newLang)

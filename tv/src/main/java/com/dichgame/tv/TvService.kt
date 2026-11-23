@@ -31,6 +31,10 @@ import java.util.Locale
 object TvState {
     @Volatile var code = "--------"
     @Volatile var prev = ""
+    @Volatile var listenerReady = false
+    @Volatile var networkError = ""
+    @Volatile var overlayError = ""
+    @Volatile var lastCaptionAt = 0L
     val tokens: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet<String>())
     private val pairAttempts = LinkedHashMap<String, Pair<Long, Int>>()
 
@@ -107,13 +111,19 @@ class TvService : Service() {
         try {
             val ss = ServerSocket(8765)
             server = ss
+            TvState.listenerReady = true
+            TvState.networkError = ""
             while (!ss.isClosed) {
                 val s = ss.accept()
                 Thread {
                     try { handle(s) } catch (_: Exception) {} finally { try { s.close() } catch (_: Exception) {} }
                 }.start()
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            if (server?.isClosed != true) TvState.networkError = "Không mở được cổng nhận phụ đề 8765: " + (e.message ?: "lỗi mạng")
+        } finally {
+            TvState.listenerReady = false
+        }
     }
 
     /** Trả lời gói quảng bá "DICHGAME?" của điện thoại để nó tự tìm ra địa chỉ TV. */
@@ -214,6 +224,7 @@ class TvService : Service() {
                 val sp = j.optBoolean("speak", false)
                 val fg = j.optInt("fg", Color.WHITE)
                 val bg = j.optInt("bg", 0xB3000000.toInt())
+                TvState.lastCaptionAt = System.currentTimeMillis()
                 handler.post { show(kind, text, size, sp, fg, bg) }
                 status = 200; out = "ok"
             }
@@ -281,8 +292,25 @@ class TvService : Service() {
     }
 
     private fun show(kind: String, text: String, size: Int, speakIt: Boolean, fg: Int = Color.WHITE, bg: Int = 0xB3000000.toInt()) {
-        if (!Settings.canDrawOverlays(this)) return
-        if (subView == null) { subView = mk(false); regView = mk(true) }
+        if (!Settings.canDrawOverlays(this)) {
+            TvState.overlayError = "TV chưa cấp quyền hiển thị đè lên ứng dụng khác."
+            return
+        }
+        if (subView == null || regView == null) {
+            try {
+                subView = mk(false)
+                regView = mk(true)
+                TvState.overlayError = ""
+            } catch (e: Exception) {
+                // Một số Android TV chặn overlay ở cấp hệ điều hành: báo lỗi thay vì làm văng app.
+                TvState.overlayError = "TV từ chối lớp phụ đề: " + (e.message ?: e.javaClass.simpleName)
+                try { subView?.let { wm.removeView(it) } } catch (_: Exception) {}
+                try { regView?.let { wm.removeView(it) } } catch (_: Exception) {}
+                subView = null
+                regView = null
+                return
+            }
+        }
         when (kind) {
             "region" -> put(regView!!, text, size, hideReg, 15000, fg, bg)
             "clear" -> { put(subView!!, "", size, hideSub, 0, fg, bg); put(regView!!, "", size, hideReg, 0, fg, bg) }

@@ -225,12 +225,25 @@ class MainActivity : Activity() {
         if (!narrate) {
             val lang = Ui.hbox(this)
             lang.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4))
-            lang.addView(Ui.tv(this, "Ngôn ngữ trong game: ${Prefs.langName(p.lang)}", 13.5f, Ui.TEXT), Ui.lp(0, WRAP_CONTENT, 1f))
-            lang.addView(Ui.tv(this, "Đổi ›", 13.5f, Ui.GOLD))
+            val langText = if (p.autoLang) "Tự nhận diện ngôn ngữ → Việt" else
+                "Cố định: ${Prefs.langName(p.lang)} → Việt"
+            lang.addView(Ui.tv(this, langText, 13.5f, Ui.TEXT), Ui.lp(0, WRAP_CONTENT, 1f))
+            lang.addView(Ui.tv(this, "Chỉnh ›", 13.5f, Ui.GOLD))
             lang.setOnClickListener {
-                Ui.pick(this, "Ngôn ngữ trong game", Prefs.LANGS.filter { it.first != "vi" }.map { Prefs.langLabel(it.first) }) { i ->
-                    p.lang = Prefs.LANGS.filter { it.first != "vi" }[i].first
-                    render()
+                Ui.pick(this, "Ngôn ngữ nguồn", listOf(
+                    "Tự nhận diện (khuyên dùng)", "Chọn ngôn ngữ thủ công nếu nhận diện sai"
+                )) { choice ->
+                    if (choice == 0) {
+                        p.autoLang = true
+                        render()
+                    } else {
+                        val langs = Prefs.LANGS.filter { it.first != "vi" }
+                        Ui.pick(this, "Ngôn ngữ thủ công", langs.map { Prefs.langLabel(it.first) }) { i ->
+                            p.autoLang = false
+                            p.lang = langs[i].first
+                            render()
+                        }
+                    }
                 }
             }
             c.addView(lang)
@@ -337,7 +350,7 @@ class MainActivity : Activity() {
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             return
         }
-        if (!p.narrate && Prefs.isCloudOcr(p.lang)) {
+        if (!p.narrate && !p.autoLang && Prefs.isCloudOcr(p.lang)) {
             if (p.geminiKey.isEmpty()) {
                 AlertDialog.Builder(this, R.style.DgDialog)
                     .setTitle("Cần khóa Gemini")

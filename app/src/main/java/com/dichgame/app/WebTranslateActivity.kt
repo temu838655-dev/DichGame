@@ -23,6 +23,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.inputmethod.EditorInfo
@@ -30,6 +31,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.google.mlkit.nl.languageid.LanguageIdentification
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -47,9 +49,9 @@ import kotlin.math.min
  */
 class RegionBox(c: Context) : View(c) {
     var fl = 0.04f
-    var ft = 0.20f
+    var ft = 0.72f
     var fr = 0.96f
-    var fb = 0.36f
+    var fb = 0.94f
     var adjusting = false
         set(v) { field = v; invalidate() }
     var active = false
@@ -66,7 +68,7 @@ class RegionBox(c: Context) : View(c) {
     private var lastX = 0f
     private var lastY = 0f
 
-    fun reset() = reset(0.04f, 0.20f, 0.96f, 0.36f)
+    fun reset() = reset(0.04f, 0.72f, 0.96f, 0.94f)
 
     /** Đặt khung về vị trí mặc định [l],[t],[r],[b] (tỉ lệ 0..1) và lưu lại. */
     fun reset(l: Float, t: Float, r: Float, b: Float) { fl = l; ft = t; fr = r; fb = b; invalidate(); onChanged?.invoke() }
@@ -168,6 +170,9 @@ class WebTranslateActivity : Activity() {
     private lateinit var p: Prefs
     private lateinit var sp: SharedPreferences
     private lateinit var web: WebView
+    private lateinit var webFrame: FrameLayout
+    private var fullscreenVideo: View? = null
+    private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private lateinit var urlField: EditText
     private lateinit var box: RegionBox
     private lateinit var textView: TextView
@@ -192,6 +197,15 @@ class WebTranslateActivity : Activity() {
     private var translator: TextTranslator? = null
     private var ocr: Ocr? = null
     private var ocrFor = ""
+    private val languageIdentifier by lazy { LanguageIdentification.getClient() }
+    private var detectedLang = "en"
+    private val languageRouter = SubtitleLanguageRouter()
+    private var translatorLang = ""
+    private var preparingLang = ""
+    private var prepareGeneration = 0
+    private var awaitingText: String? = null
+    private var gotCc = false
+    private val tvExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private var speaker: Speaker? = null
 
     private var running = false
@@ -213,6 +227,18 @@ class WebTranslateActivity : Activity() {
     private var blankScans = 0
     private var failScans = 0
     private var copyFails = 0
+    private val ccFallback = Runnable {
+        if (running && source == "cc" && !gotCc) {
+            web.evaluateJavascript("""(function(){var v=document.querySelector('video');var f=document.querySelector('iframe[src*="youtube"],iframe[src*="vimeo"],iframe[src*="player"],iframe[allow*="autoplay"]');return !!((v&&!v.paused&&v.readyState>1)||(f&&f.clientWidth>200&&f.clientHeight>100));})()""") { result ->
+                if (running && source == "cc" && !gotCc) {
+                    if (result == "true") {
+                        setPanel("Không thấy phụ đề CC; đang chuyển sang quét OCR. Nếu video bảo vệ nội dung, OCR có thể không chụp được hình.", "")
+                        setSource("ocr")
+                    } else setPanel("Chưa nhận được phụ đề CC. Hãy bật phụ đề và phát video, hoặc chọn nguồn OCR để quét chữ trên hình.", "")
+                }
+            }
+        }
+    }
 
     private val js = """
 (function(){
@@ -322,15 +348,36 @@ class WebTranslateActivity : Activity() {
 
         // ---- trang web và khung chọn vùng
         val frame = FrameLayout(this)
+        webFrame = frame
         web = WebView(this)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         web.settings.mediaPlaybackRequiresUserGesture = false
         web.addJavascriptInterface(Bridge(), "DG")
-        web.webChromeClient = WebChromeClient()
+        web.webChromeClient = object : WebChromeClient() {
+            override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+                if (view == null || fullscreenVideo != null) {
+                    callback?.onCustomViewHidden()
+                    return
+                }
+                fullscreenVideo = view
+                fullscreenCallback = callback
+                (view.parent as? ViewGroup)?.removeView(view)
+                webFrame.addView(view, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+                // Vẫn để bảng dịch và khung chọn vùng nổi trên video toàn màn hình.
+                if (::box.isInitialized) box.bringToFront()
+                if (::fallbackPill.isInitialized) fallbackPill.bringToFront()
+            }
+
+            override fun onHideCustomView() { hideFullscreenVideo() }
+        }
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, u: String?) {
+                gotCc = false
+                ui.removeCallbacks(ccFallback)
+                if (running && source == "cc") ui.postDelayed(ccFallback, 12000)
                 view?.evaluateJavascript(js, null)
+                if (source == "ocr") ui.postDelayed({ placeBoxOnVideo() }, 900)
                 applyHide()
                 syncNav(u)
             }
@@ -370,7 +417,7 @@ class WebTranslateActivity : Activity() {
         langChip = Ui.tv(this, "", 13f, Ui.TEXT, true).apply {
             background = Ui.bg(this@WebTranslateActivity, Ui.CARD2, 16, Ui.LINE, 1)
             setPadding(dp(12), dp(6), dp(12), dp(6))
-            setOnClickListener { pickLang() }
+            setOnClickListener { showSettingsSheet() }
         }
         head.addView(langChip)
         head.addView(View(this), Ui.lp(0, 1, 1f))
@@ -401,7 +448,7 @@ class WebTranslateActivity : Activity() {
         transIcon = ToolIcon(this, ToolIcon.Kind.TRANSLATE, Ui.TEXT, Ui.CARD)
         transBtn.addView(transIcon, FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER))
         transBtn.setOnClickListener { if (running) pause() else start() }
-        transBtn.setOnLongClickListener { pickLang(); true }
+        transBtn.setOnLongClickListener { showSettingsSheet(); true }
         tools.addView(transBtn, Ui.lp(dp(52), dp(48)))
         tools.addView(View(this), Ui.lp(0, 1, 1f))
         val sp1 = Ui.hbox(this)
@@ -463,6 +510,8 @@ class WebTranslateActivity : Activity() {
             "menu" -> ui.postDelayed({ showSourceMenu(srcPill) }, 800)
             "settings" -> ui.postDelayed({ showSettingsSheet() }, 800)
             "ocrtest" -> ui.postDelayed({ runOcrDemo() }, 800)
+            "ccdemo" -> ui.postDelayed({ runCcDemo(false) }, 800)
+            "ccnarrate" -> ui.postDelayed({ runCcDemo(true) }, 800)
             "running" -> ui.postDelayed({
                 running = true; everStarted = true; refresh()
                 setPanel("Xin chào, đây là bản dịch thử.", "Hello, this is a test.")
@@ -475,6 +524,21 @@ class WebTranslateActivity : Activity() {
      * Bài thử tự động (ci/smoke.sh, extra demo=ocrtest): nạp trang có chữ tiếng Anh cỡ lớn, đặt khung trùm lên chữ,
      * bật OCR và dịch thật; từng bước ghi vào nhật ký DG_OCR để máy chủ CI biết chuỗi chụp hình, đọc chữ, dịch có chạy.
      */
+    /** Bài thử CC thật từ DOM của WebView, không gửi câu trực tiếp vào callback Kotlin. */
+    private fun runCcDemo(narrate: Boolean) {
+        p.narrate = narrate
+        p.speak = narrate
+        p.engine = Prefs.ENGINE_LOCAL
+        source = "cc"
+        sp.edit().putString("source", "cc").apply()
+        translator?.close(); translator = null; translatorLang = ""
+        refresh()
+        start()
+        val html = "<html><body style='background:#202830;color:white'>" +
+            "<div class='captions-text'>Where are you going tonight? Stay close to me.</div></body></html>"
+        web.loadDataWithBaseURL("https://local.dichgame.test/", html, "text/html", "utf-8", null)
+    }
+
     private fun runOcrDemo() {
         Log.i(TAG, "demo: bat dau")
         val html = "<html><body style='margin:0;background:#202830'><div style='position:absolute;left:5%;top:24%;width:90%;" +
@@ -528,10 +592,10 @@ class WebTranslateActivity : Activity() {
         fwdBtn.alpha = if (web.canGoForward()) 1f else 0.35f
     }
 
-    private fun langShort(): String = if (p.narrate) "Việt" else Prefs.langName(p.lang).removePrefix("Tiếng ")
+    private fun langShort(): String = Prefs.langName(detectedLang).removePrefix("Tiếng ")
 
     private fun refresh() {
-        langChip.text = if (p.narrate) "🌐 Thuyết minh · Việt ▾" else "🌐 ${langShort()} → Việt ▾"
+        langChip.text = if (p.narrate) "🔊 Thuyết minh · tự nhận diện" else "🌐 Tự nhận diện · ${langShort()} → Việt"
         if (running) {
             transBtn.background = Ui.goldBg(this, 16)
             transIcon.set(ToolIcon.Kind.PAUSE, Color.parseColor("#2A1A08"))
@@ -541,7 +605,7 @@ class WebTranslateActivity : Activity() {
         }
         statusChip.text = if (running) "● Đang dịch" else if (everStarted) "⏸ Tạm dừng" else "Chưa bắt đầu"
         statusChip.setTextColor(if (running) Ui.OK else if (everStarted) Ui.GOLD else Ui.SUB)
-        if (source == "ocr") { srcIcon.set(ToolIcon.Kind.SCAN, Ui.TEXT); srcLabel.text = "OCR" }
+        if (source == "ocr") { srcIcon.set(ToolIcon.Kind.SCAN, Ui.TEXT); srcLabel.text = if (sp.getBoolean("aiOcr", false)) "OCR AI" else "OCR" }
         else { srcIcon.set(ToolIcon.Kind.CC, Ui.TEXT); srcLabel.text = "CC" }
         speakIcon.set(if (p.speak) ToolIcon.Kind.SPEAKER_ON else ToolIcon.Kind.SPEAKER_OFF, if (p.speak) Ui.GOLD else Ui.SUB)
         box.active = running && source == "ocr"
@@ -575,7 +639,7 @@ class WebTranslateActivity : Activity() {
 
     // ---------------- điều khiển dịch ----------------
 
-    private fun ocrLang() = if (p.narrate) "vi" else p.lang
+    private fun ocrLang() = if (sp.getBoolean("aiOcr", false)) "auto-ai" else "auto"
 
     private fun engine(): Ocr {
         var o = ocr
@@ -588,30 +652,42 @@ class WebTranslateActivity : Activity() {
         return o
     }
 
-    private fun prepareTranslator(done: (Boolean) -> Unit) {
+    /** Chỉ chuẩn bị mô hình của ngôn ngữ nhận diện được, không bắt người dùng chọn trước. */
+    private fun prepareTranslator(lang: String) {
+        if (preparingLang == lang) return
+        val generation = ++prepareGeneration
+        preparingLang = lang
         translator?.close()
-        val t = TextTranslator(this, p, p.lang)
+        translator = null
+        translatorLang = ""
+        val t = TextTranslator(this, p, lang)
         t.onFallback = { showFallback() }
-        translator = t
-        setPanel("Đang chuẩn bị bộ dịch...", "")
-        // dựng sẵn bộ nhớ câu thoại ở luồng nền để lần dịch đầu không làm đứng màn hình
-        val appCtx = applicationContext
-        val prefs = p
-        Thread { try { PackStore.memory(appCtx, prefs).warm() } catch (_: Throwable) {} }.start()
+        setPanel("Đang chuẩn bị bộ dịch " + Prefs.langName(lang) + " → tiếng Việt...", "")
+        Thread { try { PackStore.memory(applicationContext, p).warm() } catch (_: Throwable) {} }.start()
         t.prepare { ok ->
-            if (ok) done(true) else {
-                translator = null
-                setPanel("Không tải được mô hình dịch. Kiểm tra mạng rồi bấm lại.", "")
-                done(false)
+            if (generation != prepareGeneration || isDestroyed || !running) {
+                t.close()
+            } else {
+                preparingLang = ""
+                if (ok || Ai.enabled(p)) {
+                    translator = t
+                    translatorLang = lang
+                    val pending = awaitingText
+                    awaitingText = null
+                    if (pending != null) {
+                        lastProcessed = ""
+                        process(pending)
+                    }
+                } else {
+                    t.close()
+                    setPanel("Không tải được mô hình dịch " + Prefs.langName(lang) + ". Kiểm tra Internet rồi thử lại.", "")
+                }
             }
         }
     }
 
     private fun start() {
-        if (running) return
-        if (!p.narrate && !sp.getBoolean("langAsked", false)) { pickLang(thenStart = true); return }
-        if (!p.narrate && translator == null) { prepareTranslator { ok -> if (ok) beginRun() }; return }
-        beginRun()
+        if (!running) beginRun()
     }
 
     private fun beginRun() {
@@ -619,10 +695,12 @@ class WebTranslateActivity : Activity() {
         everStarted = true
         lastProcessed = ""; lastShown = ""; lastCand = ""; miss = 0; lastThumb = null
         resetScanDiag()
+        gotCc = false
+        awaitingText = null
         refresh()
         setPanel(if (source == "ocr") "Đang quét chữ trên video..." else "Đang chờ phụ đề của video...", "")
         applyHide()
-        if (source == "ocr") scheduleScan(200)
+        if (source == "ocr") scheduleScan(200) else ui.postDelayed(ccFallback, 12000)
     }
 
     private fun pause() {
@@ -630,6 +708,9 @@ class WebTranslateActivity : Activity() {
         seq++
         ui.removeCallbacks(scanTask)
         ui.removeCallbacks(pendingRun)
+        ui.removeCallbacks(ccFallback)
+        prepareGeneration++
+        preparingLang = ""
         speaker?.stop()
         refresh()
         applyHide()
@@ -643,7 +724,22 @@ class WebTranslateActivity : Activity() {
         source = s
         sp.edit().putString("source", s).apply()
         refresh()
+        if (s == "ocr") placeBoxOnVideo()
         if (was) start()
+    }
+
+    /** Khung OCR bám vào đáy video HTML5, thay vì bám cứng đáy toàn bộ trang web. */
+    private fun placeBoxOnVideo() {
+        if (sp.contains("box") || !::web.isInitialized || !::box.isInitialized) return
+        val code = """(function(){var vs=[].slice.call(document.querySelectorAll('video'));if(!vs.length)vs=[].slice.call(document.querySelectorAll('iframe')).filter(function(f){return f.clientWidth>200&&f.clientHeight>100});var v=vs.sort(function(a,b){return b.clientWidth*b.clientHeight-a.clientWidth*a.clientHeight})[0];if(!v)return null;var r=v.getBoundingClientRect(),w=window.innerWidth,h=window.innerHeight;if(r.width<100||r.height<60||w<1||h<1)return null;var l=Math.max(0,(r.left+r.width*0.04)/w),rr=Math.min(1,(r.right-r.width*0.04)/w),t=Math.max(0,(r.bottom-r.height*0.30)/h),bb=Math.min(1,(r.bottom-r.height*0.02)/h);return [l,t,rr,bb]})()"""
+        web.evaluateJavascript(code) { raw ->
+            if (sp.contains("box") || source != "ocr" || isDestroyed) return@evaluateJavascript
+            try {
+                val a = org.json.JSONArray(raw)
+                if (a.length() == 4) box.load((0 until 4).joinToString(",") { a.getDouble(it).toString() })
+                box.invalidate()
+            } catch (_: Exception) {}
+        }
     }
 
     private fun applyHide() {
@@ -653,32 +749,14 @@ class WebTranslateActivity : Activity() {
         refresh()
     }
 
-    private fun setLang(code: String) {
-        if (code == p.lang) return
-        val was = running
-        if (was) pause()
-        p.lang = code
-        translator?.close(); translator = null
-        refresh()
-        setPanel("Ngôn ngữ trong video: ${Prefs.langName(code)}", "")
-        if (was) start()
-    }
-
-    private fun pickLang(thenStart: Boolean = false) {
-        val codes = Prefs.LANGS.map { it.first }.filter { it != "vi" }
-        Ui.pick(this, "Ngôn ngữ trong video", codes.map { Prefs.langLabel(it) }) { i ->
-            sp.edit().putBoolean("langAsked", true).apply()
-            setLang(codes[i])
-            if (thenStart) start()
-        }
-    }
-
     // ---- nguồn CC
 
     private val pendingRun = Runnable { pendingText?.let { process(it) } }
 
     private fun onSub(t: String) {
         if (!running || source != "cc") return
+        gotCc = true
+        ui.removeCallbacks(ccFallback)
         if (p.slow) {
             pendingText = t
             ui.removeCallbacks(pendingRun)
@@ -686,32 +764,84 @@ class WebTranslateActivity : Activity() {
         } else process(t)
     }
 
-    /** Dịch (hoặc đọc, khi thuyết minh) một câu vừa lấy được từ CC hoặc OCR. */
+    /** ML Kit có thể tải mô-đun muộn hoặc callback không chạy trên một số Android.
+     * Không để cả đường CC/OCR kẹt vô thời hạn chỉ vì đang nhận diện ngôn ngữ.
+     */
     private fun process(text: String) {
-        if (!running || text == lastProcessed) return
+        if (!running || text.isBlank() || text == lastProcessed) return
         lastProcessed = text
-        Log.i(TAG, "src: $text")
-        if (p.narrate) {
-            setPanel(text, "")
-            if (p.speak) speaker?.speak(text)
+        val id = ++seq
+        Log.i(TAG, "src: " + text)
+        val guess = LangDetect.guess(text)
+        var consumed = false
+        fun deliver(modelGuess: String?) {
+            if (consumed || !running || isDestroyed || id != seq) return
+            consumed = true
+            val lang = languageRouter.resolve(text, modelGuess, guess)
+            Log.i(TAG, "lang: " + lang + (if (modelGuess == null) " (nhận diện dự phòng)" else " (ML Kit)"))
+            processKnown(text, lang, id)
+        }
+        if (guess != null && guess.script != 'L') {
+            deliver(null)
             return
         }
-        val t = translator
-        if (t == null) { Log.i(TAG, "chua co bo dich"); return }
-        val my = ++seq
+        // Câu CC được đưa vào dịch sau tối đa 1,2 giây ngay cả khi ML Kit
+        // đang chờ mô-đun Google Play Services hay thiết bị mất mạng.
+        ui.postDelayed({ deliver(null) }, 1200)
+        try {
+            languageIdentifier.identifyLanguage(text)
+                .addOnSuccessListener { raw -> deliver(raw) }
+                .addOnFailureListener { deliver(null) }
+        } catch (e: Exception) {
+            Log.w(TAG, "Nhận diện ML Kit không sẵn sàng, dùng bộ dự phòng", e)
+            deliver(null)
+        }
+    }
+
+    private fun processKnown(text: String, lang: String, id: Int) {
+        if (!running || id != seq) return
+        detectedLang = lang
+        refresh()
+        if (lang == "vi") {
+            setPanel(text, "")
+            publishToTv(text)
+            if (p.speak || p.narrate) speaker?.speak(text)
+            return
+        }
+        if (translator == null || translatorLang != lang) {
+            awaitingText = text
+            prepareTranslator(lang)
+            return
+        }
+        val t = translator ?: return
         val t0 = System.currentTimeMillis()
         try {
             t.translateEx(text) { vi, d ->
-                Log.i(TAG, "vi: $vi (${System.currentTimeMillis() - t0} ms)")
-                if (my == seq && running) {
+                Log.i(TAG, "vi: " + vi + " (" + (System.currentTimeMillis() - t0) + " ms)")
+                if (id == seq && running) {
                     setPanel(vi, if (p.showOrig) text else "")
-                    if (p.speak) speaker?.speak(vi, false, d)
+                    publishToTv(vi)
+                    if (p.speak || p.narrate) speaker?.speak(vi, false, d)
                 }
             }
         } catch (e: Throwable) {
             Log.e(TAG, "dich loi", e)
-            setPanel("Không dịch được: ${e.message ?: e.javaClass.simpleName}", "")
+            setPanel("Không dịch được: " + (e.message ?: e.javaClass.simpleName), "")
         }
+    }
+
+    /** Đồng bộ phụ đề web với ứng dụng TV đã ghép, và các phương án LG/web phụ đề sẵn có. */
+    private fun publishToTv(text: String) {
+        TvOut.publish(this, "sub", text)
+        if (!p.tvPaired) return
+        val ip = p.tvIp
+        val token = p.tvToken
+        val size = (p.fontSize * p.subScale / 100f + 12).toInt().coerceIn(14, 80)
+        try {
+            tvExecutor.execute {
+                TvLink.postSubtitle(ip, token, text, size, p.narrate && p.tvSpeak)
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {}
     }
 
     // ---- nguồn OCR
@@ -777,12 +907,16 @@ class WebTranslateActivity : Activity() {
 
     private fun readBitmap(bmp: Bitmap) {
         if (isDestroyed || !running) { bmp.recycle(); scanBusy = false; return }
-        val th = Ocr.thumb(bmp)
-        if (lastThumb != null && Ocr.same(th, lastThumb)) { bmp.recycle(); scanBusy = false; scheduleScan(); return }
+        val th = Ocr.thumbFine(bmp)
+        // Chế độ đọc kỹ phải được đọc lại lần 2 kể cả khi khung hình không đổi.
+        val waitingConfirmation = p.slow && lastCand.isNotEmpty() && lastCand != lastShown
+        if (!waitingConfirmation && lastThumb != null && Ocr.sameStrict(th, lastThumb)) {
+            bmp.recycle(); scanBusy = false; scheduleScan(); return
+        }
         val blank = isBlank(th)
         engine().read(bmp,
             { m ->
-                bmp.recycle(); scanBusy = false
+                scanBusy = false
                 failScans++
                 Log.i(TAG, "ocr loi '$m' (lan $failScans)")
                 // lần đọc lỗi thì chưa coi là đã đọc ảnh này: ảnh đứng yên vẫn được thử lại
@@ -793,9 +927,9 @@ class WebTranslateActivity : Activity() {
                 }
             },
             { blocks ->
-                bmp.recycle(); scanBusy = false
+                scanBusy = false
                 failScans = 0
-                lastThumb = th
+                lastThumb = if (blocks.isEmpty()) null else th
                 onOcr(blocks, blank)
                 scheduleScan()
             })
@@ -877,7 +1011,7 @@ class WebTranslateActivity : Activity() {
             col.addView(row)
         }
         item("Chữ hiện dần", "Chỉ bật khi phụ đề hiện ra từng chữ", p.slow) { p.slow = !p.slow; lastCand = "" }
-        item("Thuyết minh", "Video có sẵn phụ đề tiếng Việt: đọc to, không dịch", p.narrate) { toggleNarrate() }
+        item("Thuyết minh", "Tự dịch phụ đề nước ngoài rồi đọc tiếng Việt; phụ đề Việt được đọc trực tiếp", p.narrate) { toggleNarrate() }
         item("Ẩn phụ đề gốc trên video", if (source == "ocr") "Che khung bằng nền tối khi quét OCR" else null, hideOrig) {
             hideOrig = !hideOrig
             sp.edit().putBoolean("hide", hideOrig).apply()
@@ -885,7 +1019,31 @@ class WebTranslateActivity : Activity() {
         }
         col.addView(Ui.divider(this), Ui.lp(MATCH_PARENT, 1).apply { leftMargin = dp(14); rightMargin = dp(14); topMargin = dp(4); bottomMargin = dp(4) })
         item("Phụ đề CC của video", null, source == "cc") { setSource("cc") }
-        item("Quét chữ trên video (OCR)", null, source == "ocr") { setSource("ocr") }
+        item("Quét chữ trên video (OCR)", "Tự đọc nhiều hệ chữ ngay trên máy, không cần chọn ngôn ngữ", source == "ocr" && !sp.getBoolean("aiOcr", false)) {
+            val was = running
+            if (was) pause()
+            sp.edit().putBoolean("aiOcr", false).putString("source", "ocr").apply()
+            source = "ocr"
+            ocr?.close(); ocr = null; ocrFor = ""
+            lastThumb = null
+            refresh()
+            if (was) start()
+        }
+        item("OCR AI tự nhận mọi ngôn ngữ", "Gemini đọc ảnh khung phụ đề; cần khóa API, gửi ảnh cho Google", source == "ocr" && sp.getBoolean("aiOcr", false)) {
+            if (p.geminiKeys().isEmpty()) {
+                Toast.makeText(this, "Cần nhập khóa Gemini tại Cách dịch để dùng OCR AI.", Toast.LENGTH_LONG).show()
+                startActivity(Intent(this, TranslateActivity::class.java))
+            } else {
+                val was = running
+                if (was) pause()
+                sp.edit().putBoolean("aiOcr", true).putString("source", "ocr").apply()
+                source = "ocr"
+                ocr?.close(); ocr = null; ocrFor = ""
+                lastThumb = null
+                refresh()
+                if (was) start()
+            }
+        }
         val w = dp(310)
         val pop = PopupWindow(col, w, WRAP_CONTENT, true)
         pw = pop
@@ -902,11 +1060,12 @@ class WebTranslateActivity : Activity() {
         val was = running
         if (was) pause()
         p.narrate = !p.narrate
+        if (p.narrate) p.speak = true
         ocr?.close(); ocr = null
         translator?.close(); translator = null
         lastThumb = null
         refresh()
-        if (was) start() else setPanel(if (p.narrate) "Thuyết minh: đọc to phụ đề tiếng Việt, không dịch." else "Đã chuyển sang dịch. Bấm nút dịch để bắt đầu.", "")
+        if (was) start() else setPanel(if (p.narrate) "Thuyết minh tự động: phụ đề nước ngoài được dịch rồi đọc bằng tiếng Việt." else "Đã chuyển sang dịch. Bấm nút dịch để bắt đầu.", "")
     }
 
     private fun showFontDialog() {
@@ -925,10 +1084,8 @@ class WebTranslateActivity : Activity() {
             fun fill() {
                 box.removeAllViews()
                 box.addView(Ui.tv(a, "Cài đặt dịch video", 18f, Ui.TEXT, true))
-                box.addView(Ui.tv(a, "Ngôn ngữ trong video", 15f, Ui.TEXT, true), Ui.lpm(a, 14, 0))
-                box.addView(Ui.button(a, if (p.narrate) "Thuyết minh (tiếng Việt)" else Prefs.langLabel(p.lang) + "  ›") {
-                    dlg.dismiss(); pickLang()
-                }, Ui.lpm(a, 6, 0))
+                box.addView(Ui.tv(a, "Ngôn ngữ trong video: tự nhận diện", 15f, Ui.TEXT, true), Ui.lpm(a, 14, 0))
+                box.addView(Ui.tv(a, "Đang nhận diện: " + Prefs.langName(detectedLang) + ". Không cần chọn trước ngôn ngữ nguồn.", 13f, Ui.SUB), Ui.lpm(a, 6, 0))
                 box.addView(Ui.tv(a, "Cách đọc chữ trên hình", 15f, Ui.TEXT, true), Ui.lpm(a, 14, 0))
                 box.addView(Ui.segmented(a, listOf("Kỹ", "Nhanh"), if (p.slow) 0 else 1) { p.slow = it == 0; lastCand = ""; fill() }, Ui.lpm(a, 6, 0))
                 box.addView(Ui.tv(a, "Kỹ: chờ chữ hiện đủ rồi mới dịch. Nhanh: dịch ngay khi thấy chữ.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 0))
@@ -968,9 +1125,17 @@ class WebTranslateActivity : Activity() {
         super.onPause()
     }
 
+    private fun hideFullscreenVideo() {
+        fullscreenVideo?.let { try { webFrame.removeView(it) } catch (_: Exception) {} }
+        fullscreenVideo = null
+        fullscreenCallback?.let { try { it.onCustomViewHidden() } catch (_: Exception) {} }
+        fullscreenCallback = null
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         when {
+            fullscreenVideo != null -> hideFullscreenVideo()
             adjusting -> leaveAdjust()
             ::web.isInitialized && web.canGoBack() -> web.goBack()
             else -> super.onBackPressed()
@@ -979,9 +1144,12 @@ class WebTranslateActivity : Activity() {
 
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)
+        hideFullscreenVideo()
+        try { languageIdentifier.close() } catch (_: Exception) {}
         try { web.destroy() } catch (_: Exception) {}
         translator?.close()
         ocr?.close()
+        tvExecutor.shutdownNow()
         speaker?.shutdown()
         super.onDestroy()
     }

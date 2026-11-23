@@ -37,6 +37,9 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     @Volatile var ready = false
         private set
+    private data class PendingSystemSpeech(val text: String, val queue: Boolean, val d: Delivery?)
+    @Volatile private var pendingSystemSpeech: PendingSystemSpeech? = null
+    private val playEpoch = AtomicInteger(0)
 
     /** Số câu đang đọc hoặc đang chờ (giọng máy), để biết câu có đang dồn lại không. */
     private val queued = AtomicInteger(0)
@@ -55,7 +58,11 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         prepare()
         tts = TextToSpeech(ctx.applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.setLanguage(Locale("vi", "VN"))
+                val langStatus = tts?.setLanguage(Locale("vi", "VN")) ?: TextToSpeech.LANG_NOT_SUPPORTED
+                if (langStatus == TextToSpeech.LANG_MISSING_DATA ||
+                    langStatus == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    main.post { onAiError?.invoke("Máy chưa có giọng đọc tiếng Việt. Hãy cài giọng tiếng Việt trong cài đặt chuyển văn bản thành giọng nói.") }
+                }
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {}
                     override fun onDone(utteranceId: String?) { dec() }
@@ -65,7 +72,17 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                 })
                 applyVoice()
                 ready = true
-                onReady?.invoke()
+                val queuedFirst = pendingSystemSpeech
+                pendingSystemSpeech = null
+                val epoch = playEpoch.get()
+                main.post {
+                    if (playEpoch.get() == epoch && ready && queuedFirst != null) {
+                        speakSystem(queuedFirst.text, queuedFirst.queue, queuedFirst.d)
+                    }
+                    if (playEpoch.get() == epoch) onReady?.invoke()
+                }
+            } else {
+                main.post { onAiError?.invoke("Android không khởi tạo được bộ đọc TTS. Kiểm tra giọng đọc mặc định của điện thoại.") }
             }
         }
     }
@@ -179,8 +196,12 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     // ---------------- Giọng máy ----------------
 
     private fun speakSystem(text: String, queue: Boolean, d: Delivery?) {
+        if (!ready || tts == null) {
+            // Tránh đánh rơi câu đầu khi Android còn đang tải bộ đọc TTS.
+            pendingSystemSpeech = PendingSystemSpeech(text, queue, d)
+            return
+        }
         val t = tts ?: return
-        if (!ready) return
         var rate = p.rate10 / 10f
         var pitch = 1f
         deliveryOf(text, d)?.let { rate *= it.rate; pitch = it.pitch }
@@ -344,12 +365,16 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     private fun stopTrack() = synchronized(lock) { releaseLocked() }
 
     fun stop() {
+        playEpoch.incrementAndGet()
+        pendingSystemSpeech = null
         seq.incrementAndGet()
         stopTrack()
         try { tts?.stop() } catch (_: Exception) {}
     }
 
     fun shutdown() {
+        playEpoch.incrementAndGet()
+        pendingSystemSpeech = null
         seq.incrementAndGet()
         stopTrack()
         exec.shutdownNow()

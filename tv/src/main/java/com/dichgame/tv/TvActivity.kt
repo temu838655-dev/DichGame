@@ -165,10 +165,16 @@ class TvActivity : Activity() {
         val ok = Settings.canDrawOverlays(this)
         val c = TvState.code
         codeView.text = if (c.length == 8) c.substring(0, 4) + " " + c.substring(4) else c
+        val receive = if (TvState.listenerReady) "Đang lắng nghe trên Wi-Fi (cổng 8765)." else
+            "Dịch vụ nhận chưa sẵn sàng. " + TvState.networkError
+        val seen = TvState.lastCaptionAt
+        val lastReceived = if (seen <= 0) "Chưa nhận được phụ đề nào." else
+            "Lần nhận phụ đề gần nhất: " + ((System.currentTimeMillis() - seen) / 1000).coerceAtLeast(0) + " giây trước."
         info.text = "Địa chỉ TV: ${ip()}   ·   Mã đổi mỗi 60 giây\n" +
-            (if (ok) "Đã cấp quyền, sẵn sàng nhận phụ đề từ điện thoại."
-            else "Chưa cấp quyền hiển thị trên ứng dụng khác. Nếu TV không mở được trang cài đặt, dùng máy tính: " +
-                "adb shell appops set $packageName SYSTEM_ALERT_WINDOW allow")
+            (if (ok) "Đã cấp quyền hiển thị trên ứng dụng khác." else
+                "Chưa cấp quyền overlay. Vào cài đặt, hoặc dùng ADB: adb shell appops set $packageName SYSTEM_ALERT_WINDOW allow") +
+            "\n" + receive + "\n" + lastReceived +
+            (if (TvState.overlayError.isBlank()) "" else "\nLỗi phụ đề: " + TvState.overlayError)
     }
 
     private fun ip(): String = try {
@@ -179,10 +185,19 @@ class TvActivity : Activity() {
 
     private fun grant() {
         val uri = Uri.parse("package:$packageName")
-        try { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, uri)) }
-        catch (e: Exception) {
-            try { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, uri)) } catch (_: Exception) {}
+        val candidates = listOf(
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, uri),
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, uri),
+            Intent(Settings.ACTION_SETTINGS)
+        )
+        for (candidate in candidates) {
+            try {
+                startActivity(candidate)
+                return
+            } catch (_: Exception) {}
         }
+        Toast.makeText(this, "TV không hỗ trợ mở cài đặt quyền overlay. Có thể dùng ADB hoặc kiểm tra chính sách nhà sản xuất.", Toast.LENGTH_LONG).show()
     }
 
     private fun battery() {

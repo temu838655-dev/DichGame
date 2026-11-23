@@ -1,0 +1,50 @@
+name: Build experimental LG and Samsung TV receivers
+
+on:
+  push:
+    branches: ["fix/web-auto-language-ocr-tv-overlay-20261124"]
+    paths:
+      - "tv-webos/**"
+      - "tv-tizen/**"
+      - "tv-web-common/**"
+      - "tools/prepare-tv-web.sh"
+      - ".github/workflows/build-tv-web.yml"
+  pull_request:
+    paths:
+      - "tv-webos/**"
+      - "tv-tizen/**"
+      - "tv-web-common/**"
+      - "tools/prepare-tv-web.sh"
+      - ".github/workflows/build-tv-web.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-tv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check receiver JavaScript syntax
+        run: node --check tv-web-common/receiver.js
+      - name: Prepare vendor sources and icons
+        run: bash tools/prepare-tv-web.sh
+      - name: Install official LG webOS CLI
+        run: npm install -g @webos-tools/cli
+      - name: Package experimental LG webOS IPK
+        run: |
+          ares-package dist-tv/webos -o dist-tv
+          ls -lah dist-tv/*.ipk
+          cp dist-tv/*.ipk dist-tv/DichGame-TV-webOS-experimental.ipk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DichGame-TV-webOS-Tizen-experimental
+          path: |
+            dist-tv/DichGame-TV-webOS-experimental.ipk
+            dist-tv/DichGame-TV-Tizen-SOURCE.zip
+            dist-tv/DichGame-TV-webOS-SOURCE.zip
+          if-no-files-found: error
