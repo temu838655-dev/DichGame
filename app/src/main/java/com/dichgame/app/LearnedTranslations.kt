@@ -17,8 +17,8 @@ internal object LearnedTranslationRules {
     private val whitespace = Regex("\\s+")
     fun normalize(text: String): String = text.trim().replace(whitespace, " ").lowercase(Locale.ROOT)
 
-    fun key(lang: String, speaker: String?, ui: Boolean, source: String): String =
-        listOf(lang.lowercase(Locale.ROOT), if (ui) "menu" else "dialogue",
+    fun key(game: String, lang: String, speaker: String?, ui: Boolean, source: String): String =
+        listOf(normalize(game), lang.lowercase(Locale.ROOT), if (ui) "menu" else "dialogue",
             normalize(speaker.orEmpty()), normalize(source)).joinToString("\u0001")
 
     fun canRemember(source: String, vi: String): Boolean {
@@ -37,7 +37,7 @@ internal object LearnedTranslationRules {
  * Dữ liệu được ghi bằng AtomicFile và ghi gom trên một luồng I/O.
  */
 object LearnedTranslations {
-    data class Entry(val key: String, val original: String, val vi: String, val manual: Boolean)
+    data class Entry(val key: String, val game: String, val original: String, val vi: String, val manual: Boolean)
 
     private const val LIMIT = 2500
     private val lock = Any()
@@ -70,7 +70,7 @@ object LearnedTranslations {
                         val vi = o.optString("vi")
                         if (key.isNotEmpty() && source.isNotBlank() && vi.isNotBlank()) {
                             map.remove(key)
-                            map[key] = Entry(key, source, vi, o.optBoolean("manual"))
+                            map[key] = Entry(key, o.optString("game"), source, vi, o.optBoolean("manual"))
                             if (map.size > LIMIT) map.remove(map.keys.first())
                         }
                     }
@@ -84,7 +84,7 @@ object LearnedTranslations {
     private fun json(items: Collection<Entry>): String {
         val a = JSONArray()
         for (v in items) a.put(JSONObject().put("key", v.key)
-            .put("source", v.original).put("vi", v.vi).put("manual", v.manual))
+            .put("game", v.game).put("source", v.original).put("vi", v.vi).put("manual", v.manual))
         return a.toString()
     }
 
@@ -113,30 +113,33 @@ object LearnedTranslations {
         }, 300, TimeUnit.MILLISECONDS)
     }
 
-    fun lookup(ctx: Context, profile: String, lang: String, speaker: String?,
+    fun lookup(ctx: Context, profile: String, game: String, lang: String, speaker: String?,
                ui: Boolean, source: String): Entry? = synchronized(lock) {
-        data(ctx, profile)[LearnedTranslationRules.key(lang, speaker, ui, source)]
+        data(ctx, profile)[LearnedTranslationRules.key(game, lang, speaker, ui, source)]
     }
 
     /** Ghi một câu AI đã được TranslationGuard đánh giá OK, không ghi đè bản sửa tay. */
-    fun remember(ctx: Context, profile: String, lang: String, speaker: String?,
+    fun remember(ctx: Context, profile: String, game: String, lang: String, speaker: String?,
                  ui: Boolean, source: String, vi: String) {
         if (!LearnedTranslationRules.canRemember(source, vi)) return
         synchronized(lock) {
-            val key = LearnedTranslationRules.key(lang, speaker, ui, source)
+            val key = LearnedTranslationRules.key(game, lang, speaker, ui, source)
             val map = data(ctx, profile)
             if (map.containsKey(key)) return
-            map[key] = Entry(key, source.trim(), vi.trim(), false)
+            map[key] = Entry(key, game, source.trim(), vi.trim(), false)
             if (map.size > LIMIT) map.remove(map.keys.first())
             schedule(ctx, profile)
         }
     }
 
-    fun recent(ctx: Context, profile: String, limit: Int = 50): List<Entry> = synchronized(lock) {
-        data(ctx, profile).values.toList().takeLast(limit.coerceIn(1, 100)).asReversed()
+    fun recent(ctx: Context, profile: String, game: String, limit: Int = 50): List<Entry> = synchronized(lock) {
+        data(ctx, profile).values.filter { it.game.equals(game, ignoreCase = true) }
+            .takeLast(limit.coerceIn(1, 100)).asReversed()
     }
 
-    fun count(ctx: Context, profile: String): Int = synchronized(lock) { data(ctx, profile).size }
+    fun count(ctx: Context, profile: String, game: String): Int = synchronized(lock) {
+        data(ctx, profile).values.count { it.game.equals(game, ignoreCase = true) }
+    }
 
     /** Người dùng sửa bản dịch: ưu tiên bản sửa, không cho AI tự ghi đè. */
     fun edit(ctx: Context, profile: String, key: String, corrected: String): Boolean {
@@ -158,7 +161,17 @@ object LearnedTranslations {
         }
     }
 
-    fun clear(ctx: Context, profile: String) {
+    fun clear(ctx: Context, profile: String, game: String) {
+        synchronized(lock) {
+            val map = data(ctx, profile)
+            val keys = map.values.filter { it.game.equals(game, ignoreCase = true) }.map { it.key }
+            for (key in keys) map.remove(key)
+            if (keys.isNotEmpty()) schedule(ctx, profile)
+        }
+    }
+
+    /** Khi xóa hồ sơ game, xóa mọi bản dịch của hồ sơ đó. */
+    fun clearProfile(ctx: Context, profile: String) {
         synchronized(lock) {
             data(ctx, profile).clear()
             schedule(ctx, profile)
