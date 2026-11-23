@@ -199,6 +199,14 @@ class Prefs(ctx: Context) {
         val cards = Cast.parse(cast)
         val c = Cast.byName(speaker, cards) ?: Cast.speakerOf(sentence, cards) ?: return aiVoice
         val desc = c.desc.lowercase(java.util.Locale.ROOT)
+        // Gán riêng: "Lucia = nữ; giọng: Mai" (hoặc mã Kore), ưu tiên trước mặc định nam/nữ.
+        val requested = Regex("giọng\\s*[:=]\\s*([^;,]+)", RegexOption.IGNORE_CASE)
+            .find(c.desc)?.groupValues?.getOrNull(1)?.trim()
+        val named = AI_VOICES.firstOrNull {
+            it.first.equals(requested, ignoreCase = true) ||
+                it.second.substringBefore(" · ").equals(requested, ignoreCase = true)
+        }?.first
+        if (named != null) return named
         val female = Regex("(?:^|[\\s,;])(?:giọng\\s*)?(?:nữ|female)(?=$|[\\s,;])").containsMatchIn(desc)
         val male = Regex("(?:^|[\\s,;])(?:giọng\\s*)?(?:nam|male)(?=$|[\\s,;])").containsMatchIn(desc)
         return when {
