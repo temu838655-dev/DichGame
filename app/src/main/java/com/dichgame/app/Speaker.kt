@@ -95,11 +95,11 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     /** Giải phóng giọng offline (trước khi xóa file giọng). */
     fun release() { try { offline.close() } catch (_: Throwable) {} }
 
-    fun speak(text: String, queue: Boolean = false, d: Delivery? = null) {
+    fun speak(text: String, queue: Boolean = false, d: Delivery? = null, speakerName: String? = null) {
         if (text.isBlank()) return
         when {
             offlineOn() -> speakOffline(text, d)
-            p.aiVoiceOn -> speakAi(text, d)
+            p.aiVoiceOn -> speakAi(text, d, speakerName)
             else -> speakSystem(text, queue, d)
         }
     }
@@ -128,18 +128,19 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     private fun styleFor(text: String, d: Delivery?): String = deliveryOf(text, d)?.style.orEmpty()
 
-    private fun speakAi(text: String, d: Delivery?) {
+    private fun speakAi(text: String, d: Delivery?, speakerName: String?) {
         val my = seq.incrementAndGet()
         stopTrack()
         try { tts?.stop() } catch (_: Exception) {}
         val style = styleFor(text, d)
-        val key = p.aiVoice + "|" + p.ttsModel + "|" + style + "|" + text
+        val voiceName = p.aiVoiceFor(speakerName, text)
+        val key = voiceName + "|" + p.ttsModel + "|" + style + "|" + text
         val backlog = p.autoFast && System.currentTimeMillis() < aiPlayUntil
         val speed = ((p.rate10 / 10f) * (if (backlog) 1.35f else 1f)).coerceIn(0.5f, 2.5f)
         exec.execute {
             val cached: Pcm? = cache.get(key)
             val pcm: Pcm = cached ?: try {
-                AiSpeech.synth(p, text, style).also { cache.put(key, it) }
+                AiSpeech.synth(p, text, style, voiceName).also { cache.put(key, it) }
             } catch (e: Exception) {
                 if (my == seq.get()) main.post { fallback(text, d, e) }
                 return@execute
@@ -187,7 +188,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
      * [cb] chạy ở luồng nền, nhận âm thanh và tốc độ cần phát; âm thanh null nếu giọng lỗi.
      * Câu cũ chưa kịp làm mà đã có câu mới thì bị bỏ (không gọi [cb]).
      */
-    fun synthForTv(text: String, d: Delivery? = null, cb: (Pcm?, Float) -> Unit) {
+    fun synthForTv(text: String, d: Delivery? = null, speakerName: String? = null, cb: (Pcm?, Float) -> Unit) {
         if (text.isBlank()) return
         val my = tvSeq.incrementAndGet()
         val useOffline = offlineOn()
@@ -204,9 +205,10 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                     } catch (_: Throwable) { null }
                     cb(pcm, 1f) // tốc độ đã nằm trong âm thanh
                 } else {
-                    val key = p.aiVoice + "|" + p.ttsModel + "|" + style + "|" + text
+                    val voiceName = p.aiVoiceFor(speakerName, text)
+                    val key = voiceName + "|" + p.ttsModel + "|" + style + "|" + text
                     val pcm: Pcm? = cache.get(key) ?: try {
-                        AiSpeech.synth(p, text, style).also { cache.put(key, it) }
+                        AiSpeech.synth(p, text, style, voiceName).also { cache.put(key, it) }
                     } catch (_: Exception) { null }
                     cb(pcm, speed)
                 }
