@@ -196,7 +196,7 @@ class Prefs(ctx: Context) {
     /** Giữ một mã giọng ổn định cho từng nhân vật thay vì đổi thất thường giữa các câu. */
     fun aiVoiceFor(speaker: String?, sentence: String): String {
         if (!characterVoices) return aiVoice
-        val cards = Cast.parse(cast)
+        val cards = PackStore.cast(this)
         val c = Cast.byName(speaker, cards) ?: Cast.speakerOf(sentence, cards) ?: return aiVoice
         val desc = c.desc.lowercase(java.util.Locale.ROOT)
         // Gán riêng: "Lucia = nữ; giọng: Mai" (hoặc mã Kore), ưu tiên trước mặc định nam/nữ.
