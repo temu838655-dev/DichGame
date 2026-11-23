@@ -19,6 +19,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * Giọng AI và giọng offline lỗi thì tự lùi về giọng máy.
  * Theo cài đặt: giọng, tốc độ và "đọc theo cảm xúc".
  */
+/** Một câu có người nói riêng, để không ép nhiều nhân vật dùng chung một giọng. */
+data class VoiceLine(val text: String, val speaker: String?, val delivery: Delivery?)
+
 class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Unit)? = null) {
     private val app = ctx.applicationContext
     private val offline = OfflineVoice(app)
@@ -101,6 +104,75 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
             offlineOn() -> speakOffline(text, d)
             p.aiVoiceOn -> speakAi(text, d, speakerName)
             else -> speakSystem(text, queue, d)
+        }
+    }
+
+    /** Đọc nhiều câu trong một khung thoại bằng đúng giọng của từng nhân vật. */
+    fun speakScene(lines: List<VoiceLine>) {
+        val items = lines.filter { it.text.isNotBlank() }
+        if (items.isEmpty()) return
+        val all = items.joinToString(" ") { it.text }
+        val last = items.last()
+        val multipleVoices = p.aiVoiceOn && p.characterVoices &&
+            items.map { p.aiVoiceFor(it.speaker, it.text) }.distinct().size > 1
+        if (!multipleVoices) {
+            speak(all, false, last.delivery, last.speaker)
+            return
+        }
+        val my = seq.incrementAndGet()
+        stopTrack()
+        try { tts?.stop() } catch (_: Exception) {}
+        exec.execute {
+            try {
+                val pcm = synthScenePcm(items)
+                if (my == seq.get()) play(pcm, (p.rate10 / 10f).coerceIn(0.5f, 2.5f))
+            } catch (e: Exception) {
+                if (my == seq.get()) main.post { fallback(all, last.delivery, e) }
+            }
+        }
+    }
+
+    /** Hợp nhất PCM 24 kHz theo thứ tự, thêm nhịp nghỉ ngắn để tách lời hai người. */
+    private fun synthScenePcm(items: List<VoiceLine>): Pcm {
+        val chunks = items.map { line ->
+            val voiceName = p.aiVoiceFor(line.speaker, line.text)
+            val style = styleFor(line.text, line.delivery)
+            val key = voiceName + "|" + p.ttsModel + "|" + style + "|" + line.text
+            cache.get(key) ?: AiSpeech.synth(p, line.text, style, voiceName)
+                .also { if (it.data.isNotEmpty()) cache.put(key, it) }
+        }
+        val first = chunks.first()
+        if (chunks.any { it.rate != first.rate || it.channels != first.channels })
+            throw AiException(0, "Các đoạn giọng AI có tần số âm thanh khác nhau")
+        val pause = first.rate * first.channels * 2 / 8 // 125 ms PCM16 im lặng
+        val size = chunks.sumOf { it.data.size.toLong() } + pause.toLong() * (chunks.size - 1)
+        if (size > 16_000_000L) throw AiException(0, "Đoạn thoại quá dài")
+        val audio = ByteArray(size.toInt())
+        var pos = 0
+        chunks.forEachIndexed { i, pcm ->
+            pcm.data.copyInto(audio, pos)
+            pos += pcm.data.size
+            if (i < chunks.lastIndex) pos += pause
+        }
+        return Pcm(audio, first.rate, first.channels)
+    }
+
+    /** TV nhận một đoạn PCM duy nhất, nhưng từng lời thoại vẫn được tạo bằng giọng riêng. */
+    fun synthForTvScene(lines: List<VoiceLine>, cb: (Pcm?, Float) -> Unit) {
+        val items = lines.filter { it.text.isNotBlank() }
+        if (items.isEmpty()) { cb(null, 1f); return }
+        val last = items.last()
+        val multipleVoices = p.aiVoiceOn && p.characterVoices &&
+            items.map { p.aiVoiceFor(it.speaker, it.text) }.distinct().size > 1
+        if (!multipleVoices) {
+            synthForTv(items.joinToString(" ") { it.text }, last.delivery, last.speaker, cb)
+            return
+        }
+        val my = tvSeq.incrementAndGet()
+        exec.execute {
+            if (my != tvSeq.get()) return@execute
+            val pcm = try { synthScenePcm(items) } catch (_: Exception) { null }
+            if (my == tvSeq.get()) cb(pcm, (p.rate10 / 10f).coerceIn(0.5f, 2.5f))
         }
     }
 
