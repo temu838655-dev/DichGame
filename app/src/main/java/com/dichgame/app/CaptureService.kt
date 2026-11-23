@@ -499,7 +499,7 @@ class CaptureService : Service() {
 
     /** Câu nhận dạng từ âm thanh game: lọc ảo giác, rồi hợp nhất với chữ trên màn hình (không hiện hai lần). */
     private fun acceptAudioTranscript(raw: String, speechMs: Long, rms: Float) {
-        if (!running || editing || narrate) return
+        if (!running || editing || narrate || syncGameContext()) return
         val now = System.currentTimeMillis()
         stats.inc("asr_nhan")
         val v = AsrGuard.check(raw, rms, lang)
