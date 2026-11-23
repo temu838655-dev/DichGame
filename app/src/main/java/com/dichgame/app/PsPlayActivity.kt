@@ -1768,12 +1768,12 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                         if (pr.characterVoices) {
                             hVoice.addView(Ui.dropRow(a, "Giọng nam",
                                 { Prefs.aiVoiceLabel(pr.maleAiVoice) },
-                                { Prefs.AI_VOICES.map { it.second } }
-                            ) { i -> pr.maleAiVoice = Prefs.AI_VOICES[i].first; live?.reloadVoice() })
+                                { Prefs.MALE_AI_VOICES.map { it.second } }
+                            ) { i -> pr.maleAiVoice = Prefs.MALE_AI_VOICES[i].first; live?.reloadVoice() })
                             hVoice.addView(Ui.dropRow(a, "Giọng nữ",
                                 { Prefs.aiVoiceLabel(pr.femaleAiVoice) },
-                                { Prefs.AI_VOICES.map { it.second } }
-                            ) { i -> pr.femaleAiVoice = Prefs.AI_VOICES[i].first; live?.reloadVoice() })
+                                { Prefs.FEMALE_AI_VOICES.map { it.second } }
+                            ) { i -> pr.femaleAiVoice = Prefs.FEMALE_AI_VOICES[i].first; live?.reloadVoice() })
                         }
                         hVoice.addView(Ui.button(a,
                             "Người đang nói (không tên): " + pr.activeSpeaker.ifBlank { "Chưa chọn" }) {
