@@ -200,6 +200,7 @@ class WebTranslateActivity : Activity() {
     private var prepareGeneration = 0
     private var awaitingText: String? = null
     private var gotCc = false
+    private val tvExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private var speaker: Speaker? = null
 
     private var running = false
@@ -351,6 +352,7 @@ class WebTranslateActivity : Activity() {
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, u: String?) {
                 view?.evaluateJavascript(js, null)
+                if (source == "ocr") ui.postDelayed({ placeBoxOnVideo() }, 900)
                 applyHide()
                 syncNav(u)
             }
@@ -680,7 +682,22 @@ class WebTranslateActivity : Activity() {
         source = s
         sp.edit().putString("source", s).apply()
         refresh()
+        if (s == "ocr") placeBoxOnVideo()
         if (was) start()
+    }
+
+    /** Khung OCR bám vào đáy video HTML5, thay vì bám cứng đáy toàn bộ trang web. */
+    private fun placeBoxOnVideo() {
+        if (sp.contains("box") || !::web.isInitialized || !::box.isInitialized) return
+        val code = """(function(){var v=[].slice.call(document.querySelectorAll('video')).sort(function(a,b){return b.clientWidth*b.clientHeight-a.clientWidth*a.clientHeight})[0];if(!v)return null;var r=v.getBoundingClientRect(),w=window.innerWidth,h=window.innerHeight;if(r.width<100||r.height<60||w<1||h<1)return null;var l=Math.max(0,(r.left+r.width*0.04)/w),rr=Math.min(1,(r.right-r.width*0.04)/w),t=Math.max(0,(r.bottom-r.height*0.30)/h),bb=Math.min(1,(r.bottom-r.height*0.02)/h);return [l,t,rr,bb]})()"""
+        web.evaluateJavascript(code) { raw ->
+            if (sp.contains("box") || source != "ocr" || isDestroyed) return@evaluateJavascript
+            try {
+                val a = org.json.JSONArray(raw)
+                if (a.length() == 4) box.load((0 until 4).joinToString(",") { a.getDouble(it).toString() })
+                box.invalidate()
+            } catch (_: Exception) {}
+        }
     }
 
     private fun applyHide() {
@@ -735,6 +752,7 @@ class WebTranslateActivity : Activity() {
         refresh()
         if (lang == "vi") {
             setPanel(text, "")
+            publishToTv(text)
             if (p.speak || p.narrate) speaker?.speak(text)
             return
         }
@@ -750,6 +768,7 @@ class WebTranslateActivity : Activity() {
                 Log.i(TAG, "vi: " + vi + " (" + (System.currentTimeMillis() - t0) + " ms)")
                 if (id == seq && running) {
                     setPanel(vi, if (p.showOrig) text else "")
+                    publishToTv(vi)
                     if (p.speak || p.narrate) speaker?.speak(vi, false, d)
                 }
             }
@@ -757,6 +776,20 @@ class WebTranslateActivity : Activity() {
             Log.e(TAG, "dich loi", e)
             setPanel("Không dịch được: " + (e.message ?: e.javaClass.simpleName), "")
         }
+    }
+
+    /** Đồng bộ phụ đề web với ứng dụng TV đã ghép, và các phương án LG/web phụ đề sẵn có. */
+    private fun publishToTv(text: String) {
+        TvOut.publish(this, "sub", text)
+        if (!p.tvPaired) return
+        val ip = p.tvIp
+        val token = p.tvToken
+        val size = (p.fontSize * p.subScale / 100f + 12).toInt().coerceIn(14, 80)
+        try {
+            tvExecutor.execute {
+                TvLink.postSubtitle(ip, token, text, size, p.narrate && p.tvSpeak)
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {}
     }
 
     // ---- nguồn OCR
@@ -844,7 +877,7 @@ class WebTranslateActivity : Activity() {
             { blocks ->
                 scanBusy = false
                 failScans = 0
-                lastThumb = th
+                lastThumb = if (blocks.isEmpty()) null else th
                 onOcr(blocks, blank)
                 scheduleScan()
             })
@@ -1031,6 +1064,7 @@ class WebTranslateActivity : Activity() {
         try { web.destroy() } catch (_: Exception) {}
         translator?.close()
         ocr?.close()
+        tvExecutor.shutdownNow()
         speaker?.shutdown()
         super.onDestroy()
     }
