@@ -15,7 +15,7 @@ class AiException(
 
 /** Dịch bằng AI đám mây: Google Gemini hoặc CloudAPI (chuẩn OpenAI /chat/completions). Hàm ở đây chặn luồng, hãy gọi từ luồng nền. */
 object Ai {
-    fun enabled(p: Prefs): Boolean = when (p.engine) {
+    fun enabled(p: Prefs): Boolean = if (p.aiAuto) p.geminiKeys().isNotEmpty() else when (p.engine) {
         Prefs.ENGINE_GEMINI -> p.geminiKeys().isNotEmpty()
         Prefs.ENGINE_CLOUD -> p.cloudKey.isNotEmpty() && p.cloudUrl.isNotEmpty()
         else -> false
@@ -136,7 +136,7 @@ object Ai {
 
     /** Một lần gọi AI (không thử lại). Dịch câu thì dùng [translateRetry]. */
     fun translate(p: Prefs, prompt: String): String {
-        val out: String = if (p.engine == Prefs.ENGINE_CLOUD) {
+        val out: String = if (!p.aiAuto && p.engine == Prefs.ENGINE_CLOUD) {
             val body = JSONObject()
                 .put("model", p.cloudModel)
                 .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
@@ -161,12 +161,15 @@ object Ai {
         return t
     }
 
+    /** Đang dịch bằng Gemini (cả chế độ AI Tự động, luôn dùng Gemini) hay bằng CloudAPI. */
+    private fun usesGemini(p: Prefs): Boolean = p.aiAuto || p.engine == Prefs.ENGINE_GEMINI
+
     /** Dịch qua CloudAPI hết lượt: tới mốc này (mili giây) mới thử lại. Gemini thì [KeyRing] giữ mốc cho từng khóa. */
     @Volatile private var cooldownUntil = 0L
 
     /** Còn bao lâu nữa AI mới được thử lại sau khi hết lượt (0 nếu đang dùng được); trong lúc đó câu dịch thẳng bằng dịch máy, khỏi chờ vô ích. */
     fun coolingMs(p: Prefs): Long =
-        if (p.engine == Prefs.ENGINE_GEMINI) KeyRing.waitMs(p.geminiKeys(), p.geminiModel)
+        if (usesGemini(p)) KeyRing.waitMs(p.geminiKeys(), p.geminiModel)
         else (cooldownUntil - System.currentTimeMillis()).coerceAtLeast(0L)
 
     /**
@@ -176,10 +179,10 @@ object Ai {
     fun translateRetry(p: Prefs, prompt: String): String {
         try {
             val r = AiRetry.run(AiRetry.Plan(), { Thread.sleep(it) }) { translate(p, prompt) }
-            if (p.engine != Prefs.ENGINE_GEMINI) cooldownUntil = 0L
+            if (!usesGemini(p)) cooldownUntil = 0L
             return r
         } catch (e: Exception) {
-            if (p.engine != Prefs.ENGINE_GEMINI && AiRetry.kindOf(e) == AiRetry.Kind.QUOTA) {
+            if (!usesGemini(p) && AiRetry.kindOf(e) == AiRetry.Kind.QUOTA) {
                 cooldownUntil = System.currentTimeMillis() + AiRetry.cooldownMs((e as? AiException)?.retryAfterMs ?: 0L)
             }
             throw e

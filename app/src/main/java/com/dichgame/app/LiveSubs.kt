@@ -91,6 +91,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     private var speak = false
     /** Chế độ Thuyết minh: game đã có phụ đề tiếng Việt, chỉ đọc to, không dịch. */
     private var narrate = false
+    private val autoGameDetector = AutoGameDetector()
     private var lang = "en"
     private var sep = " "
     private var needStable = 1
@@ -109,6 +110,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     private var translatingSince = 0L
     private var translateToken = 0
     private var speakers = SpeakerBook()
+    private var activeGameContext = ""
     private var langTrack: LangSwitchTracker? = null
     private var pendingLang: String? = null
     private val retired = ArrayList<TextTranslator>()
@@ -213,7 +215,8 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             if (speak) {
                 speaker = Speaker(act, pr).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() } }
             }
-            speakers = SpeakerBook(PackStore.cast(pr).map { it.name })
+            activeGameContext = gameContext(pr)
+            speakers = SpeakerBook(PackStore.cast(pr).map { it.name } + pr.detectedSpeakers())
             if (narrate) {
                 // không cần mô hình dịch: sẵn sàng ngay, câu đọc được đi thẳng tới phần hiển thị và đọc to
                 tt = null
@@ -273,11 +276,38 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         runCatching { tvExec.shutdown() }
     }
 
+    private fun gameContext(p: Prefs): String = p.profile + "\u0000" + p.game
+
+    /** Đổi game trong Kho game khi Remote Play vẫn chạy: bỏ hàng chờ của game cũ
+     * và tải lại danh sách nhân vật. Không tắt kết nối hoặc xin quyền ghi hình lại. */
+    private fun syncGameContext(): Boolean {
+        if (!running) return false
+        val p = Prefs(act)
+        val context = gameContext(p)
+        if (context == activeGameContext) return false
+        activeGameContext = context
+        speakers = SpeakerBook(PackStore.cast(p).map { it.name } + p.detectedSpeakers())
+        translateToken++
+        translating = false
+        jobs.clear()
+        fusion.clear()
+        pacer.cleared()
+        RecentLines.clear()
+        last = ""; cand = ""; stable = 0; prevVi = ""
+        lastFine = null; lastSig = null
+        textOnScreen = false
+        speaker?.stop()
+        notice("")
+        Log.i(TAG, "doi ho so dich: " + PackStore.gameName(p))
+        return true
+    }
+
     // ---- vòng quét
 
     private val tick = object : Runnable {
         override fun run() {
             try {
+                syncGameContext()
                 housekeeping()
                 capture()
             } catch (t: Throwable) {
@@ -403,7 +433,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (!running || narrate) return
         handler.post {
             try {
-                if (!running || !ready) return@post
+                if (!running || !ready || syncGameContext()) return@post
                 val now = System.currentTimeMillis()
                 stats.inc("asr_nhan")
                 val v = AsrGuard.check(raw, rms, lang)
@@ -433,6 +463,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     private fun onOcrResult(r: List<Blk>, scanAt: Long) {
         if (!running) { busy = false; return }
+        if (syncGameContext()) { busy = false; return }
         val now = System.currentTimeMillis()
         val cjk = Prefs.isCjk(lang)
         val lines = ArrayList<OcrLine>()
@@ -444,7 +475,20 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             val bx = b.box
             lines.add(OcrLine(v.text, bx?.let { Box(it.left, it.top, it.right, it.bottom) }, b.conf))
         }
-        val utts = DialogueSplitter.split(lines, cjk, speakers)
+        val prefs = Prefs(act)
+        if (prefs.aiAuto) {
+            val detected = autoGameDetector.observe(lines.map { it.text }, PackStore.gameName(prefs))
+            if (detected != null && AutoGameSwitch.apply(prefs, detected)) {
+                syncGameContext()
+                notice("✦ AI Tự động nhận diện: $detected")
+                finishBusy()
+                return
+            }
+        }
+        val utts = DialogueSplitter.split(lines, cjk, speakers).map { u ->
+            // Người dùng đã xóa tên OCR nhận nhầm: bỏ nhãn người nói, giữ nguyên nội dung thoại.
+            if (prefs.isIgnoredSpeaker(u.speaker)) Utterance(null, u.text, u.nameLike) else u
+        }
         if (utts.isEmpty()) {
             if (textOnScreen) { textOnScreen = false; textGoneSince = now }
             fusion.onScreenEmpty(now)
@@ -459,6 +503,8 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (sig != cand) { cand = sig; stable = 1 } else stable++
         if (stable < requiredStable(utts)) { finishBusy(); return }
         last = sig
+        // Chỉ nhớ người nói khi OCR đã ổn định; không lưu tên chưa được xác nhận.
+        for (u in utts) if (!u.nameLike && !u.speaker.isNullOrBlank()) prefs.rememberSpeaker(u.speaker!!)
         stats.inc("ocr_cau", utts.size.toLong())
         Log.i(TAG, "doc: " + utts.joinToString(" | ") { (it.speaker?.let { n -> "$n: " } ?: "") + it.text })
         if (Prefs(act).autoLang && !narrate) {
@@ -514,8 +560,9 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         translatingSince = now
         val token = ++translateToken
         translateLines(w) { cards ->
-            if (token == translateToken) translating = false
-            if (running) deliver(w, cards)
+            if (token != translateToken || !running) return@translateLines
+            translating = false
+            deliver(w, cards)
             handler.post { pump() }
         }
     }
@@ -527,8 +574,10 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             if (i >= w.lines.size) { done(out); return }
             val line = w.lines[i]
             if (t == null) {
-                if (narrate) Log.i(TAG, "thuyet minh: ${line.text}")
-                out.add(Card(line.speaker, line.text, TextTranslator.Tr(line.text, null, false, "may"), false))
+                // Đọc Vietsub: không chạy bất kỳ bộ dịch nào, chỉ đọc câu thực sự là tiếng Việt.
+                if (!narrate || (!line.nameLike && VietsubGuard.isVietnamese(line.text))) {
+                    out.add(Card(line.speaker, line.text, TextTranslator.Tr(line.text, null, false, "vietsub"), false))
+                }
                 next(i + 1)
             } else {
                 t.translateFull(line.text, line.speaker) { tr ->
@@ -677,8 +726,10 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         else cards.joinToString("\n") { (it.speaker?.let { n -> "$n: " } ?: "") + it.tr.text }
         sendTv("sub", tvText, tvSpeaks)
         val d = cards.lastOrNull()?.tr?.delivery
-        if (speak && tvVoiceOn()) tvVoice(vi, d)
-        if (speak && ready && !tvSpeakOn()) speaker?.speak(vi, false, d)
+        val speakerName = cards.lastOrNull()?.speaker
+        val scene = cards.map { VoiceLine(it.tr.text, it.speaker, it.tr.delivery) }
+        if (speak && tvVoiceOn()) tvVoice(vi, d, speakerName, scene)
+        if (speak && ready && !tvSpeakOn()) speaker?.speakScene(scene)
         prevVi = vi
     }
 
@@ -695,9 +746,9 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         return tvSpeakOn() && ((pr.voiceEngine == "offline" && Voices.installed(act, pr.offlineVoice)) || pr.aiVoiceOn)
     }
 
-    private fun tvVoice(text: String, d: Delivery? = null) {
+    private fun tvVoice(text: String, d: Delivery? = null, speakerName: String? = null, scene: List<VoiceLine>? = null) {
         val sp = speaker ?: return
-        sp.synthForTv(text, d) { pcm, speed ->
+        val sendAudio: (Pcm?, Float) -> Unit = { pcm, speed ->
             val pf = act.getSharedPreferences("dg", Context.MODE_PRIVATE)
             val err = if (pcm == null) "giọng đọc lỗi" else TvLink.postAudio(pf.getString("tvip", "").orEmpty(), pf.getString("tvtoken", "").orEmpty(), pcm, speed)
             if (err != null) {
@@ -708,6 +759,8 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
                 }
             }
         }
+        if (scene != null) sp.synthForTvScene(scene, sendAudio)
+        else sp.synthForTv(text, d, speakerName, sendAudio)
     }
 
     private fun sendTv(kind: String, text: String, speakIt: Boolean = false, force: Boolean = false) {

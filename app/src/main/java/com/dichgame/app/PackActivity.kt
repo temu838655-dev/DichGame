@@ -16,6 +16,13 @@ import android.widget.Toast
  */
 class PackActivity : Activity() {
     private lateinit var p: Prefs
+    private var voicePreview: Speaker? = null
+
+    override fun onDestroy() {
+        voicePreview?.shutdown()
+        voicePreview = null
+        super.onDestroy()
+    }
 
     /** Bước 1 của "Ghép 2 file": file chữ gốc đã chọn, chờ file Việt hoá. */
     private var origName = ""
@@ -68,7 +75,7 @@ class PackActivity : Activity() {
                 editDialog("Từ điển · ${p.profile}", "Mỗi dòng một từ: gốc = tiếng Việt", "Ví dụ:\nBonfire = Lửa trại\nTarnished = Kẻ Hoen Ố", p.glossary) { p.glossary = it }
             })
             m.addView(Ui.button(this@PackActivity, "Sửa thẻ nhân vật") {
-                editDialog("Thẻ nhân vật · ${p.profile}", "Tên = mô tả giọng, xưng hô; nhịp: chậm", "Ví dụ:\nGeralt = trầm, ít lời, hay mỉa mai; xưng \"tôi\"; nhịp: chậm\nCiri = trẻ, bộc trực; gọi Geralt thân mật; nhịp: nhanh", p.cast) { p.cast = it }
+                editDialog("Thẻ nhân vật · ${p.profile}", "Tên = nam/nữ; giọng: tên Việt; nhịp: chậm/vừa/nhanh", "Ví dụ:\nJason = nam; giọng: Hùng; ít lời; nhịp: chậm\nLucia = nữ; giọng: Mai; bộc trực; nhịp: nhanh\nBạn có thể bỏ \"giọng: ...\" để app tự dùng giọng nam/nữ trong Cài đặt.", p.cast) { p.cast = it }
             }, Ui.lpm(this@PackActivity, 8, 0))
             if (lines > 0) m.addView(Ui.button(this@PackActivity, "Xóa $lines câu thoại đã nhập") {
                 AlertDialog.Builder(this@PackActivity, R.style.DgDialog)
@@ -77,6 +84,95 @@ class PackActivity : Activity() {
                     .setNegativeButton("Hủy", null).show()
             }, Ui.lpm(this@PackActivity, 8, 0))
             put(m, 0, 12)
+
+            // Bộ nhớ dịch AI lưu trên thiết bị theo hồ sơ, tách khỏi gói Việt hóa nhập tay.
+            val learned = LearnedTranslations.count(this@PackActivity, p.profile, name)
+            val learnedCard = Ui.card(this@PackActivity)
+            learnedCard.addView(Ui.section(this@PackActivity, "🧠", "Bộ nhớ dịch theo game"))
+            if (name.isBlank()) learnedCard.addView(Ui.tv(this@PackActivity,
+                "Hãy chọn game ở Kho game để bộ nhớ không bị trộn giữa các trò chơi.",
+                12.5f, Ui.DANGER), Ui.lpm(this@PackActivity, 2, 6))
+            learnedCard.addView(Ui.switchRow(this@PackActivity, "Dùng lại và tự nhớ bản dịch AI",
+                "Tắt sẽ ngừng dùng và ngừng lưu câu AI mới; dữ liệu đã nhớ vẫn giữ cho đến khi bạn xóa.",
+                p.learnTranslations) { enabled ->
+                p.learnTranslations = enabled
+                render()
+            })
+            learnedCard.addView(Ui.tv(this@PackActivity,
+                "$learned câu đã lưu riêng cho hồ sơ ${p.profile}. Dữ liệu nằm trên thiết bị, " +
+                    "không sao lưu lên đám mây; gỡ ứng dụng có thể mất dữ liệu. " +
+                    "Gặp lại đúng câu và người nói sẽ không tốn lượt Gemini.",
+                12.5f, Ui.SUB), Ui.lpm(this@PackActivity, 8, 10))
+            if (learned > 0) {
+                learnedCard.addView(Ui.button(this@PackActivity, "Xem và sửa câu đã nhớ") {
+                    reviewLearnedTranslations()
+                }, Ui.lpm(this@PackActivity, 2, 5))
+                learnedCard.addView(Ui.button(this@PackActivity, "Tìm câu đã nhớ (gốc hoặc tiếng Việt)") {
+                    searchLearnedTranslations()
+                }, Ui.lpm(this@PackActivity, 2, 5))
+                learnedCard.addView(Ui.button(this@PackActivity, "Xóa toàn bộ $learned câu dịch đã nhớ") {
+                    AlertDialog.Builder(this@PackActivity, R.style.DgDialog)
+                        .setTitle("Xóa bộ nhớ dịch của ${p.profile}?")
+                        .setMessage("Chỉ xóa câu do AI tự ghi nhớ. Không xóa gói Việt hóa đã nhập, từ điển hoặc giọng nhân vật.")
+                        .setPositiveButton("Xóa bộ nhớ") { _, _ ->
+                            LearnedTranslations.clear(this@PackActivity, p.profile, name)
+                            render()
+                        }
+                        .setNegativeButton("Hủy", null).show()
+                }, Ui.lpm(this@PackActivity, 4, 0))
+            }
+            learnedCard.addView(Ui.tv(this@PackActivity,
+                "Lưu ý: AI vẫn có thể dịch sai dù qua kiểm tra. Hãy sửa hoặc xóa câu nhớ sai; " +
+                    "app không tự lưu lời thoại ngắn, dễ phụ thuộc ngữ cảnh.",
+                12f, Ui.SUB), Ui.lpm(this@PackActivity, 9, 0))
+            put(learnedCard, 0, 12)
+
+            // Tự nhận diện người nói từ phụ đề và gán giọng cho từng nhân vật.
+            val v = Ui.card(this@PackActivity)
+            val detected = p.detectedSpeakers()
+            val castCards = PackStore.cast(p)
+            val known = (detected.map { name ->
+                Cast.byName(name, castCards)?.names?.firstOrNull() ?: name
+            } + castCards.mapNotNull { it.names.firstOrNull() })
+                .distinctBy { it.trim().lowercase() }.take(300)
+            v.addView(Ui.section(this@PackActivity, "🎙", "Giọng từng nhân vật"))
+            v.addView(Ui.switchRow(this@PackActivity, "Tự gán giọng theo nhân vật",
+                "Khi nhận diện tên người nói từ phụ đề, app tự giữ một giọng ổn định. Có thể đổi từng giọng bên dưới.",
+                p.characterVoices) { enabled -> p.characterVoices = enabled; render() })
+            v.addView(Ui.navRow(this@PackActivity, null,
+                "Nhân vật đang nói khi game không hiện tên",
+                p.activeSpeaker.ifBlank { "Chưa chọn · đọc giọng mặc định" }) {
+                pickActiveSpeaker(known)
+            })
+            v.addView(Ui.tv(this@PackActivity,
+                "Nhấn tên nhân vật để gán giọng; bấm Nghe thử trong bảng chọn để kiểm tra giọng hiện tại (sử dụng lượt Gemini).",
+                12f, Ui.SUB), Ui.lpm(this@PackActivity, 6, 6))
+            v.addView(Ui.tv(this@PackActivity,
+                "Đã lưu ${detected.size} tên nhân vật trong hồ sơ này (gồm tên phát hiện và tên bạn tự thêm). " +
+                    "Tự nhận diện chỉ đáng tin khi game có nhãn tên; " +
+                    "chưa nhận diện được người nói sẽ dùng giọng mặc định. Giọng tự động không suy đoán giới tính theo tên.",
+                12.5f, Ui.SUB), Ui.lpm(this@PackActivity, 8, 10))
+            for (name in known.take(25)) {
+                val voice = Prefs.aiVoiceLabel(p.aiVoiceFor(name, ""))
+                val status = if (p.effectiveManualVoice(name) != null) "Đã chọn tay" else "Tự động"
+                v.addView(Ui.navRow(this@PackActivity, null, name, "$voice · $status") { pickCharacterVoice(name) })
+            }
+            if (known.size > 25) v.addView(Ui.button(this@PackActivity,
+                "Xem và chọn giọng cho tất cả ${known.size} nhân vật") {
+                AlertDialog.Builder(this@PackActivity, R.style.DgDialog)
+                    .setTitle("Nhân vật trong ${p.profile}")
+                    .setItems(known.toTypedArray()) { _, index -> pickCharacterVoice(known[index]) }
+                    .setNegativeButton("Đóng", null).show()
+            }, Ui.lpm(this@PackActivity, 8, 0))
+            v.addView(Ui.button(this@PackActivity, "＋  Thêm nhân vật và chọn giọng") {
+                addCharacterVoice()
+            }, Ui.lpm(this@PackActivity, 10, 0))
+            if (detected.isNotEmpty()) {
+                v.addView(Ui.button(this@PackActivity, "Xóa tên nhân vật nhận nhầm") {
+                    deleteDetectedSpeaker(detected)
+                }, Ui.lpm(this@PackActivity, 6, 0))
+            }
+            put(v, 0, 12)
 
             // Nhập, xuất
             val i = Ui.card(this@PackActivity)
@@ -113,6 +209,143 @@ class PackActivity : Activity() {
             t.addView(Ui.tv(this@PackActivity, NguonVietHoa.SAFETY, 11.5f, Ui.SUB), Ui.lpm(this@PackActivity, 10, 0))
             put(t, 0, 0)
         }
+    }
+
+    private fun searchLearnedTranslations() {
+        val field = Ui.field(this, "Nhập từ/câu cần tìm trong bản gốc hoặc tiếng Việt", "")
+        val box = Ui.vbox(this).apply {
+            val pad = Ui.dp(this@PackActivity, 20)
+            setPadding(pad, pad / 2, pad, 0)
+            addView(field)
+        }
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Tìm trong bộ nhớ dịch")
+            .setView(box)
+            .setPositiveButton("Tìm") { _, _ ->
+                reviewLearnedTranslations(field.text.toString().trim())
+            }
+            .setNegativeButton("Hủy", null).show()
+    }
+
+    private fun reviewLearnedTranslations(search: String = "") {
+        val entries = LearnedTranslations.recent(
+            this, p.profile, PackStore.gameName(p), 80, search)
+        if (entries.isEmpty()) {
+            Toast.makeText(this, "Không có câu dịch nào khớp từ khóa.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val choices = entries.map { it.original.take(65) + "\n→ " + it.vi.take(85) }.toTypedArray()
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle(if (search.isBlank()) "Câu đã nhớ · ${p.profile}" else "Kết quả: $search")
+            .setItems(choices) { _, index -> editLearnedTranslation(entries[index]) }
+            .setNegativeButton("Đóng", null).show()
+    }
+
+    private fun editLearnedTranslation(entry: LearnedTranslations.Entry) {
+        val field = Ui.field(this, "Bản tiếng Việt chính xác", entry.vi)
+        field.minLines = 3
+        field.inputType = android.text.InputType.TYPE_CLASS_TEXT or
+            android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+            android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        val box = Ui.vbox(this)
+        val pad = Ui.dp(this, 18)
+        box.setPadding(pad, pad / 2, pad, 0)
+        box.addView(Ui.tv(this, "Câu gốc: " + entry.original, 13f, Ui.SUB), Ui.lpm(this, 0, 8))
+        box.addView(field)
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Sửa bản dịch đã nhớ")
+            .setView(box)
+            .setPositiveButton("Lưu bản sửa") { _, _ ->
+                if (!LearnedTranslations.edit(this, p.profile, entry.key, field.text.toString()))
+                    Toast.makeText(this, "Bản dịch không hợp lệ.", Toast.LENGTH_SHORT).show()
+                render()
+            }
+            .setNeutralButton("Xóa câu này") { _, _ ->
+                LearnedTranslations.delete(this, p.profile, entry.key)
+                render()
+            }
+            .setNegativeButton("Hủy", null).show()
+    }
+
+    private fun deleteDetectedSpeaker(detected: List<String>) {
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Chọn tên nhận diện sai")
+            .setItems(detected.toTypedArray()) { _, index ->
+                val name = detected[index]
+                AlertDialog.Builder(this, R.style.DgDialog)
+                    .setTitle("Xóa '$name'?")
+                    .setMessage("Xóa tên này khỏi danh sách đã nhận diện và bỏ lựa chọn giọng riêng cho tên đó. Nhân vật có sẵn trong gói Việt hóa vẫn được giữ.")
+                    .setPositiveButton("Xóa") { _, _ ->
+                        p.forgetDetectedSpeaker(name)
+                        render()
+                    }
+                    .setNegativeButton("Hủy", null).show()
+            }
+            .setNegativeButton("Đóng", null).show()
+    }
+
+    private fun pickActiveSpeaker(names: List<String>) {
+        val options = (listOf("Không chọn nhân vật") + names).toTypedArray()
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Người đang nói (không có nhãn)")
+            .setItems(options) { _, index ->
+                p.activeSpeaker = if (index == 0) "" else names[index - 1]
+                render()
+            }
+            .setNegativeButton("Hủy", null).show()
+    }
+
+    private fun pickCharacterVoice(name: String) {
+        val automatic = Prefs.aiVoiceLabel(p.automaticAiVoiceFor(name, ""))
+        val labels = (listOf("Tự động · $automatic") + Prefs.AI_VOICES.map { it.second }).toTypedArray()
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Giọng nhân vật: $name")
+            .setItems(labels) { _, index ->
+                p.setManualVoice(name, if (index == 0) null else Prefs.AI_VOICES[index - 1].first)
+                render()
+            }
+            .setNeutralButton("▶ Nghe thử") { _, _ -> previewCharacterVoice(name) }
+            .setNegativeButton("Hủy", null).show()
+    }
+
+    /** Phát mẫu bằng chính giọng đã gán, không tự gọi Gemini khi người dùng chưa bấm nghe. */
+    private fun previewCharacterVoice(name: String) {
+        if (!p.characterVoices) {
+            Toast.makeText(this, "Hãy bật Tự gán giọng theo nhân vật trước.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!p.aiVoiceOn) {
+            Toast.makeText(this, "Hãy chọn Gemini AI ở Cài đặt giọng đọc và thêm khóa Gemini.", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (voicePreview == null) {
+            voicePreview = Speaker(this, p).apply {
+                onAiError = { message -> Toast.makeText(this@PackActivity, message, Toast.LENGTH_LONG).show() }
+            }
+        }
+        voicePreview?.speak("Xin chào, đây là giọng đọc tiếng Việt của nhân vật $name.", speakerName = name)
+    }
+
+    private fun addCharacterVoice() {
+        val edit = Ui.field(this, "Tên nhân vật như trong phụ đề", "")
+        val box = Ui.vbox(this).apply {
+            val n = Ui.dp(this@PackActivity, 20)
+            setPadding(n, n / 2, n, 0)
+            addView(edit)
+        }
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Thêm người nói thủ công")
+            .setView(box)
+            .setPositiveButton("Tiếp tục") { _, _ ->
+                val name = edit.text.toString().trim()
+                if (name.length !in 2..40 || name.count { it.isLetter() } < 2) {
+                    Toast.makeText(this, "Tên nhân vật không hợp lệ.", Toast.LENGTH_SHORT).show()
+                } else {
+                    p.rememberSpeaker(name, fromUser = true)
+                    pickCharacterVoice(name)
+                }
+            }
+            .setNegativeButton("Hủy", null).show()
     }
 
     private fun editDialog(title: String, hint: String, example: String, value: String, save: (String) -> Unit) {

@@ -3,6 +3,7 @@ package com.dichgame.app
 import android.content.Context
 import android.content.SharedPreferences
 import org.json.JSONArray
+import org.json.JSONObject
 
 /** Toàn bộ cài đặt của app, lưu trong SharedPreferences "dg" (giữ nguyên các khóa cũ để CaptureService vẫn đọc được). */
 class Prefs(ctx: Context) {
@@ -13,6 +14,8 @@ class Prefs(ctx: Context) {
         const val ENGINE_LOCAL = "local"
         const val ENGINE_CLOUD = "cloud"
         const val ENGINE_GEMINI = "gemini"
+        const val MODE_TRANSLATE = "translate"
+        const val MODE_VIETSUB = "vietsub"
         const val DEFAULT_PROFILE = "Mặc định"
         /** Ngôn ngữ chữ trong game đọc được bằng OCR trên máy (chữ Latin, Hindi, Nhật, Hàn, Trung). "vi" chỉ dùng cho chế độ Thuyết minh. */
         val LANGS = listOf(
@@ -53,16 +56,41 @@ class Prefs(ctx: Context) {
         val CUSTOM_STYLE = TR_STYLES.size - 1
         /** Giọng AI của Gemini: (mã giọng, mô tả). */
         val AI_VOICES = listOf(
-            "Kore" to "Chắc chắn", "Puck" to "Vui tươi", "Charon" to "Rõ ràng, thông tin", "Zephyr" to "Sáng",
-            "Sulafat" to "Ấm", "Aoede" to "Nhẹ nhàng", "Achird" to "Thân thiện", "Gacrux" to "Trưởng thành"
+            "Kore" to "Mai · nữ · rõ ràng", "Puck" to "Minh · nam · vui tươi",
+            "Charon" to "Hùng · nam · điềm tĩnh", "Zephyr" to "Linh · nữ · tươi sáng",
+            "Sulafat" to "Thảo · nữ · ấm áp", "Aoede" to "Ngọc · nữ · nhẹ nhàng",
+            "Achird" to "Đức · nam · thân thiện", "Gacrux" to "Hà · nữ · trưởng thành"
         )
+        /** Tên Việt là nhãn trong app, mã giọng tiếng Anh giữ nguyên khi gọi API Gemini. */
+        fun aiVoiceLabel(id: String): String = AI_VOICES.firstOrNull { it.first == id }?.second ?: id
+        /** Giới tính của các preset Gemini theo danh sách chính thức của Google Cloud. */
+        val MALE_AI_VOICES = AI_VOICES.filter { it.first in setOf("Puck", "Charon", "Achird") }
+        val FEMALE_AI_VOICES = AI_VOICES.filter { it.first in setOf("Kore", "Zephyr", "Sulafat", "Aoede", "Gacrux") }
         fun langName(code: String) = LANGS.firstOrNull { it.first == code }?.second ?: "Tiếng Anh"
     }
 
-    /** Chế độ: "translate" (dịch sang tiếng Việt) hoặc "narrate" (thuyết minh, đọc phụ đề có sẵn). */
+    /** Chỉ có hai chế độ: Dịch và Thuyết minh. Giữ tương thích key narrate cũ. */
+    var mode: String
+        get() = if (sp.getBoolean("narrate", false) ||
+            sp.getString("smart_mode", null) == MODE_VIETSUB) MODE_VIETSUB else MODE_TRANSLATE
+        set(value) {
+            val next = if (value == MODE_VIETSUB) MODE_VIETSUB else MODE_TRANSLATE
+            sp.edit().putString("smart_mode", next).putBoolean("narrate", next == MODE_VIETSUB).apply()
+        }
+
+    /** Thuyết minh: chỉ đọc phụ đề tiếng Việt đã có, không dịch. */
     var narrate: Boolean
-        get() = sp.getBoolean("narrate", false)
-        set(v) = sp.edit().putBoolean("narrate", v).apply()
+        get() = mode == MODE_VIETSUB
+        set(value) { mode = if (value) MODE_VIETSUB else MODE_TRANSLATE }
+
+    /** AI Tự động là một TÙY CHỌN CỦA CHẾ ĐỘ DỊCH, không phải chế độ thứ ba. */
+    var aiAuto: Boolean
+        get() = !narrate && sp.getBoolean("ai_auto_enabled", false)
+        set(value) {
+            val editor = sp.edit().putBoolean("ai_auto_enabled", value)
+            if (value) editor.putBoolean("learn_translations", true).putBoolean("charvoices", true)
+            editor.apply()
+        }
 
     /** Ngôn ngữ trong game: en, ja, ko, zh. Khi thuyết minh thì nguồn luôn là tiếng Việt. */
     var lang: String
@@ -134,9 +162,15 @@ class Prefs(ctx: Context) {
         set(v) = sp.edit().putString("customprompt", v.trim()).apply()
 
     /** Dùng gói Việt hoá có sẵn của game (thuật ngữ, thẻ nhân vật, câu thoại chuẩn). */
+    /** Gói thuật ngữ bật/tắt theo từng hồ sơ game; cài đặt cũ làm mặc định tương thích. */
     var packOn: Boolean
-        get() = sp.getBoolean("packon", true)
-        set(v) = sp.edit().putBoolean("packon", v).apply()
+        get() = sp.getBoolean("packon_$profile", sp.getBoolean("packon", true))
+        set(v) = sp.edit().putBoolean("packon_$profile", v).apply()
+
+    /** Tự lưu và tái sử dụng bản dịch AI đã qua kiểm tra, riêng trên thiết bị. */
+    var learnTranslations: Boolean
+        get() = sp.getBoolean("learn_translations", true)
+        set(v) = sp.edit().putBoolean("learn_translations", v).apply()
 
     /** Thẻ nhân vật của hồ sơ hiện tại, mỗi dòng "Tên = mô tả giọng, xưng hô; nhịp: chậm". */
     var cast: String
@@ -157,17 +191,190 @@ class Prefs(ctx: Context) {
         get() = sp.getInt("scanms", 400).coerceIn(100, 3000)
         set(v) = sp.edit().putInt("scanms", v.coerceIn(100, 3000)).apply()
 
-    /** "system" = giọng của máy, "ai" = giọng AI Gemini (cần khóa Gemini), "offline" = giọng đã tải về máy. AI và offline lỗi thì tự lùi về giọng máy. */
+    /** Hai lựa chọn giọng: "system" (cơ bản) và "ai" (Gemini); tự đọc cơ bản nếu AI lỗi. */
     var voiceEngine: String
-        get() = sp.getString("voiceengine", "system").orEmpty()
-        set(v) = sp.edit().putString("voiceengine", v).apply()
+        get() = if (sp.getString("voiceengine", "system") == "ai") "ai" else "system"
+        set(v) = sp.edit().putString("voiceengine", if (v == "ai") "ai" else "system").apply()
     var aiVoice: String
         get() = sp.getString("aivoice", "Kore").orEmpty().ifBlank { "Kore" }
         set(v) = sp.edit().putString("aivoice", v).apply()
+    /** Thuyết minh theo vai nhân vật khi thẻ nhân vật có ghi giọng nam hoặc giọng nữ. */
+    var characterVoices: Boolean
+        get() = sp.getBoolean("charvoices", true)
+        set(v) = sp.edit().putBoolean("charvoices", v).apply()
+    var maleAiVoice: String
+        get() = sp.getString("male_aivoice", "Charon").orEmpty()
+            .takeIf { v -> MALE_AI_VOICES.any { it.first == v } } ?: "Charon"
+        set(v) = sp.edit().putString("male_aivoice", v).apply()
+    var femaleAiVoice: String
+        get() = sp.getString("female_aivoice", "Kore").orEmpty()
+            .takeIf { v -> FEMALE_AI_VOICES.any { it.first == v } } ?: "Kore"
+        set(v) = sp.edit().putString("female_aivoice", v).apply()
+
+    /** Nhân vật phát hiện từ nhãn lời thoại, lưu theo hồ sơ game; không tự đoán giới tính qua tên. */
+    fun detectedSpeakers(): List<String> {
+        val result = ArrayList<String>()
+        val raw = sp.getString("detected_speakers_$profile", "[]").orEmpty()
+        try {
+            val a = JSONArray(raw)
+            for (i in 0 until a.length().coerceAtMost(250)) {
+                val name = a.optString(i).trim()
+                if (name.isNotEmpty() && result.none { it.equals(name, ignoreCase = true) }) result.add(name)
+            }
+        } catch (_: Exception) {}
+        return result
+    }
+
+    private fun ignoredSpeakers(): List<String> {
+        val raw = sp.getString("ignored_speakers_$profile", "[]").orEmpty()
+        return try {
+            val arr = JSONArray(raw)
+            (0 until arr.length().coerceAtMost(250)).mapNotNull { i ->
+                arr.optString(i).trim().takeIf { it.isNotEmpty() }
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    fun isIgnoredSpeaker(name: String?): Boolean =
+        !name.isNullOrBlank() && ignoredSpeakers().any { it.equals(name, ignoreCase = true) }
+
+    /** Chỉ lưu người nói được OCR xác nhận; tên đã xóa không tự xuất hiện lại nếu người dùng chưa thêm. */
+    @Synchronized fun rememberSpeaker(raw: String, fromUser: Boolean = false) {
+        val name = raw.replace(Regex("\\s+"), " ").trim()
+        if (name.length !in 2..40 || name.count { it.isLetter() } < 2 || '=' in name) return
+        val ignored = ignoredSpeakers()
+        if (!fromUser && ignored.any { it.equals(name, ignoreCase = true) }) return
+        val editor = sp.edit()
+        if (fromUser) editor.putString("ignored_speakers_$profile",
+            JSONArray(ignored.filterNot { it.equals(name, ignoreCase = true) }).toString())
+        val names = detectedSpeakers()
+        if (names.none { it.equals(name, ignoreCase = true) })
+            editor.putString("detected_speakers_$profile", JSONArray((names + name).takeLast(250)).toString())
+        editor.apply()
+    }
+
+    /** Xóa một nhãn nhân vật OCR nhận nhầm khỏi hồ sơ, kèm giọng đã gán cho tên đó. */
+    fun forgetDetectedSpeaker(raw: String) = synchronized(sp) {
+        val name = raw.trim()
+        if (name.isEmpty()) return@synchronized
+        val key = name.lowercase(java.util.Locale.ROOT)
+        val rest = detectedSpeakers().filterNot { it.equals(name, ignoreCase = true) }
+        val ignored = (ignoredSpeakers().filterNot { it.equals(name, ignoreCase = true) } + name).takeLast(250)
+        fun withoutEntry(prefKey: String): String {
+            val data = try { JSONObject(sp.getString(prefKey, "{}").orEmpty()) }
+                catch (_: Exception) { JSONObject() }
+            data.remove(key)
+            return data.toString()
+        }
+        val editor = sp.edit()
+            .putString("detected_speakers_$profile", JSONArray(rest).toString())
+            .putString("manual_voices_$profile", withoutEntry("manual_voices_$profile"))
+            .putString("auto_voices_$profile", withoutEntry("auto_voices_$profile"))
+            .putString("ignored_speakers_$profile", JSONArray(ignored).toString())
+        if (activeSpeaker.equals(name, ignoreCase = true)) editor.putString("active_speaker_$profile", "")
+        editor.apply()
+    }
+
+    /** Chọn giọng riêng bằng giao diện; null = quay về chế độ tự động. */
+    fun manualVoice(name: String): String? {
+        val raw = sp.getString("manual_voices_$profile", "{}").orEmpty()
+        return try {
+            JSONObject(raw).optString(name.trim().lowercase(java.util.Locale.ROOT))
+                .takeIf { id -> AI_VOICES.any { it.first == id } }
+        } catch (_: Exception) { null }
+    }
+
+    /** Giọng thủ công hiệu lực cho tên gọi chính hoặc bất kỳ bí danh nào của cùng nhân vật. */
+    fun effectiveManualVoice(name: String): String? {
+        manualVoice(name)?.let { return it }
+        val card = Cast.byName(name, PackStore.cast(this)) ?: return null
+        return card.names.firstNotNullOfOrNull { alias -> manualVoice(alias) }
+    }
+
+    @Synchronized fun setManualVoice(name: String, id: String?) {
+        if (name.isBlank() || id != null && AI_VOICES.none { it.first == id }) return
+        val raw = sp.getString("manual_voices_$profile", "{}").orEmpty()
+        val data = try { JSONObject(raw) } catch (_: Exception) { JSONObject() }
+        val key = name.trim().lowercase(java.util.Locale.ROOT)
+        if (id == null) data.remove(key) else data.put(key, id)
+        sp.edit().putString("manual_voices_$profile", data.toString()).apply()
+        rememberSpeaker(name, fromUser = true)
+    }
+
+    /**
+     * Đóng băng giọng tự động theo hồ sơ game. Danh sách nhân vật hiển thị chỉ lưu 100 tên gần nhất,
+     * vì vậy không được tính lại giọng theo vị trí trong danh sách này sau khi đã gán.
+     * Lần đầu nâng cấp, ghi nhận thứ tự cũ để những nhân vật đã chơi không bị đổi giọng.
+     */
+    private fun stableAutoVoice(name: String, aliases: List<String>): String = synchronized(sp) {
+        val key = "auto_voices_$profile"
+        val counterKey = "auto_voice_count_$profile"
+        val old = sp.getString(key, null)
+        val mapping = try { JSONObject(old ?: "{}") } catch (_: Exception) { JSONObject() }
+        val known = detectedSpeakers()
+        val normalize: (String) -> String = { it.trim().lowercase(java.util.Locale.ROOT) }
+        if (old == null) {
+            for ((i, candidate) in known.withIndex()) {
+                val k = normalize(candidate)
+                if (k.isNotEmpty() && !mapping.has(k))
+                    mapping.put(k, AI_VOICES[i % AI_VOICES.size].first)
+            }
+            sp.edit().putString(key, mapping.toString()).putInt(counterKey, known.size).apply()
+        }
+        val names = (listOf(name) + aliases).map(normalize).filter { it.isNotEmpty() }
+        val stored = names.firstNotNullOfOrNull { alias ->
+            mapping.optString(alias).takeIf { id -> AI_VOICES.any { it.first == id } }
+        }
+        if (stored != null) return@synchronized stored
+        val count = sp.getInt(counterKey, mapping.length()).coerceAtLeast(0)
+        val selected = AI_VOICES[count % AI_VOICES.size].first
+        mapping.put(names.first(), selected)
+        sp.edit().putString(key, mapping.toString()).putInt(counterKey, count + 1).apply()
+        selected
+    }
+
+    /** Nhân vật được người chơi chọn khi game không hiển thị nhãn tên người nói. */
+    var activeSpeaker: String
+        get() = sp.getString("active_speaker_$profile", "").orEmpty()
+        set(v) = sp.edit().putString("active_speaker_$profile", v.trim()).apply()
+
+    /** Mỗi người nói đã nhận diện có giọng mặc định ổn định; người chơi có thể ghi đè thủ công. */
+    fun aiVoiceFor(speaker: String?, sentence: String): String =
+        chooseAiVoice(speaker, sentence, ignoreManual = false)
+
+    /** Giọng mà chế độ tự động sẽ chọn, để giao diện hiển thị đúng khi bỏ gán thủ công. */
+    fun automaticAiVoiceFor(speaker: String?, sentence: String): String =
+        chooseAiVoice(speaker, sentence, ignoreManual = true)
+
+    private fun chooseAiVoice(speaker: String?, sentence: String, ignoreManual: Boolean): String {
+        if (!characterVoices) return aiVoice
+        val cards = PackStore.cast(this)
+        val card = Cast.byName(speaker, cards) ?: Cast.speakerOf(sentence, cards)
+        val name = speaker?.takeIf { it.isNotBlank() && !isIgnoredSpeaker(it) }
+            ?: card?.names?.firstOrNull()?.takeIf { !isIgnoredSpeaker(it) }
+            ?: activeSpeaker.takeIf { it.isNotBlank() } ?: return aiVoice
+        if (!ignoreManual) effectiveManualVoice(name)?.let { return it }
+        val desc = card?.desc.orEmpty().lowercase(java.util.Locale.ROOT)
+        val requested = Regex("giọng\\s*[:=]\\s*([^;,]+)", RegexOption.IGNORE_CASE)
+            .find(desc)?.groupValues?.getOrNull(1)?.trim()
+        AI_VOICES.firstOrNull {
+            it.first.equals(requested, ignoreCase = true) ||
+                it.second.substringBefore(" · ").equals(requested, ignoreCase = true)
+        }?.let { return it.first }
+        val female = Regex("(?:^|[\\s,;])(?:giọng\\s*)?(?:nữ|female)(?=$|[\\s,;])").containsMatchIn(desc) ||
+            listOf("cô gái", "cô bé", "phụ nữ", "nữ thần", "quý bà", "con gái", "người mẹ").any { it in desc }
+        val male = Regex("(?:^|[\\s,;])(?:giọng\\s*)?(?:nam|male)(?=$|[\\s,;])").containsMatchIn(desc) ||
+            listOf("đàn ông", "cậu bé", "anh chàng", "người cha", "con trai", "quý ông").any { it in desc }
+        if (female && !male) return femaleAiVoice
+        if (male && !female) return maleAiVoice
+        // Không suy luận giới tính từ tên. Giọng tự động được lưu cố định theo hồ sơ.
+        val canonical = card?.names?.firstOrNull() ?: name
+        return stableAutoVoice(canonical, card?.names.orEmpty() + name)
+    }
     var ttsModel: String
         get() = sp.getString("ttsmodel", "gemini-3.8-flash-tts").orEmpty().ifBlank { "gemini-3.8-flash-tts" }
         set(v) = sp.edit().putString("ttsmodel", v.trim()).apply()
-    val aiVoiceOn: Boolean get() = voiceEngine == "ai" && geminiKey.isNotEmpty()
+    val aiVoiceOn: Boolean get() = voiceEngine == "ai" && geminiKeys().isNotEmpty()
     /** Mã gói giọng offline đang chọn (xem Voices.PACKS). */
     var offlineVoice: String
         get() = sp.getString("offvoice", "vais1000").orEmpty().ifBlank { "vais1000" }
@@ -273,9 +480,16 @@ class Prefs(ctx: Context) {
         }
 
     fun gameOf(p: String): String = sp.getString("game_$p", null) ?: if (p == profile) sp.getString("game", "").orEmpty() else ""
+
+    /** Tên nguyên bản từ Kho game (có thể chứa dấu phẩy); không bị cắt khi thêm thể loại. */
+    var selectedGameTitle: String
+        get() = sp.getString("game_title_$profile", "").orEmpty()
+        set(v) = sp.edit().putString("game_title_$profile", v.trim()).apply()
+
     var game: String
         get() = sp.getString("game", "").orEmpty()
-        set(v) = sp.edit().putString("game", v.trim()).putString("game_$profile", v.trim()).apply()
+        set(v) = sp.edit().putString("game", v.trim()).putString("game_$profile", v.trim())
+            .remove("game_title_$profile").apply()
 
     fun addProfile(name: String): Boolean {
         val n = name.trim()
@@ -289,8 +503,13 @@ class Prefs(ctx: Context) {
         if (name == DEFAULT_PROFILE) return
         profiles = profiles.filter { it != name }
         if (profile == name) profile = DEFAULT_PROFILE
-        sp.edit().remove("game_$name").remove("gloss_$name").remove("cast_$name").apply()
+        sp.edit().remove("game_$name").remove("gloss_$name").remove("cast_$name")
+            .remove("detected_speakers_$name").remove("manual_voices_$name")
+            .remove("active_speaker_$name").remove("auto_voices_$name")
+            .remove("auto_voice_count_$name").remove("ignored_speakers_$name")
+            .remove("packon_$name").remove("game_title_$name").apply()
         PackStore.deleteLines(app, name)
+        LearnedTranslations.clearProfile(app, name)
     }
 
     var fontSize: Int

@@ -60,6 +60,15 @@ object DialogueSplitter {
     private val COLON = Regex("^([\\p{L}][\\p{L}'’.\\- ]{0,22}?)\\s*[:：]\\s*(\\S.*)$")
     private val CJK_BRACKET = Regex("^[【\\[]([^】\\]]{1,10})[】\\]]\\s*(\\S.*)$")
     private val END_PUNCT = "?.!…。？！"
+    // Nhãn giao diện có dấu hai chấm không phải tên người nói.
+    private val UI_LABELS = setOf(
+        "objective", "objectives", "mission", "quest", "quest log", "task",
+        "chapter", "level", "score", "time", "status", "warning", "hint",
+        "tip", "help", "tutorial", "system", "dialogue", "subtitle",
+        "item", "skill", "inventory", "menu", "settings", "press",
+        "name", "description", "location", "reward", "new objective",
+        "mục tiêu", "nhiệm vụ", "cảnh báo", "hướng dẫn", "trạng thái", "phần thưởng"
+    )
     private val CONNECTORS = setOf("of", "the", "de", "von", "van", "la", "le", "el", "di", "da", "du", "del", "al", "bin", "ibn")
 
     private val STOP = setOf(
@@ -128,12 +137,16 @@ object DialogueSplitter {
             if (m != null && m.groupValues[1].split(' ').size <= 3) {
                 val name = cleanName(m.groupValues[1])
                 if (letterLike(m.groupValues[2])) {
-                    if (book.confirmed(name)) {
+                    val plausible = nameShape(name, cjk) &&
+                        name.lowercase(Locale.ROOT) !in UI_LABELS
+                    // Dạng "Lucia: Go!" là nhãn người nói mạnh, không cần chờ cả hai câu.
+                    // Tuy nhiên các nhãn nhiệm vụ/menu bị loại để tránh nhận nhầm nhân vật.
+                    if (book.confirmed(name) || plausible) {
+                        if (plausible) book.observe(name, m.groupValues[2])
                         u.speaker = name
                         u.lines[0] = m.groupValues[2].trim()
                         continue
                     }
-                    if (nameShape(name, cjk)) book.observe(name, m.groupValues[2])
                 }
             }
             val br = CJK_BRACKET.find(first)

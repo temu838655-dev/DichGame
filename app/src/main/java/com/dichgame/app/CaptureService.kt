@@ -106,6 +106,7 @@ class CaptureService : Service() {
     private var audioWorker: GameAudioAsrWorker? = null
     private var phoneAudio: PhoneAudioCapture? = null
     private var speakers = SpeakerBook()
+    private var activeGameContext = ""
     private var langTrack: LangSwitchTracker? = null
     private var pendingLang: String? = null
     private val retired = ArrayList<TextTranslator>()
@@ -123,6 +124,7 @@ class CaptureService : Service() {
     private var ch = 0
     private var editing = true
     private var narrate = false
+    private val autoGameDetector = AutoGameDetector()
     private var needStable = 1
     private var cand = ""
     private var stable = 0
@@ -152,9 +154,36 @@ class CaptureService : Service() {
         }
     }
 
+    private fun gameContext(p: Prefs): String = p.profile + "\u0000" + p.game
+
+    /** Kho game vừa chuyển trò chơi: loại bỏ phụ đề/nhân vật của hồ sơ cũ
+     * mà không phải cấp lại quyền MediaProjection. */
+    private fun syncGameContext(): Boolean {
+        if (!running) return false
+        val p = Prefs(this)
+        val context = gameContext(p)
+        if (context == activeGameContext) return false
+        activeGameContext = context
+        speakers = SpeakerBook(PackStore.cast(p).map { it.name } + p.detectedSpeakers())
+        translateToken++
+        translating = false
+        jobs.clear()
+        fusion.clear()
+        pacer.cleared()
+        RecentLines.clear()
+        last = ""; cand = ""; stable = 0; prevVi = ""; prevOrig = ""
+        lastFine = null; lastSig = null
+        textOnScreen = false
+        menuUntil = 0L; autoShown = false; autoCand = ""
+        speaker?.stop()
+        show("")
+        return true
+    }
+
     private val tick = object : Runnable {
         override fun run() {
             try {
+                syncGameContext()
                 housekeeping()
                 capture()
             } catch (_: Throwable) {
@@ -244,7 +273,8 @@ class CaptureService : Service() {
 
         val tr = TextTranslator(this, Prefs(this), lang)
         tt = tr
-        speakers = SpeakerBook(PackStore.cast(Prefs(this)).map { it.name })
+        activeGameContext = gameContext(Prefs(this))
+        speakers = SpeakerBook((PackStore.cast(Prefs(this)).map { it.name } + Prefs(this).detectedSpeakers()))
         // dựng sẵn bộ nhớ câu Việt hoá (có thể hàng chục nghìn câu nhập từ file) ở nền để câu đầu tiên không bị khựng
         val warmPrefs = Prefs(this)
         Thread { try { PackStore.memory(applicationContext, warmPrefs).warm() } catch (_: Throwable) {} }.start()
@@ -470,7 +500,7 @@ class CaptureService : Service() {
 
     /** Câu nhận dạng từ âm thanh game: lọc ảo giác, rồi hợp nhất với chữ trên màn hình (không hiện hai lần). */
     private fun acceptAudioTranscript(raw: String, speechMs: Long, rms: Float) {
-        if (!running || editing || narrate) return
+        if (!running || editing || narrate || syncGameContext()) return
         val now = System.currentTimeMillis()
         stats.inc("asr_nhan")
         val v = AsrGuard.check(raw, rms, lang)
@@ -528,8 +558,9 @@ class CaptureService : Service() {
         translatingSince = now
         val token = ++translateToken
         translateLines(w) { cards ->
-            if (token == translateToken) translating = false
-            if (running) deliver(w, cards)
+            if (token != translateToken || !running) return@translateLines
+            translating = false
+            deliver(w, cards)
             handler.post { pump() }
         }
     }
@@ -677,11 +708,14 @@ class CaptureService : Service() {
         }
         // chỉ có tên, chưa có lời thoại: thường là thẻ tên hiện trước khi chữ chạy ra, đợi thêm để khỏi nháy
         if (utts.all { it.nameLike }) need = maxOf(need, 3)
+        // Thuyết minh đọc trực tiếp OCR, không có bước kiểm tra bản dịch: cần ít nhất hai khung hình ổn định.
+        if (narrate) need = maxOf(need, 2)
         return need
     }
 
     private fun onOcrResult(r: List<Blk>, scanAt: Long) {
         if (!running) { finishBusy(); return }
+        if (syncGameContext()) { finishBusy(); return }
         val now = System.currentTimeMillis()
         val cjk = Prefs.isCjk(lang)
         val lines = ArrayList<OcrLine>()
@@ -693,7 +727,21 @@ class CaptureService : Service() {
             val bx = b.box
             lines.add(OcrLine(v.text, bx?.let { Box(it.left, it.top, it.right, it.bottom) }, b.conf))
         }
-        val utts = DialogueSplitter.split(lines, cjk, speakers)
+        val prefs = Prefs(this)
+        // Không dò tên game bằng lời thoại; chỉ nhận tựa game khớp toàn dòng OCR và lặp hai lượt.
+        if (prefs.aiAuto) {
+            val detected = autoGameDetector.observe(lines.map { it.text }, PackStore.gameName(prefs))
+            if (detected != null && AutoGameSwitch.apply(prefs, detected)) {
+                syncGameContext()
+                show("✦ AI Tự động đã nhận diện: $detected")
+                finishBusy()
+                return
+            }
+        }
+        val utts = DialogueSplitter.split(lines, cjk, speakers).map { u ->
+            // Người dùng đã xóa tên OCR nhận nhầm: bỏ nhãn người nói, giữ nguyên nội dung thoại.
+            if (prefs.isIgnoredSpeaker(u.speaker)) Utterance(null, u.text, u.nameLike) else u
+        }
         if (utts.isEmpty()) {
             if (textOnScreen) { textOnScreen = false; textGoneSince = now }
             fusion.onScreenEmpty(now)
@@ -709,10 +757,23 @@ class CaptureService : Service() {
         if (sig != cand) { cand = sig; stable = 1 } else stable++
         if (stable < requiredStable(utts)) { finishBusy(); return }
         last = sig
+        // Chỉ nhớ người nói khi OCR đã ổn định; không lưu tên chưa được xác nhận.
+        for (u in utts) if (!u.nameLike && !u.speaker.isNullOrBlank()) prefs.rememberSpeaker(u.speaker!!)
         stats.inc("ocr_cau", utts.size.toLong())
         if (narrate) {
-            val text = utts.joinToString(sep) { it.text.replace("\n", sep) }
-            showCards(listOf(Card(null, "", TextTranslator.Tr(text, null, false, "doc"), false)), Src.OCR)
+            // Không đọc nhãn tên đứng riêng khi đã có câu thoại thực sự trong khung.
+            val spoken = utts.filter { !it.nameLike && VietsubGuard.isVietnamese(it.text) }
+            if (spoken.isEmpty()) {
+                // Không dịch, không gọi Gemini, không đọc phụ đề nước ngoài/không rõ ngôn ngữ.
+                if (!autoShown) show("")
+                finishBusy()
+                return
+            }
+            val cards = spoken.map { u ->
+                val phrase = u.text.replace("\n", sep)
+                Card(u.speaker, "", TextTranslator.Tr(phrase, null, false, "doc"), false)
+            }
+            showCards(cards, Src.OCR)
             finishBusy()
             return
         }
@@ -891,9 +952,9 @@ class CaptureService : Service() {
 
     private var tvVoiceWarned = false
 
-    private fun tvVoice(text: String, d: Delivery? = null) {
+    private fun tvVoice(text: String, d: Delivery? = null, speakerName: String? = null, scene: List<VoiceLine>? = null) {
         val sp = speaker ?: return
-        sp.synthForTv(text, d) { pcm, speed ->
+        val sendAudio: (Pcm?, Float) -> Unit = { pcm, speed ->
             val pf = getSharedPreferences("dg", MODE_PRIVATE)
             val err = if (pcm == null) "giọng đọc lỗi" else TvLink.postAudio(pf.getString("tvip", "").orEmpty(), pf.getString("tvtoken", "").orEmpty(), pcm, speed)
             if (err != null) {
@@ -905,6 +966,8 @@ class CaptureService : Service() {
                 }
             }
         }
+        if (scene != null) sp.synthForTvScene(scene, sendAudio)
+        else sp.synthForTv(text, d, speakerName, sendAudio)
     }
 
     /** Gửi phụ đề lên app Dịch game TV (nếu đã ghép). kind: sub | region | clear. */
@@ -979,8 +1042,10 @@ class CaptureService : Service() {
         else cards.joinToString("\n") { (it.speaker?.let { n -> "$n: " } ?: "") + it.tr.text }
         sendTv("sub", tvText, tvSpeaks)
         val d = cards.lastOrNull()?.tr?.delivery
-        if (speak && tvVoiceOn()) tvVoice(vi, d)
-        if (speak && ready && !editing && !tvSpeakOn()) speaker?.speak(vi, false, d)
+        val speakerName = cards.lastOrNull()?.speaker
+        val scene = cards.map { VoiceLine(it.tr.text, it.speaker, it.tr.delivery) }
+        if (speak && tvVoiceOn()) tvVoice(vi, d, speakerName, scene)
+        if (speak && ready && !editing && !tvSpeakOn()) speaker?.speakScene(scene)
         prevVi = vi; prevOrig = cards.joinToString(" ") { it.orig }; autoShown = false
     }
 

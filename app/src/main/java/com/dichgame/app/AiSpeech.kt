@@ -14,16 +14,16 @@ class Pcm(val data: ByteArray, val rate: Int, val channels: Int)
 object AiSpeech {
     private const val BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-    /** Đọc [text] bằng giọng [voice] (mã giọng Gemini, mặc định giọng đã chọn trong cài đặt). Tự đổi khóa khi một khóa hết lượt. */
-    fun synth(p: Prefs, text: String, style: String, voice: String = p.aiVoice): Pcm {
+    /** Đọc [text] bằng giọng [voiceName] (mã giọng Gemini, mặc định giọng đã chọn trong cài đặt). Tự đổi khóa khi một khóa hết lượt hay sai (xem [KeyRing]). */
+    fun synth(p: Prefs, text: String, style: String, voiceName: String = p.aiVoice): Pcm {
         return try {
-            viaInteractions(p, text, style, voice)
+            viaInteractions(p, text, style, voiceName)
         } catch (e: AiException) {
-            if (e.code == 400 || e.code == 404) viaGenerate(p, text, style, voice) else throw e
+            if (e.code == 400 || e.code == 404) viaGenerate(p, text, style, voiceName) else throw e
         }
     }
 
-    private fun viaInteractions(p: Prefs, text: String, style: String, voice: String): Pcm {
+    private fun viaInteractions(p: Prefs, text: String, style: String, voiceName: String): Pcm {
         val item = JSONObject().put("type", "text").put("text", text)
         if (style.isNotEmpty()) {
             item.put("annotations", JSONArray().put(JSONObject().put("type", "speech_metadata").put("style", style)))
@@ -32,7 +32,7 @@ object AiSpeech {
             .put("model", p.ttsModel)
             .put("input", JSONArray().put(JSONObject().put("type", "user_input").put("content", JSONArray().put(item))))
             .put("response_format", JSONObject().put("type", "audio"))
-            .put("generation_config", JSONObject().put("speech_config", JSONArray().put(JSONObject().put("voice", voice))))
+            .put("generation_config", JSONObject().put("speech_config", JSONArray().put(JSONObject().put("voice", voiceName))))
         val r = Ai.withGeminiKey(p, p.ttsModel) { key -> Ai.post("$BASE/interactions", body, mapOf("x-goog-api-key" to key)) }
         val steps = JSONObject(r).optJSONArray("steps") ?: throw AiException(0, "Phản hồi không có âm thanh")
         var data = ""
@@ -50,7 +50,10 @@ object AiSpeech {
     }
 
     private fun viaGenerate(p: Prefs, text: String, style: String, voiceName: String): Pcm {
-        val prompt = if (style.isEmpty()) text else "Say in a $style way: $text"
+        val prompt = "Đọc chính xác nguyên văn câu tiếng Việt sau, phát âm rõ ràng và tự nhiên. " +
+            "Không dịch, không giải thích, không thêm hoặc bỏ chữ." +
+            (if (style.isEmpty()) "" else " Sắc thái giọng: $style.") +
+            "\nVăn bản cần đọc: $text"
         val voice = JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voiceName))
         val body = JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))))

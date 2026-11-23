@@ -4,6 +4,8 @@
         <!-- Keystore keys are device-bound and cannot decrypt a restored preferences file. -->
         <exclude domain="sharedpref" path="ps.xml" />
         <exclude domain="sharedpref" path="ps_remote_play.xml" />
+        <!-- Không đẩy lời thoại và bản dịch AI đã nhớ lên Android cloud backup. -->
+        <exclude domain="file" path="learned_translations/" />
     </cloud-backup>
     <device-transfer>
         <!-- Do not transfer credentials without their original Keystore key. -->

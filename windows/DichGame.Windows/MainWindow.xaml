@@ -1,0 +1,264 @@
+<Window x:Class="DichGame.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="DichGame — Console Translator" Width="1080" Height="855"
+        MinWidth="825" MinHeight="680" WindowStartupLocation="CenterScreen"
+        Background="#0C1019" Foreground="#F7F5F0" FontFamily="Segoe UI">
+  <Window.Resources>
+    <SolidColorBrush x:Key="GoldBrush" Color="#F9C680"/>
+    <SolidColorBrush x:Key="SecondaryText" Color="#A6AAB4"/>
+    <SolidColorBrush x:Key="CardFill" Color="#191E28"/>
+    <LinearGradientBrush x:Key="PremiumGold" StartPoint="0,0" EndPoint="1,1">
+      <GradientStop Color="#FFE0A4" Offset="0"/>
+      <GradientStop Color="#CE8844" Offset="1"/>
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="HeroGradient" StartPoint="0,0" EndPoint="1,1">
+      <GradientStop Color="#393025" Offset="0"/>
+      <GradientStop Color="#1E222C" Offset="0.63"/>
+      <GradientStop Color="#131924" Offset="1"/>
+    </LinearGradientBrush>
+    <Style x:Key="Panel" TargetType="Border">
+      <Setter Property="CornerRadius" Value="23"/>
+      <Setter Property="Padding" Value="21"/>
+      <Setter Property="Background" Value="{StaticResource CardFill}"/>
+      <Setter Property="BorderBrush" Value="#3A3740"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Margin" Value="0,0,0,17"/>
+    </Style>
+    <Style TargetType="TextBox">
+      <Setter Property="Padding" Value="13,11"/>
+      <Setter Property="Background" Value="#111722"/>
+      <Setter Property="Foreground" Value="#F7F5F0"/>
+      <Setter Property="BorderBrush" Value="#3F434D"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CaretBrush" Value="#F9C680"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="Margin" Value="0,9,0,15"/>
+    </Style>
+    <Style TargetType="PasswordBox">
+      <Setter Property="Padding" Value="12"/>
+      <Setter Property="Background" Value="#111722"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="BorderBrush" Value="#3F434D"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="Margin" Value="0,10,0,11"/>
+    </Style>
+    <Style TargetType="ComboBox">
+      <Setter Property="Background" Value="#141A25"/>
+      <Setter Property="Foreground" Value="#F7F5F0"/>
+      <Setter Property="BorderBrush" Value="#414753"/>
+      <Setter Property="Padding" Value="10,8"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="Margin" Value="0,10,0,6"/>
+    </Style>
+    <Style x:Key="PrimaryButton" TargetType="Button">
+      <Setter Property="Background" Value="{StaticResource PremiumGold}"/>
+      <Setter Property="Foreground" Value="#18120F"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Padding" Value="20,14"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Margin" Value="0,0,10,9"/>
+      <Setter Property="MinHeight" Value="45"/>
+    </Style>
+    <Style x:Key="OutlineButton" TargetType="Button">
+      <Setter Property="Background" Value="#28303C"/>
+      <Setter Property="Foreground" Value="#F4D8A8"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Padding" Value="18,12"/>
+      <Setter Property="BorderBrush" Value="#555048"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Margin" Value="0,0,10,9"/>
+      <Setter Property="MinHeight" Value="45"/>
+    </Style>
+    <Style x:Key="Eyebrow" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="Foreground" Value="{StaticResource GoldBrush}"/>
+    </Style>
+    <Style x:Key="SectionTitle" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="19"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="Foreground" Value="#F9F2E7"/>
+    </Style>
+  </Window.Resources>
+
+  <Grid>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="32,28,32,24" MaxWidth="1270">
+        <!-- Brand row -->
+        <Grid Margin="0,0,0,23">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <Border Width="55" Height="55" CornerRadius="15" Background="{StaticResource PremiumGold}">
+            <TextBlock Text="✦" FontSize="29" FontWeight="Bold" Foreground="#24201E"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <StackPanel Grid.Column="1" Margin="14,5,0,0">
+            <TextBlock Text="DICHGAME" FontSize="21" FontWeight="Bold" Foreground="#F6F1E7"/>
+            <TextBlock Text="C O N S O L E   T R A N S L A T O R" FontSize="10"
+                       FontWeight="Bold" Foreground="{StaticResource GoldBrush}" Margin="0,4,0,0"/>
+          </StackPanel>
+          <Border Grid.Column="2" VerticalAlignment="Center" Background="#1D2825"
+                  BorderBrush="#435B49" BorderThickness="1" CornerRadius="17" Padding="15,8">
+            <StackPanel Orientation="Horizontal">
+              <Ellipse Width="7" Height="7" Fill="#6BD99C" VerticalAlignment="Center" Margin="0,0,8,0"/>
+              <TextBlock Text="WINDOWS PREVIEW" FontSize="10" FontWeight="Bold" Foreground="#9DD7AF"/>
+            </StackPanel>
+          </Border>
+        </Grid>
+
+        <!-- Hero -->
+        <Border CornerRadius="25" BorderBrush="#63523E" BorderThickness="1"
+                Background="{StaticResource HeroGradient}" Margin="0,0,0,22" ClipToBounds="True">
+          <Grid Height="211">
+            <Canvas HorizontalAlignment="Right" Width="310" IsHitTestVisible="False">
+              <Ellipse Canvas.Left="38" Canvas.Top="-108" Width="295" Height="295" Stroke="#5C503E" StrokeThickness="1"/>
+              <Ellipse Canvas.Left="81" Canvas.Top="-66" Width="213" Height="213" Stroke="#716048" StrokeThickness="1"/>
+              <Ellipse Canvas.Left="112" Canvas.Top="-35" Width="153" Height="153" Stroke="#847052" StrokeThickness="1"/>
+              <TextBlock Canvas.Left="148" Canvas.Top="38" Text="✧" FontSize="95" Foreground="#AA7754" Opacity="0.4"/>
+            </Canvas>
+            <StackPanel VerticalAlignment="Center" Margin="29,10,300,10">
+              <TextBlock Text="◆  DỊCH THUẬT TRÒ CHƠI VỚI AI" Style="{StaticResource Eyebrow}"/>
+              <TextBlock Text="Mọi thế giới game.&#10;Một ngôn ngữ của bạn."
+                         FontSize="29" FontWeight="Bold" TextWrapping="Wrap" LineHeight="37"
+                         Foreground="#FFF8E9" Margin="0,14,0,9"/>
+              <TextBlock Text="Chụp hình hoặc chọn ảnh game. Gemini chuyển phụ đề sang tiếng Việt."
+                         Foreground="#B9B1A9" FontSize="13" TextWrapping="Wrap"/>
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <!-- Two-column work area -->
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1.1*"/>
+            <ColumnDefinition Width="17"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+
+          <StackPanel Grid.Column="0">
+            <!-- Game context -->
+            <Border Style="{StaticResource Panel}">
+              <StackPanel>
+                <Grid Margin="0,0,0,17">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                  <Border Width="42" Height="42" CornerRadius="12" Background="#363027">
+                    <TextBlock Text="▣" Foreground="{StaticResource GoldBrush}" FontSize="23"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Border>
+                  <StackPanel Grid.Column="1" Margin="11,2,0,0">
+                    <TextBlock Text="Hồ sơ game" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock Text="Ngữ cảnh để AI hiểu câu thoại" FontSize="12"
+                               Foreground="{StaticResource SecondaryText}" Margin="0,4,0,0"/>
+                  </StackPanel>
+                </Grid>
+                <TextBlock Text="TÊN GAME ĐANG CHƠI" Style="{StaticResource Eyebrow}"/>
+                <TextBox x:Name="GameName" Text="Grand Theft Auto VI"/>
+                <TextBlock Text="NGÔN NGỮ GỐC" Style="{StaticResource Eyebrow}"/>
+                <ComboBox x:Name="LanguageBox" SelectedIndex="4">
+                  <ComboBoxItem Content="Tiếng Anh"/>
+                  <ComboBoxItem Content="Tiếng Nhật"/>
+                  <ComboBoxItem Content="Tiếng Trung"/>
+                  <ComboBoxItem Content="Tiếng Hàn"/>
+                  <ComboBoxItem Content="Tự nhận diện"/>
+                </ComboBox>
+              </StackPanel>
+            </Border>
+
+            <!-- Image source -->
+            <Border Style="{StaticResource Panel}">
+              <StackPanel>
+                <TextBlock Text="Ảnh chụp game" Style="{StaticResource SectionTitle}"/>
+                <TextBlock Text="Chỉ chụp và gửi ảnh khi bạn yêu cầu"
+                           FontSize="12" Foreground="{StaticResource SecondaryText}" Margin="0,6,0,16"/>
+                <Border CornerRadius="13" BorderBrush="#49505A" BorderThickness="1"
+                        Background="#101620" Height="202">
+                  <Grid>
+                    <Image x:Name="ScreenshotPreview" Stretch="Uniform" Margin="8"/>
+                    <StackPanel x:Name="ImagePlaceholder" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                IsHitTestVisible="False">
+                      <TextBlock Text="▧" FontSize="31" Foreground="#BD945C" HorizontalAlignment="Center"/>
+                      <TextBlock x:Name="PhotoNote" Text="Chưa chọn ảnh chụp game"
+                                 Foreground="#AAA9B0" FontSize="12" TextAlignment="Center"
+                                 Margin="0,12,0,0"/>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+                <WrapPanel Margin="0,17,0,2">
+                  <Button Content="◉  Chụp màn hình" Style="{StaticResource OutlineButton}" Click="Capture_Click"/>
+                  <Button Content="▧  Chọn ảnh" Style="{StaticResource OutlineButton}" Click="OpenImage_Click"/>
+                </WrapPanel>
+                <Button x:Name="TranslateButton" Content="✦   DỊCH SANG TIẾNG VIỆT"
+                        Style="{StaticResource PrimaryButton}" Click="Translate_Click"
+                        HorizontalContentAlignment="Center" MinHeight="51" Margin="0,2,0,0"/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel Grid.Column="2">
+            <!-- Translation -->
+            <Border Style="{StaticResource Panel}">
+              <StackPanel>
+                <Grid Margin="0,0,0,18">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="Phụ đề tiếng Việt" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock Text="Kết quả sau khi Gemini đọc ảnh" FontSize="12"
+                               Foreground="{StaticResource SecondaryText}" Margin="0,5,0,0"/>
+                  </StackPanel>
+                  <Border Grid.Column="1" Background="#2B332E" BorderBrush="#445A4A"
+                          BorderThickness="1" CornerRadius="12" Padding="8,5" VerticalAlignment="Top">
+                    <TextBlock Text="AI" Foreground="#9BD9AE" FontSize="10" FontWeight="Bold"/>
+                  </Border>
+                </Grid>
+                <TextBox x:Name="Output" Text="Bản dịch tiếng Việt sẽ xuất hiện tại đây..."
+                         TextWrapping="Wrap" AcceptsReturn="True" IsReadOnly="True"
+                         VerticalScrollBarVisibility="Auto" MinHeight="230" MaxHeight="350"
+                         Margin="0,0,0,16"/>
+                <WrapPanel>
+                  <Button Content="▤  Sao chép" Style="{StaticResource OutlineButton}" Click="Copy_Click"/>
+                  <Button Content="◖))  Nghe đọc" Style="{StaticResource OutlineButton}" Click="Speak_Click"/>
+                </WrapPanel>
+                <TextBlock x:Name="Status" Text="" TextWrapping="Wrap"
+                           Foreground="{StaticResource GoldBrush}" FontSize="12" Margin="0,10,0,0"/>
+              </StackPanel>
+            </Border>
+
+            <!-- Secure Gemini -->
+            <Border Style="{StaticResource Panel}">
+              <StackPanel>
+                <Grid Margin="0,0,0,7">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                  <Border Width="42" Height="42" CornerRadius="12" Background="#2F302A">
+                    <TextBlock Text="◇" Foreground="{StaticResource GoldBrush}" FontSize="25"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Border>
+                  <StackPanel Grid.Column="1" Margin="11,0,0,0">
+                    <TextBlock Text="Kết nối Gemini" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock Text="Khóa API lưu mã hóa trên Windows" FontSize="12"
+                               Foreground="{StaticResource SecondaryText}" Margin="0,4,0,0"/>
+                  </StackPanel>
+                </Grid>
+                <PasswordBox x:Name="Keys"/>
+                <Button Content="◇  Lưu khóa an toàn" Style="{StaticResource OutlineButton}"
+                        Click="SaveKeys_Click" HorizontalAlignment="Left"/>
+                <TextBlock Text="Có thể nhập nhiều khóa, ngăn cách bằng dấu phẩy hoặc xuống dòng."
+                           Foreground="{StaticResource SecondaryText}" TextWrapping="Wrap"
+                           FontSize="11" Margin="0,5,0,0"/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Grid>
+        <TextBlock Text="DICHGAME  /  WINDOWS PREVIEW     ·     Dịch ảnh thủ công — chưa có Remote Play và phụ đề nổi"
+                   Foreground="#8B919C" FontSize="11" TextAlignment="Center" Margin="0,4,0,10"/>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</Window>

@@ -1,0 +1,146 @@
+name: Build iOS Simulator and iPhone IPA
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "feat/ios-windows-native-starters"]
+    paths: ["ios/**", ".github/workflows/build-ios.yml"]
+  pull_request:
+    paths: ["ios/**", ".github/workflows/build-ios.yml"]
+jobs:
+  ios-simulator:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print Xcode version
+        run: xcodebuild -version
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate native iOS project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Build iOS Simulator app (no signing required)
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project DichGameiOS.xcodeproj \
+            -scheme DichGameiOS \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dichgame-ios" \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Package simulator app
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$RUNNER_TEMP/dichgame-ios/Build/Products/Debug-iphonesimulator/DichGameiOS.app" \
+            "$GITHUB_WORKSPACE/ios/DichGame-iOS-Simulator.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DichGame-iOS-Simulator
+          path: ios/DichGame-iOS-Simulator.zip
+          if-no-files-found: error
+
+  ios-iphone-ipa-unsigned:
+    name: Build iPhone IPA (unsigned, for signing)
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate native iOS project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Build actual iPhone architecture (arm64, unsigned)
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project DichGameiOS.xcodeproj \
+            -scheme DichGameiOS \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/dichgame-ios-device" \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Package and verify unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/dichgame-ios-device/Build/Products/Release-iphoneos/DichGameiOS.app"
+          test -f "$APP/Info.plist"
+          test -f "$APP/DichGameiOS"
+          /usr/bin/lipo -archs "$APP/DichGameiOS" | grep -qw arm64
+          STAGING="$RUNNER_TEMP/dichgame-ipa-stage"
+          mkdir -p "$STAGING/Payload" ios/dist
+          /usr/bin/ditto "$APP" "$STAGING/Payload/DichGameiOS.app"
+          (cd "$STAGING" && /usr/bin/zip -qry "$GITHUB_WORKSPACE/ios/dist/DichGame-iPhone-unsigned.ipa" Payload)
+          /usr/bin/unzip -tq ios/dist/DichGame-iPhone-unsigned.ipa
+          /usr/bin/unzip -Z1 ios/dist/DichGame-iPhone-unsigned.ipa | grep -qx "Payload/DichGameiOS.app/Info.plist"
+          echo "::notice::IPA chỉ là gói iPhone arm64 chưa ký, KHÔNG cài trực tiếp lên iPhone thường."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DichGame-iPhone-IPA-unsigned
+          path: ios/dist/DichGame-iPhone-unsigned.ipa
+          if-no-files-found: error
+
+
+  publish-ios-preview:
+    name: Publish iOS preview to GitHub Releases
+    needs: [ios-simulator, ios-iphone-ipa-unsigned]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: DichGame-iPhone-IPA-unsigned
+          path: dist/iphone
+      - uses: actions/download-artifact@v4
+        with:
+          name: DichGame-iOS-Simulator
+          path: dist/simulator
+      - name: Prepare clear download notes and SHA256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/iphone/DichGame-iPhone-unsigned.ipa
+          test -f dist/simulator/DichGame-iOS-Simulator.zip
+          (cd dist && sha256sum iphone/*.ipa simulator/*.zip > SHA256SUMS.txt)
+          cat > "$RUNNER_TEMP/ios-release.md" <<'NOTES'
+          ## DichGame iOS — bản thử nghiệm
+
+          **CẢNH BÁO: DichGame-iPhone-unsigned.ipa CHƯA ĐƯỢC KÝ.**
+          Tệp IPA này không thể cài trực tiếp trên iPhone thông thường.
+          Nó là bản iPhone arm64 dùng cho nhà phát triển ký hợp lệ trước khi cài đặt.
+
+          - DichGame-iPhone-unsigned.ipa: bản iPhone cần ký bằng Apple Developer.
+          - DichGame-iOS-Simulator.zip: chỉ dùng trên iOS Simulator với Xcode/Mac.
+          - SHA256SUMS.txt: mã kiểm tra toàn vẹn file.
+
+          Chức năng: chọn ảnh game để Gemini dịch, đọc tiếng Việt; chưa có phụ đề nổi
+          lên game khác hoặc PS Remote Play tích hợp. Không phải ứng dụng App Store/TestFlight.
+
+          Hướng dẫn ký ứng dụng và triển khai cho iPhone:
+          https://github.com/temu838655-dev/DichGame/blob/main/docs/ios-windows-roadmap.md
+
+          Bản iOS preview có tag ios-preview-*, không thay đổi tag
+          build-* dành cho Android.
+          NOTES
+      - name: Publish discoverable iOS preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="ios-preview-${{ github.run_number }}"
+          gh release create "$tag" \
+            dist/iphone/DichGame-iPhone-unsigned.ipa \
+            dist/simulator/DichGame-iOS-Simulator.zip \
+            dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "DichGame iOS Preview #${{ github.run_number }} (IPA chưa ký)" \
+            --notes-file "$RUNNER_TEMP/ios-release.md" \
+            --prerelease

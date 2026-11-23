@@ -78,6 +78,30 @@ jobs:
             echo "Đang ký bằng khóa mặc định trong keystore/."
           fi
 
+      # Android NDK đôi lúc được SDK Manager tải thành tệp ZIP hỏng trên runner GitHub.
+      # Chuẩn bị NDK trước khi chạy Gradle, thử lại thay vì làm hỏng cả bản phát hành.
+      - name: Cài NDK Android (thử lại khi tải lỗi)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
+          for attempt in 1 2 3; do
+            if "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install "ndk;28.2.13676358"; then
+              if [ -f "$ANDROID_HOME/ndk/28.2.13676358/source.properties" ]; then
+                echo "Android NDK 28.2 đã sẵn sàng."
+                break
+              fi
+            fi
+            echo "::warning::NDK tải lỗi (lần $attempt/3); đang thử lại."
+            rm -rf "$ANDROID_HOME/ndk/28.2.13676358"
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Không tải được Android NDK sau 3 lần thử."
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
+
       - name: Chạy unit test (gói Việt hoá, nhận dạng âm thanh, hợp nhất phụ đề)
         run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
 

@@ -9,6 +9,20 @@ import java.nio.charset.Charset
 
 /** Kiểm tra nhập file Việt hoá ở nhiều dạng (chạy trên máy tính, không cần Android). */
 class PackTextTest {
+    @Test fun gtaSixCastDoesNotReuseGtaFiveCharacters() {
+        for (game in listOf("Grand Theft Auto VI", "GTA VI", "GTA 6")) {
+            val characters = VietHoaPlus.castFor(game)
+            assertTrue("Missing Lucia in $game", characters.any { it.startsWith("Lucia Caminos/Lucia = nữ") })
+            assertTrue("Missing Jason in $game", characters.any { it.startsWith("Jason Duval/Jason = nam") })
+            assertTrue("Wrong GTA V character in $game", characters.none { it.startsWith("Michael =") })
+        }
+        for (game in listOf("Grand Theft Auto V", "GTA V", "GTA 5")) {
+            val characters = VietHoaPlus.castFor(game)
+            assertTrue("Missing GTA V character in $game", characters.any { it.startsWith("Michael = nam") })
+            assertTrue("Wrong GTA VI character in $game", characters.none { it.startsWith("Lucia Caminos/") })
+        }
+    }
+
     @Test fun decodeUtf16WithBom() {
         val b = byteArrayOf(0xFF.toByte(), 0xFE.toByte()) + "Xin chào".toByteArray(Charsets.UTF_16LE)
         assertEquals("Xin chào", PackText.decode(b))

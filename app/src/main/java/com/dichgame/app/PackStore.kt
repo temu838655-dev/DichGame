@@ -12,7 +12,7 @@ import java.net.URL
 object PackStore {
     /** Tên game đang chơi: phần trước dấu phẩy của ô "Đang chơi game", hoặc tên hồ sơ nếu không phải hồ sơ mặc định. */
     fun gameName(p: Prefs): String =
-        p.game.substringBefore(',').trim().ifEmpty { if (p.profile != Prefs.DEFAULT_PROFILE) p.profile else "" }
+        GamePackMatch.title(p.game, p.profile, p.selectedGameTitle, Prefs.DEFAULT_PROFILE)
 
     private fun genreOf(p: Prefs, name: String): String =
         Catalog.genreOf(name).ifEmpty { p.game.substringAfter(',', "").trim() }
@@ -25,19 +25,19 @@ object PackStore {
     @Synchronized
     fun terms(p: Prefs): TermMap {
         val name = gameName(p)
-        val key = p.glossary + "\u0000" + name + "\u0000" + p.game + "\u0000" + p.packOn
+        val key = p.glossary + "\u0000" + name + "\u0000" + p.game + "\u0000" + (p.packOn || p.aiAuto)
         termMap?.let { if (key == termKey) return it }
         val user = p.glossary.lines().mapNotNull { l ->
             val i = l.indexOf('=')
             if (i <= 0) null else l.substring(0, i).trim() to l.substring(i + 1).trim()
         }
-        val built = if (p.packOn) VietHoa.termsFor(name, genreOf(p, name)) else emptyList()
+        val built = if (p.packOn || p.aiAuto) VietHoa.termsFor(name, genreOf(p, name)) else emptyList()
         return TermMap(user + built).also { termMap = it; termKey = key }
     }
 
     /** Thẻ nhân vật đang dùng: của người dùng trước, rồi có sẵn (nếu bật). */
     fun cast(p: Prefs): List<Character> {
-        val builtin = if (p.packOn) VietHoa.castFor(gameName(p)).joinToString("\n") else ""
+        val builtin = if (p.packOn || p.aiAuto) VietHoa.castFor(gameName(p)).joinToString("\n") else ""
         return Cast.parse(p.cast + "\n" + builtin).distinctBy { it.name.lowercase() }
     }
 
@@ -84,9 +84,9 @@ object PackStore {
     fun memory(ctx: Context, p: Prefs): TransMemory {
         val f = linesFile(ctx, p.profile)
         val name = gameName(p)
-        val key = p.profile + "\u0000" + name + "\u0000" + p.packOn + "\u0000" + f.lastModified() + "\u0000" + f.length()
+        val key = p.profile + "\u0000" + name + "\u0000" + (p.packOn || p.aiAuto) + "\u0000" + f.lastModified() + "\u0000" + f.length()
         mem?.let { if (key == memKey) return it }
-        val built = if (p.packOn) VietHoa.linesFor(name) else emptyList()
+        val built = if (p.packOn || p.aiAuto) VietHoa.linesFor(name) else emptyList()
         return TransMemory(built + readLines(ctx, p.profile)).also { mem = it; memKey = key }
     }
 

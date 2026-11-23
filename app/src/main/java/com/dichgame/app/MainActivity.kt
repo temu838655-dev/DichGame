@@ -187,7 +187,7 @@ class MainActivity : Activity() {
         if (!p.packOn) return "Việt hoá: đang tắt"
         val g = Catalog.genreOf(n).ifEmpty { p.game.substringAfter(',', "").trim() }
         val c = PackStore.builtinCounts(n, g)
-        return "Việt hoá: " + (if (VietHoa.hasSpecific(n)) "gói riêng" else "gói thể loại") + " · ${c.first} thuật ngữ"
+        return "Việt hoá: " + (if (VietHoa.hasSpecific(n)) "gói game/series" else "gói thể loại") + " · ${c.first} thuật ngữ"
     }
 
     /** Thẻ máy chơi game: tên máy, trạng thái ghép nối, game đang dịch, ngôn ngữ và nút ghép nối / chơi. */
@@ -197,15 +197,13 @@ class MainActivity : Activity() {
         val narrate = p.narrate
         val c = Ui.card(this, 14)
         val top = Ui.hbox(this)
-        if (name.isEmpty()) {
-            top.addView(ImageView(this).apply { setImageResource(R.drawable.ic_logo); scaleType = ImageView.ScaleType.FIT_CENTER }, Ui.lp(Ui.dp(this, 72), Ui.dp(this, 72)))
-        } else {
-            top.addView(TextView(this).apply {
-                text = Catalog.initials(name); textSize = 22f; gravity = Gravity.CENTER
-                setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD)
-                background = Ui.bg(this@MainActivity, Color.HSVToColor(floatArrayOf(Catalog.hue(name).toFloat(), 0.45f, 0.42f)), 16, Ui.LINE, 1)
-            }, Ui.lp(Ui.dp(this, 72), Ui.dp(this, 72)))
-        }
+        // Hình độc quyền cố định ở thẻ PS5/PS4: không đổi theo game, thiết bị
+        // hay trạng thái ghép nối. Chỉ cập nhật khi phát hành APK có tài nguyên mới.
+        top.addView(ImageView(this).apply {
+            setImageResource(R.drawable.console_translation_fixed)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = "Biểu tượng máy chơi game và dịch ngôn ngữ"
+        }, Ui.lp(Ui.dp(this, 72), Ui.dp(this, 72)))
         val col = Ui.vbox(this)
         col.addView(Ui.tv(this, con?.name ?: "PS5", 28f, Ui.TEXT, true).apply { maxLines = 1 })
         col.addView(Ui.tv(this, if (con != null) "Đã ghép nối · ${con.host}" else "Chưa ghép nối", 15f, if (con != null) Ui.OK else Ui.SUB))
@@ -237,8 +235,12 @@ class MainActivity : Activity() {
             }
             c.addView(lang)
         } else {
-            c.addView(Ui.tv(this, "Thuyết minh: đọc to phụ đề tiếng Việt của game", 13.5f, Ui.SUB).apply { setPadding(0, Ui.dp(this@MainActivity, 8), 0, Ui.dp(this@MainActivity, 4)) })
+            c.addView(Ui.tv(this, "Thuyết minh: chỉ đọc phụ đề tiếng Việt đã có, không dịch.", 13.5f, Ui.SUB).apply { setPadding(0, Ui.dp(this@MainActivity, 8), 0, Ui.dp(this@MainActivity, 4)) })
         }
+        if (!narrate) c.addView(Ui.switchRow(this, "✦ AI Tự động",
+            "Ưu tiên Việt hóa → bộ nhớ game → Gemini, tự chuyển khóa dự phòng.", p.aiAuto) { enabled ->
+            if (!CaptureService.active) { p.aiAuto = enabled; render() } else busyToast()
+        })
 
         val dark = Color.parseColor("#2A1A08")
         val act = Ui.hbox(this)
@@ -283,8 +285,12 @@ class MainActivity : Activity() {
             b.setOnClickListener { click() }
             return b
         }
-        seg.addView(item("Dịch", !p.narrate, !p.narrate) { if (!CaptureService.active) { p.narrate = false; render() } else busyToast() })
-        seg.addView(item("Thuyết minh", p.narrate, false) { if (!CaptureService.active) { p.narrate = true; render() } else busyToast() })
+        seg.addView(item("Dịch", !p.narrate, true) {
+            if (!CaptureService.active) { p.mode = Prefs.MODE_TRANSLATE; render() } else busyToast()
+        }, Ui.lp(0, WRAP_CONTENT, 1f))
+        seg.addView(item("Thuyết minh", p.narrate, false) {
+            if (!CaptureService.active) { p.mode = Prefs.MODE_VIETSUB; render() } else busyToast()
+        }, Ui.lp(0, WRAP_CONTENT, 1f))
         return seg
     }
 
@@ -292,10 +298,11 @@ class MainActivity : Activity() {
 
     private fun help() {
         AlertDialog.Builder(this, R.style.DgDialog)
-            .setTitle("Hai chế độ")
-            .setMessage("Dịch: đọc chữ trên màn hình (Anh, Nhật, Hàn, Trung, Pháp, Đức, Tây Ban Nha, Nga, Thái, Ả Rập... tổng cộng 28 thứ tiếng) rồi dịch sang tiếng Việt.\n\n" +
-                "Thuyết minh: game hoặc phim đã có phụ đề tiếng Việt, app chỉ đọc to phụ đề, không dịch.\n\n" +
-                "Sau khi bấm Bắt đầu, kéo khung xanh tới dòng phụ đề rồi bấm \"Chỉnh/Khóa khung\" trong thông báo.")
+            .setTitle("Hai chế độ DichGame")
+            .setMessage("Dịch: nhận dạng chữ trên màn hình và dịch sang tiếng Việt. Có thể bật tùy chọn AI Tự động để nhận diện tên game, ưu tiên gói Việt hóa và bộ nhớ dịch trước Gemini.\n\n" +
+                "Thuyết minh: chỉ đọc phụ đề tiếng Việt đã có trong phim Vietsub hoặc game Việt hóa, không dịch.\n\n" +
+                "Giọng đọc có hai lựa chọn: Cơ bản và AI (Gemini).\n\n" +
+                "Kéo khung nhận dạng vào vùng có phụ đề và khóa khung để bắt đầu.")
             .setPositiveButton("Đã hiểu", null).show()
     }
 

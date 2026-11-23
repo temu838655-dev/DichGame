@@ -103,7 +103,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
         if (isCloud) io.shutdown()
     }
 
-    private fun cloudRead(bmp: Bitmap, p: Prefs, model: String): List<Blk> {
+    private fun cloudRead(bmp: Bitmap, prefs: Prefs, model: String): List<Blk> {
         val sc = minOf(1f, 1280f / maxOf(bmp.width, bmp.height))
         val small = if (sc < 1f)
             Bitmap.createScaledBitmap(bmp, (bmp.width * sc).toInt().coerceAtLeast(1), (bmp.height * sc).toInt().coerceAtLeast(1), true)
@@ -130,7 +130,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
         val body = JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("parts", parts)))
             .put("generationConfig", JSONObject().put("responseMimeType", "application/json").put("temperature", 0))
-        val r = Ai.withGeminiKey(p, model) { key ->
+        val r = Ai.withGeminiKey(prefs, model) { key ->
             Ai.post(
                 "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent",
                 body, mapOf("x-goog-api-key" to key)
