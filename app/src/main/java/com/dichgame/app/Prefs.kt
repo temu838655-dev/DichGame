@@ -55,9 +55,13 @@ class Prefs(ctx: Context) {
         val CUSTOM_STYLE = TR_STYLES.size - 1
         /** Giọng AI của Gemini: (mã giọng, mô tả). */
         val AI_VOICES = listOf(
-            "Kore" to "Chắc chắn", "Puck" to "Vui tươi", "Charon" to "Rõ ràng, thông tin", "Zephyr" to "Sáng",
-            "Sulafat" to "Ấm", "Aoede" to "Nhẹ nhàng", "Achird" to "Thân thiện", "Gacrux" to "Trưởng thành"
+            "Kore" to "Mai · nữ · rõ ràng", "Puck" to "Minh · nam · vui tươi",
+            "Charon" to "Hùng · nam · điềm tĩnh", "Zephyr" to "Linh · nữ · tươi sáng",
+            "Sulafat" to "Thảo · ấm áp", "Aoede" to "Ngọc · nữ · nhẹ nhàng",
+            "Achird" to "Nam · thân thiện", "Gacrux" to "Hà · trưởng thành"
         )
+        /** Tên Việt là nhãn trong app, mã giọng tiếng Anh giữ nguyên khi gọi API Gemini. */
+        fun aiVoiceLabel(id: String): String = AI_VOICES.firstOrNull { it.first == id }?.second ?: id
         fun langName(code: String) = LANGS.firstOrNull { it.first == code }?.second ?: "Tiếng Anh"
     }
 
@@ -178,10 +182,35 @@ class Prefs(ctx: Context) {
     var aiVoice: String
         get() = sp.getString("aivoice", "Kore").orEmpty().ifBlank { "Kore" }
         set(v) = sp.edit().putString("aivoice", v).apply()
+    /** Thuyết minh theo vai nhân vật khi thẻ nhân vật có ghi giọng nam hoặc giọng nữ. */
+    var characterVoices: Boolean
+        get() = sp.getBoolean("charvoices", true)
+        set(v) = sp.edit().putBoolean("charvoices", v).apply()
+    var maleAiVoice: String
+        get() = sp.getString("male_aivoice", "Charon").orEmpty().ifBlank { "Charon" }
+        set(v) = sp.edit().putString("male_aivoice", v).apply()
+    var femaleAiVoice: String
+        get() = sp.getString("female_aivoice", "Kore").orEmpty().ifBlank { "Kore" }
+        set(v) = sp.edit().putString("female_aivoice", v).apply()
+
+    /** Giữ một mã giọng ổn định cho từng nhân vật thay vì đổi thất thường giữa các câu. */
+    fun aiVoiceFor(speaker: String?, sentence: String): String {
+        if (!characterVoices) return aiVoice
+        val cards = Cast.parse(cast)
+        val c = Cast.byName(speaker, cards) ?: Cast.speakerOf(sentence, cards) ?: return aiVoice
+        val desc = c.desc.lowercase(java.util.Locale.ROOT)
+        val female = Regex("(?:^|[\\s,;])(?:giọng\\s*)?(?:nữ|female)(?=$|[\\s,;])").containsMatchIn(desc)
+        val male = Regex("(?:^|[\\s,;])(?:giọng\\s*)?(?:nam|male)(?=$|[\\s,;])").containsMatchIn(desc)
+        return when {
+            female && !male -> femaleAiVoice
+            male && !female -> maleAiVoice
+            else -> aiVoice
+        }
+    }
     var ttsModel: String
         get() = sp.getString("ttsmodel", "gemini-3.8-flash-tts").orEmpty().ifBlank { "gemini-3.8-flash-tts" }
         set(v) = sp.edit().putString("ttsmodel", v.trim()).apply()
-    val aiVoiceOn: Boolean get() = voiceEngine == "ai" && geminiKey.isNotEmpty()
+    val aiVoiceOn: Boolean get() = voiceEngine == "ai" && geminiKeys().isNotEmpty()
     /** Mã gói giọng offline đang chọn (xem Voices.PACKS). */
     var offlineVoice: String
         get() = sp.getString("offvoice", "vais1000").orEmpty().ifBlank { "vais1000" }
