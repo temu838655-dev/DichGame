@@ -695,7 +695,11 @@ class CaptureService : Service() {
             val bx = b.box
             lines.add(OcrLine(v.text, bx?.let { Box(it.left, it.top, it.right, it.bottom) }, b.conf))
         }
-        val utts = DialogueSplitter.split(lines, cjk, speakers)
+        val prefs = Prefs(this)
+        val utts = DialogueSplitter.split(lines, cjk, speakers).map { u ->
+            // Người dùng đã xóa tên OCR nhận nhầm: bỏ nhãn người nói, giữ nguyên nội dung thoại.
+            if (prefs.isIgnoredSpeaker(u.speaker)) Utterance(null, u.text, u.nameLike) else u
+        }
         if (utts.isEmpty()) {
             if (textOnScreen) { textOnScreen = false; textGoneSince = now }
             fusion.onScreenEmpty(now)
@@ -712,7 +716,6 @@ class CaptureService : Service() {
         if (stable < requiredStable(utts)) { finishBusy(); return }
         last = sig
         // Chỉ nhớ người nói khi OCR đã ổn định; không lưu tên chưa được xác nhận.
-        val prefs = Prefs(this)
         for (u in utts) if (!u.nameLike && !u.speaker.isNullOrBlank()) prefs.rememberSpeaker(u.speaker!!)
         stats.inc("ocr_cau", utts.size.toLong())
         if (narrate) {
