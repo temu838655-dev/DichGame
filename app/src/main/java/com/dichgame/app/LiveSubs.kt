@@ -109,6 +109,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     private var translatingSince = 0L
     private var translateToken = 0
     private var speakers = SpeakerBook()
+    private var activeGameContext = ""
     private var langTrack: LangSwitchTracker? = null
     private var pendingLang: String? = null
     private val retired = ArrayList<TextTranslator>()
@@ -213,6 +214,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             if (speak) {
                 speaker = Speaker(act, pr).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() } }
             }
+            activeGameContext = gameContext(pr)
             speakers = SpeakerBook(PackStore.cast(pr).map { it.name } + pr.detectedSpeakers())
             if (narrate) {
                 // không cần mô hình dịch: sẵn sàng ngay, câu đọc được đi thẳng tới phần hiển thị và đọc to
@@ -273,11 +275,38 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         runCatching { tvExec.shutdown() }
     }
 
+    private fun gameContext(p: Prefs): String = p.profile + "\u0000" + p.game
+
+    /** Đổi game trong Kho game khi Remote Play vẫn chạy: bỏ hàng chờ của game cũ
+     * và tải lại danh sách nhân vật. Không tắt kết nối hoặc xin quyền ghi hình lại. */
+    private fun syncGameContext(): Boolean {
+        if (!running) return false
+        val p = Prefs(act)
+        val context = gameContext(p)
+        if (context == activeGameContext) return false
+        activeGameContext = context
+        speakers = SpeakerBook(PackStore.cast(p).map { it.name } + p.detectedSpeakers())
+        translateToken++
+        translating = false
+        jobs.clear()
+        fusion.clear()
+        pacer.cleared()
+        RecentLines.clear()
+        last = ""; cand = ""; stable = 0; prevVi = ""
+        lastFine = null; lastSig = null
+        textOnScreen = false
+        speaker?.stop()
+        notice("")
+        Log.i(TAG, "doi ho so dich: " + PackStore.gameName(p))
+        return true
+    }
+
     // ---- vòng quét
 
     private val tick = object : Runnable {
         override fun run() {
             try {
+                syncGameContext()
                 housekeeping()
                 capture()
             } catch (t: Throwable) {
@@ -403,7 +432,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (!running || narrate) return
         handler.post {
             try {
-                if (!running || !ready) return@post
+                if (!running || !ready || syncGameContext()) return@post
                 val now = System.currentTimeMillis()
                 stats.inc("asr_nhan")
                 val v = AsrGuard.check(raw, rms, lang)
@@ -433,6 +462,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     private fun onOcrResult(r: List<Blk>, scanAt: Long) {
         if (!running) { busy = false; return }
+        if (syncGameContext()) { busy = false; return }
         val now = System.currentTimeMillis()
         val cjk = Prefs.isCjk(lang)
         val lines = ArrayList<OcrLine>()
@@ -520,8 +550,9 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         translatingSince = now
         val token = ++translateToken
         translateLines(w) { cards ->
-            if (token == translateToken) translating = false
-            if (running) deliver(w, cards)
+            if (token != translateToken || !running) return@translateLines
+            translating = false
+            deliver(w, cards)
             handler.post { pump() }
         }
     }
