@@ -243,7 +243,7 @@ class PackActivity : Activity() {
                 if (name.length !in 2..40 || name.count { it.isLetter() } < 2) {
                     Toast.makeText(this, "Tên nhân vật không hợp lệ.", Toast.LENGTH_SHORT).show()
                 } else {
-                    p.rememberSpeaker(name)
+                    p.rememberSpeaker(name, fromUser = true)
                     pickCharacterVoice(name)
                 }
             }
