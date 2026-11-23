@@ -223,6 +223,9 @@ class Prefs(ctx: Context) {
         } catch (_: Exception) { emptyList() }
     }
 
+    fun isIgnoredSpeaker(name: String?): Boolean =
+        !name.isNullOrBlank() && ignoredSpeakers().any { it.equals(name, ignoreCase = true) }
+
     /** Chỉ lưu người nói được OCR xác nhận; tên đã xóa không tự xuất hiện lại nếu người dùng chưa thêm. */
     @Synchronized fun rememberSpeaker(raw: String, fromUser: Boolean = false) {
         val name = raw.replace(Regex("\\s+"), " ").trim()
@@ -335,7 +338,8 @@ class Prefs(ctx: Context) {
         if (!characterVoices) return aiVoice
         val cards = PackStore.cast(this)
         val card = Cast.byName(speaker, cards) ?: Cast.speakerOf(sentence, cards)
-        val name = speaker?.takeIf { it.isNotBlank() } ?: card?.names?.firstOrNull()
+        val name = speaker?.takeIf { it.isNotBlank() && !isIgnoredSpeaker(it) }
+            ?: card?.names?.firstOrNull()?.takeIf { !isIgnoredSpeaker(it) }
             ?: activeSpeaker.takeIf { it.isNotBlank() } ?: return aiVoice
         if (!ignoreManual) effectiveManualVoice(name)?.let { return it }
         val desc = card?.desc.orEmpty().lowercase(java.util.Locale.ROOT)
