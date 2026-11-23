@@ -677,8 +677,9 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         else cards.joinToString("\n") { (it.speaker?.let { n -> "$n: " } ?: "") + it.tr.text }
         sendTv("sub", tvText, tvSpeaks)
         val d = cards.lastOrNull()?.tr?.delivery
-        if (speak && tvVoiceOn()) tvVoice(vi, d)
-        if (speak && ready && !tvSpeakOn()) speaker?.speak(vi, false, d)
+        val speakerName = cards.lastOrNull()?.speaker
+        if (speak && tvVoiceOn()) tvVoice(vi, d, speakerName)
+        if (speak && ready && !tvSpeakOn()) speaker?.speak(vi, false, d, speakerName)
         prevVi = vi
     }
 
@@ -695,9 +696,9 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         return tvSpeakOn() && ((pr.voiceEngine == "offline" && Voices.installed(act, pr.offlineVoice)) || pr.aiVoiceOn)
     }
 
-    private fun tvVoice(text: String, d: Delivery? = null) {
+    private fun tvVoice(text: String, d: Delivery? = null, speakerName: String? = null) {
         val sp = speaker ?: return
-        sp.synthForTv(text, d) { pcm, speed ->
+        sp.synthForTv(text, d, speakerName) { pcm, speed ->
             val pf = act.getSharedPreferences("dg", Context.MODE_PRIVATE)
             val err = if (pcm == null) "giọng đọc lỗi" else TvLink.postAudio(pf.getString("tvip", "").orEmpty(), pf.getString("tvtoken", "").orEmpty(), pcm, speed)
             if (err != null) {
