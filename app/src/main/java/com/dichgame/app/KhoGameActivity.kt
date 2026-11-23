@@ -49,7 +49,7 @@ class KhoGameActivity : Activity() {
             intent.getStringExtra("plat")?.let { k -> plat = Plat.values().firstOrNull { it.name.equals(k, true) }; tab = 1 }
         }
         screen("Kho game Việt hoá") {
-            put(Ui.tv(this@KhoGameActivity, "Chọn game để dịch đúng tên riêng, xưng hô và giọng nhân vật. Mỗi game có hồ sơ riêng, nhớ khung phụ đề riêng.", 13f, Ui.SUB), 0, 10)
+            put(Ui.tv(this@KhoGameActivity, "Chọn game để áp dụng đúng thuật ngữ, thẻ nhân vật và bộ nhớ dịch theo game. Mỗi game có hồ sơ riêng; câu AI mới vẫn cần kiểm tra chất lượng.", 13f, Ui.SUB), 0, 10)
             val search = Ui.field(this@KhoGameActivity, "Tìm game", "")
             search.addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) { query = s?.toString().orEmpty().trim(); fill() }
@@ -106,7 +106,7 @@ class KhoGameActivity : Activity() {
     /** Ba tab trạng thái có số đếm: Tất cả / Việt hoá (gói riêng của game) / Dịch AI (theo thể loại). */
     private fun drawStatus(all: Int, viet: Int, ai: Int) {
         statusRow.removeAllViews()
-        statusRow.addView(Ui.segmented(this, listOf("Tất cả $all", "Việt hoá $viet", "Dịch AI $ai"), status) { status = it; fill() }, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
+        statusRow.addView(Ui.segmented(this, listOf("Tất cả $all", "Có gói $viet", "Dịch AI $ai"), status) { status = it; fill() }, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
     }
 
     private fun fill() {
@@ -131,13 +131,13 @@ class KhoGameActivity : Activity() {
                 else "Không thấy game này. Thử bỏ bộ lọc nền tảng, hoặc bấm Game khác để nhập tên.", 14f, Ui.SUB), Ui.lpm(this, 12, 0))
             return
         }
-        val cur = p.game
+        val cur = PackStore.gameName(p)
         for (row in list.chunked(3)) {
             val r = Ui.hbox(this)
             r.gravity = Gravity.TOP
             for (k in 0 until 3) {
                 val name = row.getOrNull(k)
-                val cell: View = if (name == null) View(this) else cellOf(name, cur.startsWith(name))
+                val cell: View = if (name == null) View(this) else cellOf(name, GamePackMatch.selected(cur, name))
                 r.addView(cell, Ui.lp(0, WRAP_CONTENT, 1f).apply { if (k > 0) leftMargin = Ui.dp(this@KhoGameActivity, 10) })
             }
             grid.addView(r, Ui.lpm(this, 0, 14))
@@ -189,7 +189,7 @@ class KhoGameActivity : Activity() {
                 info.addView(r, Ui.lpm(this@KhoGameActivity, 10, 0))
             }
             info.addView(Ui.tv(this@KhoGameActivity,
-                if (isViet(name)) "Việt hoá riêng của game" else "Dịch AI theo thể loại",
+                if (isViet(name)) "Có thuật ngữ theo game/series" else "Dịch AI theo thể loại",
                 13f, if (isViet(name)) Ui.GOLD else Ui.OK, true), Ui.lpm(this@KhoGameActivity, 10, 0))
             head.addView(info, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@KhoGameActivity, 14) })
             addView(head)
@@ -197,12 +197,12 @@ class KhoGameActivity : Activity() {
             val c = Ui.card(this@KhoGameActivity, 14)
             c.addView(Ui.tv(this@KhoGameActivity, "👑  Gói Việt hoá", 16f, Ui.GOLD, true))
             c.addView(Ui.tv(this@KhoGameActivity,
-                "Thuật ngữ: ${sp + ge + co}" + (if (sp > 0) " ($sp riêng game, $ge theo thể loại, $co chung)" else " ($ge theo thể loại, $co chung)") +
+                "Thuật ngữ: ${sp + ge + co}" + (if (sp > 0) " ($sp theo game/series, $ge theo thể loại, $co chung)" else " ($ge theo thể loại, $co chung)") +
                     (if (cast.isNotEmpty()) "\nThẻ nhân vật: ${cast.size} người (xưng hô, giọng, nhịp nói)" else "\nChưa có thẻ nhân vật, bạn tự thêm được trong Gói Việt hoá") +
                     "\nCâu thông báo chuẩn: $lines (YOU DIED, Quest complete...)",
                 13.5f, Ui.TEXT), Ui.lpm(this@KhoGameActivity, 6, 0))
             c.addView(Ui.tv(this@KhoGameActivity,
-                "Áp dụng khi dịch bằng AI lẫn dịch trên máy: tên riêng, chiêu thức, địa danh luôn đúng một cách gọi. Gói do người làm app soạn theo cách gọi phổ biến của cộng đồng, " +
+                "Áp dụng khi dịch AI và dịch trên máy nhằm giữ cách gọi nhất quán. Một số gói dành cho cả series hoặc thể loại, không bảo đảm mọi câu đều chính xác. Gói do người làm app soạn theo cách gọi phổ biến, " +
                     "không phải bản dịch chính thức của nhà phát hành. Sửa hoặc nhập thêm gói trong mục Gói Việt hoá.", 12f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 6, 0))
             addView(c, Ui.lpm(this@KhoGameActivity, 12, 0))
             // File Việt hoá tải về: áp vào game này để khi chơi hiện đúng câu trong file
@@ -306,6 +306,7 @@ class KhoGameActivity : Activity() {
         val g = genreOf(name)
         if (p.profiles.contains(name)) p.profile = name else p.addProfile(name)
         p.game = if (g.isEmpty()) name else "$name, $g"
+        p.selectedGameTitle = name
         p.addPlayed(name)
     }
 

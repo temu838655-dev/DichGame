@@ -106,6 +106,7 @@ class CaptureService : Service() {
     private var audioWorker: GameAudioAsrWorker? = null
     private var phoneAudio: PhoneAudioCapture? = null
     private var speakers = SpeakerBook()
+    private var activeGameContext = ""
     private var langTrack: LangSwitchTracker? = null
     private var pendingLang: String? = null
     private val retired = ArrayList<TextTranslator>()
@@ -152,9 +153,36 @@ class CaptureService : Service() {
         }
     }
 
+    private fun gameContext(p: Prefs): String = p.profile + "\u0000" + p.game
+
+    /** Kho game vừa chuyển trò chơi: loại bỏ phụ đề/nhân vật của hồ sơ cũ
+     * mà không phải cấp lại quyền MediaProjection. */
+    private fun syncGameContext(): Boolean {
+        if (!running) return false
+        val p = Prefs(this)
+        val context = gameContext(p)
+        if (context == activeGameContext) return false
+        activeGameContext = context
+        speakers = SpeakerBook(PackStore.cast(p).map { it.name } + p.detectedSpeakers())
+        translateToken++
+        translating = false
+        jobs.clear()
+        fusion.clear()
+        pacer.cleared()
+        RecentLines.clear()
+        last = ""; cand = ""; stable = 0; prevVi = ""; prevOrig = ""
+        lastFine = null; lastSig = null
+        textOnScreen = false
+        menuUntil = 0L; autoShown = false; autoCand = ""
+        speaker?.stop()
+        show("")
+        return true
+    }
+
     private val tick = object : Runnable {
         override fun run() {
             try {
+                syncGameContext()
                 housekeeping()
                 capture()
             } catch (_: Throwable) {
@@ -244,6 +272,7 @@ class CaptureService : Service() {
 
         val tr = TextTranslator(this, Prefs(this), lang)
         tt = tr
+        activeGameContext = gameContext(Prefs(this))
         speakers = SpeakerBook((PackStore.cast(Prefs(this)).map { it.name } + Prefs(this).detectedSpeakers()))
         // dựng sẵn bộ nhớ câu Việt hoá (có thể hàng chục nghìn câu nhập từ file) ở nền để câu đầu tiên không bị khựng
         val warmPrefs = Prefs(this)
@@ -470,7 +499,7 @@ class CaptureService : Service() {
 
     /** Câu nhận dạng từ âm thanh game: lọc ảo giác, rồi hợp nhất với chữ trên màn hình (không hiện hai lần). */
     private fun acceptAudioTranscript(raw: String, speechMs: Long, rms: Float) {
-        if (!running || editing || narrate) return
+        if (!running || editing || narrate || syncGameContext()) return
         val now = System.currentTimeMillis()
         stats.inc("asr_nhan")
         val v = AsrGuard.check(raw, rms, lang)
@@ -528,8 +557,9 @@ class CaptureService : Service() {
         translatingSince = now
         val token = ++translateToken
         translateLines(w) { cards ->
-            if (token == translateToken) translating = false
-            if (running) deliver(w, cards)
+            if (token != translateToken || !running) return@translateLines
+            translating = false
+            deliver(w, cards)
             handler.post { pump() }
         }
     }
@@ -684,6 +714,7 @@ class CaptureService : Service() {
 
     private fun onOcrResult(r: List<Blk>, scanAt: Long) {
         if (!running) { finishBusy(); return }
+        if (syncGameContext()) { finishBusy(); return }
         val now = System.currentTimeMillis()
         val cjk = Prefs.isCjk(lang)
         val lines = ArrayList<OcrLine>()

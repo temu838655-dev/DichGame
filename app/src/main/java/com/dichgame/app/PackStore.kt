@@ -12,7 +12,7 @@ import java.net.URL
 object PackStore {
     /** Tên game đang chơi: phần trước dấu phẩy của ô "Đang chơi game", hoặc tên hồ sơ nếu không phải hồ sơ mặc định. */
     fun gameName(p: Prefs): String =
-        p.game.substringBefore(',').trim().ifEmpty { if (p.profile != Prefs.DEFAULT_PROFILE) p.profile else "" }
+        GamePackMatch.title(p.game, p.profile, p.selectedGameTitle, Prefs.DEFAULT_PROFILE)
 
     private fun genreOf(p: Prefs, name: String): String =
         Catalog.genreOf(name).ifEmpty { p.game.substringAfter(',', "").trim() }
