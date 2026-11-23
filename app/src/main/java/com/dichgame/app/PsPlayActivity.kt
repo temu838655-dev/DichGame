@@ -1749,13 +1749,29 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     }
                     "ai" -> {
                         hVoice.addView(Ui.dropRow(a, "Giọng Gemini",
-                            { Prefs.AI_VOICES.firstOrNull { it.first == pr.aiVoice }?.let { "${it.first} · ${it.second}" } ?: pr.aiVoice },
-                            { Prefs.AI_VOICES.map { "${it.first} · ${it.second}" } }
+                            { Prefs.aiVoiceLabel(pr.aiVoice) },
+                            { Prefs.AI_VOICES.map { it.second } }
                         ) { i -> pr.aiVoice = Prefs.AI_VOICES[i].first; live?.reloadVoice() })
+                        hVoice.addView(Ui.switchRow(a, "Giọng riêng từng nhân vật",
+                            "Chọn giọng nam/nữ từ thẻ nhân vật của hồ sơ game.", pr.characterVoices) {
+                            pr.characterVoices = it
+                            live?.reloadVoice()
+                            drawVoice()
+                        }, Ui.lpm(a, 4, 4))
+                        if (pr.characterVoices) {
+                            hVoice.addView(Ui.dropRow(a, "Giọng nam",
+                                { Prefs.aiVoiceLabel(pr.maleAiVoice) },
+                                { Prefs.AI_VOICES.map { it.second } }
+                            ) { i -> pr.maleAiVoice = Prefs.AI_VOICES[i].first; live?.reloadVoice() })
+                            hVoice.addView(Ui.dropRow(a, "Giọng nữ",
+                                { Prefs.aiVoiceLabel(pr.femaleAiVoice) },
+                                { Prefs.AI_VOICES.map { it.second } }
+                            ) { i -> pr.femaleAiVoice = Prefs.AI_VOICES[i].first; live?.reloadVoice() })
+                        }
                         if (pr.geminiKeys().isEmpty())
                             hVoice.addView(Ui.tv(a, "Chưa có khóa Gemini nên app đọc bằng giọng cơ bản. Thêm khóa ở Cài đặt › Cách dịch (ngoài màn chơi).", 12.5f, Ui.DANGER), Ui.lpm(a, 2, 6))
                         else
-                            hVoice.addView(Ui.tv(a, "Mỗi câu đọc tốn một lượt gọi Gemini; mất mạng hoặc hết lượt thì tự lùi về giọng của máy.", 12.5f, Ui.SUB), Ui.lpm(a, 2, 6))
+                            hVoice.addView(Ui.tv(a, "${pr.geminiKeys().size} khóa Gemini · tự đổi khóa khi hết lượt, dùng giọng máy khi các khóa đều lỗi.", 12.5f, Ui.SUB), Ui.lpm(a, 2, 6))
                     }
                     else -> hVoice.addView(Ui.dropRow(a, "Chọn giọng",
                         { pr.voice.ifEmpty { "Mặc định" } },
