@@ -486,6 +486,8 @@ class WebTranslateActivity : Activity() {
             "menu" -> ui.postDelayed({ showSourceMenu(srcPill) }, 800)
             "settings" -> ui.postDelayed({ showSettingsSheet() }, 800)
             "ocrtest" -> ui.postDelayed({ runOcrDemo() }, 800)
+            "ccdemo" -> ui.postDelayed({ runCcDemo(false) }, 800)
+            "ccnarrate" -> ui.postDelayed({ runCcDemo(true) }, 800)
             "running" -> ui.postDelayed({
                 running = true; everStarted = true; refresh()
                 setPanel("Xin chào, đây là bản dịch thử.", "Hello, this is a test.")
@@ -498,6 +500,21 @@ class WebTranslateActivity : Activity() {
      * Bài thử tự động (ci/smoke.sh, extra demo=ocrtest): nạp trang có chữ tiếng Anh cỡ lớn, đặt khung trùm lên chữ,
      * bật OCR và dịch thật; từng bước ghi vào nhật ký DG_OCR để máy chủ CI biết chuỗi chụp hình, đọc chữ, dịch có chạy.
      */
+    /** Bài thử CC thật từ DOM của WebView, không gửi câu trực tiếp vào callback Kotlin. */
+    private fun runCcDemo(narrate: Boolean) {
+        p.narrate = narrate
+        p.speak = narrate
+        p.engine = Prefs.ENGINE_LOCAL
+        source = "cc"
+        sp.edit().putString("source", "cc").apply()
+        translator?.close(); translator = null; translatorLang = ""
+        refresh()
+        start()
+        val html = "<html><body style='background:#202830;color:white'>" +
+            "<div class='captions-text'>Where are you going tonight? Stay close to me.</div></body></html>"
+        web.loadDataWithBaseURL("https://local.dichgame.test/", html, "text/html", "utf-8", null)
+    }
+
     private fun runOcrDemo() {
         Log.i(TAG, "demo: bat dau")
         val html = "<html><body style='margin:0;background:#202830'><div style='position:absolute;left:5%;top:24%;width:90%;" +
