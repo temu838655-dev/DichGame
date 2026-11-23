@@ -85,6 +85,41 @@ class PackActivity : Activity() {
             }, Ui.lpm(this@PackActivity, 8, 0))
             put(m, 0, 12)
 
+            // Bộ nhớ dịch AI lưu trên thiết bị theo hồ sơ, tách khỏi gói Việt hóa nhập tay.
+            val learned = LearnedTranslations.count(this@PackActivity, p.profile)
+            val learnedCard = Ui.card(this@PackActivity)
+            learnedCard.addView(Ui.section(this@PackActivity, "🧠", "Bộ nhớ dịch theo game"))
+            learnedCard.addView(Ui.switchRow(this@PackActivity, "Tự ghi nhớ bản dịch AI",
+                "Chỉ lưu câu AI đạt kiểm tra chất lượng; không lưu bản dịch máy hoặc bản AI nghi ngờ.",
+                p.learnTranslations) { enabled ->
+                p.learnTranslations = enabled
+                render()
+            })
+            learnedCard.addView(Ui.tv(this@PackActivity,
+                "$learned câu đã lưu riêng cho hồ sơ ${p.profile}. Dữ liệu nằm trên thiết bị, " +
+                    "không đồng bộ lên đám mây. Khi gặp lại đúng câu và người nói, app dùng bản cũ, không tốn lượt Gemini.",
+                12.5f, Ui.SUB), Ui.lpm(this@PackActivity, 8, 10))
+            if (learned > 0) {
+                learnedCard.addView(Ui.button(this@PackActivity, "Xem và sửa câu đã nhớ") {
+                    reviewLearnedTranslations()
+                }, Ui.lpm(this@PackActivity, 2, 5))
+                learnedCard.addView(Ui.button(this@PackActivity, "Xóa toàn bộ $learned câu dịch đã nhớ") {
+                    AlertDialog.Builder(this@PackActivity, R.style.DgDialog)
+                        .setTitle("Xóa bộ nhớ dịch của ${p.profile}?")
+                        .setMessage("Chỉ xóa câu do AI tự ghi nhớ. Không xóa gói Việt hóa đã nhập, từ điển hoặc giọng nhân vật.")
+                        .setPositiveButton("Xóa bộ nhớ") { _, _ ->
+                            LearnedTranslations.clear(this@PackActivity, p.profile)
+                            render()
+                        }
+                        .setNegativeButton("Hủy", null).show()
+                }, Ui.lpm(this@PackActivity, 4, 0))
+            }
+            learnedCard.addView(Ui.tv(this@PackActivity,
+                "Lưu ý: AI vẫn có thể dịch sai dù qua kiểm tra. Hãy sửa hoặc xóa câu nhớ sai; " +
+                    "app không tự lưu lời thoại ngắn, dễ phụ thuộc ngữ cảnh.",
+                12f, Ui.SUB), Ui.lpm(this@PackActivity, 9, 0))
+            put(learnedCard, 0, 12)
+
             // Tự nhận diện người nói từ phụ đề và gán giọng cho từng nhân vật.
             val v = Ui.card(this@PackActivity)
             val detected = p.detectedSpeakers()
@@ -167,6 +202,42 @@ class PackActivity : Activity() {
             t.addView(Ui.tv(this@PackActivity, NguonVietHoa.SAFETY, 11.5f, Ui.SUB), Ui.lpm(this@PackActivity, 10, 0))
             put(t, 0, 0)
         }
+    }
+
+    private fun reviewLearnedTranslations() {
+        val entries = LearnedTranslations.recent(this, p.profile, 80)
+        if (entries.isEmpty()) { render(); return }
+        val choices = entries.map { it.original.take(65) + "\n→ " + it.vi.take(85) }.toTypedArray()
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Câu dịch AI đã nhớ · ${p.profile}")
+            .setItems(choices) { _, index -> editLearnedTranslation(entries[index]) }
+            .setNegativeButton("Đóng", null).show()
+    }
+
+    private fun editLearnedTranslation(entry: LearnedTranslations.Entry) {
+        val field = Ui.field(this, "Bản tiếng Việt chính xác", entry.vi)
+        field.minLines = 3
+        field.inputType = android.text.InputType.TYPE_CLASS_TEXT or
+            android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+            android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        val box = Ui.vbox(this)
+        val pad = Ui.dp(this, 18)
+        box.setPadding(pad, pad / 2, pad, 0)
+        box.addView(Ui.tv(this, "Câu gốc: " + entry.original, 13f, Ui.SUB), Ui.lpm(this, 0, 8))
+        box.addView(field)
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Sửa bản dịch đã nhớ")
+            .setView(box)
+            .setPositiveButton("Lưu bản sửa") { _, _ ->
+                if (!LearnedTranslations.edit(this, p.profile, entry.key, field.text.toString()))
+                    Toast.makeText(this, "Bản dịch không hợp lệ.", Toast.LENGTH_SHORT).show()
+                render()
+            }
+            .setNeutralButton("Xóa câu này") { _, _ ->
+                LearnedTranslations.delete(this, p.profile, entry.key)
+                render()
+            }
+            .setNegativeButton("Hủy", null).show()
     }
 
     private fun deleteDetectedSpeaker(detected: List<String>) {
