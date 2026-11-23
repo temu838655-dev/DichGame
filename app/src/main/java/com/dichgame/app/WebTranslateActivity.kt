@@ -605,7 +605,7 @@ class WebTranslateActivity : Activity() {
         }
         statusChip.text = if (running) "● Đang dịch" else if (everStarted) "⏸ Tạm dừng" else "Chưa bắt đầu"
         statusChip.setTextColor(if (running) Ui.OK else if (everStarted) Ui.GOLD else Ui.SUB)
-        if (source == "ocr") { srcIcon.set(ToolIcon.Kind.SCAN, Ui.TEXT); srcLabel.text = "OCR" }
+        if (source == "ocr") { srcIcon.set(ToolIcon.Kind.SCAN, Ui.TEXT); srcLabel.text = if (sp.getBoolean("aiOcr", false)) "OCR AI" else "OCR" }
         else { srcIcon.set(ToolIcon.Kind.CC, Ui.TEXT); srcLabel.text = "CC" }
         speakIcon.set(if (p.speak) ToolIcon.Kind.SPEAKER_ON else ToolIcon.Kind.SPEAKER_OFF, if (p.speak) Ui.GOLD else Ui.SUB)
         box.active = running && source == "ocr"
@@ -639,7 +639,7 @@ class WebTranslateActivity : Activity() {
 
     // ---------------- điều khiển dịch ----------------
 
-    private fun ocrLang() = "auto"
+    private fun ocrLang() = if (sp.getBoolean("aiOcr", false)) "auto-ai" else "auto"
 
     private fun engine(): Ocr {
         var o = ocr
@@ -1009,7 +1009,31 @@ class WebTranslateActivity : Activity() {
         }
         col.addView(Ui.divider(this), Ui.lp(MATCH_PARENT, 1).apply { leftMargin = dp(14); rightMargin = dp(14); topMargin = dp(4); bottomMargin = dp(4) })
         item("Phụ đề CC của video", null, source == "cc") { setSource("cc") }
-        item("Quét chữ trên video (OCR)", null, source == "ocr") { setSource("ocr") }
+        item("Quét chữ trên video (OCR)", "Tự đọc nhiều hệ chữ ngay trên máy, không cần chọn ngôn ngữ", source == "ocr" && !sp.getBoolean("aiOcr", false)) {
+            val was = running
+            if (was) pause()
+            sp.edit().putBoolean("aiOcr", false).putString("source", "ocr").apply()
+            source = "ocr"
+            ocr?.close(); ocr = null; ocrFor = ""
+            lastThumb = null
+            refresh()
+            if (was) start()
+        }
+        item("OCR AI tự nhận mọi ngôn ngữ", "Gemini đọc ảnh khung phụ đề; cần khóa API, gửi ảnh cho Google", source == "ocr" && sp.getBoolean("aiOcr", false)) {
+            if (p.geminiKeys().isEmpty()) {
+                Toast.makeText(this, "Cần nhập khóa Gemini tại Cách dịch để dùng OCR AI.", Toast.LENGTH_LONG).show()
+                startActivity(Intent(this, TranslateActivity::class.java))
+            } else {
+                val was = running
+                if (was) pause()
+                sp.edit().putBoolean("aiOcr", true).putString("source", "ocr").apply()
+                source = "ocr"
+                ocr?.close(); ocr = null; ocrFor = ""
+                lastThumb = null
+                refresh()
+                if (was) start()
+            }
+        }
         val w = dp(310)
         val pop = PopupWindow(col, w, WRAP_CONTENT, true)
         pw = pop
