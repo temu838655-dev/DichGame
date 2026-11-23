@@ -163,12 +163,12 @@ class SettingsActivity : Activity() {
                 if (p.characterVoices) {
                     c.addView(Ui.dropRow(a, "Giọng nam",
                         { Prefs.aiVoiceLabel(p.maleAiVoice) },
-                        { Prefs.AI_VOICES.map { it.second } }
-                    ) { i -> p.maleAiVoice = Prefs.AI_VOICES[i].first })
+                        { Prefs.MALE_AI_VOICES.map { it.second } }
+                    ) { i -> p.maleAiVoice = Prefs.MALE_AI_VOICES[i].first })
                     c.addView(Ui.dropRow(a, "Giọng nữ",
                         { Prefs.aiVoiceLabel(p.femaleAiVoice) },
-                        { Prefs.AI_VOICES.map { it.second } }
-                    ) { i -> p.femaleAiVoice = Prefs.AI_VOICES[i].first })
+                        { Prefs.FEMALE_AI_VOICES.map { it.second } }
+                    ) { i -> p.femaleAiVoice = Prefs.FEMALE_AI_VOICES[i].first })
                     c.row(Ui.navRow(a, null, "Danh sách nhân vật và gán giọng",
                         "${p.detectedSpeakers().size} nhân vật đã nhận diện · chọn giọng thủ công") {
                         startActivity(Intent(a, PackActivity::class.java))
