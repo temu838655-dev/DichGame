@@ -1775,6 +1775,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                                 { Prefs.AI_VOICES.map { it.second } }
                             ) { i -> pr.femaleAiVoice = Prefs.AI_VOICES[i].first; live?.reloadVoice() })
                         }
+                        hVoice.addView(Ui.button(a, "🎙  Nhân vật đã nhận diện · Gán giọng thủ công") {
+                            startActivity(Intent(a, PackActivity::class.java))
+                        }, Ui.lpm(a, 8, 4))
                         if (pr.geminiKeys().isEmpty())
                             hVoice.addView(Ui.tv(a, "Chưa có khóa Gemini nên app đọc bằng giọng cơ bản. Thêm khóa ở Cài đặt › Cách dịch (ngoài màn chơi).", 12.5f, Ui.DANGER), Ui.lpm(a, 2, 6))
                         else
