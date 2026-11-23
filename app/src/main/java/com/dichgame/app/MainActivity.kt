@@ -187,7 +187,7 @@ class MainActivity : Activity() {
         if (!p.packOn) return "Việt hoá: đang tắt"
         val g = Catalog.genreOf(n).ifEmpty { p.game.substringAfter(',', "").trim() }
         val c = PackStore.builtinCounts(n, g)
-        return "Việt hoá: " + (if (VietHoa.hasSpecific(n)) "gói riêng" else "gói thể loại") + " · ${c.first} thuật ngữ"
+        return "Việt hoá: " + (if (VietHoa.hasSpecific(n)) "gói game/series" else "gói thể loại") + " · ${c.first} thuật ngữ"
     }
 
     /** Thẻ máy chơi game: tên máy, trạng thái ghép nối, game đang dịch, ngôn ngữ và nút ghép nối / chơi. */
