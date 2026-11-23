@@ -8,18 +8,19 @@ import org.junit.Test
 
 class LearnedTranslationRulesTest {
     @Test fun repeatedSentenceHasStableKeyAcrossWhitespaceAndCase() {
-        val a = LearnedTranslationRules.key("en", "Lucia", false, "We need to get out of here!")
-        val b = LearnedTranslationRules.key("EN", " lucia ", false, "  WE   need to get out of here!  ")
+        val a = LearnedTranslationRules.key("GTA VI", "en", "Lucia", false, "We need to get out of here!")
+        val b = LearnedTranslationRules.key("GTA VI", "EN", " lucia ", false, "  WE   need to get out of here!  ")
         assertEquals(a, b)
     }
 
     @Test fun speakerAndGameLanguageAndMenuStaySeparate() {
         val src = "We need to get out of here!"
         val lucia = LearnedTranslationRules.key("en", "Lucia", false, src)
-        assertNotEquals(lucia, LearnedTranslationRules.key("en", "Jason", false, src))
-        assertNotEquals(lucia, LearnedTranslationRules.key("ja", "Lucia", false, src))
-        assertNotEquals(lucia, LearnedTranslationRules.key("en", "Lucia", true, src))
-        assertNotEquals(lucia, LearnedTranslationRules.key("en", "Lucia", false, "We need to get out of here?"))
+        assertNotEquals(lucia, LearnedTranslationRules.key("GTA VI", "en", "Jason", false, src))
+        assertNotEquals(lucia, LearnedTranslationRules.key("GTA VI", "ja", "Lucia", false, src))
+        assertNotEquals(lucia, LearnedTranslationRules.key("GTA V", "en", "Lucia", false, src))
+        assertNotEquals(lucia, LearnedTranslationRules.key("GTA VI", "en", "Lucia", true, src))
+        assertNotEquals(lucia, LearnedTranslationRules.key("GTA VI", "en", "Lucia", false, "We need to get out of here?"))
     }
 
     @Test fun meaningfulVietnameseLineMayBeRemembered() {
@@ -38,7 +39,7 @@ class LearnedTranslationRulesTest {
     }
 
     @Test fun normalizeDoesNotRemovePunctuationThatCanChangeMeaning() {
-        val a = LearnedTranslationRules.key("en", null, false, "Don't shoot!")
+        val a = LearnedTranslationRules.key("GTA VI", "en", null, false, "Don't shoot!")
         val b = LearnedTranslationRules.key("en", null, false, "Don't shoot?")
         assertNotEquals(a, b)
     }
