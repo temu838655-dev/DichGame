@@ -89,7 +89,7 @@ class PackActivity : Activity() {
             val v = Ui.card(this@PackActivity)
             val detected = p.detectedSpeakers()
             val known = (detected + PackStore.cast(p).flatMap { it.names })
-                .distinctBy { it.trim().lowercase() }.take(120)
+                .distinctBy { it.trim().lowercase() }.take(300)
             v.addView(Ui.section(this@PackActivity, "🎙", "Giọng từng nhân vật"))
             v.addView(Ui.switchRow(this@PackActivity, "Tự gán giọng theo nhân vật",
                 "Khi nhận diện tên người nói từ phụ đề, app tự giữ một giọng ổn định. Có thể đổi từng giọng bên dưới.",
@@ -108,7 +108,7 @@ class PackActivity : Activity() {
                 12.5f, Ui.SUB), Ui.lpm(this@PackActivity, 8, 10))
             for (name in known.take(25)) {
                 val voice = Prefs.aiVoiceLabel(p.aiVoiceFor(name, ""))
-                val status = if (p.manualVoice(name) != null) "Đã chọn tay" else "Tự động"
+                val status = if (p.effectiveManualVoice(name) != null) "Đã chọn tay" else "Tự động"
                 v.addView(Ui.navRow(this@PackActivity, null, name, "$voice · $status") { pickCharacterVoice(name) })
             }
             if (known.size > 25) v.addView(Ui.button(this@PackActivity,
