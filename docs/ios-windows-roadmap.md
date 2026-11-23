@@ -24,10 +24,31 @@ Yêu cầu: máy Mac, Xcode và XcodeGen.
 1. Cài Xcode và XcodeGen; chạy brew install xcodegen.
 2. Vào thư mục ios/ rồi chạy xcodegen generate.
 3. Mở DichGameiOS.xcodeproj, chọn iOS Simulator và bấm Run.
-4. GitHub Actions build-ios.yml tạo artifact DichGame-iOS-Simulator. File này CHỈ dành cho Simulator, không thể cài trực tiếp lên iPhone.
-5. Để dùng iPhone thật, mở Signing & Capabilities trong Xcode, đăng nhập Apple Account, cấu hình Team, Bundle ID và quyền ký ứng dụng. Phát hành TestFlight/App Store cần Apple Developer Program, App Store Connect và các bước kiểm duyệt.
+4. GitHub Actions `build-ios.yml` tạo **hai artifact**: `DichGame-iOS-Simulator` (chỉ cho Simulator) và `DichGame-iPhone-IPA-unsigned` (IPA chứa app iPhone arm64 **chưa ký**).
+5. IPA chưa ký **không thể cài trực tiếp trên iPhone thông thường**. Nếu cần tự cài bằng Xcode, có thể chọn iPhone thật, cấu hình Signing & Capabilities (Team/Bundle ID) và chạy từ Xcode.
+6. Để có IPA cài trên iPhone được đăng ký để thử nghiệm, dùng workflow thủ công `build-ios-signed-ipa.yml` (phần dưới). Phát hành TestFlight/App Store cần cách ký và quy trình phân phối riêng.
 
 Để dịch trực tiếp khi mở một game trong ứng dụng iOS khác, cần khảo sát ReplayKit Broadcast Upload Extension. Không được hứa có overlay hệ thống tương đương Android trước khi thử nghiệm kỹ và xem xét App Store Review.
+
+
+
+### Tạo IPA đã ký để cài lên iPhone thật (Ad Hoc)
+
+Với tài khoản Apple Developer hợp lệ, cần đăng ký Bundle ID và UDID của các iPhone thử nghiệm, tạo chứng chỉ **Apple Distribution** (.p12 kèm mật khẩu) và **Ad Hoc Provisioning Profile** (.mobileprovision) cho đúng App ID, Team và các thiết bị.
+
+Thêm vào **GitHub → Settings → Secrets and variables → Actions → Repository secrets** (không đưa vào mã nguồn hoặc chat):
+
+- `IOS_P12_BASE64`: nội dung .p12 được mã hóa base64 thành một dòng.
+- `IOS_P12_PASSWORD`: mật khẩu file .p12.
+- `IOS_MOBILEPROVISION_BASE64`: nội dung .mobileprovision được mã hóa base64 thành một dòng.
+- `IOS_TEAM_ID`: Apple Developer Team ID.
+- `IOS_BUNDLE_ID`: Bundle ID đúng trong provisioning profile (ví dụ `com.dichgame.ios` khi App ID chưa đổi).
+
+Để lấy base64 trên Mac, dùng `base64 -i file.p12 | tr -d '\n'` và `base64 -i profile.mobileprovision | tr -d '\n'` trực tiếp trên máy riêng, rồi dán vào GitHub Secrets, **không đưa chuỗi này vào issue hoặc tin nhắn**.
+
+Sau đó mở **GitHub → Actions → Build signed iPhone IPA (Ad Hoc) → Run workflow**. Nếu ký/xuất thành công, tải artifact `DichGame-iPhone-IPA-signed-AdHoc`. File này dành cho các iPhone có UDID trong hồ sơ Ad Hoc; chưa phải bản TestFlight, App Store, cũng không có nghĩa là đã được Apple kiểm duyệt.
+
+Workflow IPA chưa ký `build-ios.yml` có thể chạy mà không cần chứng chỉ, dùng để xác minh biên dịch kiến trúc iPhone và chuẩn bị cho việc ký sau.
 
 ## Windows
 
