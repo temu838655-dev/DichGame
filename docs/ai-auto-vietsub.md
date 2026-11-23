@@ -1,6 +1,8 @@
-# Ba chế độ dịch và đọc phụ đề của DichGame (Android)
+# Hai chế độ Dịch và Thuyết minh của DichGame (Android)
 
-## Đọc Vietsub — phim Vietsub / game đã Việt hóa
+Giao diện có **hai chế độ chính**: **Dịch** và **Thuyết minh**. Trong chế độ Dịch có công tắc **AI Tự động** để bật ưu tiên gói game/bộ nhớ/Gemini; không tạo chế độ thứ ba. Phần giọng đọc chỉ có **Giọng cơ bản** (TTS của máy) và **Giọng AI** (Gemini, tự lùi về cơ bản khi lỗi). Giọng offline đã tải cũ không còn hiển thị để lựa chọn.
+
+## Thuyết minh (Đọc Vietsub) — phim Vietsub / game đã Việt hóa
 
 - Chọn **Đọc Vietsub** từ trang chính, Cách dịch, hoặc Cài đặt trong màn chơi Remote Play.
 - Đưa vùng quét vào phụ đề tiếng Việt. App chỉ đọc tiếng Việt đã có bằng hệ thống TTS đang chọn, **không dịch, không gửi chữ để Gemini dịch**.
