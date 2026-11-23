@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="vi"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Dịch Game TV</title>
+<link rel="stylesheet" href="styles.css">
+</head><body>
+<div id="details">Dịch Game TV · Chưa kết nối</div>
+<div id="subtitleWrap"><div id="subtitle"></div></div>
+<section id="panel">
+  <h1>Dịch Game TV</h1>
+  <p>Ghép với app Dịch Game trên điện thoại Android, cùng mạng Wi-Fi.
+  Bật <b>Trang web phụ đề</b> trên điện thoại trước khi nhập mã.</p>
+  <label for="phoneIp">IP điện thoại</label>
+  <input id="phoneIp" type="text" placeholder="192.168.1.12" autocomplete="off" inputmode="decimal" />
+  <label for="pairCode">Mã ghép 8 số trên điện thoại</label>
+  <input id="pairCode" type="text" maxlength="8" placeholder="12345678" autocomplete="off" inputmode="numeric" />
+  <div>
+    <button id="connect">Kết nối</button>
+    <button id="disconnect" class="secondary">Ngắt kết nối</button>
+  </div>
+  <div id="hdmiRow">
+    <select id="hdmiSelect" aria-label="Cổng HDMI"></select>
+    <button id="hdmiButton" class="secondary">Chọn nguồn HDMI</button>
+  </div>
+  <p id="status">Đang mở ứng dụng…</p>
+  <footer>Khi đã kết nối, nhấn phím LÊN trên remote để hiện lại bảng này.</footer>
+</section>
+<script src="receiver.js"></script>
+</body></html>
