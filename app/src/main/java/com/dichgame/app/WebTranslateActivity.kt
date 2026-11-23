@@ -23,6 +23,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.inputmethod.EditorInfo
@@ -169,6 +170,9 @@ class WebTranslateActivity : Activity() {
     private lateinit var p: Prefs
     private lateinit var sp: SharedPreferences
     private lateinit var web: WebView
+    private lateinit var webFrame: FrameLayout
+    private var fullscreenVideo: View? = null
+    private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private lateinit var urlField: EditText
     private lateinit var box: RegionBox
     private lateinit var textView: TextView
@@ -225,7 +229,7 @@ class WebTranslateActivity : Activity() {
     private var copyFails = 0
     private val ccFallback = Runnable {
         if (running && source == "cc" && !gotCc) {
-            web.evaluateJavascript("(function(){var v=document.querySelector('video');return !!(v && !v.paused && v.readyState>1);})()") { result ->
+            web.evaluateJavascript("(function(){var v=document.querySelector('video');var f=document.querySelector('iframe[src*="youtube"],iframe[src*="vimeo"],iframe[src*="player"],iframe[allow*="autoplay"]');return !!((v&&!v.paused&&v.readyState>1)||(f&&f.clientWidth>200&&f.clientHeight>100));})()") { result ->
                 if (running && source == "cc" && !gotCc) {
                     if (result == "true") {
                         setPanel("Không thấy phụ đề CC; đang chuyển sang quét OCR. Nếu video bảo vệ nội dung, OCR có thể không chụp được hình.", "")
@@ -344,14 +348,34 @@ class WebTranslateActivity : Activity() {
 
         // ---- trang web và khung chọn vùng
         val frame = FrameLayout(this)
+        webFrame = frame
         web = WebView(this)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         web.settings.mediaPlaybackRequiresUserGesture = false
         web.addJavascriptInterface(Bridge(), "DG")
-        web.webChromeClient = WebChromeClient()
+        web.webChromeClient = object : WebChromeClient() {
+            override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+                if (view == null || fullscreenVideo != null) {
+                    callback?.onCustomViewHidden()
+                    return
+                }
+                fullscreenVideo = view
+                fullscreenCallback = callback
+                (view.parent as? ViewGroup)?.removeView(view)
+                webFrame.addView(view, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+                // Vẫn để bảng dịch và khung chọn vùng nổi trên video toàn màn hình.
+                if (::box.isInitialized) box.bringToFront()
+                if (::fallbackPill.isInitialized) fallbackPill.bringToFront()
+            }
+
+            override fun onHideCustomView() { hideFullscreenVideo() }
+        }
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, u: String?) {
+                gotCc = false
+                ui.removeCallbacks(ccFallback)
+                if (running && source == "cc") ui.postDelayed(ccFallback, 12000)
                 view?.evaluateJavascript(js, null)
                 if (source == "ocr") ui.postDelayed({ placeBoxOnVideo() }, 900)
                 applyHide()
@@ -707,7 +731,7 @@ class WebTranslateActivity : Activity() {
     /** Khung OCR bám vào đáy video HTML5, thay vì bám cứng đáy toàn bộ trang web. */
     private fun placeBoxOnVideo() {
         if (sp.contains("box") || !::web.isInitialized || !::box.isInitialized) return
-        val code = """(function(){var v=[].slice.call(document.querySelectorAll('video')).sort(function(a,b){return b.clientWidth*b.clientHeight-a.clientWidth*a.clientHeight})[0];if(!v)return null;var r=v.getBoundingClientRect(),w=window.innerWidth,h=window.innerHeight;if(r.width<100||r.height<60||w<1||h<1)return null;var l=Math.max(0,(r.left+r.width*0.04)/w),rr=Math.min(1,(r.right-r.width*0.04)/w),t=Math.max(0,(r.bottom-r.height*0.30)/h),bb=Math.min(1,(r.bottom-r.height*0.02)/h);return [l,t,rr,bb]})()"""
+        val code = """(function(){var vs=[].slice.call(document.querySelectorAll('video'));if(!vs.length)vs=[].slice.call(document.querySelectorAll('iframe')).filter(function(f){return f.clientWidth>200&&f.clientHeight>100});var v=vs.sort(function(a,b){return b.clientWidth*b.clientHeight-a.clientWidth*a.clientHeight})[0];if(!v)return null;var r=v.getBoundingClientRect(),w=window.innerWidth,h=window.innerHeight;if(r.width<100||r.height<60||w<1||h<1)return null;var l=Math.max(0,(r.left+r.width*0.04)/w),rr=Math.min(1,(r.right-r.width*0.04)/w),t=Math.max(0,(r.bottom-r.height*0.30)/h),bb=Math.min(1,(r.bottom-r.height*0.02)/h);return [l,t,rr,bb]})()"""
         web.evaluateJavascript(code) { raw ->
             if (sp.contains("box") || source != "ocr" || isDestroyed) return@evaluateJavascript
             try {
@@ -1067,9 +1091,17 @@ class WebTranslateActivity : Activity() {
         super.onPause()
     }
 
+    private fun hideFullscreenVideo() {
+        fullscreenVideo?.let { try { webFrame.removeView(it) } catch (_: Exception) {} }
+        fullscreenVideo = null
+        fullscreenCallback?.let { try { it.onCustomViewHidden() } catch (_: Exception) {} }
+        fullscreenCallback = null
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         when {
+            fullscreenVideo != null -> hideFullscreenVideo()
             adjusting -> leaveAdjust()
             ::web.isInitialized && web.canGoBack() -> web.goBack()
             else -> super.onBackPressed()
@@ -1078,6 +1110,7 @@ class WebTranslateActivity : Activity() {
 
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)
+        hideFullscreenVideo()
         try { languageIdentifier.close() } catch (_: Exception) {}
         try { web.destroy() } catch (_: Exception) {}
         translator?.close()
