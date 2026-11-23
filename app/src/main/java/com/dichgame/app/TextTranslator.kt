@@ -142,13 +142,16 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             while (history.size > 10) history.removeAt(0)
         }
         // gói Việt hoá (file đã nhập, bản người dùng sửa) đứng trước mọi thứ, kể cả bộ nhớ đệm: bản vừa sửa phải có hiệu lực ngay
-        PackStore.memory(ctx, p).lookupEx(text)?.let { h ->
-            st.inc("dich_goi"); if (h.fuzzy) st.inc("dich_goi_gan")
-            emit(Tr(h.vi, null, false, "goi")); return
+        val packHit = PackStore.memory(ctx, p).lookupEx(text)
+        // Bản Việt hóa khớp đúng luôn đứng đầu. Với kết quả khớp mờ,
+        // ưu tiên bộ nhớ AI khớp chính xác của chính game để tránh câu tương tự bị lẫn.
+        if (packHit != null && !packHit.fuzzy) {
+            st.inc("dich_goi")
+            emit(Tr(packHit.vi, null, false, "goi")); return
         }
         // Gói Việt hóa do người dùng nhập có ưu tiên cao nhất; tiếp theo là bản dịch đã
         // lưu lâu dài trên máy. Khớp đúng nguồn + ngôn ngữ + người nói, không khớp mờ.
-        if (p.learnTranslations) {
+        if (p.learnTranslations || p.aiAuto) {
             LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text)?.let { saved ->
                 st.inc("dich_nho")
                 val cast = PackStore.cast(p)
@@ -158,6 +161,10 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 emit(Tr(saved.vi, delivery, false, "nho"))
                 return
             }
+        }
+        if (packHit != null) {
+            st.inc("dich_goi"); st.inc("dich_goi_gan")
+            emit(Tr(packHit.vi, null, false, "goi")); return
         }
         cache[key]?.let { st.inc("dich_cache"); emit(it); return }
         val terms = PackStore.terms(p)
@@ -169,7 +176,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             if (!stillCurrent()) return
             // Chỉ tự lưu bản Gemini/CloudAPI chắc chắn đạt TranslationGuard.OK.
             // Không ghi bản dịch máy dự phòng hoặc bản dịch AI bị nghi ngờ.
-            val saved = p.learnTranslations && t.via == "ai" && !t.uncertain &&
+            val saved = (p.learnTranslations || p.aiAuto) && t.via == "ai" && !t.uncertain &&
                 LearnedTranslationRules.canRemember(text, t.text)
             if (saved) LearnedTranslations.remember(ctx, profile, game, lang, speaker, ui, text, t.text)
             if (t.uncertain) st.inc("dich_nghi")
