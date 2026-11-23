@@ -764,28 +764,38 @@ class WebTranslateActivity : Activity() {
         } else process(t)
     }
 
-    /** Nhận ngôn ngữ trực tiếp từ phụ đề trước khi chọn mô hình dịch. */
+    /** ML Kit có thể tải mô-đun muộn hoặc callback không chạy trên một số Android.
+     * Không để cả đường CC/OCR kẹt vô thời hạn chỉ vì đang nhận diện ngôn ngữ.
+     */
     private fun process(text: String) {
         if (!running || text.isBlank() || text == lastProcessed) return
         lastProcessed = text
         val id = ++seq
         Log.i(TAG, "src: " + text)
         val guess = LangDetect.guess(text)
+        var consumed = false
+        fun deliver(modelGuess: String?) {
+            if (consumed || !running || isDestroyed || id != seq) return
+            consumed = true
+            val lang = languageRouter.resolve(text, modelGuess, guess)
+            Log.i(TAG, "lang: " + lang + (if (modelGuess == null) " (nhận diện dự phòng)" else " (ML Kit)"))
+            processKnown(text, lang, id)
+        }
         if (guess != null && guess.script != 'L') {
-            processKnown(text, languageRouter.resolve(text, null, guess), id)
+            deliver(null)
             return
         }
-        // Bộ nhận dạng ML Kit phân biệt cả các ngôn ngữ dùng chữ Latin (kể cả tiếng Việt).
-        languageIdentifier.identifyLanguage(text)
-            .addOnSuccessListener { raw ->
-                if (!running || id != seq) return@addOnSuccessListener
-                val lang = languageRouter.resolve(text, raw, guess)
-                processKnown(text, lang, id)
-            }
-            .addOnFailureListener {
-                if (!running || id != seq) return@addOnFailureListener
-                processKnown(text, languageRouter.resolve(text, null, guess), id)
-            }
+        // Câu CC được đưa vào dịch sau tối đa 1,2 giây ngay cả khi ML Kit
+        // đang chờ mô-đun Google Play Services hay thiết bị mất mạng.
+        ui.postDelayed({ deliver(null) }, 1200)
+        try {
+            languageIdentifier.identifyLanguage(text)
+                .addOnSuccessListener { raw -> deliver(raw) }
+                .addOnFailureListener { deliver(null) }
+        } catch (e: Exception) {
+            Log.w(TAG, "Nhận diện ML Kit không sẵn sàng, dùng bộ dự phòng", e)
+            deliver(null)
+        }
     }
 
     private fun processKnown(text: String, lang: String, id: Int) {
