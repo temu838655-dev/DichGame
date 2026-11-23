@@ -106,7 +106,7 @@ class KhoGameActivity : Activity() {
     /** Ba tab trạng thái có số đếm: Tất cả / Việt hoá (gói riêng của game) / Dịch AI (theo thể loại). */
     private fun drawStatus(all: Int, viet: Int, ai: Int) {
         statusRow.removeAllViews()
-        statusRow.addView(Ui.segmented(this, listOf("Tất cả $all", "Việt hoá $viet", "Dịch AI $ai"), status) { status = it; fill() }, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
+        statusRow.addView(Ui.segmented(this, listOf("Tất cả $all", "Có gói $viet", "Dịch AI $ai"), status) { status = it; fill() }, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
     }
 
     private fun fill() {
@@ -197,7 +197,7 @@ class KhoGameActivity : Activity() {
             val c = Ui.card(this@KhoGameActivity, 14)
             c.addView(Ui.tv(this@KhoGameActivity, "👑  Gói Việt hoá", 16f, Ui.GOLD, true))
             c.addView(Ui.tv(this@KhoGameActivity,
-                "Thuật ngữ: ${sp + ge + co}" + (if (sp > 0) " ($sp riêng game, $ge theo thể loại, $co chung)" else " ($ge theo thể loại, $co chung)") +
+                "Thuật ngữ: ${sp + ge + co}" + (if (sp > 0) " ($sp theo game/series, $ge theo thể loại, $co chung)" else " ($ge theo thể loại, $co chung)") +
                     (if (cast.isNotEmpty()) "\nThẻ nhân vật: ${cast.size} người (xưng hô, giọng, nhịp nói)" else "\nChưa có thẻ nhân vật, bạn tự thêm được trong Gói Việt hoá") +
                     "\nCâu thông báo chuẩn: $lines (YOU DIED, Quest complete...)",
                 13.5f, Ui.TEXT), Ui.lpm(this@KhoGameActivity, 6, 0))
