@@ -12,6 +12,17 @@ class GamePackMatchTest {
         assertFalse(GamePackMatch.selected("Resident Evil 4", "Resident Evil 2"))
     }
 
+    @Test fun gameTitleContainingCommaIsNotCutOff() {
+        val title = "Mafia III, Definitive Edition"
+        assertTrue(GamePackMatch.title(
+            "$title, hành động", title, title, "Mặc định") == title)
+        assertTrue(GamePackMatch.title(
+            "$title, hành động", title, "", "Mặc định") == title)
+        assertTrue(GamePackMatch.title(
+            "Grand Theft Auto VI, thế giới mở", "Grand Theft Auto VI", "", "Mặc định") ==
+                "Grand Theft Auto VI")
+    }
+
     @Test fun versionedPacksDoNotMatchOtherInstallments() {
         assertFalse(GamePackMatch.contains("Grand Theft Auto VI", "grand theft auto v"))
         assertTrue(GamePackMatch.contains("Grand Theft Auto VI", "grand theft auto vi"))
