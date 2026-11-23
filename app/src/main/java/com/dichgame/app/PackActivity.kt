@@ -103,6 +103,9 @@ class PackActivity : Activity() {
                 learnedCard.addView(Ui.button(this@PackActivity, "Xem và sửa câu đã nhớ") {
                     reviewLearnedTranslations()
                 }, Ui.lpm(this@PackActivity, 2, 5))
+                learnedCard.addView(Ui.button(this@PackActivity, "Tìm câu đã nhớ (gốc hoặc tiếng Việt)") {
+                    searchLearnedTranslations()
+                }, Ui.lpm(this@PackActivity, 2, 5))
                 learnedCard.addView(Ui.button(this@PackActivity, "Xóa toàn bộ $learned câu dịch đã nhớ") {
                     AlertDialog.Builder(this@PackActivity, R.style.DgDialog)
                         .setTitle("Xóa bộ nhớ dịch của ${p.profile}?")
@@ -204,12 +207,32 @@ class PackActivity : Activity() {
         }
     }
 
-    private fun reviewLearnedTranslations() {
-        val entries = LearnedTranslations.recent(this, p.profile, PackStore.gameName(p), 80)
-        if (entries.isEmpty()) { render(); return }
+    private fun searchLearnedTranslations() {
+        val field = Ui.field(this, "Nhập từ/câu cần tìm trong bản gốc hoặc tiếng Việt", "")
+        val box = Ui.vbox(this).apply {
+            val pad = Ui.dp(this@PackActivity, 20)
+            setPadding(pad, pad / 2, pad, 0)
+            addView(field)
+        }
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Tìm trong bộ nhớ dịch")
+            .setView(box)
+            .setPositiveButton("Tìm") { _, _ ->
+                reviewLearnedTranslations(field.text.toString().trim())
+            }
+            .setNegativeButton("Hủy", null).show()
+    }
+
+    private fun reviewLearnedTranslations(search: String = "") {
+        val entries = LearnedTranslations.recent(
+            this, p.profile, PackStore.gameName(p), 80, search)
+        if (entries.isEmpty()) {
+            Toast.makeText(this, "Không có câu dịch nào khớp từ khóa.", Toast.LENGTH_SHORT).show()
+            return
+        }
         val choices = entries.map { it.original.take(65) + "\n→ " + it.vi.take(85) }.toTypedArray()
         AlertDialog.Builder(this, R.style.DgDialog)
-            .setTitle("Câu dịch AI đã nhớ · ${p.profile}")
+            .setTitle(if (search.isBlank()) "Câu đã nhớ · ${p.profile}" else "Kết quả: $search")
             .setItems(choices) { _, index -> editLearnedTranslation(entries[index]) }
             .setNegativeButton("Đóng", null).show()
     }
