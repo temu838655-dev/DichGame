@@ -494,7 +494,7 @@ class Prefs(ctx: Context) {
             .remove("active_speaker_$name").remove("auto_voices_$name")
             .remove("auto_voice_count_$name").remove("ignored_speakers_$name").apply()
         PackStore.deleteLines(app, name)
-        LearnedTranslations.clear(app, name)
+        LearnedTranslations.clearProfile(app, name)
     }
 
     var fontSize: Int
