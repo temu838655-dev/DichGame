@@ -14,6 +14,8 @@ class Prefs(ctx: Context) {
         const val ENGINE_LOCAL = "local"
         const val ENGINE_CLOUD = "cloud"
         const val ENGINE_GEMINI = "gemini"
+        const val MODE_TRANSLATE = "translate"
+        const val MODE_VIETSUB = "vietsub"
         const val DEFAULT_PROFILE = "Mặc định"
         /** Ngôn ngữ chữ trong game đọc được bằng OCR trên máy (chữ Latin, Hindi, Nhật, Hàn, Trung). "vi" chỉ dùng cho chế độ Thuyết minh. */
         val LANGS = listOf(
@@ -69,10 +71,28 @@ class Prefs(ctx: Context) {
         fun langName(code: String) = LANGS.firstOrNull { it.first == code }?.second ?: "Tiếng Anh"
     }
 
-    /** Chế độ: "translate" (dịch sang tiếng Việt) hoặc "narrate" (thuyết minh, đọc phụ đề có sẵn). */
+    /** Chỉ có hai chế độ: Dịch và Thuyết minh. Giữ tương thích key narrate cũ. */
+    var mode: String
+        get() = if (sp.getBoolean("narrate", false) ||
+            sp.getString("smart_mode", null) == MODE_VIETSUB) MODE_VIETSUB else MODE_TRANSLATE
+        set(value) {
+            val next = if (value == MODE_VIETSUB) MODE_VIETSUB else MODE_TRANSLATE
+            sp.edit().putString("smart_mode", next).putBoolean("narrate", next == MODE_VIETSUB).apply()
+        }
+
+    /** Thuyết minh: chỉ đọc phụ đề tiếng Việt đã có, không dịch. */
     var narrate: Boolean
-        get() = sp.getBoolean("narrate", false)
-        set(v) = sp.edit().putBoolean("narrate", v).apply()
+        get() = mode == MODE_VIETSUB
+        set(value) { mode = if (value) MODE_VIETSUB else MODE_TRANSLATE }
+
+    /** AI Tự động là một TÙY CHỌN CỦA CHẾ ĐỘ DỊCH, không phải chế độ thứ ba. */
+    var aiAuto: Boolean
+        get() = !narrate && sp.getBoolean("ai_auto_enabled", false)
+        set(value) {
+            val editor = sp.edit().putBoolean("ai_auto_enabled", value)
+            if (value) editor.putBoolean("learn_translations", true).putBoolean("charvoices", true)
+            editor.apply()
+        }
 
     /** Ngôn ngữ trong game: en, ja, ko, zh. Khi thuyết minh thì nguồn luôn là tiếng Việt. */
     var lang: String
@@ -185,10 +205,10 @@ class Prefs(ctx: Context) {
         get() = sp.getInt("scanms", 400).coerceIn(100, 3000)
         set(v) = sp.edit().putInt("scanms", v.coerceIn(100, 3000)).apply()
 
-    /** "system" = giọng của máy, "ai" = giọng AI Gemini (cần khóa Gemini), "offline" = giọng đã tải về máy. AI và offline lỗi thì tự lùi về giọng máy. */
+    /** Hai lựa chọn giọng: "system" (cơ bản) và "ai" (Gemini); tự đọc cơ bản nếu AI lỗi. */
     var voiceEngine: String
-        get() = sp.getString("voiceengine", "system").orEmpty()
-        set(v) = sp.edit().putString("voiceengine", v).apply()
+        get() = if (sp.getString("voiceengine", "system") == "ai") "ai" else "system"
+        set(v) = sp.edit().putString("voiceengine", if (v == "ai") "ai" else "system").apply()
     var aiVoice: String
         get() = sp.getString("aivoice", "Kore").orEmpty().ifBlank { "Kore" }
         set(v) = sp.edit().putString("aivoice", v).apply()

@@ -124,6 +124,7 @@ class CaptureService : Service() {
     private var ch = 0
     private var editing = true
     private var narrate = false
+    private val autoGameDetector = AutoGameDetector()
     private var needStable = 1
     private var cand = ""
     private var stable = 0
@@ -727,6 +728,16 @@ class CaptureService : Service() {
             lines.add(OcrLine(v.text, bx?.let { Box(it.left, it.top, it.right, it.bottom) }, b.conf))
         }
         val prefs = Prefs(this)
+        // Không dò tên game bằng lời thoại; chỉ nhận tựa game khớp toàn dòng OCR và lặp hai lượt.
+        if (prefs.aiAuto) {
+            val detected = autoGameDetector.observe(lines.map { it.text }, PackStore.gameName(prefs))
+            if (detected != null && AutoGameSwitch.apply(prefs, detected)) {
+                syncGameContext()
+                show("✦ AI Tự động đã nhận diện: $detected")
+                finishBusy()
+                return
+            }
+        }
         val utts = DialogueSplitter.split(lines, cjk, speakers).map { u ->
             // Người dùng đã xóa tên OCR nhận nhầm: bỏ nhãn người nói, giữ nguyên nội dung thoại.
             if (prefs.isIgnoredSpeaker(u.speaker)) Utterance(null, u.text, u.nameLike) else u
@@ -751,7 +762,13 @@ class CaptureService : Service() {
         stats.inc("ocr_cau", utts.size.toLong())
         if (narrate) {
             // Không đọc nhãn tên đứng riêng khi đã có câu thoại thực sự trong khung.
-            val spoken = utts.filter { !it.nameLike }.ifEmpty { utts }
+            val spoken = utts.filter { !it.nameLike && VietsubGuard.isVietnamese(it.text) }
+            if (spoken.isEmpty()) {
+                // Không dịch, không gọi Gemini, không đọc phụ đề nước ngoài/không rõ ngôn ngữ.
+                if (!autoShown) show("")
+                finishBusy()
+                return
+            }
             val cards = spoken.map { u ->
                 val phrase = u.text.replace("\n", sep)
                 Card(u.speaker, "", TextTranslator.Tr(phrase, null, false, "doc"), false)

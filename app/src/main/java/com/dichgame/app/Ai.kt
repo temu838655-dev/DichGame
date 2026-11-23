@@ -10,7 +10,7 @@ class AiException(val code: Int, message: String, val retryAfterMs: Long = 0L) :
 
 /** Dịch bằng AI đám mây: Google Gemini hoặc CloudAPI (chuẩn OpenAI /chat/completions). Hàm ở đây chặn luồng, hãy gọi từ luồng nền. */
 object Ai {
-    fun enabled(p: Prefs): Boolean = when (p.engine) {
+    fun enabled(p: Prefs): Boolean = if (p.aiAuto) p.geminiKeys().isNotEmpty() else when (p.engine) {
         Prefs.ENGINE_GEMINI -> p.geminiKeys().isNotEmpty()
         Prefs.ENGINE_CLOUD -> p.cloudKey.isNotEmpty() && p.cloudUrl.isNotEmpty()
         else -> false
@@ -122,7 +122,7 @@ object Ai {
 
     /** Một lần gọi AI (không thử lại). Dịch câu thì dùng [translateRetry]. */
     fun translate(p: Prefs, prompt: String): String {
-        val out: String = if (p.engine == Prefs.ENGINE_CLOUD) {
+        val out: String = if (!p.aiAuto && p.engine == Prefs.ENGINE_CLOUD) {
             val body = JSONObject()
                 .put("model", p.cloudModel)
                 .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))

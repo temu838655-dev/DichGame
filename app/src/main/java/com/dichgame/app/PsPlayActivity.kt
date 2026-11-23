@@ -1044,7 +1044,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     "🔊  Đọc to bản dịch (bật/tắt).\n" +
                     "A  Cỡ chữ phụ đề.\n" +
                     "◔  Tốc độ quét: quét nhiều đỡ sót câu nhưng hao pin hơn.\n" +
-                    "⚙  Cài đặt: Dịch hoặc Thuyết minh, ngôn ngữ trong game, giọng đọc (cơ bản, AI offline, Gemini), tốc độ đọc, phóng hình và chất lượng hình (chất lượng hình áp dụng bằng cách kết nối lại).\n\n" +
+                    "⚙  Cài đặt: Dịch hoặc Thuyết minh, ngôn ngữ trong game, giọng đọc (cơ bản, AI Gemini), tốc độ đọc, phóng hình và chất lượng hình (chất lượng hình áp dụng bằng cách kết nối lại).\n\n" +
                     "Hai nút dưới thanh công cụ:\n" +
                     "• Dịch hết chữ: đọc và dịch toàn bộ chữ đang có trên hình MỘT lần (kể cả phụ đề), giữ vài giây rồi tự tắt, hoặc tắt ngay khi cảnh đổi.\n" +
                     "• Dịch menu: dịch liên tục chữ trong menu, vật phẩm, kỹ năng, nhiệm vụ… Bản dịch hiện đè đúng chỗ chữ gốc; viền vàng là bản dịch còn nghi ngờ. Giữ nút này để xem chuỗi chưa dịch được.\n\n" +
@@ -1656,7 +1656,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     /**
      * Bảng cài đặt ngay trong màn chơi (không rời màn nên phiên Remote Play được giữ nguyên): chọn Dịch hoặc Thuyết minh,
-     * ngôn ngữ trong game, giọng đọc (cơ bản / AI offline / Gemini, chọn giọng, tốc độ, nghe thử) và lối vào chất lượng hình.
+     * ngôn ngữ trong game, giọng đọc (cơ bản / AI Gemini, chọn giọng, tốc độ, nghe thử) và lối vào chất lượng hình.
      */
     private fun showSettings() {
         val a = this
@@ -1709,9 +1709,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                         syncTools()
                     })
                 }
-                hVoice.addView(Ui.segmented(a, listOf("Cơ bản", "AI offline", "Gemini AI"),
-                    when (pr.voiceEngine) { "offline" -> 1; "ai" -> 2; else -> 0 }) { i ->
-                    pr.voiceEngine = when (i) { 1 -> "offline"; 2 -> "ai"; else -> "system" }
+                hVoice.addView(Ui.segmented(a, listOf("Giọng cơ bản", "Giọng AI"),
+                    if (pr.voiceEngine == "ai") 1 else 0) { i ->
+                    pr.voiceEngine = if (i == 1) "ai" else "system"
                     runCatching { tester?.shutdown() }
                     tester = null
                     live?.reloadVoice()
@@ -1824,19 +1824,26 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
             fun drawMode() {
                 hMode.removeAllViews()
-                hMode.addView(Ui.segmented(a, listOf("Dịch sang tiếng Việt", "Thuyết minh"), if (pr.narrate) 1 else 0) { i ->
-                    val n = i == 1
-                    if (n != pr.narrate) {
-                        pr.narrate = n
+                hMode.addView(Ui.segmented(a, listOf("Dịch", "Thuyết minh"), if (pr.narrate) 1 else 0) { i ->
+                    val next = if (i == 1) Prefs.MODE_VIETSUB else Prefs.MODE_TRANSLATE
+                    if (next != pr.mode) {
+                        pr.mode = next
                         restartTranslation()
                     }
                     drawMode()
                     drawVoice()
                 })
                 hMode.addView(Ui.tv(a,
-                    if (pr.narrate) "Thuyết minh: game hoặc phim đã có phụ đề tiếng Việt, app chỉ đọc to phụ đề, không dịch."
-                    else "Dịch: đọc chữ ${Prefs.srcNameOf(pr.lang)} trong game rồi dịch sang tiếng Việt.", 12.5f, Ui.SUB), Ui.lpm(a, 8, 2))
+                    if (pr.narrate) "Thuyết minh: chỉ đọc phụ đề tiếng Việt của phim/game Việt hóa, không dịch."
+                    else "Dịch: đọc chữ ${Prefs.srcNameOf(pr.lang)} trong game. Có thể bật AI Tự động bên dưới.",
+                    12.5f, Ui.SUB), Ui.lpm(a, 8, 2))
                 if (!pr.narrate) {
+                    hMode.addView(Ui.switchRow(a, "✦ AI Tự động",
+                        "Ưu tiên gói Việt hóa, bộ nhớ theo game và Gemini tự đổi khóa.", pr.aiAuto) { enabled ->
+                        pr.aiAuto = enabled
+                        restartTranslation()
+                        drawMode()
+                    }, Ui.lpm(a, 6, 5))
                     val codes = Prefs.LANGS.map { it.first }.filter { it != "vi" }
                     hMode.addView(Ui.dropRow(a, "Ngôn ngữ trong game",
                         { Prefs.langName(pr.lang) },

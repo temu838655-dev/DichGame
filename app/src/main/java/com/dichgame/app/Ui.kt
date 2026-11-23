@@ -320,10 +320,11 @@ object Ui {
         seg.setPadding(pad, pad, pad, pad)
         labels.forEachIndexed { i, l ->
             seg.addView(TextView(a).apply {
-                text = l; textSize = 14f; gravity = Gravity.CENTER
+                text = l; textSize = if (labels.size >= 3) 12.5f else 14f; gravity = Gravity.CENTER
                 setTextColor(if (i == selected) Color.parseColor("#2A1A08") else TEXT)
                 if (i == selected) { background = goldBg(a, 20); setTypeface(typeface, Typeface.BOLD) }
-                setPadding(dp(a, 10), dp(a, 10), dp(a, 10), dp(a, 10))
+                val horizontalPad = if (labels.size >= 3) 5 else 10
+                setPadding(dp(a, horizontalPad), dp(a, 10), dp(a, horizontalPad), dp(a, 10))
                 maxLines = 1
                 setOnClickListener { onPick(i) }
             }, lp(0, WRAP_CONTENT, 1f))

@@ -40,12 +40,31 @@ class TranslateActivity : Activity() {
             group(null, 14, 4) {
                 addView(modeSegment())
                 addView(Ui.tv(a,
-                    if (p.narrate) "Đọc to phụ đề có sẵn, không dịch. Hợp với phim Vietsub, game Việt hóa."
-                    else "Đọc chữ trên màn hình rồi dịch sang tiếng Việt.", 13f, Ui.SUB).apply {
+                    if (p.narrate) "Chỉ đọc nguyên văn phụ đề tiếng Việt, không dịch; phù hợp phim Vietsub và game Việt hóa."
+                    else "Dịch chữ trên màn hình sang tiếng Việt. AI Tự động là tùy chọn trong chế độ Dịch.", 13f, Ui.SUB).apply {
                     setPadding(Ui.dp(a, 4), Ui.dp(a, 10), 0, 0)
                 })
             }
             if (!p.narrate) {
+                group("TÙY CHỌN DỊCH", 14) {
+                    addView(Ui.switchRow(a, "✦ AI Tự động", "Tự nhận diện tên game khi đủ chứng cứ, ưu tiên bản Việt hóa và bộ nhớ rồi mới gọi Gemini.", p.aiAuto) {
+                        p.aiAuto = it
+                        render()
+                    })
+                }
+            }
+            if (p.aiAuto) {
+                group("AI TỰ ĐỘNG", 14) {
+                    addView(Ui.tv(a, "Tự nhận biết ngôn ngữ từ chữ OCR khi đủ bằng chứng. Ban đầu dùng cấu hình nguồn hiện tại; tên game chỉ tự nhận diện khi tựa đầy đủ xuất hiện rõ ít nhất hai lượt quét.", 13f, Ui.SUB))
+                    addView(Ui.switchRow(a, "Ghi nhớ bản dịch AI", "Lưu câu AI đã kiểm chứng riêng cho từng game; tránh dịch lại.", p.learnTranslations) {
+                        p.learnTranslations = it
+                    })
+                    addView(Ui.switchRow(a, "Giọng riêng từng nhân vật", "Tự lưu giọng theo hồ sơ game khi dùng Gemini TTS.", p.characterVoices) {
+                        p.characterVoices = it
+                    })
+                }
+            }
+            if (!p.narrate && !p.aiAuto) {
                 group("NGÔN NGỮ TRONG GAME", 14) {
                     val src = Prefs.LANGS.filter { it.first != "vi" }
                     addView(Ui.dropRow(a, "Ngôn ngữ chữ trong game", { Prefs.langLabel(p.lang) }, { src.map { Prefs.langLabel(it.first) } }) {
@@ -58,14 +77,21 @@ class TranslateActivity : Activity() {
                     }
                 }
             }
-            group("BỘ DỊCH", 0) {
+            if (p.aiAuto) {
+                group("GEMINI VÀ KHÓA DỰ PHÒNG") {
+                    geminiBlock(this)
+                    addView(Ui.tv(a, "Chế độ này ưu tiên bản Việt hóa và câu đã nhớ trước khi gọi Gemini. Hết lượt 401/403/429 sẽ tự thử khóa kế tiếp; các khóa trong cùng dự án Google có thể chung hạn mức. Nếu chưa có khóa, ứng dụng thử dịch trên máy khi được hỗ trợ.", 13f, Ui.SUB), Ui.lpm(a, 8, 2))
+                }
+                group("NGỮ CẢNH AI") { addView(ctxRow()) }
+            } else if (!p.narrate) {
+                group("BỘ DỊCH", 0) {
                 addView(engineRow("Dịch trên máy", null, "Miễn phí, chạy offline, kém chính xác hơn AI", Prefs.ENGINE_LOCAL))
                 divide(16)
                 addView(engineRow("CloudAPI", "AI", "AI đám mây theo chuẩn OpenAI, cần địa chỉ và khóa", Prefs.ENGINE_CLOUD))
                 divide(16)
                 addView(engineRow("Google Gemini", "AI", "Miễn phí nhưng nhanh hết lượt, cần khóa", Prefs.ENGINE_GEMINI))
-            }
-            when (p.engine) {
+                }
+                when (p.engine) {
                 Prefs.ENGINE_GEMINI -> {
                     group("KHÓA GOOGLE GEMINI") { geminiBlock(this) }
                     group("TÙY CHỌN AI") { addView(ctxRow()) }
@@ -77,6 +103,7 @@ class TranslateActivity : Activity() {
                 else -> put(Ui.tv(a,
                     "Đang dùng bộ dịch trên máy: chạy offline sau lần tải mô hình đầu tiên. Chọn CloudAPI hoặc Google Gemini để dịch hay hơn, giữ đúng tên và xưng hô.",
                     13f, Ui.SUB).apply { setPadding(Ui.dp(a, 10), 0, Ui.dp(a, 10), 0) }, 12, 0)
+                }
             }
         }
     }
@@ -110,7 +137,7 @@ class TranslateActivity : Activity() {
     }
 
     private fun modeSegment(): View =
-        Ui.segmented(this, listOf("Dịch sang tiếng Việt", "Thuyết minh"), if (p.narrate) 1 else 0) { i ->
+        Ui.segmented(this, listOf("Dịch", "Thuyết minh"), if (p.narrate) 1 else 0) { i ->
             p.narrate = i == 1
             render()
         }
