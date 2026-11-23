@@ -170,6 +170,23 @@ adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OU
 [ -s "$OUT/tools-fail.txt" ] || rm -f "$OUT/tools-fail.txt"
 adb shell am force-stop "$PKG"
 
+# Thanh công cụ khi xoay dọc, CHƯA kết nối máy chơi game: mở -> để yên thì tự thu lại -> bấm thanh kéo để mở lại -> lại tự thu lại
+adb logcat -c
+adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo toolsp >/dev/null 2>&1
+waitlog2() { for i in $(seq 1 $2); do adb logcat -d -s DG_PLAY:I > "$OUT/toolsp.txt" 2>&1; grep -q "$1" "$OUT/toolsp.txt" && return 0; sleep 0.5; done; return 1; }
+waitlog2 "toolsp-dau" 40; shot toolsp-open
+waitlog2 "toolsp-sau-8s " 60; shot toolsp-collapsed
+waitlog2 "toolsp-mo-lai" 40; shot toolsp-reopened
+waitlog2 "toolsp-sau-8s-lan-2" 60
+cat "$OUT/toolsp.txt"
+grep -q "toolsp-dau open=true bar=true land=false connected=false" "$OUT/toolsp.txt" || echo "Thanh công cụ (dọc): lúc đầu không mở" >> "$OUT/toolsp-fail.txt"
+grep -q "toolsp-sau-8s open=false bar=false land=false" "$OUT/toolsp.txt" || echo "Thanh công cụ (dọc): để yên 8 giây không tự thu lại (khi chưa kết nối)" >> "$OUT/toolsp-fail.txt"
+grep -q "toolsp-mo-lai open=true bar=true" "$OUT/toolsp.txt" || echo "Thanh công cụ (dọc): bấm thanh kéo không mở lại được" >> "$OUT/toolsp-fail.txt"
+grep -q "toolsp-sau-8s-lan-2 open=false bar=false" "$OUT/toolsp.txt" || echo "Thanh công cụ (dọc): mở lại rồi để yên không tự thu lại lần nữa" >> "$OUT/toolsp-fail.txt"
+adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/toolsp-fail.txt"
+[ -s "$OUT/toolsp-fail.txt" ] || rm -f "$OUT/toolsp-fail.txt"
+adb shell am force-stop "$PKG"
+
 # "Dịch hết chữ" thử thật: SurfaceView vẽ menu tiếng Anh -> PixelCopy -> OCR (không loại vùng phụ đề) -> lọc -> dịch -> giữ bản dịch -> tự tắt (nhật ký DG_UITR)
 adb logcat -c
 adb shell am start -W -n "$PKG/.LiveDemoActivity" --es mode uionce >/dev/null 2>&1

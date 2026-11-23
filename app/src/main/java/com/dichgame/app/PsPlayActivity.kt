@@ -61,6 +61,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         const val EXTRA_TRANSLATE = "translate"   // bật dịch phụ đề ngay khi vào chơi
         /** Xoay ngang: thanh công cụ tự thu lại sau chừng này mili giây không chạm. */
         private const val TOOLS_IDLE_MS = 5000L
+        /** Xoay dọc: lâu hơn một chút, và tính lại mỗi lần chạm tay cầm ảo (thanh thu lại thì tay cầm dời lên nên không thu khi đang chơi). */
+        private const val TOOLS_IDLE_PORTRAIT_MS = 8000L
         /** Sau một thao tác (bật dịch, đóng bảng cài đặt…) thanh công cụ thu lại sau chừng này mili giây. */
         private const val TOOLS_ACTION_MS = 1300L
     }
@@ -124,8 +126,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var toolsOpen = true
     private val idleRun = Runnable {
         if (isFinishing || isDestroyed) return@Runnable
-        // chưa kết nối: giữ nút thoát và thanh công cụ trên hình, đừng giấu mất
-        if (!connected && !demo) armIdle() else setTools(false)
+        // xoay dọc: đang giữ nút hoặc cần gạt trên tay cầm ảo thì chưa thu (thu thì tay cầm dời chỗ dưới ngón tay)
+        if (playRoot?.land == false && padHeld()) armIdle() else setTools(false)
     }
     private val actionRun = Runnable { if (!isFinishing && !isDestroyed) setTools(false) }
     private var zoomLevel = 0
@@ -249,6 +251,18 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     at(21500) { android.util.Log.i("DG_PLAY", "mot-lan chay=${uiTr?.running} once=${uiTr?.once}") }
                     at(23500) { st("sau-bam") }
                     at(24000) { homeCell?.performClick() }
+                }
+                "toolsp" -> {
+                    // Xoay dọc: thanh tự thu lại khi để yên (nút kéo giữa màn hình mở lại được), cả khi chưa kết nối máy chơi game
+                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    fun st(tag: String) = android.util.Log.i("DG_PLAY",
+                        "toolsp-$tag open=$toolsOpen bar=${barView?.visibility == View.VISIBLE} land=${playRoot?.land == true} connected=$connected")
+                    fun at(ms: Long, f: () -> Unit) { ui.postDelayed({ if (!isFinishing && !isDestroyed) f() }, ms) }
+                    at(2500) { st("dau") }
+                    at(13000) { st("sau-8s") }
+                    at(14000) { gripView?.performClick() }
+                    at(15000) { st("mo-lai") }
+                    at(25000) { st("sau-8s-lan-2") }
                 }
                 "adjust2" -> {
                     // Chỉnh khung: kéo quá to → bấm Đặt lại → bấm Xong (bấm đúng các nút thật), ghi nhật ký từng bước
@@ -600,7 +614,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         live?.attach(vid)
         uiTr?.attach(vid)
 
-        val padV = PadView(this) { st -> padState = st; push() }
+        val padV = PadView(this) { st ->
+            padState = st; push()
+            if (playRoot?.land == false) armIdle()   // đang chơi ở chế độ dọc: tính lại giờ để thanh không thu giữa chừng
+        }
         pad = padV
         padV.visibility = if (padOn && live?.isAdjusting != true) View.VISIBLE else View.GONE
 
@@ -903,7 +920,14 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     /** Xoay ngang và thanh đang mở: tính lại giờ tự thu lại (gọi mỗi lần người chơi chạm vào thanh). */
     private fun armIdle() {
         ui.removeCallbacks(idleRun)
-        if (toolsOpen && playRoot?.land == true) ui.postDelayed(idleRun, TOOLS_IDLE_MS)
+        if (toolsOpen) ui.postDelayed(idleRun, if (playRoot?.land == true) TOOLS_IDLE_MS else TOOLS_IDLE_PORTRAIT_MS)
+    }
+
+    /** Tay cầm ảo đang có nút nhấn hoặc cần gạt lệch. */
+    private fun padHeld(): Boolean {
+        val s = padState
+        return s.buttons != 0u || s.l2State.toInt() != 0 || s.r2State.toInt() != 0 ||
+            s.leftX.toInt() != 0 || s.leftY.toInt() != 0 || s.rightX.toInt() != 0 || s.rightY.toInt() != 0
     }
 
     /** Vừa làm xong một thao tác (bật dịch, chỉnh xong, đóng bảng…): thanh tự thu lại để không vướng khi chơi. */
