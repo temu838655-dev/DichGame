@@ -87,6 +87,11 @@ class PackActivity : Activity() {
             v.addView(Ui.switchRow(this@PackActivity, "Tự gán giọng theo nhân vật",
                 "Khi nhận diện tên người nói từ phụ đề, app tự giữ một giọng ổn định. Có thể đổi từng giọng bên dưới.",
                 p.characterVoices) { enabled -> p.characterVoices = enabled; render() })
+            v.addView(Ui.navRow(this@PackActivity, null,
+                "Nhân vật đang nói khi game không hiện tên",
+                p.activeSpeaker.ifBlank { "Chưa chọn · đọc giọng mặc định" }) {
+                pickActiveSpeaker(known)
+            })
             v.addView(Ui.tv(this@PackActivity,
                 "Đã nhận diện ${detected.size} nhân vật trong hồ sơ này. Chỉ nhận diện chắc chắn khi game có nhãn tên; " +
                     "chưa nhận diện được người nói sẽ dùng giọng mặc định. Giọng tự động không suy đoán giới tính theo tên.",
@@ -143,6 +148,17 @@ class PackActivity : Activity() {
             t.addView(Ui.tv(this@PackActivity, NguonVietHoa.SAFETY, 11.5f, Ui.SUB), Ui.lpm(this@PackActivity, 10, 0))
             put(t, 0, 0)
         }
+    }
+
+    private fun pickActiveSpeaker(names: List<String>) {
+        val options = (listOf("Không chọn nhân vật") + names).toTypedArray()
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Người đang nói (không có nhãn)")
+            .setItems(options) { _, index ->
+                p.activeSpeaker = if (index == 0) "" else names[index - 1]
+                render()
+            }
+            .setNegativeButton("Hủy", null).show()
     }
 
     private fun pickCharacterVoice(name: String) {
