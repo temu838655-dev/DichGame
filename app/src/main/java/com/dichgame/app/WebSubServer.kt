@@ -89,22 +89,22 @@ class WebSubServer(private val port: Int = 8780) {
                         n <= 8 && attempts.containsKey(ip) && arg("code") == tvPairCode
                     }
                     if (!accepted) {
-                        reply(c, 403, "application/json; charset=utf-8", """{"error":"Sai mã hoặc ghép quá nhiều lần"}""")
+                        reply(c, 403, "application/json; charset=utf-8", """{"error":"Sai mã hoặc ghép quá nhiều lần"}""", true)
                     } else {
                         val token = ByteArray(24).also { SecureRandom().nextBytes(it) }
                             .joinToString("") { "%02x".format(it) }
                         tvTokens.add(token)
-                        reply(c, 200, "application/json; charset=utf-8", JSONObject().put("token", token).toString())
+                        reply(c, 200, "application/json; charset=utf-8", JSONObject().put("token", token).toString(), true)
                     }
                 }
                 "/tv-poll" -> {
                     if (!tvTokens.contains(arg("token").orEmpty())) {
-                        reply(c, 403, "application/json; charset=utf-8", """{"error":"Cần ghép lại TV"}""")
+                        reply(c, 403, "application/json; charset=utf-8", """{"error":"Cần ghép lại TV"}""", true)
                     } else {
-                        pollReply(c, arg("since")?.toLongOrNull() ?: -1L)
+                        pollReply(c, arg("since")?.toLongOrNull() ?: -1L, true)
                     }
                 }
-                "/poll" -> pollReply(c, arg("since")?.toLongOrNull() ?: -1L)
+                "/poll" -> pollReply(c, arg("since")?.toLongOrNull() ?: -1L, false)
                 "/", "/index.html" -> reply(c, 200, "text/html; charset=utf-8", PAGE)
                 else -> reply(c, 404, "text/plain; charset=utf-8", "404")
             }
@@ -114,7 +114,7 @@ class WebSubServer(private val port: Int = 8780) {
         }
     }
 
-    private fun pollReply(c: Socket, since: Long) {
+    private fun pollReply(c: Socket, since: Long, cors: Boolean) {
         val body: String
         synchronized(lock) {
             val end = System.currentTimeMillis() + 20_000
@@ -125,13 +125,13 @@ class WebSubServer(private val port: Int = 8780) {
             }
             body = JSONObject().put("seq", seq).put("text", text).toString()
         }
-        reply(c, 200, "application/json; charset=utf-8", body)
+        reply(c, 200, "application/json; charset=utf-8", body, cors)
     }
 
-    private fun reply(c: Socket, code: Int, type: String, body: String) {
+    private fun reply(c: Socket, code: Int, type: String, body: String, cors: Boolean = false) {
         val b = body.toByteArray(Charsets.UTF_8)
         val head = "HTTP/1.1 $code ${if (code == 200) "OK" else if (code == 403) "Forbidden" else "Not Found"}\r\nContent-Type: $type\r\nContent-Length: ${b.size}\r\n" +
-            "Access-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
+            (if (cors) "Access-Control-Allow-Origin: *\r\n" else "") + "Cache-Control: no-store\r\nConnection: close\r\n\r\n"
         val o = c.getOutputStream()
         o.write(head.toByteArray(Charsets.ISO_8859_1))
         o.write(b)
