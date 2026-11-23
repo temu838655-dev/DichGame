@@ -142,6 +142,33 @@ adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 > "$OUT
 adb shell settings put system user_rotation 0 >/dev/null 2>&1
 adb shell am force-stop "$PKG"
 
+# Thanh công cụ màn chơi khi xoay ngang (giống thanh mẫu): mở -> tự thu lại khi để yên -> chạm chấm để mở lại -> bấm "Dịch hết chữ"
+# (thanh thu lại sau thao tác, dịch một lần rồi tự tắt) -> bấm nút PS. Bấm đúng các nút thật; nhật ký DG_PLAY.
+adb logcat -c
+adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo tools >/dev/null 2>&1
+# Mốc của bản xem thử: 2s ghi trạng thái đầu · 9s ghi sau 5s để yên · 10s chạm chấm · 13s bấm Dịch hết chữ · 15,5s ghi · 16s bấm nút PS
+sleep 3; adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; shot tools-open
+sleep 5; shot tools-collapsed
+sleep 3; shot tools-reopened
+sleep 2; shot tools-once
+for i in $(seq 1 24); do
+  sleep 5
+  adb logcat -d -s DG_PLAY:I > "$OUT/tools.txt" 2>&1
+  grep -q "mot-lan da-tu-tat" "$OUT/tools.txt" && break
+done
+cat "$OUT/tools.txt"
+grep -q "tools-dau open=true top=true handle=false land=true" "$OUT/tools.txt" || echo "Thanh công cụ: lúc đầu không mở đủ (hàng trên + thanh) khi xoay ngang" >> "$OUT/tools-fail.txt"
+grep -q "tools-sau-5s open=false top=false handle=true land=true" "$OUT/tools.txt" || echo "Thanh công cụ: để yên 5 giây không tự thu lại hoặc không hiện chấm mở lại" >> "$OUT/tools-fail.txt"
+grep -q "tools-mo-lai open=true top=true handle=false land=true" "$OUT/tools.txt" || echo "Thanh công cụ: chạm chấm không mở lại được" >> "$OUT/tools-fail.txt"
+grep -q "mot-lan chay=true once=true" "$OUT/tools.txt" || echo "Dịch hết chữ: bấm nút không bật chế độ dịch một lần" >> "$OUT/tools-fail.txt"
+grep -q "tools-sau-bam open=false" "$OUT/tools.txt" || echo "Thanh công cụ: bấm Dịch hết chữ xong thanh không tự thu lại" >> "$OUT/tools-fail.txt"
+grep -q "ps-tap session=false" "$OUT/tools.txt" || echo "Nút PS: bấm không có phản hồi" >> "$OUT/tools-fail.txt"
+grep -q "mot-lan da-tu-tat" "$OUT/tools.txt" || echo "Dịch hết chữ: chế độ một lần không tự tắt sau khi xong hoặc khi không thấy chữ" >> "$OUT/tools-fail.txt"
+adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/tools-fail.txt"
+[ -s "$OUT/tools-fail.txt" ] || rm -f "$OUT/tools-fail.txt"
+adb shell settings put system user_rotation 0 >/dev/null 2>&1
+adb shell am force-stop "$PKG"
+
 # Chỉnh khung đọc phụ đề: kéo quá to -> bấm Đặt lại -> bấm Xong (bấm đúng các nút thật; nhật ký DG_PLAY)
 adb logcat -c
 adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo adjust2 >/dev/null 2>&1

@@ -9,6 +9,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -124,6 +125,11 @@ class UiTranslate(
         private const val MAX_SIDE = 1280
         private const val MAX_INFLIGHT = 3
         private const val MAX_CACHE = 600
+        private const val MAX_QUEUE = 80
+        /** Chế độ một lần: giữ bản dịch bấy nhiêu mili giây rồi tự tắt. */
+        const val HOLD_MS = 12000L
+        /** Chế độ một lần: quá thời gian này (từ lúc mô hình dịch sẵn sàng) mà chưa dịch xong thì dừng. */
+        private const val ONCE_LIMIT_MS = 30000L
         @Volatile var active = false
     }
 
@@ -140,6 +146,17 @@ class UiTranslate(
 
     var running = false
         private set
+
+    /**
+     * Chế độ "Dịch hết chữ": đọc và dịch MỘT lần toàn bộ chữ trên khung hình hiện tại (kể cả vùng phụ đề), giữ bản dịch
+     * [HOLD_MS] rồi tự tắt (hoặc tắt ngay khi cảnh đổi). Khác với chế độ liên tục "Dịch menu".
+     */
+    var once = false
+        private set
+    private var onDone: (() -> Unit)? = null
+    private var onceStart = 0L
+    private var holdUntil = 0L
+    private var emptyPasses = 0
     private var ready = false
     private var busy = false
     private var ocr: Ocr? = null
@@ -150,6 +167,7 @@ class UiTranslate(
     private var skipRun = 0
     private var copyFails = 0
     private var inflight = 0
+    private var gen = 0
     private var lastNoticeAt = 0L
 
     private class Entry(var vi: String? = null, var unsure: Boolean = false, var failed: Boolean = false)
@@ -157,6 +175,8 @@ class UiTranslate(
 
     private val cache = HashMap<String, Entry>()
     private var items: List<Item> = emptyList()
+    /** Khối chữ đang chờ tới lượt dịch (tối đa [MAX_INFLIGHT] khối dịch cùng lúc): (nguyên văn, khoá). */
+    private val queue = java.util.ArrayDeque<Pair<String, String>>()
 
     /** Chuỗi chưa dịch được hoặc còn nghi ngờ: nguyên văn → lý do. */
     val missed = LinkedHashMap<String, String>()
@@ -167,6 +187,25 @@ class UiTranslate(
         // Nằm ngay trên hình và thẻ trạng thái (vị trí 0 và 1), dưới khung chọn vùng và dòng phụ đề.
         if (overlay.parent == null) parent.addView(overlay, minOf(2, parent.childCount),
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+    }
+
+    /** "Dịch hết chữ": dịch một lần rồi tự tắt. [done] được gọi (trên luồng chính) khi tự tắt. */
+    fun startOnce(done: () -> Unit) {
+        if (running) return
+        once = true
+        onDone = done
+        holdUntil = 0L
+        emptyPasses = 0
+        onceStart = SystemClock.uptimeMillis()
+        start()
+        if (!running) { once = false; onDone = null }
+    }
+
+    private fun finishOnce(msg: String? = null) {
+        val cb = onDone
+        stop()
+        if (!msg.isNullOrEmpty()) Toast.makeText(act, msg, Toast.LENGTH_LONG).show()
+        cb?.invoke()
     }
 
     fun start() {
@@ -182,6 +221,7 @@ class UiTranslate(
         skipRun = 0
         copyFails = 0
         inflight = 0
+        queue.clear()
         items = emptyList()
         try {
             ocr = Ocr(pr, lang)
@@ -192,7 +232,9 @@ class UiTranslate(
             Thread { try { PackStore.memory(ctx, pr).warm() } catch (_: Throwable) {} }.start()
             tr.prepare { ok ->
                 if (!running) return@prepare
-                if (ok) ready = true else notice("Không tải được mô hình dịch. Kiểm tra mạng rồi tắt bật dịch giao diện lại.")
+                if (ok) { ready = true; onceStart = SystemClock.uptimeMillis() }
+                else if (once) finishOnce("Không tải được mô hình dịch. Kiểm tra mạng rồi thử lại.")
+                else notice("Không tải được mô hình dịch. Kiểm tra mạng rồi tắt bật dịch giao diện lại.")
             }
             handler.postDelayed(tick, 700)
         } catch (e: Throwable) {
@@ -206,9 +248,17 @@ class UiTranslate(
         running = false
         active = false
         ready = false
+        once = false
+        onDone = null
+        holdUntil = 0L
         handler.removeCallbacksAndMessages(null)
         overlay.clear()
         items = emptyList()
+        // khối đang chờ hoặc đang dịch dở khi tắt: bỏ khỏi bộ nhớ để lần bật sau được xin dịch lại (không thì nằm trống mãi)
+        queue.clear()
+        cache.entries.removeAll { it.value.vi == null && !it.value.failed }
+        inflight = 0
+        gen++   // kết quả dịch của lượt cũ về muộn sẽ bị bỏ qua (không làm lệch bộ đếm của lượt mới)
         runCatching { tt?.close() }; tt = null
         runCatching { ocr?.close() }; ocr = null
     }
@@ -222,10 +272,38 @@ class UiTranslate(
         Toast.makeText(act, m, Toast.LENGTH_LONG).show()
     }
 
+    /** Chế độ một lần: xong thì giữ bản dịch rồi tự tắt; quá lâu hoặc không thấy chữ thì dừng kèm báo. Trả true nếu đã tắt. */
+    private fun checkOnce(): Boolean {
+        if (!once) return false
+        val now = SystemClock.uptimeMillis()
+        if (holdUntil > 0L) {
+            if (now >= holdUntil) { finishOnce(); return true }
+            return false
+        }
+        if (!ready) {
+            if (now - onceStart > 45000L) { finishOnce("Mô hình dịch chưa sẵn sàng (mạng chậm?). Thử lại sau."); return true }
+            return false
+        }
+        if (emptyPasses >= 2) { finishOnce("Không thấy chữ nào cần dịch trên hình."); return true }
+        if (now - onceStart > ONCE_LIMIT_MS) {
+            if (items.isEmpty()) { finishOnce("Không đọc được chữ trên hình. Thử lại khi chữ hiện rõ."); return true }
+            // dịch chưa kịp hết: giữ phần đã dịch được vài giây rồi tự tắt, không chờ mãi
+            holdUntil = now + HOLD_MS
+            queue.clear()
+            notice("Dịch chưa xong hết (mạng hoặc mô hình chậm). Phần đã dịch được giữ lại vài giây.")
+            return false
+        }
+        if (items.isNotEmpty() && inflight == 0 && queue.isEmpty() && items.all { val e = cache[it.key]; e != null && (e.vi != null || e.failed) }) {
+            holdUntil = now + HOLD_MS
+            if (BuildConfig.DEBUG) Log.i(TAG, "mot-lan: dich xong ${items.size} khoi, giu ${HOLD_MS / 1000}s")
+        }
+        return false
+    }
+
     private val tick = object : Runnable {
         override fun run() {
             try {
-                capture()
+                if (!checkOnce()) capture()
             } catch (t: Throwable) {
                 Log.e(TAG, "tick loi", t)
                 busy = false
@@ -237,6 +315,7 @@ class UiTranslate(
 
     /** Chữ giao diện đổi chậm hơn phụ đề nên quét thưa hơn; đọc bằng Gemini thì thưa nữa để đỡ tốn lượt dùng. */
     private fun delay(): Long {
+        if (once) return 600L   // một lần: người chơi đang chờ kết quả nên quét sát hơn
         val base = Prefs(act).scanMs.toLong().coerceIn(150L, 3000L) * 2
         return (if (ocr?.isCloud == true) base * 3 else base).coerceIn(900L, 6000L)
     }
@@ -278,6 +357,13 @@ class UiTranslate(
         if (o == null) { runCatching { bmp.recycle() }; busy = false; return }
         val fine = Ocr.thumbFine(bmp)
         val prev = lastFine
+        if (once && holdUntil > 0L) {
+            // đang giữ bản dịch: không đọc lại; cảnh đổi hẳn thì tắt luôn để bản dịch cũ khỏi đè lên hình mới
+            runCatching { bmp.recycle() }
+            busy = false
+            if (prev != null && meanDiff(prev, fine) > 18) finishOnce()
+            return
+        }
         if (prev != null && Ocr.sameStrict(fine, prev) && skipRun < 10) {
             // hình đứng yên: giữ nguyên lớp phủ, khỏi đọc lại
             skipRun++
@@ -320,7 +406,8 @@ class UiTranslate(
         if (vw < 2f || vh < 2f) return
         val kx = vw / bw
         val ky = vh / bh
-        val ex = exclude()
+        // "Dịch hết chữ" dịch cả vùng phụ đề; chế độ liên tục để phần phụ đề cho dịch phụ đề lo
+        val ex = if (once) null else exclude()
         val out = ArrayList<Item>()
         for (b in blocks) {
             val box = b.box ?: continue
@@ -342,6 +429,7 @@ class UiTranslate(
             request(src, key)
         }
         items = out
+        if (once) emptyPasses = if (out.isEmpty()) emptyPasses + 1 else 0
         refresh()
     }
 
@@ -377,17 +465,35 @@ class UiTranslate(
 
     private fun luminance(c: Int): Int = (Color.red(c) * 3 + Color.green(c) * 6 + Color.blue(c)) / 10
 
-    /** Xin dịch một khối chữ nếu chưa có trong bộ nhớ; chạy tối đa [MAX_INFLIGHT] việc cùng lúc, phần còn lại để lượt quét sau. */
+    /**
+     * Xin dịch một khối chữ nếu chưa có trong bộ nhớ. Chạy tối đa [MAX_INFLIGHT] khối cùng lúc, khối còn lại xếp hàng và tự
+     * chạy tiếp khi có chỗ (trước đây khối thừa bị bỏ, phải đợi lượt quét sau, mà hình đứng yên thì cả chục giây mới tới lượt).
+     */
     private fun request(src: String, key: String) {
         if (cache.containsKey(key)) return
+        if (tt == null) return
+        if (queue.size >= MAX_QUEUE) return   // quá nhiều khối một lúc: để lượt quét sau
+        if (cache.size > MAX_CACHE) { cache.clear(); queue.clear() }
+        cache[key] = Entry()
+        queue.addLast(src to key)
+        pump()
+    }
+
+    private fun pump() {
         val t = tt ?: return
-        if (inflight >= MAX_INFLIGHT) return
-        if (cache.size > MAX_CACHE) cache.clear()
-        val e = Entry()
-        cache[key] = e
+        while (inflight < MAX_INFLIGHT && queue.isNotEmpty()) {
+            val (src, key) = queue.pollFirst() ?: break
+            val e = cache[key] ?: continue
+            translateOne(t, src, e)
+        }
+    }
+
+    private fun translateOne(t: TextTranslator, src: String, e: Entry) {
         inflight++
+        val g = gen
         val prot = UiText.protect(src)
         t.translateFull(prot.text, null, true) { tr ->
+            if (g != gen) return@translateFull   // đã tắt (hoặc tắt rồi bật lại) trong lúc đang dịch
             inflight--
             if (!running) return@translateFull
             val restored = UiText.restore(tr.text, prot)
@@ -403,6 +509,7 @@ class UiTranslate(
                 }
             }
             refresh()
+            pump()
         }
     }
 

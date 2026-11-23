@@ -59,6 +59,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         const val EXTRA_MODE = "mode"       // "tv" hoặc "phone"
         const val EXTRA_PLAYER = "player"
         const val EXTRA_TRANSLATE = "translate"   // bật dịch phụ đề ngay khi vào chơi
+        /** Xoay ngang: thanh công cụ tự thu lại sau chừng này mili giây không chạm. */
+        private const val TOOLS_IDLE_MS = 5000L
+        /** Sau một thao tác (bật dịch, đóng bảng cài đặt…) thanh công cụ thu lại sau chừng này mili giây. */
+        private const val TOOLS_ACTION_MS = 1300L
     }
 
     private var console: PsConsole? = null
@@ -104,12 +108,26 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var statusCard: View? = null
     private var subsIcon: ToolIcon? = null
     private var scanIcon: ToolIcon? = null
-    private var uiIcon: ToolIcon? = null
     private var adjustBar: View? = null
+    // Hai nút "Dịch hết chữ" (một lần) và "Dịch menu" (liên tục) dưới thanh công cụ
+    private class PillUi(val box: View, val icon: ToolIcon, val label: TextView, val kind: ToolIcon.Kind)
+    private var pillOnce: PillUi? = null
+    private var pillMenu: PillUi? = null
+    private var pillsView: View? = null
+    private var handleView: View? = null
+    private var homeCell: View? = null
     private var speakIcon: ToolIcon? = null
     private var padIcon: ToolIcon? = null
     private var toolsBar: View? = null
+    // Thanh công cụ: mở khi vào màn chơi, tự thu lại khi chỉnh xong (sau một thao tác) hoặc khi để yên (chỉ lúc xoay ngang, vì
+    // khi đó nó phủ lên hình). Thu lại rồi thì còn một chấm nhỏ ở giữa mép trên để mở lại.
     private var toolsOpen = true
+    private val idleRun = Runnable {
+        if (isFinishing || isDestroyed) return@Runnable
+        // chưa kết nối: giữ nút thoát và thanh công cụ trên hình, đừng giấu mất
+        if (!connected && !demo) armIdle() else setTools(false)
+    }
+    private val actionRun = Runnable { if (!isFinishing && !isDestroyed) setTools(false) }
     private var zoomLevel = 0
     // Chỉ bản debug: dựng giao diện mà không kết nối máy thật (để chụp ảnh kiểm tra giao diện trên máy giả lập).
     private var demo = false
@@ -216,6 +234,22 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     ui.postDelayed({ if (!isFinishing && !isDestroyed) toggleAdjust() }, 5000)
                 }
                 "land" -> requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                "tools" -> {
+                    // Thanh công cụ khi xoay ngang: mở → tự thu lại khi để yên → chạm chấm để mở lại → bấm "Dịch hết chữ" (thu lại
+                    // sau thao tác, dịch một lần rồi tự tắt) → bấm nút PS. Bấm bằng performClick trên đúng các nút thật.
+                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                    fun st(tag: String) = android.util.Log.i("DG_PLAY",
+                        "tools-$tag open=$toolsOpen top=${playRoot?.close?.visibility == View.VISIBLE} handle=${handleView?.visibility == View.VISIBLE} land=${playRoot?.land == true}")
+                    fun at(ms: Long, f: () -> Unit) { ui.postDelayed({ if (!isFinishing && !isDestroyed) f() }, ms) }
+                    at(2000) { st("dau") }
+                    at(9000) { st("sau-5s") }
+                    at(10000) { handleView?.performClick() }
+                    at(10800) { st("mo-lai") }
+                    at(13000) { pillOnce?.box?.performClick() }
+                    at(13500) { android.util.Log.i("DG_PLAY", "mot-lan chay=${uiTr?.running} once=${uiTr?.once}") }
+                    at(15500) { st("sau-bam") }
+                    at(16000) { homeCell?.performClick() }
+                }
                 "adjust2" -> {
                     // Chỉnh khung: kéo quá to → bấm Đặt lại → bấm Xong (bấm đúng các nút thật), ghi nhật ký từng bước
                     requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -416,6 +450,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         var pill: View? = null
         var bar: View? = null
         var grip: View? = null
+        /** Hàng hai nút "Dịch hết chữ" và "Dịch menu" nằm dưới thanh công cụ. */
+        var pills: View? = null
+        /** Chấm nhỏ ở giữa mép trên (chỉ khi xoay ngang và thanh công cụ đã thu lại) để mở lại thanh. */
+        var handle: View? = null
         /** Thanh "Xong / Đặt lại" hiện khi đang chỉnh khung đọc phụ đề. */
         var adj: View? = null
 
@@ -437,6 +475,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             val ch = chip ?: return
             val br = bar ?: return
             val gr = grip ?: return
+            val ps = pills ?: return
+            val hd = handle ?: return
             val w = r - l
             val h = b - t
             val ex = MeasureSpec.EXACTLY
@@ -448,7 +488,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             measureChild(pb, btn, ex, btn, ex)
             measureChild(pl, w, am, h, am)
             if (!land) {
-                // Dọc: hàng trên (đóng, tay cầm, trạng thái, người chơi), hình trong khung vàng, thanh công cụ, thanh kéo, tay cầm ảo.
+                // Dọc: hàng trên (đóng, tay cầm, trạng thái, người chơi), hình trong khung vàng, thanh công cụ, hai nút dịch,
+                // thanh kéo, tay cầm ảo.
                 val pillLeft = w - m10 - pl.measuredWidth
                 val chipLeft = m10 + btn * 2 + m8 * 2
                 measureChild(ch, pillLeft - m8 - chipLeft, ex, h, am)
@@ -464,29 +505,48 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     measureChild(br, w - 2 * m10, ex, h, am)
                     put(br, m10, y); y += br.measuredHeight
                 }
+                if (ps.visibility != View.GONE) {
+                    y += dpi(8)
+                    measureChild(ps, w - 2 * m10, ex, h, am)
+                    put(ps, m10, y); y += ps.measuredHeight
+                }
                 measureChild(gr, w, ex, dpi(22), ex)
                 put(gr, 0, y); y += dpi(22)
                 // đang chỉnh khung phụ đề: tay cầm ảo đã ẩn nên thanh Xong/Đặt lại nằm đúng chỗ đó
                 adj?.takeIf { it.visibility != View.GONE }?.let { av -> measureChild(av, w - 2 * m10, ex, h, am); put(av, m10, y + dpi(4)) }
                 measureChild(pd, w, ex, h - y, ex)
                 put(pd, 0, y)
+                measureChild(hd, 0, ex, 0, ex); put(hd, 0, 0)
             } else {
-                // Ngang: hình giữa màn hình, tay cầm trong suốt phủ lên, hàng điều khiển ở giữa phía trên.
+                // Ngang: hình giữa màn hình, tay cầm trong suốt phủ lên. Thanh công cụ nằm phủ trên hình: hàng trên có
+                // [đóng][tay cầm][người chơi] bên trái và hàng icon bên phải, hai nút dịch ngay dưới hàng icon (bên phải).
+                // Thu lại rồi thì chỉ còn chấm nhỏ giữa mép trên.
                 measureChild(vc, w, am, h, am)
                 put(vc, (w - vc.measuredWidth) / 2, (h - vc.measuredHeight) / 2)
                 measureChild(pd, w, ex, h, ex)
                 put(pd, 0, 0)
-                val barOn = br.visibility != View.GONE
-                if (barOn) measureChild(br, dpi(346), ex, h, am)
-                val total = btn * 2 + m8 + m8 + (if (barOn) dpi(346) + m8 else 0) + pl.measuredWidth
-                var x = (w - total) / 2
+                val open = br.visibility != View.GONE
                 val rowTop = dpi(6)
-                val rowH = maxOf(btn, if (barOn) br.measuredHeight else 0, pl.measuredHeight)
-                fun cy(v: View) = rowTop + (rowH - v.measuredHeight) / 2
-                put(cl, x, cy(cl)); x += btn + m8
-                put(pb, x, cy(pb)); x += btn + m8
-                if (barOn) { put(br, x, cy(br)); x += dpi(346) + m8 }
-                put(pl, x, cy(pl))
+                if (open) {
+                    val leftW = btn * 2 + m8 * 2 + pl.measuredWidth
+                    val barW = minOf(dpi(372), maxOf(dpi(240), w - 3 * m10 - leftW))
+                    measureChild(br, barW, ex, h, am)
+                    val rowH = maxOf(btn, br.measuredHeight, pl.measuredHeight)
+                    fun cy(v: View) = rowTop + (rowH - v.measuredHeight) / 2
+                    var x = m10
+                    put(cl, x, cy(cl)); x += btn + m8
+                    put(pb, x, cy(pb)); x += btn + m8
+                    put(pl, x, cy(pl))
+                    put(br, w - m10 - barW, cy(br))
+                    measureChild(ps, w - 2 * m10, am, h, am)
+                    put(ps, w - m10 - ps.measuredWidth, rowTop + rowH + dpi(8))
+                    measureChild(hd, 0, ex, 0, ex); put(hd, 0, 0)
+                } else {
+                    measureChild(br, 0, ex, 0, ex); put(br, 0, 0)
+                    measureChild(ps, 0, ex, 0, ex); put(ps, 0, 0)
+                    measureChild(hd, dpi(72), ex, dpi(28), ex)
+                    put(hd, (w - hd.measuredWidth) / 2, dpi(2))
+                }
                 // thanh Xong/Đặt lại nằm giữa mép dưới (tay cầm ảo đã ẩn khi đang chỉnh khung)
                 adj?.takeIf { it.visibility != View.GONE }?.let { av ->
                     measureChild(av, minOf(w - 2 * m10, dpi(520)), ex, h, am)
@@ -561,14 +621,25 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         val bar = toolbar()
         toolsBar = bar
         barView = bar
-        bar.visibility = if (toolsOpen) View.VISIBLE else View.GONE
+        val pills = pillsRow()
+        pillsView = pills
+        // Chấm mở lại thanh công cụ (chỉ hiện khi xoay ngang và thanh đã thu lại)
+        val handle = FrameLayout(this).apply {
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Mở thanh công cụ"
+            background = Ui.bg(this@PsPlayActivity, Color.parseColor("#99000000"), 14, Color.parseColor("#55F2B84B"), 1)
+            setOnClickListener { setTools(true) }
+            addView(ToolIcon(this@PsPlayActivity, ToolIcon.Kind.CHEVRON, Ui.GOLD), FrameLayout.LayoutParams(dpi(22), dpi(22), Gravity.CENTER))
+        }
+        handleView = handle
 
         // Thanh kéo (chỉ ở chế độ dọc): bấm để thu gọn hoặc mở lại thanh công cụ, dành chỗ cho tay cầm.
         val grip = FrameLayout(this).apply {
             isClickable = true
             isFocusable = true
             contentDescription = "Thu gọn hoặc mở thanh công cụ"
-            setOnClickListener { toggleTools() }
+            setOnClickListener { setTools(!toolsOpen) }
             addView(View(this@PsPlayActivity).apply { background = Ui.bg(this@PsPlayActivity, Color.parseColor("#88F2B84B"), 3) },
                 FrameLayout.LayoutParams(dpi(44), dpi(5), Gravity.CENTER))
         }
@@ -598,10 +669,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         val root = PlayLayout(this)
         root.adj = adjBar
         root.vcard = vcard; root.pad = padV; root.close = closeBtn; root.padBtn = padBtn
-        root.chip = chip; root.pill = pill; root.bar = bar; root.grip = grip
+        root.chip = chip; root.pill = pill; root.bar = bar; root.grip = grip; root.pills = pills; root.handle = handle
         // Thứ tự vẽ: hình, tay cầm phủ lên hình, rồi các nút điều khiển nằm trên cùng.
         root.addView(vcard); root.addView(padV); root.addView(closeBtn); root.addView(padBtn)
-        root.addView(bar); root.addView(pill); root.addView(chip); root.addView(grip); root.addView(adjBar)
+        root.addView(bar); root.addView(pills); root.addView(pill); root.addView(chip); root.addView(grip); root.addView(handle); root.addView(adjBar)
         playRoot = root
         setContentView(root)
     }
@@ -639,6 +710,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         gripView?.visibility = if (land) View.GONE else View.VISIBLE
         vidFrame?.let { v -> live?.attach(v); uiTr?.attach(v) }
         applyZoom()
+        applyToolsVisibility()
+        armIdle()
         root.requestLayout()
         refreshStatus()
     }
@@ -689,42 +762,86 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 pillLabel?.text = console?.players?.getOrNull(player)?.label ?: "Người chơi 1"
                 if (!demo) reconnect()
             }
+            afterAction(300)
         }
     }
 
     private fun toolbar(): LinearLayout {
         val bar = Ui.hbox(this)
         bar.setPadding(dpi(4), dpi(2), dpi(4), dpi(2))
-        fun tool(kind: ToolIcon.Kind, desc: String, onLong: (() -> Unit)? = null, onClick: () -> Unit): ToolIcon {
-            val ic = ToolIcon(this, kind, Ui.GOLD)
+        /** [solid]: ô vàng đặc, biểu tượng tối (nút PS). [collapse]: sau khi bấm, thanh tự thu lại. */
+        fun tool(kind: ToolIcon.Kind, desc: String, solid: Boolean = false, collapse: Boolean = true, onClick: () -> Unit): Pair<View, ToolIcon> {
+            val ic = ToolIcon(this, kind, if (solid) Color.parseColor("#2A1A08") else Ui.GOLD)
             val cell = FrameLayout(this).apply {
                 isClickable = true
                 isFocusable = true
                 contentDescription = desc
-                setOnClickListener { onClick() }
-                if (onLong != null) setOnLongClickListener { onLong(); true }
+                if (solid) background = Ui.bg(this@PsPlayActivity, Ui.GOLD, 18)
+                setOnClickListener {
+                    onClick()
+                    if (collapse) afterAction() else armIdle()
+                }
                 addView(ic, FrameLayout.LayoutParams(dpi(24), dpi(24), Gravity.CENTER))
             }
-            bar.addView(cell, Ui.lp(0, dpi(46), 1f))
-            return ic
+            bar.addView(cell, Ui.lp(0, dpi(46), 1f).apply { if (solid) { leftMargin = dpi(2); rightMargin = dpi(2) } })
+            return cell to ic
         }
-        scanIcon = tool(ToolIcon.Kind.SCAN, "Khung chọn vùng phụ đề") { toggleAdjust() }
-        subsIcon = tool(ToolIcon.Kind.SUBS, "Bật hoặc tắt dịch phụ đề") { toggleTranslate() }
-        uiIcon = tool(ToolIcon.Kind.UI_TEXT, "Dịch chữ giao diện game: chạm để bật hoặc tắt, giữ để xem chuỗi chưa dịch được", { showUiMissed() }) { toggleUiTr() }
-        speakIcon = tool(ToolIcon.Kind.SPEAKER_ON, "Đọc to bản dịch") { toggleSpeak() }
-        tool(ToolIcon.Kind.TEXT_SIZE, "Cỡ chữ phụ đề") { showFontDialog() }
-        tool(ToolIcon.Kind.DIAL, "Tốc độ quét phụ đề") { showScanDialog() }
-        tool(ToolIcon.Kind.ZOOM, "Phóng to hình") { toggleZoom() }
-        tool(ToolIcon.Kind.ROTATE, "Xoay ngang hoặc dọc") {
+        // Thứ tự giống thanh công cụ mẫu: xoay · PS · khung chọn vùng · phụ đề · loa · cỡ chữ · tốc độ · cài đặt · trợ giúp
+        tool(ToolIcon.Kind.ROTATE, "Xoay ngang hoặc dọc", collapse = false) {
             // Đổi qua lại ngang ↔ dọc và nhớ lựa chọn; chọn "Tự động" ở bảng chất lượng (⚙) để theo cảm biến xoay của máy.
             val toPortrait = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
             PsStore.setOrient(this, if (toPortrait) PsStore.ORIENT_PORTRAIT else PsStore.ORIENT_LANDSCAPE)
             PsStore.applyOrient(this)
         }
-        tool(ToolIcon.Kind.GEAR, "Cài đặt: Dịch hoặc Thuyết minh, giọng đọc, chất lượng hình") { showSettings() }
+        homeCell = tool(ToolIcon.Kind.HOME, "Nút PS (Home) của tay cầm", solid = true) { tapPs() }.first
+        scanIcon = tool(ToolIcon.Kind.CROP, "Khung chọn vùng phụ đề") { toggleAdjust() }.second
+        subsIcon = tool(ToolIcon.Kind.SUBS, "Bật hoặc tắt dịch phụ đề") { toggleTranslate() }.second
+        speakIcon = tool(ToolIcon.Kind.SPEAKER_ON, "Đọc to bản dịch") { toggleSpeak() }.second
+        tool(ToolIcon.Kind.TEXT_SIZE, "Cỡ chữ phụ đề") { showFontDialog() }
+        tool(ToolIcon.Kind.DIAL, "Tốc độ quét phụ đề") { showScanDialog() }
+        tool(ToolIcon.Kind.GEAR, "Cài đặt: Dịch hoặc Thuyết minh, giọng đọc, phóng hình, chất lượng hình") { showSettings() }
         tool(ToolIcon.Kind.HELP, "Trợ giúp") { help() }
         syncTools()
         return bar
+    }
+
+    /** Hàng hai nút dưới thanh công cụ: "Dịch hết chữ" (đọc và dịch một lần rồi tự tắt) và "Dịch menu" (dịch liên tục). */
+    private fun pillsRow(): LinearLayout {
+        val row = Ui.hbox(this)
+        row.gravity = Gravity.END or Gravity.CENTER_VERTICAL
+        fun pill(kind: ToolIcon.Kind, text: String, desc: String, onLong: (() -> Unit)?, onClick: () -> Unit): PillUi {
+            val ic = ToolIcon(this, kind, Color.WHITE)
+            val tv = Ui.tv(this, text, 15f, Color.WHITE, true).apply { maxLines = 1 }
+            val box = Ui.hbox(this).apply {
+                setPadding(dpi(14), dpi(9), dpi(16), dpi(9))
+                isClickable = true
+                isFocusable = true
+                contentDescription = desc
+                setOnClickListener { onClick(); afterAction() }
+                if (onLong != null) setOnLongClickListener { onLong(); true }
+                addView(ic, Ui.lp(dpi(20), dpi(20)).apply { rightMargin = dpi(8) })
+                addView(tv, Ui.lp(WRAP_CONTENT, WRAP_CONTENT))
+            }
+            row.addView(box, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(10) })
+            return PillUi(box, ic, tv, kind)
+        }
+        pillOnce = pill(ToolIcon.Kind.SCAN, "Dịch hết chữ",
+            "Đọc và dịch toàn bộ chữ đang có trên hình một lần, giữ vài giây rồi tự tắt", null) { translateOnce() }
+        pillMenu = pill(ToolIcon.Kind.BOLT, "Dịch menu",
+            "Dịch liên tục chữ trong menu và giao diện game. Giữ nút để xem chuỗi chưa dịch được", { showUiMissed() }) { toggleUiTr() }
+        stylePill(pillOnce, false)
+        stylePill(pillMenu, false)
+        return row
+    }
+
+    /** Nút dịch đang bật = nền trắng chữ tối (như thanh mẫu); đang tắt = kính tối viền mảnh chữ trắng. */
+    private fun stylePill(p: PillUi?, on: Boolean) {
+        p ?: return
+        p.box.background = if (on) Ui.bg(this, Color.parseColor("#F5FFFFFF"), 22)
+        else Ui.bg(this, Color.parseColor("#CC17120D"), 22, Color.parseColor("#66FFFFFF"), 1)
+        val c = if (on) Color.parseColor("#17120D") else Color.WHITE
+        p.icon.set(p.kind, c)
+        p.label.setTextColor(c)
     }
 
     /** Vẽ lại trạng thái các nút công cụ (bật = vàng có nền sáng, tắt = trắng/xám). */
@@ -738,11 +855,13 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             ic.set(kind, if (on) Ui.GOLD else offColor)
             (ic.parent as? View)?.background = if (on) Ui.bg(this, Color.parseColor("#33F2B84B"), 16) else null
         }
-        mark(scanIcon, ToolIcon.Kind.SCAN, adjusting)
+        mark(scanIcon, ToolIcon.Kind.CROP, adjusting)
         mark(subsIcon, ToolIcon.Kind.SUBS, running)
-        mark(uiIcon, ToolIcon.Kind.UI_TEXT, uiTr?.running == true)
         mark(speakIcon, if (sp) ToolIcon.Kind.SPEAKER_ON else ToolIcon.Kind.SPEAKER_OFF, sp, Ui.SUB)
         padIcon?.set(ToolIcon.Kind.GAMEPAD, if (padOn) Ui.GOLD else Ui.SUB)
+        val u = uiTr
+        stylePill(pillOnce, u != null && u.running && u.once)
+        stylePill(pillMenu, u != null && u.running && !u.once)
     }
 
     private fun togglePad() {
@@ -750,11 +869,58 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         pad?.visibility = if (padOn && live?.isAdjusting != true) View.VISIBLE else View.GONE
         if (!padOn) pad?.releaseAll()
         syncTools()
+        afterAction()
     }
 
-    private fun toggleTools() {
-        toolsOpen = !toolsOpen
-        toolsBar?.visibility = if (toolsOpen) View.VISIBLE else View.GONE
+    // ---- Thanh công cụ tự thu gọn ----
+
+    /** Thanh công cụ (và hàng trên) hiện hay giấu theo [toolsOpen]; xoay dọc thì hàng trên luôn hiện. */
+    private fun applyToolsVisibility() {
+        val root = playRoot ?: return
+        val land = root.land
+        val top = if (!land || toolsOpen) View.VISIBLE else View.GONE
+        root.close?.visibility = top
+        root.padBtn?.visibility = top
+        root.pill?.visibility = top
+        val tools = if (toolsOpen) View.VISIBLE else View.GONE
+        barView?.visibility = tools
+        pillsView?.visibility = tools
+        handleView?.visibility = if (land && !toolsOpen) View.VISIBLE else View.GONE
+        root.requestLayout()
+    }
+
+    private fun setTools(open: Boolean) {
+        toolsOpen = open
+        ui.removeCallbacks(idleRun)
+        ui.removeCallbacks(actionRun)
+        applyToolsVisibility()
+        armIdle()
+        if (demo) android.util.Log.i("DG_PLAY", "tools open=$open land=${playRoot?.land == true}")
+    }
+
+    /** Xoay ngang và thanh đang mở: tính lại giờ tự thu lại (gọi mỗi lần người chơi chạm vào thanh). */
+    private fun armIdle() {
+        ui.removeCallbacks(idleRun)
+        if (toolsOpen && playRoot?.land == true) ui.postDelayed(idleRun, TOOLS_IDLE_MS)
+    }
+
+    /** Vừa làm xong một thao tác (bật dịch, chỉnh xong, đóng bảng…): thanh tự thu lại để không vướng khi chơi. */
+    private fun afterAction(ms: Long = TOOLS_ACTION_MS) {
+        ui.removeCallbacks(idleRun)
+        ui.removeCallbacks(actionRun)
+        if (toolsOpen) ui.postDelayed(actionRun, ms)
+    }
+
+    /** Bấm nút PS trên tay cầm (mở trung tâm điều khiển của máy chơi game): nhấn khoảng 150 ms rồi nhả. */
+    private fun tapPs() {
+        val s = session
+        if (s == null) {
+            if (demo) android.util.Log.i("DG_PLAY", "ps-tap session=false")
+            Toast.makeText(this, "Chưa kết nối với máy chơi game nên chưa bấm được nút PS.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try { s.setControllerState(padState or phys or ControllerState(buttons = ControllerState.BUTTON_PS)) } catch (_: Throwable) {}
+        ui.postDelayed({ if (!isFinishing && !isDestroyed) push() }, 150)
     }
 
     private val zooms = floatArrayOf(1f, 1.25f, 1.5f)
@@ -766,12 +932,6 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         f.pivotY = f.height / 2f
         f.scaleX = z
         f.scaleY = z
-    }
-
-    private fun toggleZoom() {
-        zoomLevel = (zoomLevel + 1) % zooms.size
-        applyZoom()
-        Toast.makeText(this, if (zoomLevel == 0) "Hình vừa khung." else "Phóng hình ×" + zooms[zoomLevel], Toast.LENGTH_SHORT).show()
     }
 
     private fun toggleSpeak() {
@@ -790,6 +950,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         val a = this
         val pr = Prefs(a)
         Ui.sheet(a) { dlg ->
+            dlg.setOnDismissListener { afterAction(300) }
             addView(Ui.tv(a, "Cỡ chữ phụ đề", 18f, Ui.TEXT, true))
             addView(Ui.seekRow(a, "Cỡ chữ", { v -> "$v%" }, 50, 200, pr.subScale) { pr.subScale = it; live?.restyle() }, Ui.lpm(a, 10, 8))
             addView(Ui.button(a, "Xong", true) { dlg.dismiss() }, Ui.lpm(a, 8, 0))
@@ -800,6 +961,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         val a = this
         val pr = Prefs(a)
         Ui.sheet(a) { dlg ->
+            dlg.setOnDismissListener { afterAction(300) }
             val box = this
             fun fill() {
                 box.removeAllViews()
@@ -842,22 +1004,27 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             .setTitle("Mẹo khi chơi")
             .setMessage(
                 "Thanh công cụ, từ trái sang phải:\n" +
-                    "⛶  Khung chọn vùng phụ đề: kéo khung tới đúng dòng phụ đề của game, kéo chấm tròn để đổi cỡ. Bấm Đặt lại nếu lỡ kéo quá to, bấm Xong để ẩn khung.\n" +
+                    "⟳  Xoay ngang hoặc dọc. Xoay ngang để xem hình lớn, tay cầm trong suốt phủ lên hình.\n" +
+                    "⌂  Nút PS (Home) của tay cầm: mở trung tâm điều khiển của máy chơi game.\n" +
+                    "⌗  Khung chọn vùng phụ đề: kéo khung tới đúng dòng phụ đề của game, kéo chấm tròn để đổi cỡ. Bấm Đặt lại nếu lỡ kéo quá to, bấm Xong để ẩn khung.\n" +
                     "▭  Bật hoặc tắt dịch phụ đề ngay trên hình game.\n" +
-                    "☰  Dịch chữ giao diện của game (menu, vật phẩm, kỹ năng, nhiệm vụ, mô tả…): bản dịch hiện đè đúng chỗ chữ gốc. Giữ nút này để xem chuỗi chưa dịch được; viền vàng là bản dịch còn nghi ngờ.\n" +
                     "🔊  Đọc to bản dịch (bật/tắt).\n" +
                     "A  Cỡ chữ phụ đề.\n" +
                     "◔  Tốc độ quét: quét nhiều đỡ sót câu nhưng hao pin hơn.\n" +
-                    "⊕  Phóng to hình.\n" +
-                    "⟳  Xoay ngang để xem hình lớn, tay cầm trong suốt phủ lên hình.\n" +
-                    "⚙  Cài đặt: chọn Dịch hoặc Thuyết minh, ngôn ngữ trong game, giọng đọc (cơ bản, AI offline, Gemini), tốc độ đọc, nghe thử và chất lượng hình (chất lượng hình áp dụng bằng cách kết nối lại).\n\n" +
+                    "⚙  Cài đặt: Dịch hoặc Thuyết minh, ngôn ngữ trong game, giọng đọc (cơ bản, AI offline, Gemini), tốc độ đọc, phóng hình và chất lượng hình (chất lượng hình áp dụng bằng cách kết nối lại).\n\n" +
+                    "Hai nút dưới thanh công cụ:\n" +
+                    "• Dịch hết chữ: đọc và dịch toàn bộ chữ đang có trên hình MỘT lần (kể cả phụ đề), giữ vài giây rồi tự tắt, hoặc tắt ngay khi cảnh đổi.\n" +
+                    "• Dịch menu: dịch liên tục chữ trong menu, vật phẩm, kỹ năng, nhiệm vụ… Bản dịch hiện đè đúng chỗ chữ gốc; viền vàng là bản dịch còn nghi ngờ. Giữ nút này để xem chuỗi chưa dịch được.\n\n" +
+                    "Tự thu gọn: bấm xong một nút thì thanh tự thu lại cho khỏi vướng; khi xoay ngang, để yên vài giây thanh cũng tự thu lại. Chạm chấm nhỏ ở giữa mép trên để mở lại.\n\n" +
                     "• Nút tay cầm ở góc trên: ẩn hoặc hiện tay cầm ảo (tay cầm thật nối với điện thoại vẫn dùng được).\n" +
-                    "• Ô người chơi ở góc trên bên phải: đổi sang tài khoản đã ghép khác.\n" +
-                    "• Thanh nhỏ dưới hình: thu gọn hoặc mở thanh công cụ.\n" +
+                    "• Ô người chơi ở góc trên: đổi sang tài khoản đã ghép khác.\n" +
+                    "• Thanh nhỏ dưới hình (khi xoay dọc): thu gọn hoặc mở thanh công cụ.\n" +
                     "• Máy báo đang bận: tắt Chơi từ xa ở thiết bị khác, đợi 30 giây rồi thử lại.\n" +
                     "• Hình giật: dùng Wi-Fi 5 GHz hoặc dây LAN cho máy chơi game, hạ chất lượng hình ở ⚙."
             )
-            .setPositiveButton("Đã hiểu", null).show()
+            .setPositiveButton("Đã hiểu", null)
+            .setOnDismissListener { afterAction(300) }
+            .show()
     }
 
     // ---------------- Kết nối ----------------
@@ -1338,13 +1505,14 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private fun toggleUiTr() {
         try {
             val u = ensureUiTr()
-            if (u.running) {
+            if (u.running && !u.once) {
                 wantUiTr = false
                 u.stop()
                 syncTools()
-                Toast.makeText(this, "Đã tắt dịch chữ giao diện.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Đã tắt Dịch menu.", Toast.LENGTH_SHORT).show()
                 return
             }
+            if (u.running) u.stop()   // đang "Dịch hết chữ" một lần: chuyển sang dịch liên tục
             wantUiTr = true
             startUiTr()
         } catch (e: Throwable) {
@@ -1360,7 +1528,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             if (u.running) return
             u.start()
             syncTools()
-            if (u.running) Toast.makeText(this, "Đang dịch chữ giao diện của game. Giữ nút này để xem chuỗi chưa dịch được.", Toast.LENGTH_LONG).show()
+            if (u.running) Toast.makeText(this, "Đang dịch menu và chữ giao diện của game. Giữ nút Dịch menu để xem chuỗi chưa dịch được.", Toast.LENGTH_LONG).show()
         } catch (e: Throwable) {
             CrashLog.mark("choi:dich-gd-loi " + e.javaClass.simpleName)
             syncTools()
@@ -1368,11 +1536,42 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
+    /**
+     * "Dịch hết chữ": chụp khung hình hiện tại, đọc và dịch mọi chữ trên đó (kể cả vùng phụ đề) MỘT lần, giữ bản dịch ít giây
+     * rồi tự tắt (hoặc tắt ngay khi cảnh đổi). Bấm lần nữa khi đang chạy để tắt sớm.
+     */
+    private fun translateOnce() {
+        try {
+            val u = ensureUiTr()
+            if (u.running && !u.once) {
+                Toast.makeText(this, "Dịch menu đang bật nên chữ trên hình đã được dịch liên tục. Muốn dịch một lần thì tắt Dịch menu trước.", Toast.LENGTH_LONG).show()
+                return
+            }
+            if (u.running) {
+                u.stop()
+                syncTools()
+                Toast.makeText(this, "Đã tắt Dịch hết chữ.", Toast.LENGTH_SHORT).show()
+                return
+            }
+            wantUiTr = false
+            u.startOnce {
+                if (demo) android.util.Log.i("DG_PLAY", "mot-lan da-tu-tat")
+                syncTools()
+            }
+            syncTools()
+            if (u.running) Toast.makeText(this, "Đang đọc và dịch toàn bộ chữ trên hình…", Toast.LENGTH_SHORT).show()
+        } catch (e: Throwable) {
+            CrashLog.mark("choi:dich-het-loi " + e.javaClass.simpleName)
+            syncTools()
+            Toast.makeText(this, "Không bật được Dịch hết chữ: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     /** Danh sách chuỗi chưa dịch được hoặc còn nghi ngờ trong phiên này, để người dùng bổ sung vào gói Việt hoá. */
     private fun showUiMissed() {
         val rep = uiTr?.missedReport().orEmpty()
         AlertDialog.Builder(this, R.style.DgDialog)
-            .setTitle("Chuỗi giao diện chưa dịch được")
+            .setTitle("Chuỗi chưa dịch được")
             .setMessage(
                 if (rep.isEmpty()) "Chưa có chuỗi nào bị bỏ sót trong phiên này (hoặc chưa bật dịch giao diện).\n\nChữ như ID, số liệu, chỉ số viết tắt, tên riêng và chữ đã là tiếng Việt được bỏ qua có chủ ý."
                 else rep + "\n\n(Chữ có dấu → là chưa dịch được hoặc nghi ngờ. Có thể thêm bản dịch chuẩn vào gói Việt hoá của game.)"
@@ -1418,7 +1617,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     /** Đổi chế độ hoặc ngôn ngữ: dịch phụ đề và dịch giao diện đang chạy thì khởi động lại để nhận cài đặt mới. */
     private fun restartTranslation() {
         live?.let { l -> if (l.running) { l.stop(); l.start() } }
-        uiTr?.let { u -> if (u.running) { u.stop(); u.start() } }
+        uiTr?.let { u -> if (u.running) { val once = u.once; u.stop(); if (!once) u.start() } }
         syncTools()
     }
 
@@ -1450,6 +1649,14 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             val hVoice = Ui.vbox(a)
             cVoice.addView(hVoice, Ui.lpm(a, 8, 0))
             addView(cVoice, Ui.lpm(a, 12, 0))
+
+            val cZ = Ui.card(a)
+            cZ.addView(Ui.tv(a, "Phóng hình", 16f, Ui.TEXT, true))
+            cZ.addView(Ui.segmented(a, listOf("Vừa khung", "×1,25", "×1,5"), zoomLevel.coerceIn(0, zooms.size - 1)) { i ->
+                zoomLevel = i
+                applyZoom()
+            }, Ui.lpm(a, 8, 0))
+            addView(cZ, Ui.lpm(a, 12, 0))
 
             val cQ = Ui.card(a, 4)
             cQ.addView(Ui.navRow(a, null, "Chất lượng hình", PsQuality.summary(a)) {
@@ -1578,7 +1785,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             }
             drawMode()
             drawVoice()
-            dlg.setOnDismissListener { runCatching { tester?.shutdown() }; tester = null }
+            dlg.setOnDismissListener { runCatching { tester?.shutdown() }; tester = null; afterAction(300) }
         }
     }
 
@@ -1593,6 +1800,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             playRoot?.requestLayout()
             pad?.visibility = if (!on && padOn) View.VISIBLE else View.GONE
             if (on) pad?.releaseAll()
+            // đang chỉnh khung thì thanh công cụ thu lại cho khỏi vướng; xong (bấm Xong) thì cũng giữ thu lại để chơi
+            setTools(false)
             syncTools()
             if (demo) android.util.Log.i("DG_PLAY", "chinh khung on=$on pad=${pad?.visibility} act=${System.identityHashCode(this)} vid=${System.identityHashCode(vidFrame)}")
             Toast.makeText(
