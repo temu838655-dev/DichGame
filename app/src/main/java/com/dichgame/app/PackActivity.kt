@@ -16,6 +16,13 @@ import android.widget.Toast
  */
 class PackActivity : Activity() {
     private lateinit var p: Prefs
+    private var voicePreview: Speaker? = null
+
+    override fun onDestroy() {
+        voicePreview?.shutdown()
+        voicePreview = null
+        super.onDestroy()
+    }
 
     /** Bước 1 của "Ghép 2 file": file chữ gốc đã chọn, chờ file Việt hoá. */
     private var origName = ""
@@ -92,6 +99,9 @@ class PackActivity : Activity() {
                 p.activeSpeaker.ifBlank { "Chưa chọn · đọc giọng mặc định" }) {
                 pickActiveSpeaker(known)
             })
+            v.addView(Ui.tv(this@PackActivity,
+                "Nhấn tên nhân vật để gán giọng; bấm Nghe thử trong bảng chọn để kiểm tra giọng hiện tại (sử dụng lượt Gemini).",
+                12f, Ui.SUB), Ui.lpm(this@PackActivity, 6, 6))
             v.addView(Ui.tv(this@PackActivity,
                 "Đã nhận diện ${detected.size} nhân vật trong hồ sơ này. Chỉ nhận diện chắc chắn khi game có nhãn tên; " +
                     "chưa nhận diện được người nói sẽ dùng giọng mặc định. Giọng tự động không suy đoán giới tính theo tên.",
@@ -170,7 +180,26 @@ class PackActivity : Activity() {
                 p.setManualVoice(name, if (index == 0) null else Prefs.AI_VOICES[index - 1].first)
                 render()
             }
+            .setNeutralButton("▶ Nghe thử") { _, _ -> previewCharacterVoice(name) }
             .setNegativeButton("Hủy", null).show()
+    }
+
+    /** Phát mẫu bằng chính giọng đã gán, không tự gọi Gemini khi người dùng chưa bấm nghe. */
+    private fun previewCharacterVoice(name: String) {
+        if (!p.characterVoices) {
+            Toast.makeText(this, "Hãy bật Tự gán giọng theo nhân vật trước.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!p.aiVoiceOn) {
+            Toast.makeText(this, "Hãy chọn Gemini AI ở Cài đặt giọng đọc và thêm khóa Gemini.", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (voicePreview == null) {
+            voicePreview = Speaker(this, p).apply {
+                onAiError = { message -> Toast.makeText(this@PackActivity, message, Toast.LENGTH_LONG).show() }
+            }
+        }
+        voicePreview?.speak("Xin chào, đây là giọng đọc tiếng Việt của nhân vật $name.", speakerName = name)
     }
 
     private fun addCharacterVoice() {
