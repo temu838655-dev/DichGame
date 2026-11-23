@@ -895,9 +895,9 @@ class CaptureService : Service() {
 
     private var tvVoiceWarned = false
 
-    private fun tvVoice(text: String, d: Delivery? = null) {
+    private fun tvVoice(text: String, d: Delivery? = null, speakerName: String? = null) {
         val sp = speaker ?: return
-        sp.synthForTv(text, d) { pcm, speed ->
+        sp.synthForTv(text, d, speakerName) { pcm, speed ->
             val pf = getSharedPreferences("dg", MODE_PRIVATE)
             val err = if (pcm == null) "giọng đọc lỗi" else TvLink.postAudio(pf.getString("tvip", "").orEmpty(), pf.getString("tvtoken", "").orEmpty(), pcm, speed)
             if (err != null) {
@@ -983,8 +983,9 @@ class CaptureService : Service() {
         else cards.joinToString("\n") { (it.speaker?.let { n -> "$n: " } ?: "") + it.tr.text }
         sendTv("sub", tvText, tvSpeaks)
         val d = cards.lastOrNull()?.tr?.delivery
-        if (speak && tvVoiceOn()) tvVoice(vi, d)
-        if (speak && ready && !editing && !tvSpeakOn()) speaker?.speak(vi, false, d)
+        val speakerName = cards.lastOrNull()?.speaker
+        if (speak && tvVoiceOn()) tvVoice(vi, d, speakerName)
+        if (speak && ready && !editing && !tvSpeakOn()) speaker?.speak(vi, false, d, speakerName)
         prevVi = vi; prevOrig = cards.joinToString(" ") { it.orig }; autoShown = false
     }
 
