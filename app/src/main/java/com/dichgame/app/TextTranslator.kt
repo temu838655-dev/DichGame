@@ -151,7 +151,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         }
         // Gói Việt hóa do người dùng nhập có ưu tiên cao nhất; tiếp theo là bản dịch đã
         // lưu lâu dài trên máy. Khớp đúng nguồn + ngôn ngữ + người nói, không khớp mờ.
-        if (p.learnTranslations || p.aiAuto) {
+        if (p.learnTranslations) {
             LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text)?.let { saved ->
                 st.inc("dich_nho")
                 val cast = PackStore.cast(p)
@@ -176,7 +176,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             if (!stillCurrent()) return
             // Chỉ tự lưu bản Gemini/CloudAPI chắc chắn đạt TranslationGuard.OK.
             // Không ghi bản dịch máy dự phòng hoặc bản dịch AI bị nghi ngờ.
-            val saved = (p.learnTranslations || p.aiAuto) && t.via == "ai" && !t.uncertain &&
+            val saved = p.learnTranslations && t.via == "ai" && !t.uncertain &&
                 LearnedTranslationRules.canRemember(text, t.text)
             if (saved) LearnedTranslations.remember(ctx, profile, game, lang, speaker, ui, text, t.text)
             if (t.uncertain) st.inc("dich_nghi")
