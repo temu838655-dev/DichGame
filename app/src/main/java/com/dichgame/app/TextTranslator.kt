@@ -152,11 +152,13 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         fun finish(t: Tr) {
             // Chỉ tự lưu bản Gemini/CloudAPI chắc chắn đạt TranslationGuard.OK.
             // Không ghi bản dịch máy dự phòng hoặc bản dịch AI bị nghi ngờ.
-            if (p.learnTranslations && t.via == "ai" && !t.uncertain)
-                LearnedTranslations.remember(ctx, profile, lang, speaker, ui, text, t.text)
+            val saved = p.learnTranslations && t.via == "ai" && !t.uncertain &&
+                LearnedTranslationRules.canRemember(text, t.text)
+            if (saved) LearnedTranslations.remember(ctx, profile, lang, speaker, ui, text, t.text)
             if (t.uncertain) st.inc("dich_nghi")
-            // bản dịch máy do AI đang lỗi thì đừng nhớ: lần sau gặp lại câu này còn được thử AI (bộ nhớ đệm chỉ giữ bản đạt)
-            else if (t.via != "may" || !aiOn) cache[key] = t
+            // Câu đã lưu lâu dài không giữ thêm trong cache: khi người dùng xóa bộ nhớ
+            // sẽ không bị trả lại bản cũ từ cache trong cùng phiên chơi.
+            else if (!saved && (t.via != "may" || !aiOn)) cache[key] = t
             done(t)
         }
         if (!aiOn) { translateLocal(text, names, pace, ::finish); return }
