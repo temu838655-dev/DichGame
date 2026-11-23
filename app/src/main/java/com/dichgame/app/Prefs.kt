@@ -205,7 +205,7 @@ class Prefs(ctx: Context) {
         val raw = sp.getString("detected_speakers_$profile", "[]").orEmpty()
         try {
             val a = JSONArray(raw)
-            for (i in 0 until a.length().coerceAtMost(100)) {
+            for (i in 0 until a.length().coerceAtMost(250)) {
                 val name = a.optString(i).trim()
                 if (name.isNotEmpty() && result.none { it.equals(name, ignoreCase = true) }) result.add(name)
             }
@@ -213,13 +213,54 @@ class Prefs(ctx: Context) {
         return result
     }
 
-    /** Chỉ lưu nhãn người nói đã được bộ tách lời thoại xác nhận hoặc người dùng thêm. */
-    @Synchronized fun rememberSpeaker(raw: String) {
+    private fun ignoredSpeakers(): List<String> {
+        val raw = sp.getString("ignored_speakers_$profile", "[]").orEmpty()
+        return try {
+            val arr = JSONArray(raw)
+            (0 until arr.length().coerceAtMost(250)).mapNotNull { i ->
+                arr.optString(i).trim().takeIf { it.isNotEmpty() }
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    fun isIgnoredSpeaker(name: String?): Boolean =
+        !name.isNullOrBlank() && ignoredSpeakers().any { it.equals(name, ignoreCase = true) }
+
+    /** Chỉ lưu người nói được OCR xác nhận; tên đã xóa không tự xuất hiện lại nếu người dùng chưa thêm. */
+    @Synchronized fun rememberSpeaker(raw: String, fromUser: Boolean = false) {
         val name = raw.replace(Regex("\\s+"), " ").trim()
         if (name.length !in 2..40 || name.count { it.isLetter() } < 2 || '=' in name) return
+        val ignored = ignoredSpeakers()
+        if (!fromUser && ignored.any { it.equals(name, ignoreCase = true) }) return
+        val editor = sp.edit()
+        if (fromUser) editor.putString("ignored_speakers_$profile",
+            JSONArray(ignored.filterNot { it.equals(name, ignoreCase = true) }).toString())
         val names = detectedSpeakers()
-        if (names.any { it.equals(name, ignoreCase = true) }) return
-        sp.edit().putString("detected_speakers_$profile", JSONArray((names + name).takeLast(100)).toString()).apply()
+        if (names.none { it.equals(name, ignoreCase = true) })
+            editor.putString("detected_speakers_$profile", JSONArray((names + name).takeLast(250)).toString())
+        editor.apply()
+    }
+
+    /** Xóa một nhãn nhân vật OCR nhận nhầm khỏi hồ sơ, kèm giọng đã gán cho tên đó. */
+    fun forgetDetectedSpeaker(raw: String) = synchronized(sp) {
+        val name = raw.trim()
+        if (name.isEmpty()) return@synchronized
+        val key = name.lowercase(java.util.Locale.ROOT)
+        val rest = detectedSpeakers().filterNot { it.equals(name, ignoreCase = true) }
+        val ignored = (ignoredSpeakers().filterNot { it.equals(name, ignoreCase = true) } + name).takeLast(250)
+        fun withoutEntry(prefKey: String): String {
+            val data = try { JSONObject(sp.getString(prefKey, "{}").orEmpty()) }
+                catch (_: Exception) { JSONObject() }
+            data.remove(key)
+            return data.toString()
+        }
+        val editor = sp.edit()
+            .putString("detected_speakers_$profile", JSONArray(rest).toString())
+            .putString("manual_voices_$profile", withoutEntry("manual_voices_$profile"))
+            .putString("auto_voices_$profile", withoutEntry("auto_voices_$profile"))
+            .putString("ignored_speakers_$profile", JSONArray(ignored).toString())
+        if (activeSpeaker.equals(name, ignoreCase = true)) editor.putString("active_speaker_$profile", "")
+        editor.apply()
     }
 
     /** Chọn giọng riêng bằng giao diện; null = quay về chế độ tự động. */
@@ -231,6 +272,13 @@ class Prefs(ctx: Context) {
         } catch (_: Exception) { null }
     }
 
+    /** Giọng thủ công hiệu lực cho tên gọi chính hoặc bất kỳ bí danh nào của cùng nhân vật. */
+    fun effectiveManualVoice(name: String): String? {
+        manualVoice(name)?.let { return it }
+        val card = Cast.byName(name, PackStore.cast(this)) ?: return null
+        return card.names.firstNotNullOfOrNull { alias -> manualVoice(alias) }
+    }
+
     @Synchronized fun setManualVoice(name: String, id: String?) {
         if (name.isBlank() || id != null && AI_VOICES.none { it.first == id }) return
         val raw = sp.getString("manual_voices_$profile", "{}").orEmpty()
@@ -238,7 +286,39 @@ class Prefs(ctx: Context) {
         val key = name.trim().lowercase(java.util.Locale.ROOT)
         if (id == null) data.remove(key) else data.put(key, id)
         sp.edit().putString("manual_voices_$profile", data.toString()).apply()
-        rememberSpeaker(name)
+        rememberSpeaker(name, fromUser = true)
+    }
+
+    /**
+     * Đóng băng giọng tự động theo hồ sơ game. Danh sách nhân vật hiển thị chỉ lưu 100 tên gần nhất,
+     * vì vậy không được tính lại giọng theo vị trí trong danh sách này sau khi đã gán.
+     * Lần đầu nâng cấp, ghi nhận thứ tự cũ để những nhân vật đã chơi không bị đổi giọng.
+     */
+    private fun stableAutoVoice(name: String, aliases: List<String>): String = synchronized(sp) {
+        val key = "auto_voices_$profile"
+        val counterKey = "auto_voice_count_$profile"
+        val old = sp.getString(key, null)
+        val mapping = try { JSONObject(old ?: "{}") } catch (_: Exception) { JSONObject() }
+        val known = detectedSpeakers()
+        val normalize: (String) -> String = { it.trim().lowercase(java.util.Locale.ROOT) }
+        if (old == null) {
+            for ((i, candidate) in known.withIndex()) {
+                val k = normalize(candidate)
+                if (k.isNotEmpty() && !mapping.has(k))
+                    mapping.put(k, AI_VOICES[i % AI_VOICES.size].first)
+            }
+            sp.edit().putString(key, mapping.toString()).putInt(counterKey, known.size).apply()
+        }
+        val names = (listOf(name) + aliases).map(normalize).filter { it.isNotEmpty() }
+        val stored = names.firstNotNullOfOrNull { alias ->
+            mapping.optString(alias).takeIf { id -> AI_VOICES.any { it.first == id } }
+        }
+        if (stored != null) return@synchronized stored
+        val count = sp.getInt(counterKey, mapping.length()).coerceAtLeast(0)
+        val selected = AI_VOICES[count % AI_VOICES.size].first
+        mapping.put(names.first(), selected)
+        sp.edit().putString(key, mapping.toString()).putInt(counterKey, count + 1).apply()
+        selected
     }
 
     /** Nhân vật được người chơi chọn khi game không hiển thị nhãn tên người nói. */
@@ -258,14 +338,10 @@ class Prefs(ctx: Context) {
         if (!characterVoices) return aiVoice
         val cards = PackStore.cast(this)
         val card = Cast.byName(speaker, cards) ?: Cast.speakerOf(sentence, cards)
-        val name = speaker?.takeIf { it.isNotBlank() } ?: card?.names?.firstOrNull()
+        val name = speaker?.takeIf { it.isNotBlank() && !isIgnoredSpeaker(it) }
+            ?: card?.names?.firstOrNull()?.takeIf { !isIgnoredSpeaker(it) }
             ?: activeSpeaker.takeIf { it.isNotBlank() } ?: return aiVoice
-        if (!ignoreManual) {
-            // "Dandelion/Jaskier" là cùng một nhân vật: chọn giọng ở một bí danh
-            // cũng có hiệu lực cho bí danh còn lại (trừ khi đã gán riêng).
-            manualVoice(name)?.let { return it }
-            card?.names?.firstNotNullOfOrNull { alias -> manualVoice(alias) }?.let { return it }
-        }
+        if (!ignoreManual) effectiveManualVoice(name)?.let { return it }
         val desc = card?.desc.orEmpty().lowercase(java.util.Locale.ROOT)
         val requested = Regex("giọng\\s*[:=]\\s*([^;,]+)", RegexOption.IGNORE_CASE)
             .find(desc)?.groupValues?.getOrNull(1)?.trim()
@@ -279,15 +355,9 @@ class Prefs(ctx: Context) {
             listOf("đàn ông", "cậu bé", "anh chàng", "người cha", "con trai", "quý ông").any { it in desc }
         if (female && !male) return femaleAiVoice
         if (male && !female) return maleAiVoice
-        // Không suy luận nam/nữ từ tên (dễ sai). Các nhân vật được phát hiện lần lượt
-        // nhận giọng khác nhau cho tới khi dùng hết kho giọng; danh sách lưu theo hồ sơ.
-        val aliases = card?.names.orEmpty() + name
-        val order = detectedSpeakers().indexOfFirst { seen -> aliases.any { it.equals(seen, ignoreCase = true) } }
+        // Không suy luận giới tính từ tên. Giọng tự động được lưu cố định theo hồ sơ.
         val canonical = card?.names?.firstOrNull() ?: name
-        val index = if (order >= 0) order else
-            (((canonical.trim().lowercase(java.util.Locale.ROOT) + "|" + profile)
-                .hashCode().toLong() and 0xffffffffL) % AI_VOICES.size).toInt()
-        return AI_VOICES[index % AI_VOICES.size].first
+        return stableAutoVoice(canonical, card?.names.orEmpty() + name)
     }
     var ttsModel: String
         get() = sp.getString("ttsmodel", "gemini-3.8-flash-tts").orEmpty().ifBlank { "gemini-3.8-flash-tts" }
@@ -416,7 +486,8 @@ class Prefs(ctx: Context) {
         if (profile == name) profile = DEFAULT_PROFILE
         sp.edit().remove("game_$name").remove("gloss_$name").remove("cast_$name")
             .remove("detected_speakers_$name").remove("manual_voices_$name")
-            .remove("active_speaker_$name").apply()
+            .remove("active_speaker_$name").remove("auto_voices_$name")
+            .remove("auto_voice_count_$name").remove("ignored_speakers_$name").apply()
         PackStore.deleteLines(app, name)
     }
 

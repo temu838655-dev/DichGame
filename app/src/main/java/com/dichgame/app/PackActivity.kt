@@ -88,8 +88,11 @@ class PackActivity : Activity() {
             // Tự nhận diện người nói từ phụ đề và gán giọng cho từng nhân vật.
             val v = Ui.card(this@PackActivity)
             val detected = p.detectedSpeakers()
-            val known = (detected + PackStore.cast(p).flatMap { it.names })
-                .distinctBy { it.trim().lowercase() }.take(120)
+            val castCards = PackStore.cast(p)
+            val known = (detected.map { name ->
+                Cast.byName(name, castCards)?.names?.firstOrNull() ?: name
+            } + castCards.mapNotNull { it.names.firstOrNull() })
+                .distinctBy { it.trim().lowercase() }.take(300)
             v.addView(Ui.section(this@PackActivity, "🎙", "Giọng từng nhân vật"))
             v.addView(Ui.switchRow(this@PackActivity, "Tự gán giọng theo nhân vật",
                 "Khi nhận diện tên người nói từ phụ đề, app tự giữ một giọng ổn định. Có thể đổi từng giọng bên dưới.",
@@ -103,12 +106,13 @@ class PackActivity : Activity() {
                 "Nhấn tên nhân vật để gán giọng; bấm Nghe thử trong bảng chọn để kiểm tra giọng hiện tại (sử dụng lượt Gemini).",
                 12f, Ui.SUB), Ui.lpm(this@PackActivity, 6, 6))
             v.addView(Ui.tv(this@PackActivity,
-                "Đã nhận diện ${detected.size} nhân vật trong hồ sơ này. Chỉ nhận diện chắc chắn khi game có nhãn tên; " +
+                "Đã lưu ${detected.size} tên nhân vật trong hồ sơ này (gồm tên phát hiện và tên bạn tự thêm). " +
+                    "Tự nhận diện chỉ đáng tin khi game có nhãn tên; " +
                     "chưa nhận diện được người nói sẽ dùng giọng mặc định. Giọng tự động không suy đoán giới tính theo tên.",
                 12.5f, Ui.SUB), Ui.lpm(this@PackActivity, 8, 10))
             for (name in known.take(25)) {
                 val voice = Prefs.aiVoiceLabel(p.aiVoiceFor(name, ""))
-                val status = if (p.manualVoice(name) != null) "Đã chọn tay" else "Tự động"
+                val status = if (p.effectiveManualVoice(name) != null) "Đã chọn tay" else "Tự động"
                 v.addView(Ui.navRow(this@PackActivity, null, name, "$voice · $status") { pickCharacterVoice(name) })
             }
             if (known.size > 25) v.addView(Ui.button(this@PackActivity,
@@ -121,6 +125,11 @@ class PackActivity : Activity() {
             v.addView(Ui.button(this@PackActivity, "＋  Thêm nhân vật và chọn giọng") {
                 addCharacterVoice()
             }, Ui.lpm(this@PackActivity, 10, 0))
+            if (detected.isNotEmpty()) {
+                v.addView(Ui.button(this@PackActivity, "Xóa tên nhân vật nhận nhầm") {
+                    deleteDetectedSpeaker(detected)
+                }, Ui.lpm(this@PackActivity, 6, 0))
+            }
             put(v, 0, 12)
 
             // Nhập, xuất
@@ -158,6 +167,23 @@ class PackActivity : Activity() {
             t.addView(Ui.tv(this@PackActivity, NguonVietHoa.SAFETY, 11.5f, Ui.SUB), Ui.lpm(this@PackActivity, 10, 0))
             put(t, 0, 0)
         }
+    }
+
+    private fun deleteDetectedSpeaker(detected: List<String>) {
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Chọn tên nhận diện sai")
+            .setItems(detected.toTypedArray()) { _, index ->
+                val name = detected[index]
+                AlertDialog.Builder(this, R.style.DgDialog)
+                    .setTitle("Xóa '$name'?")
+                    .setMessage("Xóa tên này khỏi danh sách đã nhận diện và bỏ lựa chọn giọng riêng cho tên đó. Nhân vật có sẵn trong gói Việt hóa vẫn được giữ.")
+                    .setPositiveButton("Xóa") { _, _ ->
+                        p.forgetDetectedSpeaker(name)
+                        render()
+                    }
+                    .setNegativeButton("Hủy", null).show()
+            }
+            .setNegativeButton("Đóng", null).show()
     }
 
     private fun pickActiveSpeaker(names: List<String>) {
@@ -217,7 +243,7 @@ class PackActivity : Activity() {
                 if (name.length !in 2..40 || name.count { it.isLetter() } < 2) {
                     Toast.makeText(this, "Tên nhân vật không hợp lệ.", Toast.LENGTH_SHORT).show()
                 } else {
-                    p.rememberSpeaker(name)
+                    p.rememberSpeaker(name, fromUser = true)
                     pickCharacterVoice(name)
                 }
             }

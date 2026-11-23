@@ -526,10 +526,15 @@ John Marston = ít nói, nghiêm, nóng ruột; nhịp: vừa
 Micah Bell = xảo quyệt, châm chọc, hay khiêu khích; nhịp: nhanh
 Sadie Adler = cứng rắn, thẳng, nóng nảy; nhịp: nhanh
 """),
-        listOf("grand theft auto") to lines("""
-Michael = trung niên cằn nhằn, mỉa mai, hay than thở; nhịp: vừa
-Franklin = điềm tĩnh, nói chuyện đường phố, thực tế; nhịp: vừa
-Trevor = điên loạn, chửi thề, nổi nóng thất thường; nhịp: nhanh
+        // GTA VI có hai nhân vật chính khác GTA V; không dùng chung dữ liệu giọng nhân vật.
+        listOf("grand theft auto vi", "grand theft auto 6", "gta vi", "gta 6", "gta6") to lines("""
+Lucia Caminos/Lucia = nữ; giọng quyết đoán, sắc sảo; nhịp: vừa
+Jason Duval/Jason = nam; giọng điềm tĩnh, trầm; nhịp: vừa
+"""),
+        listOf("grand theft auto v", "grand theft auto 5", "gta v", "gta 5", "gta5") to lines("""
+Michael = nam; trung niên cằn nhằn, mỉa mai, hay than thở; nhịp: vừa
+Franklin = nam; điềm tĩnh, nói chuyện đường phố, thực tế; nhịp: vừa
+Trevor = nam; điên loạn, chửi thề, nổi nóng thất thường; nhịp: nhanh
 """),
         listOf("last of us") to lines("""
 Joel = người đàn ông chai sạn, cộc, hay giấu cảm xúc; xưng "tôi"; nhịp: chậm
@@ -743,7 +748,13 @@ Test your might = Thử thách sức mạnh
 
     fun castFor(name: String): List<String> {
         val n = name.lowercase()
-        return CAST.filter { (keys, _) -> keys.any { n.contains(it) } }.flatMap { it.second }
+        // "Grand Theft Auto V" là tiền tố của "Grand Theft Auto VI":
+        // khớp ranh giới từ để không trộn nhân vật của hai phiên bản.
+        fun matches(key: String): Boolean =
+            if (key in setOf("grand theft auto v", "gta v", "grand theft auto vi", "gta vi"))
+                Regex(Regex.escape(key) + "(?![a-z0-9])").containsMatchIn(n)
+            else n.contains(key)
+        return CAST.filter { (keys, _) -> keys.any(::matches) }.flatMap { it.second }
     }
 
     fun specificLines(name: String): List<Pair<String, String>> {
