@@ -138,6 +138,18 @@ class DialogueSplitterTest {
         assertEquals("I hate portals.", r[0].text)
     }
 
+    @Test fun geminiVoiceListsSeparateMaleAndFemale() {
+        val male = Prefs.MALE_AI_VOICES
+        val female = Prefs.FEMALE_AI_VOICES
+        assertTrue(male.isNotEmpty())
+        assertTrue(female.isNotEmpty())
+        assertTrue(male.all { "· nam ·" in it.second })
+        assertTrue(female.all { "· nữ ·" in it.second })
+        assertEquals(Prefs.AI_VOICES.map { it.first }.toSet(),
+            (male + female).map { it.first }.toSet())
+        assertTrue(male.none { m -> female.any { it.first == m.first } })
+    }
+
     @Test fun nameShapeRules() {
         assertTrue(DialogueSplitter.nameShape("Geralt of Rivia", false))
         assertTrue(DialogueSplitter.nameShape("ELENA", false))
