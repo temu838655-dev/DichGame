@@ -229,7 +229,7 @@ class WebTranslateActivity : Activity() {
     private var copyFails = 0
     private val ccFallback = Runnable {
         if (running && source == "cc" && !gotCc) {
-            web.evaluateJavascript("(function(){var v=document.querySelector('video');var f=document.querySelector('iframe[src*="youtube"],iframe[src*="vimeo"],iframe[src*="player"],iframe[allow*="autoplay"]');return !!((v&&!v.paused&&v.readyState>1)||(f&&f.clientWidth>200&&f.clientHeight>100));})()") { result ->
+            web.evaluateJavascript("""(function(){var v=document.querySelector('video');var f=document.querySelector('iframe[src*="youtube"],iframe[src*="vimeo"],iframe[src*="player"],iframe[allow*="autoplay"]');return !!((v&&!v.paused&&v.readyState>1)||(f&&f.clientWidth>200&&f.clientHeight>100));})()""") { result ->
                 if (running && source == "cc" && !gotCc) {
                     if (result == "true") {
                         setPanel("Không thấy phụ đề CC; đang chuyển sang quét OCR. Nếu video bảo vệ nội dung, OCR có thể không chụp được hình.", "")
