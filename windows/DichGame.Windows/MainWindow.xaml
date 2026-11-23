@@ -101,7 +101,7 @@
                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
           <StackPanel Grid.Column="1" Margin="14,5,0,0">
-            <TextBlock Text="DICHGAME" FontSize="21" FontWeight="Bold" CharacterSpacing="0" Foreground="#F6F1E7"/>
+            <TextBlock Text="DICHGAME" FontSize="21" FontWeight="Bold" Foreground="#F6F1E7"/>
             <TextBlock Text="C O N S O L E   T R A N S L A T O R" FontSize="10"
                        FontWeight="Bold" Foreground="{StaticResource GoldBrush}" Margin="0,4,0,0"/>
           </StackPanel>
@@ -182,7 +182,7 @@
                         Background="#101620" Height="202">
                   <Grid>
                     <Image x:Name="ScreenshotPreview" Stretch="Uniform" Margin="8"/>
-                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                    <StackPanel x:Name="ImagePlaceholder" VerticalAlignment="Center" HorizontalAlignment="Center"
                                 IsHitTestVisible="False">
                       <TextBlock Text="▧" FontSize="31" Foreground="#BD945C" HorizontalAlignment="Center"/>
                       <TextBlock x:Name="PhotoNote" Text="Chưa chọn ảnh chụp game"
