@@ -536,11 +536,15 @@ Michael = nam; trung niên cằn nhằn, mỉa mai, hay than thở; nhịp: vừ
 Franklin = nam; điềm tĩnh, nói chuyện đường phố, thực tế; nhịp: vừa
 Trevor = nam; điên loạn, chửi thề, nổi nóng thất thường; nhịp: nhanh
 """),
-        listOf("last of us") to lines("""
-Joel = người đàn ông chai sạn, cộc, hay giấu cảm xúc; xưng "tôi"; nhịp: chậm
-Ellie = cô bé tinh nghịch, hay chửi thề, mỉa mai, nói nhanh; gọi Joel bằng tên; nhịp: nhanh
-Abby = lạnh lùng, quyết đoán, ít nói; nhịp: vừa
-Tess = cứng rắn, dứt khoát; nhịp: nhanh
+        listOf("the last of us part i", "the last of us part 1") to lines("""
+Joel = nam; chai sạn, cộc lốc, giấu cảm xúc; xưng "tôi"; nhịp: chậm
+Ellie = nữ; bộc trực, hay mỉa mai, nói nhanh; nhịp: nhanh
+Tess = nữ; cứng rắn, dứt khoát; nhịp: nhanh
+"""),
+        listOf("the last of us part ii", "the last of us part 2") to lines("""
+Joel = nam; ít lời, trải đời; nhịp: chậm
+Ellie = nữ; quyết liệt, dễ xúc động; nhịp: nhanh
+Abby = nữ; lạnh lùng, quyết đoán, ít nói; nhịp: vừa
 """),
         listOf("horizon") to lines("""
 Aloy = thợ săn trẻ; thẳng thắn, tò mò, tự lập, hay mỉa mai nhẹ; xưng "tôi"; nhịp: vừa
@@ -553,12 +557,27 @@ Peter Parker = Người Nhện; hay đùa ngay cả lúc nguy hiểm, lo cho ng�
 Miles Morales = Người Nhện trẻ; nhiệt tình, hơi lóng ngóng, hay căng thẳng; nhịp: nhanh
 Mary Jane Watson = nhà báo; thẳng thắn, can đảm; nhịp: vừa
 """),
-        listOf("resident evil") to lines("""
-Leon S. Kennedy = đặc vụ; điềm tĩnh, hay buông câu đùa khô; nhịp: vừa
-Ada Wong = điệp viên bí ẩn; quyến rũ, lạnh, nói gọn; nhịp: chậm
-Ashley = con gái tổng thống; hoảng hốt, hay gọi tên Leon; nhịp: nhanh
-Lady Dimitrescu = quý bà; quý phái, lạnh lẽo, kiêu hãnh, xưng "ta"; nhịp: chậm
-Ethan Winters = người đàn ông bình thường, lo cho gia đình, giọng căng thẳng; nhịp: nhanh
+        // Không đưa Lady Dimitrescu của Village hay Ashley của RE4 vào RE2/RE3.
+        listOf("resident evil 2") to lines("""
+Leon S. Kennedy/Leon = nam; cảnh sát trẻ, bình tĩnh trước hiểm nguy; nhịp: vừa
+Ada Wong/Ada = nữ; bí ẩn, kiệm lời; nhịp: chậm
+Claire Redfield/Claire = nữ; can đảm, quan tâm người khác; nhịp: vừa
+"""),
+        listOf("resident evil 3") to lines("""
+Jill Valentine/Jill = nữ; quyết đoán, giàu kinh nghiệm; nhịp: vừa
+Carlos Oliveira/Carlos = nam; lính đánh thuê, nhiệt tình; nhịp: nhanh
+"""),
+        listOf("resident evil 4") to lines("""
+Leon S. Kennedy/Leon = nam; đặc vụ, điềm tĩnh, đôi lúc đùa khô; nhịp: vừa
+Ada Wong/Ada = nữ; bí ẩn, lạnh lùng; nhịp: chậm
+Ashley Graham/Ashley = nữ; dễ hoảng sợ nhưng kiên cường; nhịp: nhanh
+"""),
+        listOf("resident evil 7") to lines("""
+Ethan Winters/Ethan = nam; tìm người thân, giọng căng thẳng; nhịp: nhanh
+"""),
+        listOf("resident evil village", "resident evil 8") to lines("""
+Ethan Winters/Ethan = nam; tìm con, căng thẳng và quyết tâm; nhịp: nhanh
+Lady Dimitrescu = nữ; quyền quý, lạnh lẽo, kiêu hãnh, xưng "ta"; nhịp: chậm
 """),
         listOf("zelda") to lines("""
 Zelda = công chúa; dịu dàng, nghiêm túc, trang nhã; xưng "ta" hoặc "tôi"; nhịp: chậm
