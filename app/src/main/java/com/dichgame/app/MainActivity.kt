@@ -237,8 +237,9 @@ class MainActivity : Activity() {
         } else {
             c.addView(Ui.tv(this, "Đọc Vietsub: chỉ đọc phụ đề tiếng Việt đã có, không dịch.", 13.5f, Ui.SUB).apply { setPadding(0, Ui.dp(this@MainActivity, 8), 0, Ui.dp(this@MainActivity, 4)) })
         }
-        if (p.aiAuto) c.addView(Ui.tv(this, "✦ AI Tự động · gói Việt hóa → bộ nhớ theo game → Gemini (tự xoay khóa)", 13f, Ui.GOLD).apply {
-            setPadding(0, Ui.dp(this@MainActivity, 5), 0, Ui.dp(this@MainActivity, 5))
+        if (!narrate) c.addView(Ui.switchRow(this, "✦ AI Tự động",
+            "Ưu tiên Việt hóa → bộ nhớ game → Gemini, tự chuyển khóa dự phòng.", p.aiAuto) { enabled ->
+            if (!CaptureService.active) { p.aiAuto = enabled; render() } else busyToast()
         })
 
         val dark = Color.parseColor("#2A1A08")
@@ -284,14 +285,11 @@ class MainActivity : Activity() {
             b.setOnClickListener { click() }
             return b
         }
-        seg.addView(item("Dịch", p.mode == Prefs.MODE_TRANSLATE, true) {
+        seg.addView(item("Dịch", !p.narrate, true) {
             if (!CaptureService.active) { p.mode = Prefs.MODE_TRANSLATE; render() } else busyToast()
         }, Ui.lp(0, WRAP_CONTENT, 1f))
-        seg.addView(item("Đọc Vietsub", p.narrate, false) {
+        seg.addView(item("Thuyết minh", p.narrate, false) {
             if (!CaptureService.active) { p.mode = Prefs.MODE_VIETSUB; render() } else busyToast()
-        }, Ui.lp(0, WRAP_CONTENT, 1f))
-        seg.addView(item("✦ AI Tự động", p.aiAuto, false) {
-            if (!CaptureService.active) { p.mode = Prefs.MODE_AUTO; render() } else busyToast()
         }, Ui.lp(0, WRAP_CONTENT, 1f))
         return seg
     }
@@ -300,10 +298,10 @@ class MainActivity : Activity() {
 
     private fun help() {
         AlertDialog.Builder(this, R.style.DgDialog)
-            .setTitle("Ba chế độ DichGame")
-            .setMessage("Dịch: nhận dạng chữ trên màn hình rồi dịch sang tiếng Việt bằng bộ dịch đang chọn.\n\n" +
-                "Đọc Vietsub: chỉ đọc nguyên văn phụ đề tiếng Việt có sẵn trong phim/game Việt hóa. Không dịch và không gọi Gemini để dịch.\n\n" +
-                "AI Tự động: nếu thấy tên game rõ ràng qua OCR hai lần thì tự chọn hồ sơ; ưu tiên gói Việt hóa, bộ nhớ dịch, rồi Gemini và tự thử khóa dự phòng. Giọng nhân vật được nhớ riêng từng game khi bật TTS Gemini. Không tự suy đoán game khi thiếu bằng chứng.\n\n" +
+            .setTitle("Hai chế độ DichGame")
+            .setMessage("Dịch: nhận dạng chữ trên màn hình và dịch sang tiếng Việt. Có thể bật tùy chọn AI Tự động để nhận diện tên game, ưu tiên gói Việt hóa và bộ nhớ dịch trước Gemini.\n\n" +
+                "Thuyết minh: chỉ đọc phụ đề tiếng Việt đã có trong phim Vietsub hoặc game Việt hóa, không dịch.\n\n" +
+                "Giọng đọc có hai lựa chọn: Cơ bản và AI (Gemini).\n\n" +
                 "Kéo khung nhận dạng vào vùng có phụ đề và khóa khung để bắt đầu.")
             .setPositiveButton("Đã hiểu", null).show()
     }
