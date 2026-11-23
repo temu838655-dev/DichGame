@@ -206,7 +206,8 @@ object Catalog {
         "Yakuza 0" to "hành động xã hội đen Nhật Bản",
     ).sortedBy { it.first.lowercase() }
 
-    fun genreOf(name: String): String = GAMES.firstOrNull { it.first == name }?.second.orEmpty()
+    fun genreOf(name: String): String =
+        GAMES.firstOrNull { it.first.trim().equals(name.trim(), ignoreCase = true) }?.second.orEmpty()
 
     /** Chữ viết tắt hiện trên ô game. Tên dài thì lấy hai từ đầu và từ cuối để các phần của cùng một series không trùng nhau. */
     fun initials(name: String): String {
