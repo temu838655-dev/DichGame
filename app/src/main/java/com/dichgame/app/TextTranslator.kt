@@ -18,6 +18,9 @@ import com.google.mlkit.nl.translate.TranslatorOptions
 class TextTranslator(private val ctx: Context, private val p: Prefs, private val lang: String) {
     private val main = Handler(Looper.getMainLooper())
     private val history = ArrayList<String>()
+    // Một instance có thể sống qua thao tác chọn game ở Kho game. Không cho cache
+    // hoặc ngữ cảnh của game cũ đi vào lời nhắc của game mới.
+    private var activeGameContext = ""
     @Volatile private var closed = false
 
     /** Nếu đặt, mỗi lần dịch AI lỗi và phải dùng dịch trên máy thì gọi hàm này (thay vì hiện thông báo một lần). */
@@ -120,7 +123,19 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         val st = SessionStats.live
         val profile = p.profile
         val game = PackStore.gameName(p)
-        val key = (if (ui) "ui|" else "") + (speaker?.lowercase() ?: "") + "|" + OcrGuard.key(text)
+        val gameDescription = p.game
+        val context = profile + "\u0000" + gameDescription
+        if (activeGameContext != context) {
+            activeGameContext = context
+            history.clear()
+            cache.clear()
+        }
+        // Một câu dịch đang chờ Gemini khi người chơi đổi game sẽ bị loại,
+        // không hiện phụ đề cũ và không lưu vào bộ nhớ của game mới.
+        fun stillCurrent(): Boolean = !closed && profile == p.profile && gameDescription == p.game
+        fun emit(result: Tr) { if (stillCurrent()) done(result) }
+        val key = context + "\u0000" +
+            (if (ui) "ui|" else "") + (speaker?.lowercase() ?: "") + "|" + OcrGuard.key(text)
         val hist = if (ui) emptyList() else history.takeLast(p.ctxCount)
         if (!ui) {
             history.add(if (speaker != null) "$speaker: $text" else text)
@@ -129,7 +144,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         // gói Việt hoá (file đã nhập, bản người dùng sửa) đứng trước mọi thứ, kể cả bộ nhớ đệm: bản vừa sửa phải có hiệu lực ngay
         PackStore.memory(ctx, p).lookupEx(text)?.let { h ->
             st.inc("dich_goi"); if (h.fuzzy) st.inc("dich_goi_gan")
-            done(Tr(h.vi, null, false, "goi")); return
+            emit(Tr(h.vi, null, false, "goi")); return
         }
         // Gói Việt hóa do người dùng nhập có ưu tiên cao nhất; tiếp theo là bản dịch đã
         // lưu lâu dài trên máy. Khớp đúng nguồn + ngôn ngữ + người nói, không khớp mờ.
@@ -140,17 +155,18 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 val pace = if (ui) null else
                     (Cast.byName(speaker, cast) ?: Cast.speakerOf(text, cast))?.pace
                 val delivery = if (p.emoTr && !ui) Emo.detect(text, saved.vi, pace) else null
-                done(Tr(saved.vi, delivery, false, "nho"))
+                emit(Tr(saved.vi, delivery, false, "nho"))
                 return
             }
         }
-        cache[key]?.let { st.inc("dich_cache"); done(it); return }
+        cache[key]?.let { st.inc("dich_cache"); emit(it); return }
         val terms = PackStore.terms(p)
         val cast = PackStore.cast(p)
         val names = guardNames(terms, cast)
         val pace = if (ui) null else (Cast.byName(speaker, cast) ?: Cast.speakerOf(text, cast))?.pace
         val aiOn = Ai.enabled(p)
         fun finish(t: Tr) {
+            if (!stillCurrent()) return
             // Chỉ tự lưu bản Gemini/CloudAPI chắc chắn đạt TranslationGuard.OK.
             // Không ghi bản dịch máy dự phòng hoặc bản dịch AI bị nghi ngờ.
             val saved = p.learnTranslations && t.via == "ai" && !t.uncertain &&
@@ -160,7 +176,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             // Câu đã lưu lâu dài không giữ thêm trong cache: khi người dùng xóa bộ nhớ
             // sẽ không bị trả lại bản cũ từ cache trong cùng phiên chơi.
             else if (!saved && (t.via != "may" || !aiOn)) cache[key] = t
-            done(t)
+            emit(t)
         }
         if (!aiOn) { translateLocal(text, names, pace, ::finish); return }
         val emo = p.emoTr && !ui
@@ -173,7 +189,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 st.inc(AiRetry.statKey(AiRetry.Kind.QUOTA))
                 warn(AiRetry.explain(AiRetry.Kind.QUOTA, 429, cool))
             } else for (attempt in 0..1) {
-                val prompt = Ai.prompt(p, srcName(), p.game, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui)
+                val prompt = Ai.prompt(p, srcName(), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui)
                 var raw: String? = null
                 try {
                     raw = Ai.translateRetry(p, prompt)
