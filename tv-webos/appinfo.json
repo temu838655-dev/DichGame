@@ -1,0 +1,11 @@
+{
+  "id": "com.dichgame.tv.webos",
+  "version": "0.1.0",
+  "vendor": "DichGame",
+  "type": "web",
+  "main": "index.html",
+  "title": "Dịch Game TV",
+  "icon": "icon.png",
+  "transparent": true,
+  "defaultWindowType": "overlay"
+}
