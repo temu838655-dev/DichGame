@@ -260,7 +260,12 @@ class Prefs(ctx: Context) {
         val card = Cast.byName(speaker, cards) ?: Cast.speakerOf(sentence, cards)
         val name = speaker?.takeIf { it.isNotBlank() } ?: card?.names?.firstOrNull()
             ?: activeSpeaker.takeIf { it.isNotBlank() } ?: return aiVoice
-        if (!ignoreManual) manualVoice(name)?.let { return it }
+        if (!ignoreManual) {
+            // "Dandelion/Jaskier" là cùng một nhân vật: chọn giọng ở một bí danh
+            // cũng có hiệu lực cho bí danh còn lại (trừ khi đã gán riêng).
+            manualVoice(name)?.let { return it }
+            card?.names?.firstNotNullOfOrNull { alias -> manualVoice(alias) }?.let { return it }
+        }
         val desc = card?.desc.orEmpty().lowercase(java.util.Locale.ROOT)
         val requested = Regex("giọng\\s*[:=]\\s*([^;,]+)", RegexOption.IGNORE_CASE)
             .find(desc)?.groupValues?.getOrNull(1)?.trim()
@@ -276,9 +281,11 @@ class Prefs(ctx: Context) {
         if (male && !female) return maleAiVoice
         // Không suy luận nam/nữ từ tên (dễ sai). Các nhân vật được phát hiện lần lượt
         // nhận giọng khác nhau cho tới khi dùng hết kho giọng; danh sách lưu theo hồ sơ.
-        val order = detectedSpeakers().indexOfFirst { it.equals(name, ignoreCase = true) }
+        val aliases = card?.names.orEmpty() + name
+        val order = detectedSpeakers().indexOfFirst { seen -> aliases.any { it.equals(seen, ignoreCase = true) } }
+        val canonical = card?.names?.firstOrNull() ?: name
         val index = if (order >= 0) order else
-            (((name.trim().lowercase(java.util.Locale.ROOT) + "|" + profile)
+            (((canonical.trim().lowercase(java.util.Locale.ROOT) + "|" + profile)
                 .hashCode().toLong() and 0xffffffffL) % AI_VOICES.size).toInt()
         return AI_VOICES[index % AI_VOICES.size].first
     }
