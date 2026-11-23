@@ -205,7 +205,7 @@ class Prefs(ctx: Context) {
         val raw = sp.getString("detected_speakers_$profile", "[]").orEmpty()
         try {
             val a = JSONArray(raw)
-            for (i in 0 until a.length().coerceAtMost(100)) {
+            for (i in 0 until a.length().coerceAtMost(250)) {
                 val name = a.optString(i).trim()
                 if (name.isNotEmpty() && result.none { it.equals(name, ignoreCase = true) }) result.add(name)
             }
@@ -219,7 +219,7 @@ class Prefs(ctx: Context) {
         if (name.length !in 2..40 || name.count { it.isLetter() } < 2 || '=' in name) return
         val names = detectedSpeakers()
         if (names.any { it.equals(name, ignoreCase = true) }) return
-        sp.edit().putString("detected_speakers_$profile", JSONArray((names + name).takeLast(100)).toString()).apply()
+        sp.edit().putString("detected_speakers_$profile", JSONArray((names + name).takeLast(250)).toString()).apply()
     }
 
     /** Chọn giọng riêng bằng giao diện; null = quay về chế độ tự động. */
@@ -229,6 +229,13 @@ class Prefs(ctx: Context) {
             JSONObject(raw).optString(name.trim().lowercase(java.util.Locale.ROOT))
                 .takeIf { id -> AI_VOICES.any { it.first == id } }
         } catch (_: Exception) { null }
+    }
+
+    /** Giọng thủ công hiệu lực cho tên gọi chính hoặc bất kỳ bí danh nào của cùng nhân vật. */
+    fun effectiveManualVoice(name: String): String? {
+        manualVoice(name)?.let { return it }
+        val card = Cast.byName(name, PackStore.cast(this)) ?: return null
+        return card.names.firstNotNullOfOrNull { alias -> manualVoice(alias) }
     }
 
     @Synchronized fun setManualVoice(name: String, id: String?) {
@@ -292,12 +299,7 @@ class Prefs(ctx: Context) {
         val card = Cast.byName(speaker, cards) ?: Cast.speakerOf(sentence, cards)
         val name = speaker?.takeIf { it.isNotBlank() } ?: card?.names?.firstOrNull()
             ?: activeSpeaker.takeIf { it.isNotBlank() } ?: return aiVoice
-        if (!ignoreManual) {
-            // "Dandelion/Jaskier" là cùng một nhân vật: chọn giọng ở một bí danh
-            // cũng có hiệu lực cho bí danh còn lại (trừ khi đã gán riêng).
-            manualVoice(name)?.let { return it }
-            card?.names?.firstNotNullOfOrNull { alias -> manualVoice(alias) }?.let { return it }
-        }
+        if (!ignoreManual) effectiveManualVoice(name)?.let { return it }
         val desc = card?.desc.orEmpty().lowercase(java.util.Locale.ROOT)
         val requested = Regex("giọng\\s*[:=]\\s*([^;,]+)", RegexOption.IGNORE_CASE)
             .find(desc)?.groupValues?.getOrNull(1)?.trim()
