@@ -1,0 +1,23 @@
+name: DichGameiOS
+options:
+  bundleIdPrefix: com.dichgame
+settings:
+  base:
+    SWIFT_VERSION: 5.0
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+targets:
+  DichGameiOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: DichGameiOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dichgame.ios
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: "DichGame"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.0"
+        SUPPORTS_MACCATALYST: NO
