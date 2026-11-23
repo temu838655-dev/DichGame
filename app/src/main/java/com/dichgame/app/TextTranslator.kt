@@ -119,6 +119,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     fun translateFull(text: String, speaker: String?, ui: Boolean, done: (Tr) -> Unit) {
         val st = SessionStats.live
         val profile = p.profile
+        val game = PackStore.gameName(p)
         val key = (if (ui) "ui|" else "") + (speaker?.lowercase() ?: "") + "|" + OcrGuard.key(text)
         val hist = if (ui) emptyList() else history.takeLast(p.ctxCount)
         if (!ui) {
@@ -133,7 +134,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         // Gói Việt hóa do người dùng nhập có ưu tiên cao nhất; tiếp theo là bản dịch đã
         // lưu lâu dài trên máy. Khớp đúng nguồn + ngôn ngữ + người nói, không khớp mờ.
         if (p.learnTranslations) {
-            LearnedTranslations.lookup(ctx, profile, lang, speaker, ui, text)?.let { saved ->
+            LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text)?.let { saved ->
                 st.inc("dich_nho")
                 val cast = PackStore.cast(p)
                 val pace = if (ui) null else
@@ -154,7 +155,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             // Không ghi bản dịch máy dự phòng hoặc bản dịch AI bị nghi ngờ.
             val saved = p.learnTranslations && t.via == "ai" && !t.uncertain &&
                 LearnedTranslationRules.canRemember(text, t.text)
-            if (saved) LearnedTranslations.remember(ctx, profile, lang, speaker, ui, text, t.text)
+            if (saved) LearnedTranslations.remember(ctx, profile, game, lang, speaker, ui, text, t.text)
             if (t.uncertain) st.inc("dich_nghi")
             // Câu đã lưu lâu dài không giữ thêm trong cache: khi người dùng xóa bộ nhớ
             // sẽ không bị trả lại bản cũ từ cache trong cùng phiên chơi.
