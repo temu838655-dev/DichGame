@@ -261,10 +261,13 @@ class Prefs(ctx: Context) {
         val male = Regex("(?:^|[\\s,;])(?:giọng\\s*)?(?:nam|male)(?=$|[\\s,;])").containsMatchIn(desc)
         if (female && !male) return femaleAiVoice
         if (male && !female) return maleAiVoice
-        // Không suy luận nam/nữ từ tên (dễ sai). Phân bổ giọng theo tên và hồ sơ game.
-        val index = ((name.trim().lowercase(java.util.Locale.ROOT) + "|" + profile)
-            .hashCode().toLong() and 0xffffffffL) % AI_VOICES.size
-        return AI_VOICES[index.toInt()].first
+        // Không suy luận nam/nữ từ tên (dễ sai). Các nhân vật được phát hiện lần lượt
+        // nhận giọng khác nhau cho tới khi dùng hết kho giọng; danh sách lưu theo hồ sơ.
+        val order = detectedSpeakers().indexOfFirst { it.equals(name, ignoreCase = true) }
+        val index = if (order >= 0) order else
+            (((name.trim().lowercase(java.util.Locale.ROOT) + "|" + profile)
+                .hashCode().toLong() and 0xffffffffL) % AI_VOICES.size).toInt()
+        return AI_VOICES[index % AI_VOICES.size].first
     }
     var ttsModel: String
         get() = sp.getString("ttsmodel", "gemini-3.8-flash-tts").orEmpty().ifBlank { "gemini-3.8-flash-tts" }
