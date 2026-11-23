@@ -257,8 +257,10 @@ class Prefs(ctx: Context) {
             it.first.equals(requested, ignoreCase = true) ||
                 it.second.substringBefore(" · ").equals(requested, ignoreCase = true)
         }?.let { return it.first }
-        val female = Regex("(?:^|[\\s,;])(?:giọng\\s*)?(?:nữ|female)(?=$|[\\s,;])").containsMatchIn(desc)
-        val male = Regex("(?:^|[\\s,;])(?:giọng\\s*)?(?:nam|male)(?=$|[\\s,;])").containsMatchIn(desc)
+        val female = Regex("(?:^|[\\s,;])(?:giọng\\s*)?(?:nữ|female)(?=$|[\\s,;])").containsMatchIn(desc) ||
+            listOf("cô gái", "cô bé", "phụ nữ", "nữ thần", "quý bà", "con gái", "người mẹ").any { it in desc }
+        val male = Regex("(?:^|[\\s,;])(?:giọng\\s*)?(?:nam|male)(?=$|[\\s,;])").containsMatchIn(desc) ||
+            listOf("đàn ông", "cậu bé", "anh chàng", "người cha", "con trai", "quý ông").any { it in desc }
         if (female && !male) return femaleAiVoice
         if (male && !female) return maleAiVoice
         // Không suy luận nam/nữ từ tên (dễ sai). Các nhân vật được phát hiện lần lượt
