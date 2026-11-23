@@ -531,9 +531,9 @@ class WebTranslateActivity : Activity() {
     private fun langShort(): String = if (p.narrate) "Việt" else Prefs.langName(p.lang).removePrefix("Tiếng ")
 
     private fun refresh() {
-        langChip.text = when (p.mode) {
-            Prefs.MODE_VIETSUB -> "🔊 Đọc Vietsub · Việt ▾"
-            Prefs.MODE_AUTO -> "✦ AI Tự động → Việt ▾"
+        langChip.text = when {
+            p.narrate -> "🔊 Thuyết minh · Việt ▾"
+            p.aiAuto -> "✦ Dịch · AI Tự động → Việt ▾"
             else -> "🌐 ${langShort()} → Việt ▾"
         }
         if (running) {
