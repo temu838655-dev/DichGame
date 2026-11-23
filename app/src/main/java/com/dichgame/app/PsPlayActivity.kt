@@ -584,14 +584,20 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         sv.holder.addCallback(this)
 
         // Thẻ chờ kết nối đè lên hình: vòng xoay + "Đang tìm máy…" + gợi ý.
-        val title = Ui.tv(this, "Đang tìm máy…", 16f, Color.WHITE, true).apply { gravity = Gravity.CENTER }
-        val sub = Ui.tv(this, "", 12.5f, Ui.SUB).apply { gravity = Gravity.CENTER }
+        val title = Ui.tv(this, "Đang tìm máy…", 22f, Color.WHITE, true).apply { gravity = Gravity.CENTER }
+        val sub = Ui.tv(this, "", 14f, Ui.SUB).apply { gravity = Gravity.CENTER }
         statusView = title
         statusSub = sub
         val card = Ui.vbox(this).apply {
             gravity = Gravity.CENTER
-            setBackgroundColor(Color.parseColor("#E00B0F0C"))
-            setPadding(dpi(16), dpi(8), dpi(16), dpi(8))
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.parseColor("#F00B142B"), Color.parseColor("#EB0B0B16"), Color.parseColor("#E52B1030"))
+            ).apply {
+                cornerRadius = dpi(22).toFloat()
+                setStroke(dpi(1), Color.parseColor("#88F2B84B"))
+            }
+            setPadding(dpi(16), dpi(12), dpi(16), dpi(12))
             addView(Spin(this@PsPlayActivity), Ui.lp(dpi(46), dpi(46)).apply { bottomMargin = dpi(10) })
             addView(title, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
             addView(sub, Ui.lpm(this@PsPlayActivity, 4, 0))
@@ -706,7 +712,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
             else View.SYSTEM_UI_FLAG_VISIBLE
         root.land = land
-        root.setBackgroundColor(if (land) Color.BLACK else Color.parseColor("#0B0F0C"))
+        root.setBackgroundColor(if (land) Color.BLACK else Color.parseColor("#080A14"))
         vcardView?.apply {
             if (land) {
                 background = null
@@ -720,8 +726,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 outlineProvider = ViewOutlineProvider.BACKGROUND
             }
         }
-        barView?.background = if (land) Ui.bg(this, Color.parseColor("#E617120D"), 22, Color.parseColor("#44F2B84B"), 1)
-        else Ui.bg(this, Color.parseColor("#17120D"), 24, Color.parseColor("#44F2B84B"), 1)
+        barView?.background = if (land) Ui.glass(this, 22, strong = true, edge = Color.parseColor("#66F2B84B"))
+        else Ui.glass(this, 24, strong = true, edge = Color.parseColor("#66F2B84B"))
         chipHolder?.visibility = if (land) View.GONE else View.VISIBLE
         gripView?.visibility = if (land) View.GONE else View.VISIBLE
         vidFrame?.let { v -> live?.attach(v); uiTr?.attach(v) }
@@ -853,8 +859,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     /** Nút dịch đang bật = nền trắng chữ tối (như thanh mẫu); đang tắt = kính tối viền mảnh chữ trắng. */
     private fun stylePill(p: PillUi?, on: Boolean) {
         p ?: return
-        p.box.background = if (on) Ui.bg(this, Color.parseColor("#F5FFFFFF"), 22)
-        else Ui.bg(this, Color.parseColor("#CC17120D"), 22, Color.parseColor("#66FFFFFF"), 1)
+        p.box.background = if (on && p.kind == ToolIcon.Kind.BOLT) Ui.goldBg(this, 22)
+        else if (on) Ui.bg(this, Color.parseColor("#F5FFFFFF"), 22)
+        else Ui.glass(this, 22, strong = true, edge = Color.parseColor("#66FFFFFF"))
         val c = if (on) Color.parseColor("#17120D") else Color.WHITE
         p.icon.set(p.kind, c)
         p.label.setTextColor(c)
