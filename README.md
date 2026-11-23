@@ -4,6 +4,9 @@ Dịch phụ đề game và phim sang tiếng Việt ngay trên màn hình, có 
 
 - `app/` – app điện thoại Android (`com.dichgame.app`): chụp màn hình, đọc chữ (OCR), dịch, hiện bản dịch nổi.
 - `tv/` – app nhận phụ đề cho Android TV / Google TV (`com.dichgame.tv`), vẽ nổi trên hình HDMI.
+- `tv-webos/` – mã nguồn app webOS nhận phụ đề trên LG (cửa sổ trong suốt, thử nghiệm; chưa kiểm chứng phủ HDMI thật).
+- `tv-tizen/` – mã nguồn app Samsung Tizen dùng TVWindow/PiP BEHIND để hiện phụ đề phía trên nguồn HDMI (cần ký chứng chỉ theo TV).
+- `tv-web-common/` và `docs/TV_WEBOS_TIZEN.md` – bộ nhận phụ đề PIN/Wi-Fi dùng chung và hướng dẫn đóng gói IPK/WGT.
 - `keystore/` – khóa ký APK mặc định (xem mục "Khóa ký").
 - `.github/workflows/build-apk.yml` – tự build toàn bộ trên GitHub.
 
@@ -54,6 +57,12 @@ Mỗi bản dựng trên nhánh `main` có số thứ tự (`build-N`), số nà
 Mặc định APK ký bằng khóa trong `keystore/dichgame.jks` (mật khẩu `dichgame123`). Khóa này nằm công khai trong repo, chỉ hợp để dùng cá nhân.
 Muốn dùng khóa riêng: tạo 4 secrets trên GitHub (`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`), workflow sẽ tự dùng.
 Lưu ý: đổi khóa thì phải gỡ app cũ rồi cài lại.
+
+## LG webOS và Samsung Tizen (mã nguồn app TV mới, thử nghiệm)
+
+`bash tools/prepare-tv-web.sh` chuẩn bị mã nguồn cài cho hai hệ điều hành; GitHub Actions `Build experimental LG and Samsung TV receivers` đóng gói được `.ipk` **thử nghiệm** cho LG và nguồn Tizen, chưa có `.wgt` ký theo TV. Hai app dùng IP điện thoại và mã ghép 8 số ở **Phụ đề trên TV → bật trang web phụ đề**; server hỗ trợ `/tv-pair` và `/tv-poll`. Samsung dùng API TVWindow/PiP thay vì app overlay; LG thử nghiệm nền trong suốt. Cần thử trên firmware TV thật, không cam kết hiện trên mọi HDMI.
+
+**Xem [hướng dẫn triển khai LG / Samsung](docs/TV_WEBOS_TIZEN.md)**.
 
 ## Ghép TV
 
@@ -109,7 +118,7 @@ Lần đầu dùng mỗi thứ tiếng, app tải mô hình dịch nên cần m�
 
 - Gói Việt hoá nhập được từ file **.txt** (dạng của app), **.csv / .tsv** (cột câu gốc, cột câu Việt), **.json** và **.po**, hoặc ghép hai file chữ (gốc + Việt hoá: .json, .xml, .strings, .properties, .srt...), tự nhận bảng mã UTF-8, UTF-16 và Windows-1258, tối đa 24 MB mỗi file. Chỉ lấy cặp câu chữ: bản vá (mod) nhị phân sửa trong file game thì app không đọc được (xem "Áp file Việt hoá như chơi trên máy tính").
 - **TV LG (thử nghiệm)**: ghép bằng giao thức điều khiển của LG (LG Connect Apps, WebSocket cổng 3001 hoặc 3000) và gửi phụ đề thành thông báo chữ của TV, nằm đè lên cả cổng HDMI. Đã kiểm thử với TV LG giả trên máy (bắt tay WebSocket, ghép nối, gửi thông báo, báo lỗi), **chưa thử trên TV LG thật**; nếu TV báo lỗi, app hiện nguyên văn lỗi đó.
-- Chưa có app cài lên **TV LG (webOS)** và **TV Samsung (Tizen)**: app TV chỉ chạy trên Android TV / Google TV. Cài app Tizen cần chứng chỉ Samsung gắn với từng TV nên không làm sẵn gói chung được; điện thoại cũng không tự cài được. Trong app có hướng dẫn bật Developer Mode của LG và Samsung. Samsung: chiếu màn hình điện thoại hoặc dùng trang web phụ đề.
+- Đã có **mã nguồn thử nghiệm** ứng dụng cho TV LG (webOS) và Samsung (Tizen), nhưng chưa xác nhận tương thích HDMI/firmware; app Android TV là bản TV cài chính thức trong repo. Cài app Tizen cần chứng chỉ Samsung gắn với từng TV nên không làm sẵn gói chung được; điện thoại cũng không tự cài được. Trong app có hướng dẫn bật Developer Mode của LG và Samsung. Samsung: chiếu màn hình điện thoại hoặc dùng trang web phụ đề.
 - Dịch game chỉ có bản Android, không cài hay ghép từ iPhone được; iPhone xem phụ đề được bằng trang web phụ đề ở trình duyệt.
 - **Giấy phép Remote Play**: engine Chiaki-ng (`third_party/chiaki-ng`) theo **AGPL-3.0-only kèm ngoại lệ OpenSSL**. Bản APK có Remote Play vì vậy phải được phát hành theo AGPL-3.0 và giữ mã nguồn công khai; bản dựng với `-PnoNative` (dùng cho smoke test) không chứa engine này. Chưa có tệp LICENSE chung cho repo, chủ dự án cần chọn giấy phép AGPL-3.0 cho phần mã còn lại nếu muốn phát hành công khai.
 - **Lỗi văng khi vào chơi (đã sửa)**: bản vá chuyển âm thanh Remote Play sang nhận dạng giọng nói trước đây truyền sai con trỏ cho bộ mở âm thanh của Chiaki, làm hỏng bộ nhớ ngay khi luồng âm thanh bắt đầu. Bản vá (`tools/patch-chiaki-audio-pcm.py`) nay có hai hàm riêng cho cấu hình và khung âm thanh, và tự dừng build nếu đăng ký sai. Chưa thử được với PS5 thật trong môi trường dựng ở đây (smoke test trên máy giả lập dùng `-PnoNative`, không có engine); cần bạn thử lại và, nếu vẫn văng, gửi nội dung hộp thoại báo lỗi hiện ở lần mở app kế tiếp.
