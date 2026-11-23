@@ -82,6 +82,7 @@ public partial class MainWindow : Window
         preview.EndInit();
         preview.Freeze();
         ScreenshotPreview.Source = preview;
+        ImagePlaceholder.Visibility = Visibility.Collapsed;
         PhotoNote.Text = caption;
         Status.Text = "Đã có ảnh, bấm Dịch sang tiếng Việt.";
     }

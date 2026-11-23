@@ -1,5 +1,15 @@
 # Dịch game
 
+## Tải ứng dụng theo nền tảng
+
+**[Mở GitHub Releases — iOS / Windows / Android](https://github.com/temu838655-dev/DichGame/releases)**
+
+- **Android:** tải DichGame.apk hoặc DichGame-TV.apk từ bản phát hành build-N mới nhất.
+- **Windows x64:** tìm bản windows-preview-N ở mục Releases và tải DichGame.Windows.exe hoặc ZIP. Kiểm tra ghi chú release: bản đã ký có chữ ký Authenticode được xác minh; bản chưa ký có thể bị SmartScreen cảnh báo.
+- **iOS:** tìm bản ios-preview-N. File DichGame-iPhone-unsigned.ipa là IPA chưa ký, **KHÔNG thể cài trực tiếp trên iPhone thông thường**. File Simulator ZIP chỉ dành cho máy Mac/Xcode. Cài iPhone thật cần ký Apple Developer/Ad Hoc hoặc phát hành qua TestFlight.
+
+Giao diện iOS/Windows mới dùng phong cách đen–vàng. Đây là các bản **dịch ảnh thử nghiệm**, chưa có toàn bộ tính năng Android. Xem [hướng dẫn ký số và phát hành](docs/release-ios-windows.md).
+
 Dịch phụ đề game và phim sang tiếng Việt ngay trên màn hình, có thể đọc to, có thể đẩy phụ đề lên TV.
 
 - `app/` – app điện thoại Android (`com.dichgame.app`): chụp màn hình, đọc chữ (OCR), dịch, hiện bản dịch nổi.
