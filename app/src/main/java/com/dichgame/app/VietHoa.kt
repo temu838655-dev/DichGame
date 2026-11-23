@@ -456,8 +456,9 @@ Battle Hub = Battle Hub
 
     /** Gói riêng cho game này (không tính gói thể loại và gói chung). */
     fun specificFor(name: String): List<Pair<String, String>> {
-        val n = name.lowercase()
-        return (SPECIFIC + VietHoaPlus.SPECIFIC).filter { (keys, _) -> keys.any { n.contains(it) } }.flatMap { it.second }
+        return (SPECIFIC + VietHoaPlus.SPECIFIC)
+            .filter { (keys, _) -> keys.any { GamePackMatch.contains(name, it) } }
+            .flatMap { it.second }
     }
 
     /** Thẻ nhân vật có sẵn của game (các dòng "Tên = mô tả; nhịp: ..."). */
