@@ -4,7 +4,7 @@ Giao diện có **hai chế độ chính**: **Dịch** và **Thuyết minh**. Tr
 
 ## Thuyết minh (Đọc Vietsub) — phim Vietsub / game đã Việt hóa
 
-- Chọn **Đọc Vietsub** từ trang chính, Cách dịch, hoặc Cài đặt trong màn chơi Remote Play.
+- Chọn **Thuyết minh** từ trang chính, Cách dịch, hoặc Cài đặt trong màn chơi Remote Play.
 - Đưa vùng quét vào phụ đề tiếng Việt. App chỉ đọc tiếng Việt đã có bằng hệ thống TTS đang chọn, **không dịch, không gửi chữ để Gemini dịch**.
 - Nguồn CC/OCR không đủ bằng chứng là tiếng Việt hoặc rõ là tiếng nước ngoài sẽ không được đọc. Chữ quá ngắn/không dấu có thể bị bỏ qua nhằm tránh đọc sai ngôn ngữ.
 - Có thể gán giọng theo nhân vật nếu đang bật TTS Gemini và bộ nhận dạng người nói lấy được tên.
