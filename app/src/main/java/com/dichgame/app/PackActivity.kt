@@ -68,7 +68,7 @@ class PackActivity : Activity() {
                 editDialog("Từ điển · ${p.profile}", "Mỗi dòng một từ: gốc = tiếng Việt", "Ví dụ:\nBonfire = Lửa trại\nTarnished = Kẻ Hoen Ố", p.glossary) { p.glossary = it }
             })
             m.addView(Ui.button(this@PackActivity, "Sửa thẻ nhân vật") {
-                editDialog("Thẻ nhân vật · ${p.profile}", "Tên = mô tả giọng, xưng hô; nhịp: chậm", "Ví dụ:\nGeralt = trầm, ít lời, hay mỉa mai; xưng \"tôi\"; nhịp: chậm\nCiri = trẻ, bộc trực; gọi Geralt thân mật; nhịp: nhanh", p.cast) { p.cast = it }
+                editDialog("Thẻ nhân vật · ${p.profile}", "Tên = nam/nữ; giọng: tên Việt; nhịp: chậm/vừa/nhanh", "Ví dụ:\nJason = nam; giọng: Hùng; ít lời; nhịp: chậm\nLucia = nữ; giọng: Mai; bộc trực; nhịp: nhanh\nBạn có thể bỏ \"giọng: ...\" để app tự dùng giọng nam/nữ trong Cài đặt.", p.cast) { p.cast = it }
             }, Ui.lpm(this@PackActivity, 8, 0))
             if (lines > 0) m.addView(Ui.button(this@PackActivity, "Xóa $lines câu thoại đã nhập") {
                 AlertDialog.Builder(this@PackActivity, R.style.DgDialog)
@@ -77,6 +77,41 @@ class PackActivity : Activity() {
                     .setNegativeButton("Hủy", null).show()
             }, Ui.lpm(this@PackActivity, 8, 0))
             put(m, 0, 12)
+
+            // Tự nhận diện người nói từ phụ đề và gán giọng cho từng nhân vật.
+            val v = Ui.card(this@PackActivity)
+            val detected = p.detectedSpeakers()
+            val known = (detected + PackStore.cast(p).flatMap { it.names })
+                .distinctBy { it.trim().lowercase() }.take(120)
+            v.addView(Ui.section(this@PackActivity, "🎙", "Giọng từng nhân vật"))
+            v.addView(Ui.switchRow(this@PackActivity, "Tự gán giọng theo nhân vật",
+                "Khi nhận diện tên người nói từ phụ đề, app tự giữ một giọng ổn định. Có thể đổi từng giọng bên dưới.",
+                p.characterVoices) { enabled -> p.characterVoices = enabled; render() })
+            v.addView(Ui.navRow(this@PackActivity, null,
+                "Nhân vật đang nói khi game không hiện tên",
+                p.activeSpeaker.ifBlank { "Chưa chọn · đọc giọng mặc định" }) {
+                pickActiveSpeaker(known)
+            })
+            v.addView(Ui.tv(this@PackActivity,
+                "Đã nhận diện ${detected.size} nhân vật trong hồ sơ này. Chỉ nhận diện chắc chắn khi game có nhãn tên; " +
+                    "chưa nhận diện được người nói sẽ dùng giọng mặc định. Giọng tự động không suy đoán giới tính theo tên.",
+                12.5f, Ui.SUB), Ui.lpm(this@PackActivity, 8, 10))
+            for (name in known.take(25)) {
+                val voice = Prefs.aiVoiceLabel(p.aiVoiceFor(name, ""))
+                val status = if (p.manualVoice(name) != null) "Đã chọn tay" else "Tự động"
+                v.addView(Ui.navRow(this@PackActivity, null, name, "$voice · $status") { pickCharacterVoice(name) })
+            }
+            if (known.size > 25) v.addView(Ui.button(this@PackActivity,
+                "Xem và chọn giọng cho tất cả ${known.size} nhân vật") {
+                AlertDialog.Builder(this@PackActivity, R.style.DgDialog)
+                    .setTitle("Nhân vật trong ${p.profile}")
+                    .setItems(known.toTypedArray()) { _, index -> pickCharacterVoice(known[index]) }
+                    .setNegativeButton("Đóng", null).show()
+            }, Ui.lpm(this@PackActivity, 8, 0))
+            v.addView(Ui.button(this@PackActivity, "＋  Thêm nhân vật và chọn giọng") {
+                addCharacterVoice()
+            }, Ui.lpm(this@PackActivity, 10, 0))
+            put(v, 0, 12)
 
             // Nhập, xuất
             val i = Ui.card(this@PackActivity)
@@ -113,6 +148,51 @@ class PackActivity : Activity() {
             t.addView(Ui.tv(this@PackActivity, NguonVietHoa.SAFETY, 11.5f, Ui.SUB), Ui.lpm(this@PackActivity, 10, 0))
             put(t, 0, 0)
         }
+    }
+
+    private fun pickActiveSpeaker(names: List<String>) {
+        val options = (listOf("Không chọn nhân vật") + names).toTypedArray()
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Người đang nói (không có nhãn)")
+            .setItems(options) { _, index ->
+                p.activeSpeaker = if (index == 0) "" else names[index - 1]
+                render()
+            }
+            .setNegativeButton("Hủy", null).show()
+    }
+
+    private fun pickCharacterVoice(name: String) {
+        val automatic = Prefs.aiVoiceLabel(p.automaticAiVoiceFor(name, ""))
+        val labels = (listOf("Tự động · $automatic") + Prefs.AI_VOICES.map { it.second }).toTypedArray()
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Giọng nhân vật: $name")
+            .setItems(labels) { _, index ->
+                p.setManualVoice(name, if (index == 0) null else Prefs.AI_VOICES[index - 1].first)
+                render()
+            }
+            .setNegativeButton("Hủy", null).show()
+    }
+
+    private fun addCharacterVoice() {
+        val edit = Ui.field(this, "Tên nhân vật như trong phụ đề", "")
+        val box = Ui.vbox(this).apply {
+            val n = Ui.dp(this@PackActivity, 20)
+            setPadding(n, n / 2, n, 0)
+            addView(edit)
+        }
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Thêm người nói thủ công")
+            .setView(box)
+            .setPositiveButton("Tiếp tục") { _, _ ->
+                val name = edit.text.toString().trim()
+                if (name.length !in 2..40 || name.count { it.isLetter() } < 2) {
+                    Toast.makeText(this, "Tên nhân vật không hợp lệ.", Toast.LENGTH_SHORT).show()
+                } else {
+                    p.rememberSpeaker(name)
+                    pickCharacterVoice(name)
+                }
+            }
+            .setNegativeButton("Hủy", null).show()
     }
 
     private fun editDialog(title: String, hint: String, example: String, value: String, save: (String) -> Unit) {

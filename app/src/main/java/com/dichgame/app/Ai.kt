@@ -83,16 +83,24 @@ object Ai {
 
     /** Gọi Gemini; hết lượt (429) thì tự đổi sang khóa dự phòng kế tiếp (nếu có) rồi thử lại. */
     private fun geminiPost(p: Prefs, url: String, body: JSONObject): String {
-        var left = maxOf(1, p.geminiKeys().size)
-        while (true) {
+        // Chụp danh sách và vị trí bắt đầu một lần: các luồng OCR/TTS/dịch song song
+        // không được khiến câu này thử trùng một khóa rồi bỏ sót khóa khác.
+        val keys = p.geminiKeys()
+        if (keys.isEmpty()) throw AiException(401, "Chưa cấu hình khóa Gemini")
+        val start = Prefs.geminiAt.mod(keys.size)
+        for (step in keys.indices) {
+            val index = (start + step) % keys.size
             try {
-                return post(url, body, mapOf("x-goog-api-key" to p.geminiActive()))
+                val response = post(url, body, mapOf("x-goog-api-key" to keys[index]))
+                Prefs.geminiAt = index
+                return response
             } catch (e: AiException) {
-                left--
-                if (e.code == 429 && left > 0 && p.geminiRotate()) continue
-                throw e
+                // 429 hết hạn mức; 401/403 có thể do chỉ một khóa sai hoặc bị vô hiệu.
+                if (e.code !in setOf(401, 403, 429) || step == keys.lastIndex) throw e
+                Prefs.geminiAt = (index + 1) % keys.size
             }
         }
+        throw AiException(429, "Đã thử hết các khóa Gemini")
     }
 
     /** Tắt bộ lọc nội dung của Gemini: lời thoại game hay có cảnh đánh nhau, chửi thề... mà bị chặn thì câu đó rơi sang dịch máy. */

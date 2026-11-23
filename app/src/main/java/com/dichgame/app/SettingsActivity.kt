@@ -151,9 +151,30 @@ class SettingsActivity : Activity() {
             "offline" -> c.row(offlineBlock(), 4, 2)
             "ai" -> {
                 c.addView(Ui.dropRow(a, "Giọng Gemini",
-                    { Prefs.AI_VOICES.firstOrNull { it.first == p.aiVoice }?.let { "${it.first} · ${it.second}" } ?: p.aiVoice },
-                    { Prefs.AI_VOICES.map { "${it.first} · ${it.second}" } }
+                    { Prefs.aiVoiceLabel(p.aiVoice) },
+                    { Prefs.AI_VOICES.map { it.second } }
                 ) { i -> p.aiVoice = Prefs.AI_VOICES[i].first })
+                c.divide()
+                c.row(Ui.switchRow(a, "Giọng riêng cho nhân vật",
+                    "Tự chọn giọng nam/nữ theo thẻ nhân vật, hoặc gán riêng một tên giọng.", p.characterVoices) {
+                    p.characterVoices = it
+                    render()
+                }, 6, 6)
+                if (p.characterVoices) {
+                    c.addView(Ui.dropRow(a, "Giọng nam",
+                        { Prefs.aiVoiceLabel(p.maleAiVoice) },
+                        { Prefs.AI_VOICES.map { it.second } }
+                    ) { i -> p.maleAiVoice = Prefs.AI_VOICES[i].first })
+                    c.addView(Ui.dropRow(a, "Giọng nữ",
+                        { Prefs.aiVoiceLabel(p.femaleAiVoice) },
+                        { Prefs.AI_VOICES.map { it.second } }
+                    ) { i -> p.femaleAiVoice = Prefs.AI_VOICES[i].first })
+                    c.row(Ui.navRow(a, null, "Danh sách nhân vật và gán giọng",
+                        "${p.detectedSpeakers().size} nhân vật đã nhận diện · chọn giọng thủ công") {
+                        startActivity(Intent(a, PackActivity::class.java))
+                    }, 6, 6)
+                    c.row(note("Có thể thêm nhân vật thủ công. App tự chọn giọng ổn định khi phát hiện tên người nói; không đoán giới tính chỉ từ tên."), 6, 6)
+                }
                 c.divide()
                 val n = p.geminiKeys().size
                 c.row(Ui.navRow(a, null, "Khóa Gemini",
@@ -180,7 +201,7 @@ class SettingsActivity : Activity() {
                     }.start()
                 }, 4, 4)
                 c.addView(st)
-                c.row(note("Giọng Gemini tự lùi về giọng của máy khi mất mạng hoặc hết lượt. Mỗi câu đọc tốn một lượt gọi Gemini."), 6, 0)
+                c.row(note("Gemini thử các khóa còn lại khi hết lượt hoặc khóa lỗi; chỉ dùng giọng máy nếu mọi khóa đều thất bại. Mỗi câu đọc tốn lượt gọi Gemini."), 6, 0)
             }
             else -> c.addView(Ui.dropRow(a, "Chọn giọng",
                 { p.voice.ifEmpty { "Mặc định" } },

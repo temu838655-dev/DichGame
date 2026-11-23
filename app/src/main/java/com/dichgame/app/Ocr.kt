@@ -74,8 +74,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
             }
             return
         }
-        val key = p.geminiActive()
-        if (key.isEmpty()) {
+        if (p.geminiKeys().isEmpty()) {
             recycleInput(bmp)
             fail("Chữ ${Prefs.srcNameOf(lang)} cần khóa Google Gemini. Vào Cách dịch để nhập khóa.")
             return
@@ -84,7 +83,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
         try {
             io.execute {
                 try {
-                    val blocks = cloudRead(bmp, key, model)
+                    val blocks = cloudRead(bmp, p, model)
                     recycleInput(bmp)
                     main.post { ok(blocks) }
                 } catch (e: Exception) {
@@ -104,7 +103,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
         if (isCloud) io.shutdown()
     }
 
-    private fun cloudRead(bmp: Bitmap, key: String, model: String): List<Blk> {
+    private fun cloudRead(bmp: Bitmap, prefs: Prefs, model: String): List<Blk> {
         val sc = minOf(1f, 1280f / maxOf(bmp.width, bmp.height))
         val small = if (sc < 1f)
             Bitmap.createScaledBitmap(bmp, (bmp.width * sc).toInt().coerceAtLeast(1), (bmp.height * sc).toInt().coerceAtLeast(1), true)
@@ -131,11 +130,26 @@ class Ocr(private val p: Prefs, private val lang: String) {
         val body = JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("parts", parts)))
             .put("generationConfig", JSONObject().put("responseMimeType", "application/json").put("temperature", 0))
-        val r = Ai.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent",
-            body, mapOf("x-goog-api-key" to key)
-        )
-        val txt = JSONObject(r).getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
+        val keys = prefs.geminiKeys()
+        if (keys.isEmpty()) throw AiException(401, "Chưa cấu hình khóa Gemini")
+        val start = Prefs.geminiAt.mod(keys.size)
+        var r: String? = null
+        for (step in keys.indices) {
+            val index = (start + step) % keys.size
+            try {
+                r = Ai.post(
+                    "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent",
+                    body, mapOf("x-goog-api-key" to keys[index])
+                )
+                Prefs.geminiAt = index
+                break
+            } catch (e: AiException) {
+                if (e.code !in setOf(401, 403, 429) || step == keys.lastIndex) throw e
+                Prefs.geminiAt = (index + 1) % keys.size
+            }
+        }
+        val response = r ?: throw AiException(429, "Không còn khóa Gemini OCR dùng được")
+        val txt = JSONObject(response).getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
             .getJSONArray("parts").getJSONObject(0).getString("text")
         return parse(txt, bmp.width, bmp.height)
     }

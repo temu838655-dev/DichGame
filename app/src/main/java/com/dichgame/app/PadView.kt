@@ -3,6 +3,9 @@ package com.dichgame.app
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -22,13 +25,21 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
     private val gold = Color.parseColor("#F2B84B")
     private val fill = Color.parseColor("#26201A")
     private val fillDown = Color.parseColor("#6B4F1D")
-    private val back = Color.parseColor("#14100C")
+    private val back = Color.parseColor("#090A15")
+    private val neonBlue = Color.parseColor("#22ABFF")
+    private val neonPurple = Color.parseColor("#CE48FF")
+    private val neonPink = Color.parseColor("#FF4D83")
 
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = gold; strokeWidth = 3f }
     private val soft = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.parseColor("#66F2B84B"); strokeWidth = 2f }
     private val fillP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = gold; textAlign = Paint.Align.CENTER; isFakeBoldText = true }
     private val sym = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = gold; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+    // Shader được tạo khi kích thước đổi, không tạo đối tượng mới mỗi khung hình cảm ứng.
+    private val bgGradient = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val leftHalo = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rightHalo = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val psHalo = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private class Box(val key: String, val r: RectF)
     private class Round(val key: String, var cx: Float, var cy: Float, var rad: Float)
@@ -63,7 +74,24 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
         super.onSizeChanged(w, h, ow, oh)
         boxes.clear(); rounds.clear()
-        if (w > h * 1.25f) layoutLandscape(w.toFloat(), h.toFloat()) else layoutPortrait(w.toFloat(), h.toFloat())
+        val portrait = w <= h * 1.25f
+        if (!portrait) layoutLandscape(w.toFloat(), h.toFloat()) else layoutPortrait(w.toFloat(), h.toFloat())
+        if (portrait && w > 0 && h > 0) {
+            bgGradient.shader = LinearGradient(0f, 0f, w.toFloat(), h.toFloat(),
+                intArrayOf(Color.parseColor("#171328"), Color.parseColor("#090B17"), Color.parseColor("#160E21")),
+                null, Shader.TileMode.CLAMP)
+            psHalo.shader = rounds.firstOrNull { it.key == "PS" }?.let { r ->
+                RadialGradient(r.cx, r.cy, r.rad * 1.9f,
+                    intArrayOf(Color.parseColor("#66F6A637"), Color.parseColor("#00F6A637")),
+                    null, Shader.TileMode.CLAMP)
+            }
+            fun halo(cx: Float, cy: Float, radius: Float, color: Int): RadialGradient =
+                RadialGradient(cx, cy, radius * 1.5f,
+                    intArrayOf(Color.argb(90, Color.red(color), Color.green(color), Color.blue(color)), Color.TRANSPARENT),
+                    null, Shader.TileMode.CLAMP)
+            leftHalo.shader = halo(lsCx, lsCy, lsR, neonBlue)
+            rightHalo.shader = halo(rsCx, rsCy, rsR, neonPurple)
+        }
         stroke.strokeWidth = (min(w, h) / 200f).coerceAtLeast(2f)
         soft.strokeWidth = stroke.strokeWidth * 0.7f
         sym.strokeWidth = stroke.strokeWidth * 1.3f
@@ -119,7 +147,12 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
     // ---------------- Vẽ ----------------
 
     override fun onDraw(c: Canvas) {
-        c.drawColor(if (width > height * 1.25f) Color.TRANSPARENT else back)
+        val portrait = width <= height * 1.25f
+        if (portrait) {
+            // Sắc kính đen pha xanh/tím như bảng tay cầm mẫu; ngang luôn trong suốt để không che game.
+            c.drawColor(back)
+            c.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgGradient)
+        }
         for (b in boxes) {
             val on = b.key in pressed
             fillP.color = if (on) fillDown else fill
@@ -137,10 +170,20 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
 
     private fun drawRound(c: Canvas, r: Round) {
         val on = r.key in pressed
+        if (r.key == "PS" && width <= height * 1.25f) {
+            c.drawCircle(r.cx, r.cy, r.rad * 1.9f, psHalo)
+        }
         fillP.color = if (r.key == "PS") (if (on) Color.parseColor("#FFD28A") else gold) else if (on) fillDown else fill
         c.drawCircle(r.cx, r.cy, r.rad, fillP)
         c.drawCircle(r.cx, r.cy, r.rad, if (r.key == "PS") soft else stroke)
         val s = r.rad * 0.42f
+        sym.color = when (r.key) {
+            "TRI" -> neonBlue
+            "SQU" -> neonPurple
+            "CIR" -> neonPink
+            "CRO" -> neonBlue
+            else -> gold
+        }
         when (r.key) {
             "TRI" -> { val p = Path(); p.moveTo(r.cx, r.cy - s * 1.1f); p.lineTo(r.cx + s * 1.05f, r.cy + s * 0.8f); p.lineTo(r.cx - s * 1.05f, r.cy + s * 0.8f); p.close(); c.drawPath(p, sym) }
             "SQU" -> c.drawRect(r.cx - s, r.cy - s, r.cx + s, r.cy + s, sym)
@@ -161,6 +204,7 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
             "TP" -> { for (i in -1..1) for (j in -1..1) c.drawCircle(r.cx + i * s * 0.75f, r.cy + j * s * 0.75f, s * 0.14f, sym) }
             "OPT" -> { for (j in -1..1) c.drawLine(r.cx - s, r.cy + j * s * 0.7f, r.cx + s, r.cy + j * s * 0.7f, sym) }
         }
+        sym.color = gold
     }
 
     private fun drawDpad(c: Canvas) {
@@ -193,6 +237,9 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
     }
 
     private fun drawStick(c: Canvas, cx: Float, cy: Float, r: Float, nx: Float, ny: Float, on: Boolean) {
+        if (width <= height * 1.25f) {
+            c.drawCircle(cx, cy, r * 1.5f, if (cx < width / 2f) leftHalo else rightHalo)
+        }
         fillP.color = Color.parseColor("#1B1611")
         c.drawCircle(cx, cy, r, fillP)
         c.drawCircle(cx, cy, r, soft)

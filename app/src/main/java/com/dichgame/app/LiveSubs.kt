@@ -213,7 +213,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             if (speak) {
                 speaker = Speaker(act, pr).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() } }
             }
-            speakers = SpeakerBook(PackStore.cast(pr).map { it.name })
+            speakers = SpeakerBook(PackStore.cast(pr).map { it.name } + pr.detectedSpeakers())
             if (narrate) {
                 // không cần mô hình dịch: sẵn sàng ngay, câu đọc được đi thẳng tới phần hiển thị và đọc to
                 tt = null
@@ -459,6 +459,9 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (sig != cand) { cand = sig; stable = 1 } else stable++
         if (stable < requiredStable(utts)) { finishBusy(); return }
         last = sig
+        // Chỉ nhớ người nói khi OCR đã ổn định; không lưu tên chưa được xác nhận.
+        val prefs = Prefs(act)
+        for (u in utts) if (!u.nameLike && !u.speaker.isNullOrBlank()) prefs.rememberSpeaker(u.speaker!!)
         stats.inc("ocr_cau", utts.size.toLong())
         Log.i(TAG, "doc: " + utts.joinToString(" | ") { (it.speaker?.let { n -> "$n: " } ?: "") + it.text })
         if (Prefs(act).autoLang && !narrate) {
@@ -677,8 +680,10 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         else cards.joinToString("\n") { (it.speaker?.let { n -> "$n: " } ?: "") + it.tr.text }
         sendTv("sub", tvText, tvSpeaks)
         val d = cards.lastOrNull()?.tr?.delivery
-        if (speak && tvVoiceOn()) tvVoice(vi, d)
-        if (speak && ready && !tvSpeakOn()) speaker?.speak(vi, false, d)
+        val speakerName = cards.lastOrNull()?.speaker
+        val scene = cards.map { VoiceLine(it.tr.text, it.speaker, it.tr.delivery) }
+        if (speak && tvVoiceOn()) tvVoice(vi, d, speakerName, scene)
+        if (speak && ready && !tvSpeakOn()) speaker?.speakScene(scene)
         prevVi = vi
     }
 
@@ -695,9 +700,9 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         return tvSpeakOn() && ((pr.voiceEngine == "offline" && Voices.installed(act, pr.offlineVoice)) || pr.aiVoiceOn)
     }
 
-    private fun tvVoice(text: String, d: Delivery? = null) {
+    private fun tvVoice(text: String, d: Delivery? = null, speakerName: String? = null, scene: List<VoiceLine>? = null) {
         val sp = speaker ?: return
-        sp.synthForTv(text, d) { pcm, speed ->
+        val sendAudio: (Pcm?, Float) -> Unit = { pcm, speed ->
             val pf = act.getSharedPreferences("dg", Context.MODE_PRIVATE)
             val err = if (pcm == null) "giọng đọc lỗi" else TvLink.postAudio(pf.getString("tvip", "").orEmpty(), pf.getString("tvtoken", "").orEmpty(), pcm, speed)
             if (err != null) {
@@ -708,6 +713,8 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
                 }
             }
         }
+        if (scene != null) sp.synthForTvScene(scene, sendAudio)
+        else sp.synthForTv(text, d, speakerName, sendAudio)
     }
 
     private fun sendTv(kind: String, text: String, speakIt: Boolean = false, force: Boolean = false) {

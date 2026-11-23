@@ -244,7 +244,7 @@ class CaptureService : Service() {
 
         val tr = TextTranslator(this, Prefs(this), lang)
         tt = tr
-        speakers = SpeakerBook(PackStore.cast(Prefs(this)).map { it.name })
+        speakers = SpeakerBook((PackStore.cast(Prefs(this)).map { it.name } + Prefs(this).detectedSpeakers()))
         // dựng sẵn bộ nhớ câu Việt hoá (có thể hàng chục nghìn câu nhập từ file) ở nền để câu đầu tiên không bị khựng
         val warmPrefs = Prefs(this)
         Thread { try { PackStore.memory(applicationContext, warmPrefs).warm() } catch (_: Throwable) {} }.start()
@@ -711,12 +711,18 @@ class CaptureService : Service() {
         if (sig != cand) { cand = sig; stable = 1 } else stable++
         if (stable < requiredStable(utts)) { finishBusy(); return }
         last = sig
+        // Chỉ nhớ người nói khi OCR đã ổn định; không lưu tên chưa được xác nhận.
+        val prefs = Prefs(this)
+        for (u in utts) if (!u.nameLike && !u.speaker.isNullOrBlank()) prefs.rememberSpeaker(u.speaker!!)
         stats.inc("ocr_cau", utts.size.toLong())
         if (narrate) {
             // Không đọc nhãn tên đứng riêng khi đã có câu thoại thực sự trong khung.
             val spoken = utts.filter { !it.nameLike }.ifEmpty { utts }
-            val text = spoken.joinToString(sep) { it.text.replace("\n", sep) }
-            showCards(listOf(Card(null, "", TextTranslator.Tr(text, null, false, "doc"), false)), Src.OCR)
+            val cards = spoken.map { u ->
+                val phrase = u.text.replace("\n", sep)
+                Card(u.speaker, "", TextTranslator.Tr(phrase, null, false, "doc"), false)
+            }
+            showCards(cards, Src.OCR)
             finishBusy()
             return
         }
@@ -895,9 +901,9 @@ class CaptureService : Service() {
 
     private var tvVoiceWarned = false
 
-    private fun tvVoice(text: String, d: Delivery? = null) {
+    private fun tvVoice(text: String, d: Delivery? = null, speakerName: String? = null, scene: List<VoiceLine>? = null) {
         val sp = speaker ?: return
-        sp.synthForTv(text, d) { pcm, speed ->
+        val sendAudio: (Pcm?, Float) -> Unit = { pcm, speed ->
             val pf = getSharedPreferences("dg", MODE_PRIVATE)
             val err = if (pcm == null) "giọng đọc lỗi" else TvLink.postAudio(pf.getString("tvip", "").orEmpty(), pf.getString("tvtoken", "").orEmpty(), pcm, speed)
             if (err != null) {
@@ -909,6 +915,8 @@ class CaptureService : Service() {
                 }
             }
         }
+        if (scene != null) sp.synthForTvScene(scene, sendAudio)
+        else sp.synthForTv(text, d, speakerName, sendAudio)
     }
 
     /** Gửi phụ đề lên app Dịch game TV (nếu đã ghép). kind: sub | region | clear. */
@@ -983,8 +991,10 @@ class CaptureService : Service() {
         else cards.joinToString("\n") { (it.speaker?.let { n -> "$n: " } ?: "") + it.tr.text }
         sendTv("sub", tvText, tvSpeaks)
         val d = cards.lastOrNull()?.tr?.delivery
-        if (speak && tvVoiceOn()) tvVoice(vi, d)
-        if (speak && ready && !editing && !tvSpeakOn()) speaker?.speak(vi, false, d)
+        val speakerName = cards.lastOrNull()?.speaker
+        val scene = cards.map { VoiceLine(it.tr.text, it.speaker, it.tr.delivery) }
+        if (speak && tvVoiceOn()) tvVoice(vi, d, speakerName, scene)
+        if (speak && ready && !editing && !tvSpeakOn()) speaker?.speakScene(scene)
         prevVi = vi; prevOrig = cards.joinToString(" ") { it.orig }; autoShown = false
     }
 
