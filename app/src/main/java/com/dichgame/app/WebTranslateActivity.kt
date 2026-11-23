@@ -195,6 +195,7 @@ class WebTranslateActivity : Activity() {
     private var ocrFor = ""
     private val languageIdentifier by lazy { LanguageIdentification.getClient() }
     private var detectedLang = "en"
+    private val languageRouter = SubtitleLanguageRouter()
     private var translatorLang = ""
     private var preparingLang = ""
     private var prepareGeneration = 0
@@ -729,20 +730,20 @@ class WebTranslateActivity : Activity() {
         val id = ++seq
         Log.i(TAG, "src: " + text)
         val guess = LangDetect.guess(text)
-        if (guess != null && guess.script != 'L' && guess.lang in Prefs.LANGS.map { it.first }) {
-            processKnown(text, guess.lang, id)
+        if (guess != null && guess.script != 'L') {
+            processKnown(text, languageRouter.resolve(text, null, guess), id)
             return
         }
         // Bộ nhận dạng ML Kit phân biệt cả các ngôn ngữ dùng chữ Latin (kể cả tiếng Việt).
         languageIdentifier.identifyLanguage(text)
             .addOnSuccessListener { raw ->
-                val code = raw.substringBefore('-').lowercase(java.util.Locale.ROOT)
-                val fallback = guess?.lang?.takeIf { it in Prefs.LANGS.map { pair -> pair.first } } ?: detectedLang
-                val lang = if (code in Prefs.LANGS.map { it.first }) code else fallback
+                if (!running || id != seq) return@addOnSuccessListener
+                val lang = languageRouter.resolve(text, raw, guess)
                 processKnown(text, lang, id)
             }
             .addOnFailureListener {
-                processKnown(text, guess?.lang?.takeIf { it in Prefs.LANGS.map { pair -> pair.first } } ?: detectedLang, id)
+                if (!running || id != seq) return@addOnFailureListener
+                processKnown(text, languageRouter.resolve(text, null, guess), id)
             }
     }
 
