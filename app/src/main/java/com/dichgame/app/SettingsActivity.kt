@@ -169,7 +169,11 @@ class SettingsActivity : Activity() {
                         { Prefs.aiVoiceLabel(p.femaleAiVoice) },
                         { Prefs.AI_VOICES.map { it.second } }
                     ) { i -> p.femaleAiVoice = Prefs.AI_VOICES[i].first })
-                    c.row(note("Ví dụ thẻ nhân vật: Lucia = nữ; giọng: Mai hoặc Jason = nam; giọng: Hùng. Tên Việt chỉ là nhãn, không thay mã Gemini."), 6, 6)
+                    c.row(Ui.navRow(a, null, "Danh sách nhân vật và gán giọng",
+                        "${p.detectedSpeakers().size} nhân vật đã nhận diện · chọn giọng thủ công") {
+                        startActivity(Intent(a, PackActivity::class.java))
+                    }, 6, 6)
+                    c.row(note("Có thể thêm nhân vật thủ công. App tự chọn giọng ổn định khi phát hiện tên người nói; không đoán giới tính chỉ từ tên."), 6, 6)
                 }
                 c.divide()
                 val n = p.geminiKeys().size
