@@ -235,7 +235,7 @@ class MainActivity : Activity() {
             }
             c.addView(lang)
         } else {
-            c.addView(Ui.tv(this, "Đọc Vietsub: chỉ đọc phụ đề tiếng Việt đã có, không dịch.", 13.5f, Ui.SUB).apply { setPadding(0, Ui.dp(this@MainActivity, 8), 0, Ui.dp(this@MainActivity, 4)) })
+            c.addView(Ui.tv(this, "Thuyết minh: chỉ đọc phụ đề tiếng Việt đã có, không dịch.", 13.5f, Ui.SUB).apply { setPadding(0, Ui.dp(this@MainActivity, 8), 0, Ui.dp(this@MainActivity, 4)) })
         }
         if (!narrate) c.addView(Ui.switchRow(this, "✦ AI Tự động",
             "Ưu tiên Việt hóa → bộ nhớ game → Gemini, tự chuyển khóa dự phòng.", p.aiAuto) { enabled ->
