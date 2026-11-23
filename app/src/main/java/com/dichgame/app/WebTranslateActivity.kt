@@ -884,8 +884,9 @@ class WebTranslateActivity : Activity() {
             col.addView(row)
         }
         item("Chữ hiện dần", "Chỉ bật khi phụ đề hiện ra từng chữ", p.slow) { p.slow = !p.slow; lastCand = "" }
-        item("Đọc Vietsub", "Chỉ đọc phụ đề tiếng Việt có sẵn, không dịch", p.narrate) { toggleNarrate() }
-        item("✦ AI Tự động", "Ưu tiên bản Việt hóa, bộ nhớ game và Gemini tự xoay khóa", p.aiAuto) { toggleAutoMode() }
+        item("Thuyết minh", "Chỉ đọc phụ đề tiếng Việt có sẵn, không dịch", p.narrate) { toggleNarrate() }
+        if (!p.narrate) item("✦ AI Tự động (tùy chọn Dịch)",
+            "Ưu tiên Việt hóa, bộ nhớ game và Gemini tự đổi khóa", p.aiAuto) { toggleAutoMode() }
         item("Ẩn phụ đề gốc trên video", if (source == "ocr") "Che khung bằng nền tối khi quét OCR" else null, hideOrig) {
             hideOrig = !hideOrig
             sp.edit().putBoolean("hide", hideOrig).apply()
@@ -909,7 +910,7 @@ class WebTranslateActivity : Activity() {
     private fun toggleAutoMode() {
         val was = running
         if (was) pause()
-        p.mode = if (p.aiAuto) Prefs.MODE_TRANSLATE else Prefs.MODE_AUTO
+        p.aiAuto = !p.aiAuto
         ocr?.close(); ocr = null
         translator?.close(); translator = null
         lastThumb = null
