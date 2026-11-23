@@ -116,13 +116,14 @@ object LearnedTranslations {
 
     fun lookup(ctx: Context, profile: String, game: String, lang: String, speaker: String?,
                ui: Boolean, source: String): Entry? = synchronized(lock) {
+        if (game.isBlank()) return@synchronized null
         data(ctx, profile)[LearnedTranslationRules.key(game, lang, speaker, ui, source)]
     }
 
     /** Ghi một câu AI đã được TranslationGuard đánh giá OK, không ghi đè bản sửa tay. */
     fun remember(ctx: Context, profile: String, game: String, lang: String, speaker: String?,
                  ui: Boolean, source: String, vi: String) {
-        if (!LearnedTranslationRules.canRemember(source, vi)) return
+        if (game.isBlank() || !LearnedTranslationRules.canRemember(source, vi)) return
         synchronized(lock) {
             val key = LearnedTranslationRules.key(game, lang, speaker, ui, source)
             val map = data(ctx, profile)
