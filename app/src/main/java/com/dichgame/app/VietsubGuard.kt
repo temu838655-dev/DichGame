@@ -20,6 +20,9 @@ object VietsubGuard {
         "xin", "chào", "cảm", "ơn", "lỗi", "giúp", "về", "nhà", "người", "nói"
     )
     private val word = Regex("[\\p{L}]+")
+    private val noAccentWords = setOf("toi", "ban", "khong", "chung", "minh", "nha",
+        "roi", "sao", "chao", "cam", "on", "nhieu", "mot", "nhung", "noi", "can",
+        "phai", "hieu", "biet", "nay", "day", "duoc", "muon", "nguoi", "bao")
     // Các chữ mang dấu/chữ cái đặc trưng của tiếng Việt. Không tính dấu câu hay chữ Latin thường.
     private val viDiacritics = "ăâđêôơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ"
 
@@ -32,12 +35,13 @@ object VietsubGuard {
         val low = text.lowercase(Locale.ROOT)
         val tokens = word.findAll(low).map { it.value }.toList()
         val count = tokens.count { it in vietnameseWords }
+        val noAccentCount = tokens.count { it in noAccentWords }
         val accents = low.count { it in viDiacritics }
         return when {
             accents >= 2 && count >= 1 -> true
             accents >= 1 && count >= 1 -> true
             // Phụ đề viết không dấu vẫn có thể đọc, nhưng phải đủ tín hiệu để tránh đọc tiếng Anh.
-            accents == 0 && count >= 3 && count * 2 >= tokens.size -> true
+            accents == 0 && (count + noAccentCount) >= 3 && (count + noAccentCount) * 3 >= tokens.size -> true
             else -> false
         }
     }
