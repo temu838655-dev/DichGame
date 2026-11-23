@@ -677,6 +677,8 @@ class CaptureService : Service() {
         }
         // chỉ có tên, chưa có lời thoại: thường là thẻ tên hiện trước khi chữ chạy ra, đợi thêm để khỏi nháy
         if (utts.all { it.nameLike }) need = maxOf(need, 3)
+        // Thuyết minh đọc trực tiếp OCR, không có bước kiểm tra bản dịch: cần ít nhất hai khung hình ổn định.
+        if (narrate) need = maxOf(need, 2)
         return need
     }
 
@@ -711,7 +713,9 @@ class CaptureService : Service() {
         last = sig
         stats.inc("ocr_cau", utts.size.toLong())
         if (narrate) {
-            val text = utts.joinToString(sep) { it.text.replace("\n", sep) }
+            // Không đọc nhãn tên đứng riêng khi đã có câu thoại thực sự trong khung.
+            val spoken = utts.filter { !it.nameLike }.ifEmpty { utts }
+            val text = spoken.joinToString(sep) { it.text.replace("\n", sep) }
             showCards(listOf(Card(null, "", TextTranslator.Tr(text, null, false, "doc"), false)), Src.OCR)
             finishBusy()
             return
