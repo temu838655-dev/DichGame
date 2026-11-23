@@ -86,7 +86,7 @@ class PackActivity : Activity() {
             put(m, 0, 12)
 
             // Bộ nhớ dịch AI lưu trên thiết bị theo hồ sơ, tách khỏi gói Việt hóa nhập tay.
-            val learned = LearnedTranslations.count(this@PackActivity, p.profile)
+            val learned = LearnedTranslations.count(this@PackActivity, p.profile, name)
             val learnedCard = Ui.card(this@PackActivity)
             learnedCard.addView(Ui.section(this@PackActivity, "🧠", "Bộ nhớ dịch theo game"))
             learnedCard.addView(Ui.switchRow(this@PackActivity, "Tự ghi nhớ bản dịch AI",
@@ -108,7 +108,7 @@ class PackActivity : Activity() {
                         .setTitle("Xóa bộ nhớ dịch của ${p.profile}?")
                         .setMessage("Chỉ xóa câu do AI tự ghi nhớ. Không xóa gói Việt hóa đã nhập, từ điển hoặc giọng nhân vật.")
                         .setPositiveButton("Xóa bộ nhớ") { _, _ ->
-                            LearnedTranslations.clear(this@PackActivity, p.profile)
+                            LearnedTranslations.clear(this@PackActivity, p.profile, name)
                             render()
                         }
                         .setNegativeButton("Hủy", null).show()
@@ -205,7 +205,7 @@ class PackActivity : Activity() {
     }
 
     private fun reviewLearnedTranslations() {
-        val entries = LearnedTranslations.recent(this, p.profile, 80)
+        val entries = LearnedTranslations.recent(this, p.profile, PackStore.gameName(p), 80)
         if (entries.isEmpty()) { render(); return }
         val choices = entries.map { it.original.take(65) + "\n→ " + it.vi.take(85) }.toTypedArray()
         AlertDialog.Builder(this, R.style.DgDialog)
