@@ -89,6 +89,9 @@ class PackActivity : Activity() {
             val learned = LearnedTranslations.count(this@PackActivity, p.profile, name)
             val learnedCard = Ui.card(this@PackActivity)
             learnedCard.addView(Ui.section(this@PackActivity, "🧠", "Bộ nhớ dịch theo game"))
+            if (name.isBlank()) learnedCard.addView(Ui.tv(this@PackActivity,
+                "Hãy chọn game ở Kho game để bộ nhớ không bị trộn giữa các trò chơi.",
+                12.5f, Ui.DANGER), Ui.lpm(this@PackActivity, 2, 6))
             learnedCard.addView(Ui.switchRow(this@PackActivity, "Tự ghi nhớ bản dịch AI",
                 "Chỉ lưu câu AI đạt kiểm tra chất lượng; không lưu bản dịch máy hoặc bản AI nghi ngờ.",
                 p.learnTranslations) { enabled ->
