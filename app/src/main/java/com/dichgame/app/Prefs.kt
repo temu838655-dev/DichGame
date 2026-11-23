@@ -237,12 +237,19 @@ class Prefs(ctx: Context) {
     }
 
     /** Mỗi người nói đã nhận diện có giọng mặc định ổn định; người chơi có thể ghi đè thủ công. */
-    fun aiVoiceFor(speaker: String?, sentence: String): String {
+    fun aiVoiceFor(speaker: String?, sentence: String): String =
+        chooseAiVoice(speaker, sentence, ignoreManual = false)
+
+    /** Giọng mà chế độ tự động sẽ chọn, để giao diện hiển thị đúng khi bỏ gán thủ công. */
+    fun automaticAiVoiceFor(speaker: String?, sentence: String): String =
+        chooseAiVoice(speaker, sentence, ignoreManual = true)
+
+    private fun chooseAiVoice(speaker: String?, sentence: String, ignoreManual: Boolean): String {
         if (!characterVoices) return aiVoice
         val cards = PackStore.cast(this)
         val card = Cast.byName(speaker, cards) ?: Cast.speakerOf(sentence, cards)
         val name = speaker?.takeIf { it.isNotBlank() } ?: card?.names?.firstOrNull() ?: return aiVoice
-        manualVoice(name)?.let { return it }
+        if (!ignoreManual) manualVoice(name)?.let { return it }
         val desc = card?.desc.orEmpty().lowercase(java.util.Locale.ROOT)
         val requested = Regex("giọng\\s*[:=]\\s*([^;,]+)", RegexOption.IGNORE_CASE)
             .find(desc)?.groupValues?.getOrNull(1)?.trim()
