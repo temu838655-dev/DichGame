@@ -128,6 +128,8 @@ class UiTranslate(
         private const val MAX_QUEUE = 80
         /** Chế độ một lần: giữ bản dịch bấy nhiêu mili giây rồi tự tắt. */
         const val HOLD_MS = 12000L
+        /** Bản dịch máy (do AI lỗi) hiện được ít nhất chừng này mili giây thì khi thấy lại khối chữ sẽ xin AI dịch lại. */
+        const val UPGRADE_AFTER_MS = 25_000L
         /** Chế độ một lần: quá thời gian này (từ lúc mô hình dịch sẵn sàng) mà chưa dịch xong thì dừng. */
         private const val ONCE_LIMIT_MS = 30000L
         @Volatile var active = false
@@ -170,10 +172,13 @@ class UiTranslate(
     private var gen = 0
     private var lastNoticeAt = 0L
 
-    private class Entry(var vi: String? = null, var unsure: Boolean = false, var failed: Boolean = false)
+    /** [via]/[at]: bản dịch đang hiện do đâu và từ lúc nào; bản dịch máy (AI đang lỗi) được dịch lại bằng AI khi AI dùng được ([upgrading]: đang chờ bản mới). */
+    private class Entry(var vi: String? = null, var unsure: Boolean = false, var failed: Boolean = false, var via: String = "", var at: Long = 0L, var upgrading: Boolean = false)
     private class Item(val src: String, val key: String, val box: RectF, val bg: Int, val fg: Int)
 
     private val cache = HashMap<String, Entry>()
+    /** Cài đặt của lượt dịch đang chạy (đặt ở start). */
+    private var prefs: Prefs? = null
     private var items: List<Item> = emptyList()
     /** Khối chữ đang chờ tới lượt dịch (tối đa [MAX_INFLIGHT] khối dịch cùng lúc): (nguyên văn, khoá). */
     private val queue = java.util.ArrayDeque<Pair<String, String>>()
@@ -211,6 +216,7 @@ class UiTranslate(
     fun start() {
         if (running) return
         val pr = Prefs(act)
+        prefs = pr
         lang = pr.lang
         cjk = Prefs.isCjk(lang)
         running = true
@@ -257,6 +263,7 @@ class UiTranslate(
         // khối đang chờ hoặc đang dịch dở khi tắt: bỏ khỏi bộ nhớ để lần bật sau được xin dịch lại (không thì nằm trống mãi)
         queue.clear()
         cache.entries.removeAll { it.value.vi == null && !it.value.failed }
+        for (v in cache.values) v.upgrading = false
         inflight = 0
         gen++   // kết quả dịch của lượt cũ về muộn sẽ bị bỏ qua (không làm lệch bộ đếm của lượt mới)
         runCatching { tt?.close() }; tt = null
@@ -470,7 +477,17 @@ class UiTranslate(
      * chạy tiếp khi có chỗ (trước đây khối thừa bị bỏ, phải đợi lượt quét sau, mà hình đứng yên thì cả chục giây mới tới lượt).
      */
     private fun request(src: String, key: String) {
-        if (cache.containsKey(key)) return
+        val old = cache[key]
+        if (old != null) {
+            // khối này đang hiện bản dịch máy vì AI lỗi: sau ít giây (và AI không còn nghỉ) xin dịch lại bằng AI, bản cũ vẫn hiện trong lúc chờ
+            if (old.via == "may" && !old.upgrading && tt != null && prefs?.let { Ai.enabled(it) } == true && Ai.coolingMs() == 0L &&
+                SystemClock.uptimeMillis() - old.at > UPGRADE_AFTER_MS && queue.size < MAX_QUEUE) {
+                old.upgrading = true
+                queue.addLast(src to key)
+                pump()
+            }
+            return
+        }
         if (tt == null) return
         if (queue.size >= MAX_QUEUE) return   // quá nhiều khối một lúc: để lượt quét sau
         if (cache.size > MAX_CACHE) { cache.clear(); queue.clear() }
@@ -496,6 +513,10 @@ class UiTranslate(
             if (g != gen) return@translateFull   // đã tắt (hoặc tắt rồi bật lại) trong lúc đang dịch
             inflight--
             if (!running) return@translateFull
+            if (e.upgrading) {
+                e.upgrading = false
+                if (tr.via == "may") { e.at = SystemClock.uptimeMillis(); pump(); return@translateFull }   // AI vẫn lỗi: giữ bản cũ, thử lại sau
+            }
             val restored = UiText.restore(tr.text, prot)
             if (BuildConfig.DEBUG) Log.i(TAG, "dich: ${src.take(60)} => ${restored ?: "(mat ma giu cho)"} [${tr.via}]")
             val same = UiText.key(tr.text) == UiText.key(prot.text)
@@ -504,6 +525,8 @@ class UiTranslate(
                 same -> { e.failed = true; missed[src] = "chưa dịch được (bản dịch giống chữ gốc)" }
                 else -> {
                     e.vi = restored
+                    e.via = tr.via
+                    e.at = SystemClock.uptimeMillis()
                     e.unsure = tr.uncertain
                     if (tr.uncertain) missed[src] = "nghi ngờ: $restored"
                 }

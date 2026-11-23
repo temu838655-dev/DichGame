@@ -5,7 +5,8 @@ import java.net.URL
 import org.json.JSONArray
 import org.json.JSONObject
 
-class AiException(val code: Int, message: String) : Exception(message)
+/** [retryAfterMs]: máy chủ bảo chờ bao lâu rồi thử lại (0 nếu không nói). */
+class AiException(val code: Int, message: String, val retryAfterMs: Long = 0L) : Exception(message)
 
 /** Dịch bằng AI đám mây: Google Gemini hoặc CloudAPI (chuẩn OpenAI /chat/completions). Hàm ở đây chặn luồng, hãy gọi từ luồng nền. */
 object Ai {
@@ -66,14 +67,14 @@ object Ai {
         try {
             c.requestMethod = "POST"
             c.connectTimeout = 8000
-            c.readTimeout = 15000
+            c.readTimeout = 20000
             c.doOutput = true
             c.setRequestProperty("Content-Type", "application/json")
             for ((k, v) in headers) c.setRequestProperty(k, v)
             c.outputStream.use { it.write(body.toString().toByteArray()) }
             val code = c.responseCode
             val txt = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
-            if (code !in 200..299) throw AiException(code, txt.take(200))
+            if (code !in 200..299) throw AiException(code, txt.take(200), AiRetry.retryDelayMs(c.getHeaderField("Retry-After"), txt))
             return txt
         } finally {
             c.disconnect()
@@ -94,6 +95,24 @@ object Ai {
         }
     }
 
+    /** Tắt bộ lọc nội dung của Gemini: lời thoại game hay có cảnh đánh nhau, chửi thề... mà bị chặn thì câu đó rơi sang dịch máy. */
+    private val SAFETY_CATEGORIES = listOf(
+        "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT",
+    )
+    /** Model nào đó từ chối trường safetySettings (lỗi 400) thì thôi không gửi nữa trong phiên này. */
+    @Volatile private var safetyAccepted = true
+
+    private fun geminiBody(prompt: String, withSafety: Boolean): JSONObject {
+        val body = JSONObject().put("contents", JSONArray().put(
+            JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))
+        ))
+        if (withSafety) body.put("safetySettings", JSONArray().apply {
+            for (c in SAFETY_CATEGORIES) put(JSONObject().put("category", c).put("threshold", "BLOCK_NONE"))
+        })
+        return body
+    }
+
+    /** Một lần gọi AI (không thử lại). Dịch câu thì dùng [translateRetry]. */
     fun translate(p: Prefs, prompt: String): String {
         val out: String = if (p.engine == Prefs.ENGINE_CLOUD) {
             val body = JSONObject()
@@ -102,16 +121,45 @@ object Ai {
             val r = post(cloudEndpoint(p.cloudUrl), body, mapOf("Authorization" to "Bearer " + p.cloudKey))
             JSONObject(r).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
         } else {
-            val body = JSONObject().put("contents", JSONArray().put(
-                JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))
-            ))
-            val r = geminiPost(p, "https://generativelanguage.googleapis.com/v1beta/models/${p.geminiModel}:generateContent", body)
-            JSONObject(r).getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
-                .getJSONArray("parts").getJSONObject(0).getString("text")
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/${p.geminiModel}:generateContent"
+            val r = try {
+                geminiPost(p, url, geminiBody(prompt, safetyAccepted))
+            } catch (e: AiException) {
+                if (e.code == 400 && safetyAccepted) {
+                    // 400 cũng là lỗi khi khóa sai: chỉ khi gửi lại KHÔNG có safetySettings mà được thì mới ghi nhớ là model này không nhận
+                    val r2 = geminiPost(p, url, geminiBody(prompt, false))
+                    safetyAccepted = false
+                    r2
+                } else throw e
+            }
+            AiRetry.geminiText(r)
         }
         val t = out.trim()
         if (t.isEmpty()) throw AiException(0, "Phản hồi rỗng")
         return t
+    }
+
+    /** Hết lượt hết khóa: tới mốc này (mili giây) mới thử AI lại; trong lúc đó câu dịch thẳng bằng dịch máy, khỏi chờ vô ích. */
+    @Volatile private var cooldownUntil = 0L
+
+    /** Còn bao lâu nữa AI mới được thử lại sau khi hết lượt (0 nếu đang dùng được). */
+    fun coolingMs(): Long = (cooldownUntil - System.currentTimeMillis()).coerceAtLeast(0L)
+
+    /**
+     * Dịch một câu, tự thử lại khi lỗi tạm thời (hết lượt ngắn hạn, 5xx, quá thời gian, mạng chập chờn). Hết lượt kéo dài thì ghi
+     * mốc nghỉ [coolingMs] để các câu sau không phải chờ. Hàm chặn luồng, gọi từ luồng nền.
+     */
+    fun translateRetry(p: Prefs, prompt: String): String {
+        try {
+            val r = AiRetry.run(AiRetry.Plan(), { Thread.sleep(it) }) { translate(p, prompt) }
+            cooldownUntil = 0L
+            return r
+        } catch (e: Exception) {
+            if (AiRetry.kindOf(e) == AiRetry.Kind.QUOTA) {
+                cooldownUntil = System.currentTimeMillis() + AiRetry.cooldownMs((e as? AiException)?.retryAfterMs ?: 0L)
+            }
+            throw e
+        }
     }
 
     /** Thử dịch một câu để kiểm tra khóa. Trả về chuỗi bắt đầu bằng "OK" nếu chạy được, ngược lại là lý do lỗi. */

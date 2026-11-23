@@ -18,7 +18,6 @@ import com.google.mlkit.nl.translate.TranslatorOptions
 class TextTranslator(private val ctx: Context, private val p: Prefs, private val lang: String) {
     private val main = Handler(Looper.getMainLooper())
     private val history = ArrayList<String>()
-    private var warned = false
     @Volatile private var closed = false
 
     /** Nếu đặt, mỗi lần dịch AI lỗi và phải dùng dịch trên máy thì gọi hàm này (thay vì hiện thông báo một lần). */
@@ -135,24 +134,32 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         val cast = PackStore.cast(p)
         val names = guardNames(terms, cast)
         val pace = if (ui) null else (Cast.byName(speaker, cast) ?: Cast.speakerOf(text, cast))?.pace
+        val aiOn = Ai.enabled(p)
         fun finish(t: Tr) {
-            if (t.uncertain) st.inc("dich_nghi") else cache[key] = t
+            if (t.uncertain) st.inc("dich_nghi")
+            // bản dịch máy do AI đang lỗi thì đừng nhớ: lần sau gặp lại câu này còn được thử AI (bộ nhớ đệm chỉ giữ bản đạt)
+            else if (t.via != "may" || !aiOn) cache[key] = t
             done(t)
         }
-        if (!Ai.enabled(p)) { translateLocal(text, names, pace, ::finish); return }
+        if (!aiOn) { translateLocal(text, names, pace, ::finish); return }
         val emo = p.emoTr && !ui
         Thread {
             var chosen: Tr? = null
             var strict: String? = null
-            for (attempt in 0..1) {
+            val cool = Ai.coolingMs()
+            if (cool > 0) {
+                // vừa hết lượt: dịch máy ngay cho câu này, khỏi chờ AI vô ích; hết thời gian nghỉ sẽ thử AI lại
+                st.inc(AiRetry.statKey(AiRetry.Kind.QUOTA))
+                warn(AiRetry.explain(AiRetry.Kind.QUOTA, 429, cool))
+            } else for (attempt in 0..1) {
                 val prompt = Ai.prompt(p, srcName(), p.game, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui)
                 var raw: String? = null
                 try {
-                    raw = Ai.translate(p, prompt)
-                } catch (e: AiException) {
-                    warn("Dịch AI lỗi ${e.code}, dùng dịch trên máy.")
+                    raw = Ai.translateRetry(p, prompt)
                 } catch (e: Exception) {
-                    warn("Dịch AI lỗi, dùng dịch trên máy.")
+                    val kind = AiRetry.kindOf(e)
+                    st.inc(AiRetry.statKey(kind))
+                    warn(AiRetry.explain(kind, (e as? AiException)?.code ?: 0, Ai.coolingMs()))
                 }
                 if (raw.isNullOrEmpty()) break
                 val parsed = if (emo) Emo.parse(raw) else Emo.Parsed(raw, null)
@@ -166,6 +173,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 }
                 st.inc("dich_loai")
                 strict = v.reasons.joinToString("; ")
+                if (attempt == 1) st.inc("may_loai")
             }
             val res = chosen
             main.post {
@@ -202,11 +210,15 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             .addOnFailureListener { done(Tr(text, null, true, "may")) }
     }
 
+    private var lastWarnAt = 0L
+
+    /** Báo người dùng lý do câu này phải dịch máy. Có ô báo thì báo mỗi lần; không thì nhắn (Toast) tối đa mỗi 45 giây một lần. */
     private fun warn(m: String) {
         val cb = onFallback
         if (cb != null) { main.post { if (!closed) cb(m) }; return }
-        if (warned) return
-        warned = true
+        val now = System.currentTimeMillis()
+        if (now - lastWarnAt < 45_000L) return
+        lastWarnAt = now
         main.post { Toast.makeText(ctx.applicationContext, m, Toast.LENGTH_LONG).show() }
     }
 

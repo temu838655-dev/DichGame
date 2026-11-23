@@ -36,6 +36,15 @@ class SessionStats {
 
     private fun sec(ms: Long) = String.format(Locale.US, "%.1f", ms / 1000.0)
 
+    /** Lý do các câu phải dịch trên máy dù đã bật AI ("hết lượt 5, mạng 2, ..."); rỗng nếu không có câu nào. Số lần gặp lỗi, một câu có thể tính hơn một lần. */
+    @Synchronized fun machineReasons(): String {
+        val parts = ArrayList<String>()
+        fun add(label: String, key: String) { val n = get(key); if (n > 0) parts.add("$label $n") }
+        add("hết lượt", "may_het_luot"); add("mạng hoặc máy chủ AI quá tải", "may_mang"); add("bộ lọc nội dung chặn", "may_chan")
+        add("khóa hoặc model sai", "may_khoa"); add("dữ liệu lạ", "may_khac"); add("bản dịch AI bị loại hai lần", "may_loai")
+        return parts.joinToString(", ")
+    }
+
     @Synchronized fun report(nowMs: Long, batteryPct: Int): String {
         if (startAt == 0L) return "Chưa có lần dịch nào. Bấm bắt đầu dịch một lần rồi quay lại đây."
         val sb = StringBuilder()
@@ -60,6 +69,8 @@ class SessionStats {
         sb.append("; ghép với chữ đọc dở: ${get("ghep")}\n")
         sb.append("Dịch: AI ${get("dich_ai")}, bộ nhớ đệm ${get("dich_cache")}, gói Việt hoá ${get("dich_goi")}" + (if (get("dich_goi_gan") > 0) " (trong đó ${get("dich_goi_gan")} khớp gần đúng)" else "") + ", dịch trên máy ${get("dich_may")}")
         sb.append("; AI bị loại rồi dịch lại ${get("dich_loai")}; còn nghi ngờ ${get("dich_nghi")}\n")
+        val why = machineReasons()
+        if (why.isNotEmpty()) sb.append("Dịch trên máy vì AI không dùng được: ").append(why).append('\n')
         val n = synchronized(this) { latencies.size }
         if (n > 0) sb.append("Từ lúc câu xuất hiện tới lúc hiện bản dịch (${n} câu): giữa ${sec(percentile(50))} giây, 90% dưới ${sec(percentile(90))} giây\n")
         if (startBattery in 0..100 && batteryPct in 0..100 && nowMs > startAt) {
