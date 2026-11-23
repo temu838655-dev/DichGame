@@ -16,6 +16,8 @@ class GamePackMatchTest {
         assertFalse(GamePackMatch.contains("Grand Theft Auto VI", "grand theft auto v"))
         assertTrue(GamePackMatch.contains("Grand Theft Auto VI", "grand theft auto vi"))
         assertFalse(GamePackMatch.contains("Final Fantasy VIII", "final fantasy vii"))
+        assertFalse(VietHoa.castFor("Final Fantasy VIII").any { it.startsWith("Cloud") })
+        assertTrue(VietHoa.castFor("Final Fantasy VII Rebirth").any { it.startsWith("Cloud") })
         assertFalse(GamePackMatch.contains("Resident Evil 4", "resident evil 2"))
         assertTrue(GamePackMatch.contains("Final Fantasy VII Rebirth", "final fantasy vii"))
     }
