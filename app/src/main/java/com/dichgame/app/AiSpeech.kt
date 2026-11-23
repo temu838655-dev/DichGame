@@ -41,7 +41,9 @@ object AiSpeech {
     }
 
     private fun viaInteractions(p: Prefs, apiKey: String, text: String, style: String): Pcm {
-        val item = JSONObject().put("type", "text").put("text", text)
+        val spoken = "Đọc nguyên văn bằng tiếng Việt tự nhiên, đúng dấu và đúng từ; " +
+            "không dịch, không diễn giải, không thêm lời dẫn. Chỉ phát âm văn bản sau:\n" + text
+        val item = JSONObject().put("type", "text").put("text", spoken)
         if (style.isNotEmpty()) {
             item.put("annotations", JSONArray().put(JSONObject().put("type", "speech_metadata").put("style", style)))
         }
