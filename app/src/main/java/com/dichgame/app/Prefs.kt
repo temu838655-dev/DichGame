@@ -222,6 +222,26 @@ class Prefs(ctx: Context) {
         sp.edit().putString("detected_speakers_$profile", JSONArray((names + name).takeLast(250)).toString()).apply()
     }
 
+    /** Xóa một nhãn nhân vật OCR nhận nhầm khỏi hồ sơ, kèm giọng đã gán cho tên đó. */
+    fun forgetDetectedSpeaker(raw: String) = synchronized(sp) {
+        val name = raw.trim()
+        if (name.isEmpty()) return@synchronized
+        val key = name.lowercase(java.util.Locale.ROOT)
+        val rest = detectedSpeakers().filterNot { it.equals(name, ignoreCase = true) }
+        fun withoutEntry(prefKey: String): String {
+            val data = try { JSONObject(sp.getString(prefKey, "{}").orEmpty()) }
+                catch (_: Exception) { JSONObject() }
+            data.remove(key)
+            return data.toString()
+        }
+        val editor = sp.edit()
+            .putString("detected_speakers_$profile", JSONArray(rest).toString())
+            .putString("manual_voices_$profile", withoutEntry("manual_voices_$profile"))
+            .putString("auto_voices_$profile", withoutEntry("auto_voices_$profile"))
+        if (activeSpeaker.equals(name, ignoreCase = true)) editor.putString("active_speaker_$profile", "")
+        editor.apply()
+    }
+
     /** Chọn giọng riêng bằng giao diện; null = quay về chế độ tự động. */
     fun manualVoice(name: String): String? {
         val raw = sp.getString("manual_voices_$profile", "{}").orEmpty()
