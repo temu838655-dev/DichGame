@@ -8,6 +8,8 @@ class VietsubGuardTest {
         assertTrue(VietsubGuard.isVietnamese("Tôi không biết chuyện gì đang xảy ra."))
         assertTrue(VietsubGuard.isVietnamese("Dạ, em hiểu rồi ạ."))
         assertTrue(VietsubGuard.isVietnamese("Không!"))
+        assertTrue(VietsubGuard.isVietnamese("Có!"))
+        assertTrue(VietsubGuard.isVietnamese("Xin chào!"))
     }
 
     @Test fun ignoresForeignAndUncertainSubtitles() {
