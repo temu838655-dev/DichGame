@@ -1,27 +1,154 @@
-name: Build Windows (x64)
+name: Build Windows (x64) and publish preview
+
 on:
   workflow_dispatch:
   push:
-    branches: [main, "feat/ios-windows-native-starters"]
+    branches: [main]
     paths: ["windows/**", ".github/workflows/build-windows.yml"]
   pull_request:
     paths: ["windows/**", ".github/workflows/build-windows.yml"]
+
 jobs:
   windows-x64:
-    runs-on: windows-latest
-    timeout-minutes: 30
+    runs-on: windows-2025
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      signed: ${{ steps.sign-state.outputs.signed }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-      - name: Restore and build Windows desktop app
+      - name: Restore and publish self-contained Windows x64 app
         shell: pwsh
         run: |
           dotnet restore windows/DichGame.Windows/DichGame.Windows.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet publish windows/DichGame.Windows/DichGame.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o out/windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path "out/windows/DichGame.Windows.exe")) {
+            throw "Published Windows EXE was not found."
+          }
+
+      # Azure Artifact Signing (formerly Trusted Signing) uses a verified publisher.
+      # Without a configured identity, keep a truthful UNSIGNED preview.
+      - name: Select Windows signing mode
+        id: sign-state
+        shell: pwsh
+        env:
+          SIGN_ENABLED: ${{ vars.WINDOWS_ARTIFACT_SIGNING_ENABLED }}
+        run: |
+          if ($env:SIGN_ENABLED -eq 'true') {
+            'signed=true' >> $env:GITHUB_OUTPUT
+            Write-Host 'Azure Artifact Signing is enabled.'
+          } else {
+            'signed=false' >> $env:GITHUB_OUTPUT
+            Write-Warning 'Unsigned Windows preview. Configure Artifact Signing for trusted distribution.'
+          }
+      - name: Login to Azure using GitHub OIDC
+        if: steps.sign-state.outputs.signed == 'true'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Sign Windows EXE with Microsoft Azure Artifact Signing
+        if: steps.sign-state.outputs.signed == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.WINDOWS_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.WINDOWS_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.WINDOWS_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
+          files-folder: ${{ github.workspace }}\out\windows
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: Verify trusted Authenticode signature
+        if: steps.sign-state.outputs.signed == 'true'
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "out/windows/DichGame.Windows.exe"
+          $sig = Get-AuthenticodeSignature -FilePath $exe
+          Write-Host "Publisher: $($sig.SignerCertificate.Subject)"
+          Write-Host "Signature status: $($sig.Status)"
+          if ($sig.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+            throw "Authenticode signature is not trusted or valid: $($sig.Status)"
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: DichGame-Windows-x64
           path: out/windows/
           if-no-files-found: error
+
+  publish-windows-preview:
+    name: Publish Windows build to GitHub Releases
+    needs: [windows-x64]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: DichGame-Windows-x64
+          path: dist/windows
+      - name: Package ZIP, checksums, and release notes
+        shell: bash
+        env:
+          SIGNED: ${{ needs.windows-x64.outputs.signed }}
+        run: |
+          set -euo pipefail
+          test -f dist/windows/DichGame.Windows.exe
+          mkdir -p dist/release
+          (cd dist/windows && zip -qr ../release/DichGame-Windows-x64.zip .)
+          cp dist/windows/DichGame.Windows.exe dist/release/DichGame.Windows.exe
+          (cd dist/release && sha256sum DichGame.Windows.exe DichGame-Windows-x64.zip > SHA256SUMS.txt)
+          {
+            echo "## DichGame Windows — bản thử nghiệm"
+            echo
+            if [ "$SIGNED" = "true" ]; then
+              echo "**EXE ĐÃ ĐƯỢC KÝ SỐ** bằng Azure Artifact Signing."
+              echo "Chữ ký đã được xác minh trong workflow trước khi phát hành."
+              echo "SmartScreen vẫn có thể cảnh báo trong thời gian xây dựng uy tín."
+            else
+              echo "**CẢNH BÁO: EXE CHƯA CÓ CHỮ KÝ SỐ.**"
+              echo "Windows SmartScreen có thể hiển thị cảnh báo nhà phát hành không xác định."
+              echo "Không phải phần mềm đã được Microsoft chứng nhận."
+            fi
+            echo
+            echo "- DichGame.Windows.exe: ứng dụng Windows 10/11 x64."
+            echo "- DichGame-Windows-x64.zip: bản ZIP cùng chương trình và các tệp phụ trợ."
+            echo "- SHA256SUMS.txt: mã kiểm tra tính toàn vẹn."
+            echo
+            echo "Chức năng: chụp/mở ảnh game và dịch bằng Gemini; chưa có"
+            echo "Remote Play hoặc lớp phụ đề nổi liên tục như Android."
+            echo
+            echo "Hướng dẫn ký số, phát hành, cài đặt:"
+            echo "https://github.com/temu838655-dev/DichGame/blob/main/docs/ios-windows-roadmap.md"
+            echo
+            echo "Bản Windows preview dùng tag windows-preview-*, không làm thay đổi"
+            echo "tag build-* cho bộ cập nhật APK Android."
+          } > "$RUNNER_TEMP/windows-release.md"
+      - name: Publish Windows prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNED: ${{ needs.windows-x64.outputs.signed }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="windows-preview-${{ github.run_number }}"
+          label="chưa ký"
+          if [ "$SIGNED" = "true" ]; then label="đã ký số"; fi
+          gh release create "$tag" \
+            dist/release/DichGame.Windows.exe \
+            dist/release/DichGame-Windows-x64.zip \
+            dist/release/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "DichGame Windows Preview #${{ github.run_number }} ($label)" \
+            --notes-file "$RUNNER_TEMP/windows-release.md" \
+            --prerelease
