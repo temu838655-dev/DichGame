@@ -92,15 +92,16 @@ class PackActivity : Activity() {
             if (name.isBlank()) learnedCard.addView(Ui.tv(this@PackActivity,
                 "Hãy chọn game ở Kho game để bộ nhớ không bị trộn giữa các trò chơi.",
                 12.5f, Ui.DANGER), Ui.lpm(this@PackActivity, 2, 6))
-            learnedCard.addView(Ui.switchRow(this@PackActivity, "Tự ghi nhớ bản dịch AI",
-                "Chỉ lưu câu AI đạt kiểm tra chất lượng; không lưu bản dịch máy hoặc bản AI nghi ngờ.",
+            learnedCard.addView(Ui.switchRow(this@PackActivity, "Dùng lại và tự nhớ bản dịch AI",
+                "Tắt sẽ ngừng dùng và ngừng lưu câu AI mới; dữ liệu đã nhớ vẫn giữ cho đến khi bạn xóa.",
                 p.learnTranslations) { enabled ->
                 p.learnTranslations = enabled
                 render()
             })
             learnedCard.addView(Ui.tv(this@PackActivity,
                 "$learned câu đã lưu riêng cho hồ sơ ${p.profile}. Dữ liệu nằm trên thiết bị, " +
-                    "không đồng bộ lên đám mây. Khi gặp lại đúng câu và người nói, app dùng bản cũ, không tốn lượt Gemini.",
+                    "không sao lưu lên đám mây; gỡ ứng dụng có thể mất dữ liệu. " +
+                    "Gặp lại đúng câu và người nói sẽ không tốn lượt Gemini.",
                 12.5f, Ui.SUB), Ui.lpm(this@PackActivity, 8, 10))
             if (learned > 0) {
                 learnedCard.addView(Ui.button(this@PackActivity, "Xem và sửa câu đã nhớ") {
