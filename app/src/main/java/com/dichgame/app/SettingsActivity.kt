@@ -98,7 +98,11 @@ class SettingsActivity : Activity() {
         val a = this
         screen("Giọng đọc") {
             group(null, 16, 4) {
-                addView(Ui.switchRow(a, "Đọc to bản dịch", "Tắt nếu chỉ muốn xem chữ.", p.speak) { p.speak = it })
+                if (p.narrate) {
+                    addView(Ui.tv(a, "Thuyết minh luôn đọc to phụ đề tiếng Việt có sẵn, không dịch.", 13f, Ui.SUB))
+                } else {
+                    addView(Ui.switchRow(a, "Đọc to bản dịch", "Tắt nếu chỉ muốn xem chữ.", p.speak) { p.speak = it })
+                }
                 row(Ui.segmented(a, listOf("Giọng cơ bản", "Giọng AI"),
                     if (p.voiceEngine == "ai") 1 else 0) { i ->
                     p.voiceEngine = if (i == 1) "ai" else "system"
