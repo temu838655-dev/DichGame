@@ -1,0 +1,27 @@
+name: Build Windows (x64)
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "feat/ios-windows-native-starters"]
+    paths: ["windows/**", ".github/workflows/build-windows.yml"]
+  pull_request:
+    paths: ["windows/**", ".github/workflows/build-windows.yml"]
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore and build Windows desktop app
+        shell: pwsh
+        run: |
+          dotnet restore windows/DichGame.Windows/DichGame.Windows.csproj
+          dotnet publish windows/DichGame.Windows/DichGame.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o out/windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DichGame-Windows-x64
+          path: out/windows/
+          if-no-files-found: error
