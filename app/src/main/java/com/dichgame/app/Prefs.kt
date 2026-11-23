@@ -57,8 +57,8 @@ class Prefs(ctx: Context) {
         val AI_VOICES = listOf(
             "Kore" to "Mai · nữ · rõ ràng", "Puck" to "Minh · nam · vui tươi",
             "Charon" to "Hùng · nam · điềm tĩnh", "Zephyr" to "Linh · nữ · tươi sáng",
-            "Sulafat" to "Thảo · ấm áp", "Aoede" to "Ngọc · nữ · nhẹ nhàng",
-            "Achird" to "Nam · thân thiện", "Gacrux" to "Hà · trưởng thành"
+            "Sulafat" to "Thảo · nữ · ấm áp", "Aoede" to "Ngọc · nữ · nhẹ nhàng",
+            "Achird" to "Đức · nam · thân thiện", "Gacrux" to "Hà · nữ · trưởng thành"
         )
         /** Tên Việt là nhãn trong app, mã giọng tiếng Anh giữ nguyên khi gọi API Gemini. */
         fun aiVoiceLabel(id: String): String = AI_VOICES.firstOrNull { it.first == id }?.second ?: id
