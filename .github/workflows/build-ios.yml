@@ -83,3 +83,64 @@ jobs:
           name: DichGame-iPhone-IPA-unsigned
           path: ios/dist/DichGame-iPhone-unsigned.ipa
           if-no-files-found: error
+
+
+  publish-ios-preview:
+    name: Publish iOS preview to GitHub Releases
+    needs: [ios-simulator, ios-iphone-ipa-unsigned]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: DichGame-iPhone-IPA-unsigned
+          path: dist/iphone
+      - uses: actions/download-artifact@v4
+        with:
+          name: DichGame-iOS-Simulator
+          path: dist/simulator
+      - name: Prepare clear download notes and SHA256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/iphone/DichGame-iPhone-unsigned.ipa
+          test -f dist/simulator/DichGame-iOS-Simulator.zip
+          (cd dist && sha256sum iphone/*.ipa simulator/*.zip > SHA256SUMS.txt)
+          cat > "$RUNNER_TEMP/ios-release.md" <<'NOTES'
+          ## DichGame iOS — bản thử nghiệm
+
+          **CẢNH BÁO: DichGame-iPhone-unsigned.ipa CHƯA ĐƯỢC KÝ.**
+          Tệp IPA này không thể cài trực tiếp trên iPhone thông thường.
+          Nó là bản iPhone arm64 dùng cho nhà phát triển ký hợp lệ trước khi cài đặt.
+
+          - DichGame-iPhone-unsigned.ipa: bản iPhone cần ký bằng Apple Developer.
+          - DichGame-iOS-Simulator.zip: chỉ dùng trên iOS Simulator với Xcode/Mac.
+          - SHA256SUMS.txt: mã kiểm tra toàn vẹn file.
+
+          Chức năng: chọn ảnh game để Gemini dịch, đọc tiếng Việt; chưa có phụ đề nổi
+          lên game khác hoặc PS Remote Play tích hợp. Không phải ứng dụng App Store/TestFlight.
+
+          Hướng dẫn ký ứng dụng và triển khai cho iPhone:
+          https://github.com/temu838655-dev/DichGame/blob/main/docs/ios-windows-roadmap.md
+
+          Bản iOS preview có tag ios-preview-*, không thay đổi tag
+          build-* dành cho Android.
+          NOTES
+      - name: Publish discoverable iOS preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="ios-preview-${{ github.run_number }}"
+          gh release create "$tag" \
+            dist/iphone/DichGame-iPhone-unsigned.ipa \
+            dist/simulator/DichGame-iOS-Simulator.zip \
+            dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "DichGame iOS Preview #${{ github.run_number }} (IPA chưa ký)" \
+            --notes-file "$RUNNER_TEMP/ios-release.md" \
+            --prerelease
