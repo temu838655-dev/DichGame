@@ -91,6 +91,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     private var speak = false
     /** Chế độ Thuyết minh: game đã có phụ đề tiếng Việt, chỉ đọc to, không dịch. */
     private var narrate = false
+    private val autoGameDetector = AutoGameDetector()
     private var lang = "en"
     private var sep = " "
     private var needStable = 1
@@ -475,6 +476,15 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             lines.add(OcrLine(v.text, bx?.let { Box(it.left, it.top, it.right, it.bottom) }, b.conf))
         }
         val prefs = Prefs(act)
+        if (prefs.aiAuto) {
+            val detected = autoGameDetector.observe(lines.map { it.text }, PackStore.gameName(prefs))
+            if (detected != null && AutoGameSwitch.apply(prefs, detected)) {
+                syncGameContext()
+                notice("✦ AI Tự động nhận diện: $detected")
+                finishBusy()
+                return
+            }
+        }
         val utts = DialogueSplitter.split(lines, cjk, speakers).map { u ->
             // Người dùng đã xóa tên OCR nhận nhầm: bỏ nhãn người nói, giữ nguyên nội dung thoại.
             if (prefs.isIgnoredSpeaker(u.speaker)) Utterance(null, u.text, u.nameLike) else u
@@ -564,8 +574,10 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             if (i >= w.lines.size) { done(out); return }
             val line = w.lines[i]
             if (t == null) {
-                if (narrate) Log.i(TAG, "thuyet minh: ${line.text}")
-                out.add(Card(line.speaker, line.text, TextTranslator.Tr(line.text, null, false, "may"), false))
+                // Đọc Vietsub: không chạy bất kỳ bộ dịch nào, chỉ đọc câu thực sự là tiếng Việt.
+                if (!narrate || (!line.nameLike && VietsubGuard.isVietnamese(line.text))) {
+                    out.add(Card(line.speaker, line.text, TextTranslator.Tr(line.text, null, false, "vietsub"), false))
+                }
                 next(i + 1)
             } else {
                 t.translateFull(line.text, line.speaker) { tr ->
