@@ -19,28 +19,30 @@ object AiSpeech {
      * Chỉ đổi khóa với lỗi theo khóa (401/403/429); lỗi model/yêu cầu không hợp lệ
      * không được coi là hết hạn mức của từng khóa.
      */
-    fun synth(p: Prefs, text: String, style: String): Pcm {
+    fun synth(p: Prefs, text: String, style: String, voiceName: String = p.aiVoice): Pcm {
         val keys = p.geminiKeys()
         if (keys.isEmpty()) throw AiException(401, "Chưa có khóa Gemini cho giọng AI")
         var failure: AiException? = null
+        val start = Prefs.geminiAt.mod(keys.size)
         for (attempt in keys.indices) {
-            val key = p.geminiActive()
+            val index = (start + attempt) % keys.size
+            val key = keys[index]
             try {
                 return try {
-                    viaInteractions(p, key, text, style)
+                    viaInteractions(p, key, text, style, voiceName)
                 } catch (e: AiException) {
-                    if (e.code == 400 || e.code == 404) viaGenerate(p, key, text, style) else throw e
+                    if (e.code == 400 || e.code == 404) viaGenerate(p, key, text, style, voiceName) else throw e
                 }
             } catch (e: AiException) {
                 failure = e
                 if (e.code !in setOf(401, 403, 429) || attempt == keys.lastIndex) throw e
-                p.geminiRotate()
+                Prefs.geminiAt = (index + 1) % keys.size
             }
         }
         throw failure ?: AiException(0, "Không tạo được giọng AI")
     }
 
-    private fun viaInteractions(p: Prefs, apiKey: String, text: String, style: String): Pcm {
+    private fun viaInteractions(p: Prefs, apiKey: String, text: String, style: String, voiceName: String): Pcm {
         val item = JSONObject().put("type", "text").put("text", text)
         if (style.isNotEmpty()) {
             item.put("annotations", JSONArray().put(JSONObject().put("type", "speech_metadata").put("style", style)))
@@ -49,7 +51,7 @@ object AiSpeech {
             .put("model", p.ttsModel)
             .put("input", JSONArray().put(JSONObject().put("type", "user_input").put("content", JSONArray().put(item))))
             .put("response_format", JSONObject().put("type", "audio"))
-            .put("generation_config", JSONObject().put("speech_config", JSONArray().put(JSONObject().put("voice", p.aiVoice))))
+            .put("generation_config", JSONObject().put("speech_config", JSONArray().put(JSONObject().put("voice", voiceName))))
         val r = Ai.post("$BASE/interactions", body, mapOf("x-goog-api-key" to apiKey))
         val steps = JSONObject(r).optJSONArray("steps") ?: throw AiException(0, "Phản hồi không có âm thanh")
         var data = ""
@@ -66,18 +68,18 @@ object AiSpeech {
         return parse(Base64.decode(data, Base64.DEFAULT))
     }
 
-    private fun viaGenerate(p: Prefs, apiKey: String, text: String, style: String): Pcm {
+    private fun viaGenerate(p: Prefs, apiKey: String, text: String, style: String, voiceName: String): Pcm {
         val prompt = "Đọc chính xác nguyên văn câu tiếng Việt sau, phát âm rõ ràng và tự nhiên. " +
             "Không dịch, không giải thích, không thêm hoặc bỏ chữ." +
             (if (style.isEmpty()) "" else " Sắc thái giọng: $style.") +
             "\nVăn bản cần đọc: $text"
-        val voice = JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", p.aiVoice))
+        val voice = JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voiceName))
         val body = JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
             .put("generationConfig", JSONObject()
                 .put("responseModalities", JSONArray().put("AUDIO"))
                 .put("speechConfig", JSONObject().put("voiceConfig", voice)))
-        val r = Ai.post("$BASE/models/${p.ttsModel}:generateContent", body, mapOf("x-goog-api-key" to p.geminiActive()))
+        val r = Ai.post("$BASE/models/${p.ttsModel}:generateContent", body, mapOf("x-goog-api-key" to apiKey))
         val b64 = JSONObject(r).getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
             .getJSONArray("parts").getJSONObject(0).getJSONObject("inlineData").getString("data")
         return parse(Base64.decode(b64, Base64.DEFAULT))
