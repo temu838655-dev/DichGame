@@ -197,15 +197,13 @@ class MainActivity : Activity() {
         val narrate = p.narrate
         val c = Ui.card(this, 14)
         val top = Ui.hbox(this)
-        if (name.isEmpty()) {
-            top.addView(ImageView(this).apply { setImageResource(R.drawable.ic_logo); scaleType = ImageView.ScaleType.FIT_CENTER }, Ui.lp(Ui.dp(this, 72), Ui.dp(this, 72)))
-        } else {
-            top.addView(TextView(this).apply {
-                text = Catalog.initials(name); textSize = 22f; gravity = Gravity.CENTER
-                setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD)
-                background = Ui.bg(this@MainActivity, Color.HSVToColor(floatArrayOf(Catalog.hue(name).toFloat(), 0.45f, 0.42f)), 16, Ui.LINE, 1)
-            }, Ui.lp(Ui.dp(this, 72), Ui.dp(this, 72)))
-        }
+        // Hình độc quyền cố định ở thẻ PS5/PS4: không đổi theo game, thiết bị
+        // hay trạng thái ghép nối. Chỉ cập nhật khi phát hành APK có tài nguyên mới.
+        top.addView(ImageView(this).apply {
+            setImageResource(R.drawable.console_translation_fixed)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = "Biểu tượng máy chơi game và dịch ngôn ngữ"
+        }, Ui.lp(Ui.dp(this, 72), Ui.dp(this, 72)))
         val col = Ui.vbox(this)
         col.addView(Ui.tv(this, con?.name ?: "PS5", 28f, Ui.TEXT, true).apply { maxLines = 1 })
         col.addView(Ui.tv(this, if (con != null) "Đã ghép nối · ${con.host}" else "Chưa ghép nối", 15f, if (con != null) Ui.OK else Ui.SUB))
