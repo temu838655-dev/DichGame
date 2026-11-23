@@ -236,6 +236,11 @@ class Prefs(ctx: Context) {
         rememberSpeaker(name)
     }
 
+    /** Nhân vật được người chơi chọn khi game không hiển thị nhãn tên người nói. */
+    var activeSpeaker: String
+        get() = sp.getString("active_speaker_$profile", "").orEmpty()
+        set(v) = sp.edit().putString("active_speaker_$profile", v.trim()).apply()
+
     /** Mỗi người nói đã nhận diện có giọng mặc định ổn định; người chơi có thể ghi đè thủ công. */
     fun aiVoiceFor(speaker: String?, sentence: String): String =
         chooseAiVoice(speaker, sentence, ignoreManual = false)
@@ -248,7 +253,8 @@ class Prefs(ctx: Context) {
         if (!characterVoices) return aiVoice
         val cards = PackStore.cast(this)
         val card = Cast.byName(speaker, cards) ?: Cast.speakerOf(sentence, cards)
-        val name = speaker?.takeIf { it.isNotBlank() } ?: card?.names?.firstOrNull() ?: return aiVoice
+        val name = speaker?.takeIf { it.isNotBlank() } ?: card?.names?.firstOrNull()
+            ?: activeSpeaker.takeIf { it.isNotBlank() } ?: return aiVoice
         if (!ignoreManual) manualVoice(name)?.let { return it }
         val desc = card?.desc.orEmpty().lowercase(java.util.Locale.ROOT)
         val requested = Regex("giọng\\s*[:=]\\s*([^;,]+)", RegexOption.IGNORE_CASE)
@@ -397,7 +403,8 @@ class Prefs(ctx: Context) {
         profiles = profiles.filter { it != name }
         if (profile == name) profile = DEFAULT_PROFILE
         sp.edit().remove("game_$name").remove("gloss_$name").remove("cast_$name")
-            .remove("detected_speakers_$name").remove("manual_voices_$name").apply()
+            .remove("detected_speakers_$name").remove("manual_voices_$name")
+            .remove("active_speaker_$name").apply()
         PackStore.deleteLines(app, name)
     }
 
