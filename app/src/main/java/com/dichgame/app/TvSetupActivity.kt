@@ -50,8 +50,8 @@ class TvSetupActivity : Activity() {
             group("TV CỦA BẠN HÃNG GÌ?", 14) {
                 val row = Ui.hbox(a)
                 row.addView(brandTile("Google TV", "Cài bằng Downloader", 0), Ui.lp(0, MATCH_PARENT, 1f))
-                row.addView(brandTile("TV LG", "Thông báo trên TV", 1), tileLp())
-                row.addView(brandTile("TV Samsung", "Chiếu / trình duyệt", 2), tileLp())
+                row.addView(brandTile("TV LG", "webOS thử nghiệm", 1), tileLp())
+                row.addView(brandTile("TV Samsung", "Tizen thử nghiệm", 2), tileLp())
                 addView(row)
                 addView(Ui.tv(a, brandInfo(), 13.5f, if (brand == 0) Ui.SUB else Ui.GOLD2).apply {
                     setPadding(Ui.dp(a, 2), Ui.dp(a, 12), 0, Ui.dp(a, 2))
@@ -69,11 +69,11 @@ class TvSetupActivity : Activity() {
                 1 -> {
                     group("CÁCH DÙNG") { stepsLg(this) }
                     group("KẾT NỐI TV LG (THỬ NGHIỆM)") { connectLg(this) }
-                    group("XEM PHỤ ĐỀ BẰNG TRÌNH DUYỆT (THỬ NGHIỆM)") { webCard(this) }
+                    group("NHẬN PHỤ ĐỀ QUA MẠNG (THỬ NGHIỆM)") { webCard(this) }
                 }
                 else -> {
                     group("CÁCH DÙNG") { stepsSamsung(this) }
-                    group("XEM PHỤ ĐỀ BẰNG TRÌNH DUYỆT (THỬ NGHIỆM)") { webCard(this) }
+                    group("NHẬN PHỤ ĐỀ QUA MẠNG (THỬ NGHIỆM)") { webCard(this) }
                     group("CHIẾU MÀN HÌNH ĐIỆN THOẠI LÊN TV") { mirrorBlock(this) }
                 }
             }
@@ -87,8 +87,8 @@ class TvSetupActivity : Activity() {
 
     private fun brandInfo(): String = when (brand) {
         0 -> "TV Sony, TCL, Xiaomi... chạy Android TV hoặc Google TV, Android 8 trở lên. Cài app ngay trên TV bằng remote, không cần máy tính."
-        1 -> "TV LG webOS: Dịch game ghép với TV qua LG Connect Apps rồi gửi phụ đề thành thông báo chữ của TV, nằm đè lên cả hình HDMI của máy chơi game. (thử nghiệm, chưa thử trên TV LG thật; chưa có app riêng cài lên TV LG)"
-        else -> "TV Samsung (Tizen): Samsung không cho app ngoài hiện chữ đè lên hình HDMI, và app Tizen phải ký bằng chứng chỉ Samsung nên chưa có app cài lên TV. Dùng chiếu màn hình hoặc trang web phụ đề. (thử nghiệm)"
+        1 -> "TV LG webOS: Có mã nguồn app nhận phụ đề thử nghiệm (tv-webos/). Bản cài .ipk cần đóng gói riêng và thử trên TV; ngoài ra vẫn có cách ghép qua thông báo LG."
+        else -> "TV Samsung Tizen: Có mã nguồn app thử nghiệm (tv-tizen/) dùng TVWindow/PiP hiển thị HDMI sau phụ đề. Cần ký gói .wgt theo TV và kiểm thử firmware trước khi dùng."
     }
 
     private fun brandTile(name: String, how: String, idx: Int): View {
@@ -255,7 +255,7 @@ class TvSetupActivity : Activity() {
         c.addView(step(1, "Ghép nối PS4/PS5 trong app một lần: Trang chủ, Ghép nối máy chơi game."))
         c.addView(step(2, "Vào chơi trong app, bấm 🌐 để bật dịch phụ đề rồi kéo khung tới dòng phụ đề của game."))
         c.addView(step(3, "Chiếu điện thoại lên TV Samsung bằng Smart View (xem khung chiếu bên dưới), hoặc mở trang web phụ đề trên trình duyệt của TV để xem chữ dịch ở màn hình thứ hai."))
-        c.addView(Ui.tv(this, "Chưa có app Dịch game cài được lên TV Samsung. Bật Developer Mode trên TV chỉ có tác dụng khi bạn có gói app Tizen đã ký riêng cho TV của mình (xem Hướng dẫn chi tiết).", 12.5f, Ui.SUB), Ui.lpm(this, 8, 0))
+        c.addView(Ui.tv(this, "Đã có mã nguồn app Tizen thử nghiệm tại GitHub (thư mục tv-tizen/). Cần đóng gói, ký bằng chứng chỉ TV và kiểm chứng TVWindow/PiP trên TV thật. Chưa có bản .wgt sẵn để cài.", 12.5f, Ui.SUB), Ui.lpm(this, 8, 0))
     }
 
     /** Hướng dẫn chiếu màn hình điện thoại lên TV: phụ đề nằm sẵn trên hình điện thoại nên TV nào cũng thấy. */
@@ -290,7 +290,13 @@ class TvSetupActivity : Activity() {
                 row.addView(Ui.button(this, "Chép") { copy("url", u) })
                 c.addView(row, Ui.lpm(this, 10, 0))
             }
-            c.addView(Ui.tv(this, "Phụ đề chỉ hiện khi bạn bấm bắt đầu dịch từ màn hình chính. Trang tự nối lại nếu mất mạng.", 12.5f, Ui.SUB), Ui.lpm(this, 8, 0))
+            TvOut.web?.tvPairCode?.let { pin ->
+                c.addView(Ui.tv(this, "Mã ghép app TV thử nghiệm: $pin", 18f, Ui.GOLD, true), Ui.lpm(this, 12, 0))
+                c.addView(Ui.tv(this,
+                    "Trên app Tizen/webOS đã cài riêng, nhập IP điện thoại và mã này. Mã đổi khi tắt/bật máy chủ phụ đề; TV cần ghép lại. Chỉ dùng trong Wi-Fi tin cậy.",
+                    12.5f, Ui.SUB), Ui.lpm(this, 4, 0))
+            }
+            c.addView(Ui.tv(this, "Phụ đề chỉ hiện khi bạn bấm bắt đầu dịch. Trang phụ đề tự kết nối lại khi mất mạng.", 12.5f, Ui.SUB), Ui.lpm(this, 8, 0))
         }
     }
 
@@ -313,7 +319,7 @@ class TvSetupActivity : Activity() {
                 "3. Mở app, đăng nhập tài khoản đó, bật \"Dev Mode Status\" và \"Key Server\"; TV khởi động lại. Ghi lại địa chỉ IP và mã (passphrase) trên màn hình.\n" +
                 "4. Chế độ này tự hết hạn sau một thời gian, phải mở app và gia hạn (Extend).\n" +
                 "5. Cài gói .ipk bằng ares-cli trên máy tính (ares-setup-device, ares-install).\n\n" +
-                "Dịch game hiện CHƯA có gói .ipk cho LG và điện thoại chưa cài được app lên TV LG, nên bước B chưa cần.\n\n" +
+                "Đã có mã nguồn app TV LG thử nghiệm (tv-webos/) trên GitHub. Cần đóng gói thành .ipk bằng webOS CLI, cài qua Developer Mode rồi kiểm thử. Chưa có file .ipk phát hành.\n\n" +
                 "iPhone: Dịch game chỉ có bản Android, nên không cài hay ghép từ iPhone được. iPhone vẫn xem được phụ đề bằng trang web phụ đề."
             else -> "TV SAMSUNG (Tizen)\n\n" +
                 "A. Xem phụ đề\n" +
@@ -323,7 +329,7 @@ class TvSetupActivity : Activity() {
                 "2. Chọn On, nhập IP của máy bạn dùng để cài (Host PC IP), khởi động lại TV.\n" +
                 "3. Cài gói .wgt bằng Tizen Studio hoặc công cụ sdb (cổng 26101).\n" +
                 "4. App Tizen phải ký bằng chứng chỉ Samsung gắn với mã DUID của đúng TV bạn, nên không thể làm sẵn một gói chung cho mọi người, và điện thoại cũng không tự cài được.\n\n" +
-                "Dịch game hiện CHƯA có app Tizen. iPhone: Dịch game chỉ có bản Android; iPhone xem được phụ đề bằng trang web phụ đề."
+                "Đã có mã nguồn app Tizen thử nghiệm (tv-tizen/) trên GitHub. Cần đóng gói/ ký theo DUID rồi thử trên TV thật. Chưa có file .wgt phát hành; iPhone chỉ xem phụ đề bằng trình duyệt."
         }
         AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Hướng dẫn chi tiết")
