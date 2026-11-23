@@ -137,7 +137,7 @@ class KhoGameActivity : Activity() {
             r.gravity = Gravity.TOP
             for (k in 0 until 3) {
                 val name = row.getOrNull(k)
-                val cell: View = if (name == null) View(this) else cellOf(name, cur.equals(name, ignoreCase = true))
+                val cell: View = if (name == null) View(this) else cellOf(name, GamePackMatch.selected(cur, name))
                 r.addView(cell, Ui.lp(0, WRAP_CONTENT, 1f).apply { if (k > 0) leftMargin = Ui.dp(this@KhoGameActivity, 10) })
             }
             grid.addView(r, Ui.lpm(this, 0, 14))
