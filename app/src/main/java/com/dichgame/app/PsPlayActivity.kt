@@ -1775,6 +1775,19 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                                 { Prefs.AI_VOICES.map { it.second } }
                             ) { i -> pr.femaleAiVoice = Prefs.AI_VOICES[i].first; live?.reloadVoice() })
                         }
+                        hVoice.addView(Ui.button(a,
+                            "Người đang nói (không tên): " + pr.activeSpeaker.ifBlank { "Chưa chọn" }) {
+                            val names = (pr.detectedSpeakers() + PackStore.cast(pr).flatMap { it.names })
+                                .distinctBy { it.lowercase() }
+                            val options = (listOf("Không chọn nhân vật") + names).toTypedArray()
+                            AlertDialog.Builder(a, R.style.DgDialog)
+                                .setTitle("Nhân vật hiện tại")
+                                .setItems(options) { _, index ->
+                                    pr.activeSpeaker = if (index == 0) "" else names[index - 1]
+                                    drawVoice()
+                                }
+                                .setNegativeButton("Hủy", null).show()
+                        }, Ui.lpm(a, 6, 4))
                         hVoice.addView(Ui.button(a, "🎙  Nhân vật đã nhận diện · Gán giọng thủ công") {
                             startActivity(Intent(a, PackActivity::class.java))
                         }, Ui.lpm(a, 8, 4))
