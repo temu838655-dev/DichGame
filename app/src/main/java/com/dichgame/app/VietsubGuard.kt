@@ -31,12 +31,16 @@ object VietsubGuard {
         if (text.isEmpty()) return false
         val guess = LangDetect.guess(text)
         if (guess?.lang == "vi") return true
-        if (guess != null && guess.lang != "vi") return false
         val low = text.lowercase(Locale.ROOT)
         val tokens = word.findAll(low).map { it.value }.toList()
         val count = tokens.count { it in vietnameseWords }
         val noAccentCount = tokens.count { it in noAccentWords }
         val accents = low.count { it in viDiacritics }
+        // Phụ đề không dấu có thể bị bộ đoán ngôn ngữ đánh nhầm chỉ bởi 1-2 từ
+        // thông dụng trùng tiếng Tây Ban Nha/Pháp. Chỉ nhận khi ít nhất 3 tín hiệu Việt rõ.
+        if (accents == 0 && noAccentCount >= 3 &&
+            (count + noAccentCount) * 3 >= tokens.size) return true
+        if (guess != null && guess.lang != "vi") return false
         return when {
             accents >= 2 && count >= 1 -> true
             accents >= 1 && count >= 1 -> true
