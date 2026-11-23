@@ -1,0 +1,91 @@
+<Window x:Class="DichGame.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="DichGame — Windows" Width="920" Height="785"
+        MinWidth="650" MinHeight="630" WindowStartupLocation="CenterScreen"
+        Background="#101115" Foreground="#F8F2E8" FontFamily="Segoe UI">
+  <Window.Resources>
+    <SolidColorBrush x:Key="GoldBrush" Color="#FFC27A"/>
+    <Style TargetType="TextBox">
+      <Setter Property="Padding" Value="10"/>
+      <Setter Property="Background" Value="#24242A"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="BorderBrush" Value="#665035"/>
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="Margin" Value="0,6,0,8"/>
+    </Style>
+    <Style TargetType="PasswordBox">
+      <Setter Property="Padding" Value="10"/>
+      <Setter Property="Background" Value="#24242A"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="BorderBrush" Value="#665035"/>
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="Margin" Value="0,6,0,8"/>
+    </Style>
+    <Style TargetType="Button">
+      <Setter Property="Padding" Value="16,12"/>
+      <Setter Property="Margin" Value="0,5,10,5"/>
+      <Setter Property="Background" Value="#FFC27A"/>
+      <Setter Property="Foreground" Value="#17100C"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+  </Window.Resources>
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="27">
+      <TextBlock Text="CONSOLE TRANSLATOR" FontSize="29" FontWeight="Bold" Foreground="{StaticResource GoldBrush}"/>
+      <TextBlock Text="Chơi game nào cũng hiểu — phiên bản thử nghiệm Windows" FontSize="15" Foreground="#C2AE9A" Margin="0,4,0,19"/>
+      <Border CornerRadius="17" Padding="17" Background="#1E1E23" BorderBrush="#664932" BorderThickness="1" Margin="0,0,0,13">
+        <StackPanel>
+          <TextBlock Text="Kho game · ngữ cảnh dịch" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource GoldBrush}"/>
+          <TextBlock Text="Tên game" Margin="0,8,0,0" Foreground="#C6C1BC"/>
+          <TextBox x:Name="GameName" Text="Grand Theft Auto VI"/>
+          <TextBlock Text="Ngôn ngữ gốc" Foreground="#C6C1BC"/>
+          <ComboBox x:Name="LanguageBox" SelectedIndex="0" Padding="8" Margin="0,6,0,0">
+            <ComboBoxItem Content="Tiếng Anh"/>
+            <ComboBoxItem Content="Tiếng Nhật"/>
+            <ComboBoxItem Content="Tiếng Trung"/>
+            <ComboBoxItem Content="Tiếng Hàn"/>
+            <ComboBoxItem Content="Tự nhận diện"/>
+          </ComboBox>
+        </StackPanel>
+      </Border>
+      <Border CornerRadius="17" Padding="17" Background="#1E1E23" BorderBrush="#664932" BorderThickness="1" Margin="0,0,0,13">
+        <StackPanel>
+          <TextBlock Text="Ảnh game và dịch tiếng Việt" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource GoldBrush}"/>
+          <TextBlock Text="Chụp màn hình chính khi nhấn nút hoặc mở ảnh game đã lưu." Foreground="#C6C1BC" Margin="0,5,0,9"/>
+          <WrapPanel>
+            <Button Content="Chụp màn hình" Click="Capture_Click"/>
+            <Button Content="Chọn ảnh" Click="OpenImage_Click"/>
+            <Button x:Name="TranslateButton" Content="Dịch sang tiếng Việt" Click="Translate_Click"/>
+          </WrapPanel>
+          <Image x:Name="ScreenshotPreview" MaxHeight="200" Stretch="Uniform" HorizontalAlignment="Left" Margin="0,10,0,0"/>
+          <TextBlock x:Name="PhotoNote" Text="Chưa chọn ảnh hoặc chụp màn hình." Foreground="#A4A0A0" Margin="0,10,0,0"/>
+        </StackPanel>
+      </Border>
+      <Border CornerRadius="17" Padding="17" Background="#1E1E23" BorderBrush="#664932" BorderThickness="1" Margin="0,0,0,13">
+        <StackPanel>
+          <TextBlock Text="Kết quả" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource GoldBrush}"/>
+          <TextBox x:Name="Output" Text="Bản dịch tiếng Việt sẽ xuất hiện ở đây." TextWrapping="Wrap" AcceptsReturn="True"
+                   VerticalScrollBarVisibility="Auto" IsReadOnly="True" MinHeight="105" MaxHeight="185"/>
+          <WrapPanel>
+            <Button Content="Sao chép" Click="Copy_Click"/>
+            <Button Content="Đọc tiếng Việt" Click="Speak_Click"/>
+          </WrapPanel>
+          <TextBlock x:Name="Status" Text="" TextWrapping="Wrap" Foreground="#FFCF87" Margin="0,5,0,0"/>
+        </StackPanel>
+      </Border>
+      <Border CornerRadius="17" Padding="17" Background="#1E1E23" BorderBrush="#664932" BorderThickness="1">
+        <StackPanel>
+          <TextBlock Text="Khóa Gemini" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource GoldBrush}"/>
+          <TextBlock Text="Nhập các khóa cách nhau bằng dấu phẩy hoặc xuống dòng. Khóa chỉ lưu mã hóa trong Windows." Foreground="#C6C1BC" Margin="0,5,0,7" TextWrapping="Wrap"/>
+          <PasswordBox x:Name="Keys"/>
+          <Button Content="Lưu khóa trên máy này" Click="SaveKeys_Click" HorizontalAlignment="Left"/>
+          <TextBlock Text="Đây là bản Windows nền tảng: chưa tích hợp Remote Play, tự quét game liên tục hoặc phụ đề nổi."
+                     TextWrapping="Wrap" Foreground="#A4A0A0" FontSize="12" Margin="0,10,0,0"/>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</Window>
