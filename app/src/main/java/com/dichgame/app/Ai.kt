@@ -5,8 +5,13 @@ import java.net.URL
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** [retryAfterMs]: máy chủ bảo chờ bao lâu rồi thử lại (0 nếu không nói). */
-class AiException(val code: Int, message: String, val retryAfterMs: Long = 0L) : Exception(message)
+/**
+ * [retryAfterMs]: máy chủ bảo chờ bao lâu rồi thử lại (0 nếu không nói). [perDay]: hết hạn mức theo ngày (chờ tới hôm sau).
+ * [badKey]: chính khóa này sai, hết hạn hoặc bị thu hồi.
+ */
+class AiException(
+    val code: Int, message: String, val retryAfterMs: Long = 0L, val perDay: Boolean = false, val badKey: Boolean = false,
+) : Exception(message)
 
 /** Dịch bằng AI đám mây: Google Gemini hoặc CloudAPI (chuẩn OpenAI /chat/completions). Hàm ở đây chặn luồng, hãy gọi từ luồng nền. */
 object Ai {
@@ -74,26 +79,43 @@ object Ai {
             c.outputStream.use { it.write(body.toString().toByteArray()) }
             val code = c.responseCode
             val txt = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
-            if (code !in 200..299) throw AiException(code, txt.take(200), AiRetry.retryDelayMs(c.getHeaderField("Retry-After"), txt))
+            if (code !in 200..299) throw AiException(
+                code, txt.take(200), AiRetry.retryDelayMs(c.getHeaderField("Retry-After"), txt),
+                perDay = code == 429 && KeyRing.isDailyQuota(txt), badKey = KeyRing.isBadKey(code, txt),
+            )
             return txt
         } finally {
             c.disconnect()
         }
     }
 
-    /** Gọi Gemini; hết lượt (429) thì tự đổi sang khóa dự phòng kế tiếp (nếu có) rồi thử lại. */
-    private fun geminiPost(p: Prefs, url: String, body: JSONObject): String {
-        var left = maxOf(1, p.geminiKeys().size)
+    /**
+     * Chạy [call] với một khóa Gemini còn dùng được. Khóa hết lượt (429) hay sai thì ghi vào [KeyRing] rồi đổi ngay sang khóa kế,
+     * không báo lỗi nếu còn khóa khác chạy được. Khóa hết lượt được nghỉ tới giờ hồi nên các lần gọi sau không thử lại khóa đó.
+     * [scope] là model (hạn mức tính theo model). Mọi khóa đều không dùng được thì ném [AiException] 429 kèm số mili giây phải chờ
+     * (hoặc lỗi sai khóa nếu mọi khóa đều sai).
+     */
+    fun <T> withGeminiKey(p: Prefs, scope: String, call: (String) -> T): T {
+        val keys = p.geminiKeys()
+        if (keys.isEmpty()) throw AiException(401, "Chưa có khóa Gemini", badKey = true)
+        var last: AiException? = null
         while (true) {
+            val k = KeyRing.pick(keys, scope) ?: break
             try {
-                return post(url, body, mapOf("x-goog-api-key" to p.geminiActive()))
+                val r = call(k)
+                if (KeyRing.success(k, scope)) SessionStats.live.inc("khoa_doi")
+                return r
             } catch (e: AiException) {
-                left--
-                if (e.code == 429 && left > 0 && p.geminiRotate()) continue
-                throw e
+                last = e
+                if (!KeyRing.report(k, scope, e)) throw e
             }
         }
+        if (KeyRing.allBad(keys)) throw last ?: AiException(401, "Mọi khóa Gemini đều sai hoặc bị thu hồi", badKey = true)
+        throw AiException(429, "Mọi khóa Gemini đều hết lượt", KeyRing.waitMs(keys, scope), perDay = last?.perDay == true)
     }
+
+    private fun geminiPost(p: Prefs, url: String, body: JSONObject): String =
+        withGeminiKey(p, p.geminiModel) { key -> post(url, body, mapOf("x-goog-api-key" to key)) }
 
     /** Tắt bộ lọc nội dung của Gemini: lời thoại game hay có cảnh đánh nhau, chửi thề... mà bị chặn thì câu đó rơi sang dịch máy. */
     private val SAFETY_CATEGORIES = listOf(
@@ -139,11 +161,13 @@ object Ai {
         return t
     }
 
-    /** Hết lượt hết khóa: tới mốc này (mili giây) mới thử AI lại; trong lúc đó câu dịch thẳng bằng dịch máy, khỏi chờ vô ích. */
+    /** Dịch qua CloudAPI hết lượt: tới mốc này (mili giây) mới thử lại. Gemini thì [KeyRing] giữ mốc cho từng khóa. */
     @Volatile private var cooldownUntil = 0L
 
-    /** Còn bao lâu nữa AI mới được thử lại sau khi hết lượt (0 nếu đang dùng được). */
-    fun coolingMs(): Long = (cooldownUntil - System.currentTimeMillis()).coerceAtLeast(0L)
+    /** Còn bao lâu nữa AI mới được thử lại sau khi hết lượt (0 nếu đang dùng được); trong lúc đó câu dịch thẳng bằng dịch máy, khỏi chờ vô ích. */
+    fun coolingMs(p: Prefs): Long =
+        if (p.engine == Prefs.ENGINE_GEMINI) KeyRing.waitMs(p.geminiKeys(), p.geminiModel)
+        else (cooldownUntil - System.currentTimeMillis()).coerceAtLeast(0L)
 
     /**
      * Dịch một câu, tự thử lại khi lỗi tạm thời (hết lượt ngắn hạn, 5xx, quá thời gian, mạng chập chờn). Hết lượt kéo dài thì ghi
@@ -152,10 +176,10 @@ object Ai {
     fun translateRetry(p: Prefs, prompt: String): String {
         try {
             val r = AiRetry.run(AiRetry.Plan(), { Thread.sleep(it) }) { translate(p, prompt) }
-            cooldownUntil = 0L
+            if (p.engine != Prefs.ENGINE_GEMINI) cooldownUntil = 0L
             return r
         } catch (e: Exception) {
-            if (AiRetry.kindOf(e) == AiRetry.Kind.QUOTA) {
+            if (p.engine != Prefs.ENGINE_GEMINI && AiRetry.kindOf(e) == AiRetry.Kind.QUOTA) {
                 cooldownUntil = System.currentTimeMillis() + AiRetry.cooldownMs((e as? AiException)?.retryAfterMs ?: 0L)
             }
             throw e

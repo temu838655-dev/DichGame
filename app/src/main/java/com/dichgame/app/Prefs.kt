@@ -28,8 +28,6 @@ class Prefs(ctx: Context) {
         /** Chữ mà bộ đọc chữ trên máy không có: app nhờ Google Gemini đọc ảnh (cần khóa Gemini, ảnh chụp được gửi cho Google). */
         val CLOUD_OCR = setOf("ru", "uk", "th", "ar", "el", "he")
         fun isCloudOcr(code: String) = code in CLOUD_OCR
-        /** Vị trí khóa Gemini đang dùng trong danh sách; tăng lên khi khóa hết lượt (429). Chia sẻ giữa mọi nơi dùng khóa. */
-        @Volatile var geminiAt = 0
         /** Tên hiển thị trong danh sách chọn ngôn ngữ. */
         fun langLabel(code: String) = langName(code) + if (isCloudOcr(code)) " (đọc bằng Gemini)" else ""
         /** Chữ Nhật, Hàn, Trung không có dấu cách giữa các từ. */
@@ -87,25 +85,13 @@ class Prefs(ctx: Context) {
     fun geminiKeys(): List<String> =
         (listOf(geminiKey) + geminiSpare.lines()).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
 
+    /** Lưu danh sách khóa. Khóa mới thêm (kể cả khóa vừa bị gỡ rồi thêm lại) được dùng thử ngay, không mang theo tình trạng cũ. */
     fun setGeminiKeys(list: List<String>) {
+        val before = geminiKeys().toSet()
         val k = list.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         geminiKey = k.firstOrNull().orEmpty()
         geminiSpare = k.drop(1).joinToString("\n")
-        geminiAt = 0
-    }
-
-    /** Khóa Gemini đang dùng (đổi sang khóa kế tiếp sau mỗi lần gặp lỗi hết lượt). */
-    fun geminiActive(): String {
-        val k = geminiKeys()
-        return if (k.isEmpty()) "" else k[geminiAt.mod(k.size)]
-    }
-
-    /** Chuyển sang khóa kế tiếp; false nếu chỉ có một khóa. */
-    fun geminiRotate(): Boolean {
-        val k = geminiKeys()
-        if (k.size < 2) return false
-        geminiAt = (geminiAt + 1).mod(k.size)
-        return true
+        for (n in k) if (n !in before) KeyRing.forget(n)
     }
 
     var geminiModel: String

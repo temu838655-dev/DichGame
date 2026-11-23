@@ -149,8 +149,13 @@ class TranslateActivity : Activity() {
             col.addView(Ui.tv(a, "Khóa ${i + 1}", 15f, Ui.TEXT, true))
             col.addView(Ui.tv(a, mask(k), 12.5f, Ui.SUB))
             row.addView(col, Ui.lp(0, WRAP_CONTENT, 1f))
-            val active = i == Prefs.geminiAt.mod(keys.size)
-            row.addView(Ui.badge(a, if (active) "ĐANG DÙNG" else "SẴN SÀNG", if (active) Ui.OK else Ui.GOLD))
+            val st = KeyRing.status(k, p.geminiModel)
+            val (label, color) = when (st.state) {
+                KeyRing.State.BAD -> "KHÓA SAI" to Ui.DANGER
+                KeyRing.State.QUOTA -> "HẾT LƯỢT · ${AiRetry.humanWait(st.leftMs)}" to Ui.DANGER
+                KeyRing.State.OK -> if (st.active) "ĐANG DÙNG" to Ui.OK else "SẴN SÀNG" to Ui.GOLD
+            }
+            row.addView(Ui.badge(a, label, color))
             row.addView(Ui.tv(a, "✕", 18f, Ui.DANGER, true).apply {
                 gravity = Gravity.CENTER
                 setPadding(Ui.dp(a, 14), Ui.dp(a, 6), Ui.dp(a, 4), Ui.dp(a, 6))
@@ -167,7 +172,7 @@ class TranslateActivity : Activity() {
             p.setGeminiKeys(p.geminiKeys() + v)
             render()
         }, Ui.lpm(a, 0, 4))
-        c.addView(Ui.tv(a, "Thêm nhiều khóa: khi một khóa hết lượt (lỗi 429) app tự chuyển sang khóa kế tiếp.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 4))
+        c.addView(Ui.tv(a, "Thêm nhiều khóa: khi một khóa hết lượt (lỗi 429) hoặc bị từ chối, app tự chuyển sang khóa kế tiếp và tạm bỏ khóa đó tới giờ hồi (hết lượt theo ngày thì tới nửa đêm giờ Thái Bình Dương). Lưu ý: Google tính hạn mức theo dự án, các khóa tạo trong cùng một dự án dùng chung hạn mức nên không thêm lượt; hãy tạo khóa ở dự án khác.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 4))
         c.addView(Ui.button(a, "Lấy khóa miễn phí ở aistudio.google.com") {
             try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/apikey"))) }
             catch (_: Exception) { Toast.makeText(a, "Không mở được trình duyệt.", Toast.LENGTH_SHORT).show() }

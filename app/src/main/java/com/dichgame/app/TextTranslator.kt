@@ -146,7 +146,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         Thread {
             var chosen: Tr? = null
             var strict: String? = null
-            val cool = Ai.coolingMs()
+            val cool = Ai.coolingMs(p)
             if (cool > 0) {
                 // vừa hết lượt: dịch máy ngay cho câu này, khỏi chờ AI vô ích; hết thời gian nghỉ sẽ thử AI lại
                 st.inc(AiRetry.statKey(AiRetry.Kind.QUOTA))
@@ -159,7 +159,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 } catch (e: Exception) {
                     val kind = AiRetry.kindOf(e)
                     st.inc(AiRetry.statKey(kind))
-                    warn(AiRetry.explain(kind, (e as? AiException)?.code ?: 0, Ai.coolingMs()))
+                    warn(AiRetry.explain(kind, (e as? AiException)?.code ?: 0, Ai.coolingMs(p)))
                 }
                 if (raw.isNullOrEmpty()) break
                 val parsed = if (emo) Emo.parse(raw) else Emo.Parsed(raw, null)

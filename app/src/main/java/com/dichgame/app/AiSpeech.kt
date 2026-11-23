@@ -14,17 +14,16 @@ class Pcm(val data: ByteArray, val rate: Int, val channels: Int)
 object AiSpeech {
     private const val BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-    fun synth(p: Prefs, text: String, style: String): Pcm {
+    /** Đọc [text] bằng giọng [voice] (mã giọng Gemini, mặc định giọng đã chọn trong cài đặt). Tự đổi khóa khi một khóa hết lượt. */
+    fun synth(p: Prefs, text: String, style: String, voice: String = p.aiVoice): Pcm {
         return try {
-            viaInteractions(p, text, style)
+            viaInteractions(p, text, style, voice)
         } catch (e: AiException) {
-            if (e.code == 400 || e.code == 404) {
-                try { viaGenerate(p, text, style) } catch (e2: AiException) { throw e2 }
-            } else throw e
+            if (e.code == 400 || e.code == 404) viaGenerate(p, text, style, voice) else throw e
         }
     }
 
-    private fun viaInteractions(p: Prefs, text: String, style: String): Pcm {
+    private fun viaInteractions(p: Prefs, text: String, style: String, voice: String): Pcm {
         val item = JSONObject().put("type", "text").put("text", text)
         if (style.isNotEmpty()) {
             item.put("annotations", JSONArray().put(JSONObject().put("type", "speech_metadata").put("style", style)))
@@ -33,8 +32,8 @@ object AiSpeech {
             .put("model", p.ttsModel)
             .put("input", JSONArray().put(JSONObject().put("type", "user_input").put("content", JSONArray().put(item))))
             .put("response_format", JSONObject().put("type", "audio"))
-            .put("generation_config", JSONObject().put("speech_config", JSONArray().put(JSONObject().put("voice", p.aiVoice))))
-        val r = Ai.post("$BASE/interactions", body, mapOf("x-goog-api-key" to p.geminiActive()))
+            .put("generation_config", JSONObject().put("speech_config", JSONArray().put(JSONObject().put("voice", voice))))
+        val r = Ai.withGeminiKey(p, p.ttsModel) { key -> Ai.post("$BASE/interactions", body, mapOf("x-goog-api-key" to key)) }
         val steps = JSONObject(r).optJSONArray("steps") ?: throw AiException(0, "Phản hồi không có âm thanh")
         var data = ""
         for (i in 0 until steps.length()) {
@@ -50,15 +49,15 @@ object AiSpeech {
         return parse(Base64.decode(data, Base64.DEFAULT))
     }
 
-    private fun viaGenerate(p: Prefs, text: String, style: String): Pcm {
+    private fun viaGenerate(p: Prefs, text: String, style: String, voiceName: String): Pcm {
         val prompt = if (style.isEmpty()) text else "Say in a $style way: $text"
-        val voice = JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", p.aiVoice))
+        val voice = JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voiceName))
         val body = JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
             .put("generationConfig", JSONObject()
                 .put("responseModalities", JSONArray().put("AUDIO"))
                 .put("speechConfig", JSONObject().put("voiceConfig", voice)))
-        val r = Ai.post("$BASE/models/${p.ttsModel}:generateContent", body, mapOf("x-goog-api-key" to p.geminiActive()))
+        val r = Ai.withGeminiKey(p, p.ttsModel) { key -> Ai.post("$BASE/models/${p.ttsModel}:generateContent", body, mapOf("x-goog-api-key" to key)) }
         val b64 = JSONObject(r).getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
             .getJSONArray("parts").getJSONObject(0).getJSONObject("inlineData").getString("data")
         return parse(Base64.decode(b64, Base64.DEFAULT))
@@ -100,7 +99,7 @@ object AiSpeech {
         when (e.code) {
             401, 403 -> "Lỗi ${e.code}: khóa Gemini sai hoặc không có quyền dùng giọng AI."
             404 -> "Lỗi 404: sai tên model giọng AI (${p.ttsModel})."
-            429 -> "Lỗi 429: hết lượt dùng, chờ rồi thử lại."
+            429 -> "Mọi khóa Gemini đang hết lượt giọng AI (429)" + (if (e.retryAfterMs > 0) ", khóa sớm nhất dùng lại sau ${AiRetry.humanWait(e.retryAfterMs)}" else "") + "."
             else -> "Lỗi ${e.code}: ${e.message.orEmpty()}"
         }
     } catch (e: Exception) {

@@ -480,7 +480,7 @@ class UiTranslate(
         val old = cache[key]
         if (old != null) {
             // khối này đang hiện bản dịch máy vì AI lỗi: sau ít giây (và AI không còn nghỉ) xin dịch lại bằng AI, bản cũ vẫn hiện trong lúc chờ
-            if (old.via == "may" && !old.upgrading && tt != null && prefs?.let { Ai.enabled(it) } == true && Ai.coolingMs() == 0L &&
+            if (old.via == "may" && !old.upgrading && tt != null && prefs?.let { Ai.enabled(it) && Ai.coolingMs(it) == 0L } == true &&
                 SystemClock.uptimeMillis() - old.at > UPGRADE_AFTER_MS && queue.size < MAX_QUEUE) {
                 old.upgrading = true
                 queue.addLast(src to key)

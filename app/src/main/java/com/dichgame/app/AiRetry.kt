@@ -124,11 +124,18 @@ object AiRetry {
         throw AiException(0, "Phản hồi rỗng" + if (fr.isNotEmpty()) " ($fr)" else "")
     }
 
+    /** "21 giây", "5 phút", "3 giờ": thời gian chờ viết cho người đọc. */
+    fun humanWait(ms: Long): String = when {
+        ms < 90_000L -> "${(ms + 999) / 1000} giây"
+        ms < 90 * 60_000L -> "${(ms + 59_999) / 60_000} phút"
+        else -> "${(ms + 3_599_999) / 3_600_000} giờ"
+    }
+
     /** Câu báo cho người dùng khi một câu phải dịch bằng dịch máy vì AI lỗi. [coolMs]: còn bao lâu nữa mới thử lại AI. */
     fun explain(kind: Kind, code: Int, coolMs: Long): String = when (kind) {
         Kind.QUOTA ->
             "Gemini báo hết lượt dùng (hạn mức tính theo dự án Google, các khóa cùng dự án dùng chung)." +
-                if (coolMs > 0) " Tạm dịch bằng dịch máy khoảng ${(coolMs + 999) / 1000} giây rồi thử lại AI." else " Câu này tạm dịch bằng dịch máy."
+                if (coolMs > 0) " Tạm dịch bằng dịch máy khoảng ${humanWait(coolMs)} rồi thử lại AI." else " Câu này tạm dịch bằng dịch máy."
         Kind.NETWORK -> "Không gọi được AI sau vài lần thử (mạng chậm hoặc máy chủ AI quá tải). Câu này tạm dịch bằng dịch máy."
         Kind.BLOCKED -> "AI từ chối câu này (bộ lọc nội dung). Câu này dịch bằng dịch máy."
         Kind.BAD -> when (code) {

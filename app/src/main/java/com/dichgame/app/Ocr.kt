@@ -74,8 +74,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
             }
             return
         }
-        val key = p.geminiActive()
-        if (key.isEmpty()) {
+        if (p.geminiKeys().isEmpty()) {
             recycleInput(bmp)
             fail("Chữ ${Prefs.srcNameOf(lang)} cần khóa Google Gemini. Vào Cách dịch để nhập khóa.")
             return
@@ -84,7 +83,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
         try {
             io.execute {
                 try {
-                    val blocks = cloudRead(bmp, key, model)
+                    val blocks = cloudRead(bmp, p, model)
                     recycleInput(bmp)
                     main.post { ok(blocks) }
                 } catch (e: Exception) {
@@ -104,7 +103,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
         if (isCloud) io.shutdown()
     }
 
-    private fun cloudRead(bmp: Bitmap, key: String, model: String): List<Blk> {
+    private fun cloudRead(bmp: Bitmap, p: Prefs, model: String): List<Blk> {
         val sc = minOf(1f, 1280f / maxOf(bmp.width, bmp.height))
         val small = if (sc < 1f)
             Bitmap.createScaledBitmap(bmp, (bmp.width * sc).toInt().coerceAtLeast(1), (bmp.height * sc).toInt().coerceAtLeast(1), true)
@@ -131,10 +130,12 @@ class Ocr(private val p: Prefs, private val lang: String) {
         val body = JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("parts", parts)))
             .put("generationConfig", JSONObject().put("responseMimeType", "application/json").put("temperature", 0))
-        val r = Ai.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent",
-            body, mapOf("x-goog-api-key" to key)
-        )
+        val r = Ai.withGeminiKey(p, model) { key ->
+            Ai.post(
+                "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent",
+                body, mapOf("x-goog-api-key" to key)
+            )
+        }
         val txt = JSONObject(r).getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
             .getJSONArray("parts").getJSONObject(0).getString("text")
         return parse(txt, bmp.width, bmp.height)
@@ -166,7 +167,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
         if (e is AiException) when (e.code) {
             400 -> "Gemini lỗi 400: sai tên model. Kiểm tra lại ở Cách dịch."
             401, 403 -> "Gemini lỗi ${e.code}: khóa API sai hoặc không có quyền."
-            429 -> "Gemini hết lượt dùng (429). Chờ một lúc hoặc đổi khóa."
+            429 -> "Mọi khóa Gemini đang hết lượt (429)" + (if (e.retryAfterMs > 0) ", khóa sớm nhất dùng lại sau ${AiRetry.humanWait(e.retryAfterMs)}" else "") + ". Thêm khóa từ dự án Google khác hoặc chờ."
             else -> "Gemini lỗi ${e.code}."
         } else "Không kết nối được Gemini để đọc chữ."
 

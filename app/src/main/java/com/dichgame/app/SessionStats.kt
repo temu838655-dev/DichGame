@@ -69,6 +69,7 @@ class SessionStats {
         sb.append("; ghép với chữ đọc dở: ${get("ghep")}\n")
         sb.append("Dịch: AI ${get("dich_ai")}, bộ nhớ đệm ${get("dich_cache")}, gói Việt hoá ${get("dich_goi")}" + (if (get("dich_goi_gan") > 0) " (trong đó ${get("dich_goi_gan")} khớp gần đúng)" else "") + ", dịch trên máy ${get("dich_may")}")
         sb.append("; AI bị loại rồi dịch lại ${get("dich_loai")}; còn nghi ngờ ${get("dich_nghi")}\n")
+        if (get("khoa_doi") > 0) sb.append("Đổi khóa Gemini tự động: ${get("khoa_doi")} lần\n")
         val why = machineReasons()
         if (why.isNotEmpty()) sb.append("Dịch trên máy vì AI không dùng được: ").append(why).append('\n')
         val n = synchronized(this) { latencies.size }
