@@ -63,6 +63,9 @@ class Prefs(ctx: Context) {
         )
         /** Tên Việt là nhãn trong app, mã giọng tiếng Anh giữ nguyên khi gọi API Gemini. */
         fun aiVoiceLabel(id: String): String = AI_VOICES.firstOrNull { it.first == id }?.second ?: id
+        /** Giới tính của các preset Gemini theo danh sách chính thức của Google Cloud. */
+        val MALE_AI_VOICES = AI_VOICES.filter { it.first in setOf("Puck", "Charon", "Achird") }
+        val FEMALE_AI_VOICES = AI_VOICES.filter { it.first in setOf("Kore", "Zephyr", "Sulafat", "Aoede", "Gacrux") }
         fun langName(code: String) = LANGS.firstOrNull { it.first == code }?.second ?: "Tiếng Anh"
     }
 
@@ -188,10 +191,12 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("charvoices", true)
         set(v) = sp.edit().putBoolean("charvoices", v).apply()
     var maleAiVoice: String
-        get() = sp.getString("male_aivoice", "Charon").orEmpty().ifBlank { "Charon" }
+        get() = sp.getString("male_aivoice", "Charon").orEmpty()
+            .takeIf { v -> MALE_AI_VOICES.any { it.first == v } } ?: "Charon"
         set(v) = sp.edit().putString("male_aivoice", v).apply()
     var femaleAiVoice: String
-        get() = sp.getString("female_aivoice", "Kore").orEmpty().ifBlank { "Kore" }
+        get() = sp.getString("female_aivoice", "Kore").orEmpty()
+            .takeIf { v -> FEMALE_AI_VOICES.any { it.first == v } } ?: "Kore"
         set(v) = sp.edit().putString("female_aivoice", v).apply()
 
     /** Nhân vật phát hiện từ nhãn lời thoại, lưu theo hồ sơ game; không tự đoán giới tính qua tên. */
