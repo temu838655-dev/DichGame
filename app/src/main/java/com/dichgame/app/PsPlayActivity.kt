@@ -1709,9 +1709,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                         syncTools()
                     })
                 }
-                hVoice.addView(Ui.segmented(a, listOf("Cơ bản", "AI offline", "Gemini AI"),
-                    when (pr.voiceEngine) { "offline" -> 1; "ai" -> 2; else -> 0 }) { i ->
-                    pr.voiceEngine = when (i) { 1 -> "offline"; 2 -> "ai"; else -> "system" }
+                hVoice.addView(Ui.segmented(a, listOf("Giọng cơ bản", "Giọng AI"),
+                    if (pr.voiceEngine == "ai") 1 else 0) { i ->
+                    pr.voiceEngine = if (i == 1) "ai" else "system"
                     runCatching { tester?.shutdown() }
                     tester = null
                     live?.reloadVoice()
@@ -1824,9 +1824,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
             fun drawMode() {
                 hMode.removeAllViews()
-                hMode.addView(Ui.segmented(a, listOf("Dịch", "Đọc Vietsub", "✦ AI Tự động"),
-                    when (pr.mode) { Prefs.MODE_VIETSUB -> 1; Prefs.MODE_AUTO -> 2; else -> 0 }) { i ->
-                    val next = when (i) { 1 -> Prefs.MODE_VIETSUB; 2 -> Prefs.MODE_AUTO; else -> Prefs.MODE_TRANSLATE }
+                hMode.addView(Ui.segmented(a, listOf("Dịch", "Thuyết minh"), if (pr.narrate) 1 else 0) { i ->
+                    val next = if (i == 1) Prefs.MODE_VIETSUB else Prefs.MODE_TRANSLATE
                     if (next != pr.mode) {
                         pr.mode = next
                         restartTranslation()
@@ -1835,12 +1834,16 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     drawVoice()
                 })
                 hMode.addView(Ui.tv(a,
-                    when (pr.mode) {
-                        Prefs.MODE_VIETSUB -> "Đọc Vietsub: chỉ đọc phụ đề tiếng Việt của phim/game đã Việt hóa, không dịch."
-                        Prefs.MODE_AUTO -> "AI Tự động: nhận game khi tựa hiện rõ 2 lần, ưu tiên Việt hóa → trí nhớ game → Gemini (khóa dự phòng); giọng theo nhân vật khi dùng TTS Gemini."
-                        else -> "Dịch: đọc chữ ${Prefs.srcNameOf(pr.lang)} trong game rồi dịch sang tiếng Việt."
-                    }, 12.5f, Ui.SUB), Ui.lpm(a, 8, 2))
+                    if (pr.narrate) "Thuyết minh: chỉ đọc phụ đề tiếng Việt của phim/game Việt hóa, không dịch."
+                    else "Dịch: đọc chữ ${Prefs.srcNameOf(pr.lang)} trong game. Có thể bật AI Tự động bên dưới.",
+                    12.5f, Ui.SUB), Ui.lpm(a, 8, 2))
                 if (!pr.narrate) {
+                    hMode.addView(Ui.switchRow(a, "✦ AI Tự động",
+                        "Ưu tiên gói Việt hóa, bộ nhớ theo game và Gemini tự đổi khóa.", pr.aiAuto) { enabled ->
+                        pr.aiAuto = enabled
+                        restartTranslation()
+                        drawMode()
+                    }, Ui.lpm(a, 6, 5))
                     val codes = Prefs.LANGS.map { it.first }.filter { it != "vi" }
                     hMode.addView(Ui.dropRow(a, "Ngôn ngữ trong game",
                         { Prefs.langName(pr.lang) },
