@@ -94,14 +94,14 @@ adb shell am start -W -n "$PKG/.LiveDemoActivity" --es mode narrate >/dev/null 2
 for i in $(seq 1 40); do
   sleep 4
   adb logcat -d -s DG_LIVE:I > "$OUT/narrate.txt" 2>&1
-  grep -q "DG_LIVE.*thuyet minh: " "$OUT/narrate.txt" && break
+  grep -qE "DG_LIVE.*(thuyet minh|doc): " "$OUT/narrate.txt" && break
 done
 sleep 3
 adb logcat -d -s DG_LIVE:I > "$OUT/narrate.txt" 2>&1
 adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; sleep 1
 shot narrate-live
 cat "$OUT/narrate.txt" | cut -c1-200
-grep -qiE "thuyet minh: .*(đâu|dau|tối|toi|bạn|ban|gần|gan)" "$OUT/narrate.txt" || echo "Thuyết minh: không đọc được phụ đề tiếng Việt vẽ sẵn" >> "$OUT/narrate-fail.txt"
+grep -qiE "(thuyet minh|doc): .*(đâu|dau|tối|toi|bạn|ban|gần|gan)" "$OUT/narrate.txt" || echo "Thuyết minh: không đọc được phụ đề tiếng Việt vẽ sẵn" >> "$OUT/narrate-fail.txt"
 grep -q "DG_LIVE.*dich: " "$OUT/narrate.txt" && echo "Thuyết minh: câu tiếng Việt bị đem đi dịch" >> "$OUT/narrate-fail.txt"
 adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/narrate-fail.txt"
 [ -s "$OUT/narrate-fail.txt" ] || rm -f "$OUT/narrate-fail.txt"
