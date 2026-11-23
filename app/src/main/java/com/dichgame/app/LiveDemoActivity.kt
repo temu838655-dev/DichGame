@@ -21,8 +21,9 @@ import android.widget.FrameLayout
 class LiveDemoActivity : Activity(), SurfaceHolder.Callback {
     private var sv: SurfaceView? = null
     private var live: LiveSubs? = null
-    // mode=ui: thử dịch chữ giao diện (menu game) thay vì phụ đề
+    // mode=ui: thử dịch chữ giao diện (menu game) thay vì phụ đề; mode=uionce: "Dịch hết chữ" (một lần rồi tự tắt)
     private var uiMode = false
+    private var onceMode = false
     // mode=narrate: thuyết minh (phụ đề tiếng Việt có sẵn, chỉ đọc to, không dịch)
     private var narrateMode = false
     private var uiTr: UiTranslate? = null
@@ -49,14 +50,18 @@ class LiveDemoActivity : Activity(), SurfaceHolder.Callback {
         root.addView(vid, FrameLayout.LayoutParams(MATCH_PARENT, h, Gravity.CENTER))
         setContentView(root)
         Prefs(this).lang = "en"
-        uiMode = intent.getStringExtra("mode") == "ui"
+        val mode = intent.getStringExtra("mode")
+        onceMode = mode == "uionce"
+        uiMode = mode == "ui" || onceMode
         narrateMode = intent.getStringExtra("mode") == "narrate"
         Prefs(this).narrate = narrateMode
         if (uiMode) {
             val u = UiTranslate(this, { sv }, { null })
             uiTr = u
             u.attach(vid)
-            ui.postDelayed({ u.start() }, 1500)
+            ui.postDelayed({
+                if (onceMode) u.startOnce { android.util.Log.i("DG_UITR", "mot-lan da-tu-tat") } else u.start()
+            }, 1500)
             return
         }
         val l = LiveSubs(this) { sv }

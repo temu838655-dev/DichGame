@@ -14,6 +14,7 @@ adb wait-for-device
 adb shell appops set "$PKG" SYSTEM_ALERT_WINDOW allow
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
 adb shell settings put global hide_error_dialogs 1 2>/dev/null || true  # ẩn hộp thoại "không phản hồi" của launcher giả lập khỏi ảnh chụp
+adb shell settings put secure immersive_mode_confirmations confirmed 2>/dev/null || true  # bỏ hộp thoại "Viewing full screen" che ảnh chụp lúc xoay ngang
 adb logcat -c
 
 shot() { adb exec-out screencap -p > "$OUT/$1.png"; }
@@ -144,17 +145,18 @@ adb shell am force-stop "$PKG"
 
 # Thanh công cụ màn chơi khi xoay ngang (giống thanh mẫu): mở -> tự thu lại khi để yên -> chạm chấm để mở lại -> bấm "Dịch hết chữ"
 # (thanh thu lại sau thao tác, dịch một lần rồi tự tắt) -> bấm nút PS. Bấm đúng các nút thật; nhật ký DG_PLAY.
+# Chụp ảnh ngay khi nhật ký báo từng trạng thái (bản xem thử cách nhau vài giây nên kịp chụp).
 adb logcat -c
 adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo tools >/dev/null 2>&1
-# Mốc của bản xem thử: 2s ghi trạng thái đầu · 9s ghi sau 5s để yên · 10s chạm chấm · 13s bấm Dịch hết chữ · 15,5s ghi · 16s bấm nút PS
-sleep 3; adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; shot tools-open
-sleep 5; shot tools-collapsed
-sleep 3; shot tools-reopened
-sleep 2; shot tools-once
+waitlog() { for i in $(seq 1 $2); do adb logcat -d -s DG_PLAY:I > "$OUT/tools.txt" 2>&1; grep -q "$1" "$OUT/tools.txt" && return 0; sleep 0.5; done; return 1; }
+waitlog "tools-dau" 40; shot tools-open
+waitlog "tools-sau-5s" 40; shot tools-collapsed
+waitlog "tools-mo-lai" 60; shot tools-reopened
+waitlog "mot-lan chay" 60; sleep 0.5; shot tools-once
 for i in $(seq 1 24); do
-  sleep 5
   adb logcat -d -s DG_PLAY:I > "$OUT/tools.txt" 2>&1
   grep -q "mot-lan da-tu-tat" "$OUT/tools.txt" && break
+  sleep 5
 done
 cat "$OUT/tools.txt"
 grep -q "tools-dau open=true top=true handle=false land=true" "$OUT/tools.txt" || echo "Thanh công cụ: lúc đầu không mở đủ (hàng trên + thanh) khi xoay ngang" >> "$OUT/tools-fail.txt"
@@ -166,7 +168,32 @@ grep -q "ps-tap session=false" "$OUT/tools.txt" || echo "Nút PS: bấm không c
 grep -q "mot-lan da-tu-tat" "$OUT/tools.txt" || echo "Dịch hết chữ: chế độ một lần không tự tắt sau khi xong hoặc khi không thấy chữ" >> "$OUT/tools-fail.txt"
 adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/tools-fail.txt"
 [ -s "$OUT/tools-fail.txt" ] || rm -f "$OUT/tools-fail.txt"
-adb shell settings put system user_rotation 0 >/dev/null 2>&1
+adb shell am force-stop "$PKG"
+
+# "Dịch hết chữ" thử thật: SurfaceView vẽ menu tiếng Anh -> PixelCopy -> OCR (không loại vùng phụ đề) -> lọc -> dịch -> giữ bản dịch -> tự tắt (nhật ký DG_UITR)
+adb logcat -c
+adb shell am start -W -n "$PKG/.LiveDemoActivity" --es mode uionce >/dev/null 2>&1
+for i in $(seq 1 60); do
+  sleep 4
+  adb logcat -d -s DG_UITR:I > "$OUT/uionce.txt" 2>&1
+  grep -q "mot-lan: dich xong" "$OUT/uionce.txt" && break
+done
+sleep 1
+adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1
+shot uionce-hold
+for i in $(seq 1 12); do
+  sleep 3
+  adb logcat -d -s DG_UITR:I > "$OUT/uionce.txt" 2>&1
+  grep -q "mot-lan da-tu-tat" "$OUT/uionce.txt" && break
+done
+shot uionce-after
+cat "$OUT/uionce.txt"
+grep -q "DG_UITR.*dich: " "$OUT/uionce.txt" || echo "Dịch hết chữ: không ra bản dịch nào cho menu thử" >> "$OUT/uionce-fail.txt"
+grep -q "mot-lan: dich xong" "$OUT/uionce.txt" || echo "Dịch hết chữ: không báo dịch xong để chuyển sang giữ bản dịch" >> "$OUT/uionce-fail.txt"
+grep -q "mot-lan da-tu-tat" "$OUT/uionce.txt" || echo "Dịch hết chữ: giữ xong không tự tắt" >> "$OUT/uionce-fail.txt"
+grep -q "DG_UITR.*dich: ID4521" "$OUT/uionce.txt" && echo "Dịch hết chữ: mã ID bị đem đi dịch" >> "$OUT/uionce-fail.txt"
+adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/uionce-fail.txt"
+[ -s "$OUT/uionce-fail.txt" ] || rm -f "$OUT/uionce-fail.txt"
 adb shell am force-stop "$PKG"
 
 # Chỉnh khung đọc phụ đề: kéo quá to -> bấm Đặt lại -> bấm Xong (bấm đúng các nút thật; nhật ký DG_PLAY)
@@ -266,6 +293,7 @@ adb shell am force-stop "$PKG"
 set_prefs ci/prefs-offline.xml
 start_page voice; shot offline-chua-tai
 adb shell settings put global hide_error_dialogs 1 2>/dev/null || true  # ẩn hộp thoại "không phản hồi" của launcher giả lập khỏi ảnh chụp
+adb shell settings put secure immersive_mode_confirmations confirmed 2>/dev/null || true
 adb logcat -c
 adb shell am force-stop "$PKG"
 adb shell am start -W -n "$PKG/.SettingsActivity" --es page voice --ez selftest true >/dev/null 2>&1

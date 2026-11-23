@@ -243,12 +243,12 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     fun at(ms: Long, f: () -> Unit) { ui.postDelayed({ if (!isFinishing && !isDestroyed) f() }, ms) }
                     at(2000) { st("dau") }
                     at(9000) { st("sau-5s") }
-                    at(10000) { handleView?.performClick() }
-                    at(10800) { st("mo-lai") }
-                    at(13000) { pillOnce?.box?.performClick() }
-                    at(13500) { android.util.Log.i("DG_PLAY", "mot-lan chay=${uiTr?.running} once=${uiTr?.once}") }
-                    at(15500) { st("sau-bam") }
-                    at(16000) { homeCell?.performClick() }
+                    at(14000) { handleView?.performClick() }
+                    at(15000) { st("mo-lai") }
+                    at(21000) { pillOnce?.box?.performClick() }
+                    at(21500) { android.util.Log.i("DG_PLAY", "mot-lan chay=${uiTr?.running} once=${uiTr?.once}") }
+                    at(23500) { st("sau-bam") }
+                    at(24000) { homeCell?.performClick() }
                 }
                 "adjust2" -> {
                     // Chỉnh khung: kéo quá to → bấm Đặt lại → bấm Xong (bấm đúng các nút thật), ghi nhật ký từng bước
@@ -703,9 +703,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 outlineProvider = ViewOutlineProvider.BACKGROUND
             }
         }
-        barView?.background = if (land) Ui.bg(this, Color.parseColor("#C017120D"), 22, Color.parseColor("#44F2B84B"), 1)
+        barView?.background = if (land) Ui.bg(this, Color.parseColor("#E617120D"), 22, Color.parseColor("#44F2B84B"), 1)
         else Ui.bg(this, Color.parseColor("#17120D"), 24, Color.parseColor("#44F2B84B"), 1)
-        pad?.alpha = if (land) 0.8f else 1f
         chipHolder?.visibility = if (land) View.GONE else View.VISIBLE
         gripView?.visibility = if (land) View.GONE else View.VISIBLE
         vidFrame?.let { v -> live?.attach(v); uiTr?.attach(v) }
@@ -886,6 +885,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         barView?.visibility = tools
         pillsView?.visibility = tools
         handleView?.visibility = if (land && !toolsOpen) View.VISIBLE else View.GONE
+        // Xoay ngang: các nút trên cùng nằm đè lên nút vai (L1/L2/R1/R2) của tay cầm ảo, nên khi thanh đang mở thì mờ tay cầm
+        // đi cho dễ nhìn; thu lại là tay cầm rõ như cũ. Tay cầm vẫn nhận chạm bình thường.
+        pad?.alpha = if (land) (if (toolsOpen) 0.3f else 0.8f) else 1f
         root.requestLayout()
     }
 
