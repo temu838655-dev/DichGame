@@ -531,7 +531,11 @@ class WebTranslateActivity : Activity() {
     private fun langShort(): String = if (p.narrate) "Việt" else Prefs.langName(p.lang).removePrefix("Tiếng ")
 
     private fun refresh() {
-        langChip.text = if (p.narrate) "🌐 Thuyết minh · Việt ▾" else "🌐 ${langShort()} → Việt ▾"
+        langChip.text = when (p.mode) {
+            Prefs.MODE_VIETSUB -> "🔊 Đọc Vietsub · Việt ▾"
+            Prefs.MODE_AUTO -> "✦ AI Tự động → Việt ▾"
+            else -> "🌐 ${langShort()} → Việt ▾"
+        }
         if (running) {
             transBtn.background = Ui.goldBg(this, 16)
             transIcon.set(ToolIcon.Kind.PAUSE, Color.parseColor("#2A1A08"))
@@ -609,7 +613,7 @@ class WebTranslateActivity : Activity() {
 
     private fun start() {
         if (running) return
-        if (!p.narrate && !sp.getBoolean("langAsked", false)) { pickLang(thenStart = true); return }
+        if (!p.narrate && !p.aiAuto && !sp.getBoolean("langAsked", false)) { pickLang(thenStart = true); return }
         if (!p.narrate && translator == null) { prepareTranslator { ok -> if (ok) beginRun() }; return }
         beginRun()
     }
@@ -692,8 +696,11 @@ class WebTranslateActivity : Activity() {
         lastProcessed = text
         Log.i(TAG, "src: $text")
         if (p.narrate) {
-            setPanel(text, "")
-            if (p.speak) speaker?.speak(text)
+            // Chế độ Vietsub không dịch và tuyệt đối không đọc câu ngoại ngữ nhận nhầm từ CC/OCR.
+            if (VietsubGuard.isVietnamese(text)) {
+                setPanel(text, "")
+                speaker?.speak(text)
+            } else setPanel("Chưa nhận được phụ đề tiếng Việt rõ ràng. Kiểm tra nguồn CC hoặc chuyển OCR.", "")
             return
         }
         val t = translator
@@ -877,7 +884,8 @@ class WebTranslateActivity : Activity() {
             col.addView(row)
         }
         item("Chữ hiện dần", "Chỉ bật khi phụ đề hiện ra từng chữ", p.slow) { p.slow = !p.slow; lastCand = "" }
-        item("Thuyết minh", "Video có sẵn phụ đề tiếng Việt: đọc to, không dịch", p.narrate) { toggleNarrate() }
+        item("Đọc Vietsub", "Chỉ đọc phụ đề tiếng Việt có sẵn, không dịch", p.narrate) { toggleNarrate() }
+        item("✦ AI Tự động", "Ưu tiên bản Việt hóa, bộ nhớ game và Gemini tự xoay khóa", p.aiAuto) { toggleAutoMode() }
         item("Ẩn phụ đề gốc trên video", if (source == "ocr") "Che khung bằng nền tối khi quét OCR" else null, hideOrig) {
             hideOrig = !hideOrig
             sp.edit().putBoolean("hide", hideOrig).apply()
@@ -896,6 +904,17 @@ class WebTranslateActivity : Activity() {
         anchor.getLocationOnScreen(loc)
         val xoff = max(-(w - anchor.width), dp(8) - loc[0])
         pop.showAsDropDown(anchor, xoff, -(col.measuredHeight + anchor.height + dp(8)))
+    }
+
+    private fun toggleAutoMode() {
+        val was = running
+        if (was) pause()
+        p.mode = if (p.aiAuto) Prefs.MODE_TRANSLATE else Prefs.MODE_AUTO
+        ocr?.close(); ocr = null
+        translator?.close(); translator = null
+        lastThumb = null
+        refresh()
+        if (was) start() else setPanel(if (p.aiAuto) "✦ AI Tự động: ưu tiên gói Việt hóa, bộ nhớ câu và Gemini." else "Đã chuyển sang Dịch.", "")
     }
 
     private fun toggleNarrate() {
