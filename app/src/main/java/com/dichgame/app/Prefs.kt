@@ -156,9 +156,10 @@ class Prefs(ctx: Context) {
         set(v) = sp.edit().putString("customprompt", v.trim()).apply()
 
     /** Dùng gói Việt hoá có sẵn của game (thuật ngữ, thẻ nhân vật, câu thoại chuẩn). */
+    /** Gói thuật ngữ bật/tắt theo từng hồ sơ game; cài đặt cũ làm mặc định tương thích. */
     var packOn: Boolean
-        get() = sp.getBoolean("packon", true)
-        set(v) = sp.edit().putBoolean("packon", v).apply()
+        get() = sp.getBoolean("packon_$profile", sp.getBoolean("packon", true))
+        set(v) = sp.edit().putBoolean("packon_$profile", v).apply()
 
     /** Tự lưu và tái sử dụng bản dịch AI đã qua kiểm tra, riêng trên thiết bị. */
     var learnTranslations: Boolean
@@ -492,7 +493,8 @@ class Prefs(ctx: Context) {
         sp.edit().remove("game_$name").remove("gloss_$name").remove("cast_$name")
             .remove("detected_speakers_$name").remove("manual_voices_$name")
             .remove("active_speaker_$name").remove("auto_voices_$name")
-            .remove("auto_voice_count_$name").remove("ignored_speakers_$name").apply()
+            .remove("auto_voice_count_$name").remove("ignored_speakers_$name")
+            .remove("packon_$name").apply()
         PackStore.deleteLines(app, name)
         LearnedTranslations.clearProfile(app, name)
     }
