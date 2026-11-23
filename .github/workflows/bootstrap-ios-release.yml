@@ -1,0 +1,83 @@
+name: Publish verified iOS preview to Releases (bootstrap)
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/bootstrap-ios-release.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download already-successful iPhone IPA from reviewed PR 42
+        uses: actions/download-artifact@v4
+        with:
+          name: DichGame-iPhone-IPA-unsigned
+          run-id: 45266234926
+          github-token: ${{ github.token }}
+          path: dist/iphone
+      - name: Download already-successful iOS Simulator from reviewed PR 42
+        uses: actions/download-artifact@v4
+        with:
+          name: DichGame-iOS-Simulator
+          run-id: 45266234926
+          github-token: ${{ github.token }}
+          path: dist/simulator
+      - name: Validate unsigned IPA and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/iphone/DichGame-iPhone-unsigned.ipa
+          test -f dist/simulator/DichGame-iOS-Simulator.zip
+          unzip -tq dist/iphone/DichGame-iPhone-unsigned.ipa
+          unzip -Z1 dist/iphone/DichGame-iPhone-unsigned.ipa | grep -qx "Payload/DichGameiOS.app/Info.plist"
+          (cd dist && sha256sum iphone/*.ipa simulator/*.zip > SHA256SUMS.txt)
+          cat > "$RUNNER_TEMP/notes.md" <<'NOTES'
+          # DichGame iOS Preview — bản đầu trên GitHub Releases
+
+          **IPA CHƯA KÝ, KHÔNG CÀI TRỰC TIẾP TRÊN IPHONE THÔNG THƯỜNG.**
+
+          Tệp DichGame-iPhone-unsigned.ipa là ứng dụng iPhone arm64,
+          đã được biên dịch thành công từ PR #42 và kiểm tra cấu trúc IPA.
+          Để cài trên iPhone thật cần ký Apple Developer hợp lệ hoặc
+          phân phối bằng TestFlight/App Store.
+
+          DichGame-iOS-Simulator.zip chỉ chạy trên iOS Simulator của Xcode.
+          SHA256SUMS.txt là mã kiểm tra tính toàn vẹn.
+
+          Chức năng bản iOS Preview: giao diện đen-vàng, chọn ảnh game,
+          dịch Gemini và đọc tiếng Việt. Chưa có Remote Play hay overlay
+          phụ đề liên tục như phiên bản Android.
+
+          Các bản iOS tiếp theo được tạo tự động từ workflow build-ios.yml
+          với tag ios-preview-N. Bản phát hành này sử dụng IPA đã kiểm tra
+          từ lượt build PR #42 trong khi runner macOS trên main bị xếp hàng.
+
+          Hướng dẫn: https://github.com/temu838655-dev/DichGame/blob/main/docs/release-ios-windows.md
+          NOTES
+      - name: Publish unsigned IPA as visible GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="ios-preview-bootstrap"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists: $tag"
+            exit 0
+          fi
+          gh release create "$tag" \
+            dist/iphone/DichGame-iPhone-unsigned.ipa \
+            dist/simulator/DichGame-iOS-Simulator.zip \
+            dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "DichGame iOS Preview (IPA chưa ký)" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --prerelease
