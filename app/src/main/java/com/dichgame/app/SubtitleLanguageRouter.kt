@@ -44,7 +44,10 @@ class SubtitleLanguageRouter(initial: String = "en") {
         val letters = trimmed.count { it.isLetter() }
         if (letters < 9) return current
 
-        val chosen = model ?: heuristic ?: return current
+        // Nếu một câu có dấu hiệu từ vựng đáng tin cậy trái với ML Kit,
+        // không cho ML Kit ép đổi sang một tiếng khác.
+        val chosen = if (model != null && heuristic != null && model != heuristic &&
+            (guess?.confidence ?: 0f) >= 0.35f) heuristic else model ?: heuristic ?: return current
         if (chosen == current) {
             pending = ""
             consistent = 0
