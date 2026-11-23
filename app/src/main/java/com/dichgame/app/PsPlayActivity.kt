@@ -1044,7 +1044,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     "🔊  Đọc to bản dịch (bật/tắt).\n" +
                     "A  Cỡ chữ phụ đề.\n" +
                     "◔  Tốc độ quét: quét nhiều đỡ sót câu nhưng hao pin hơn.\n" +
-                    "⚙  Cài đặt: Dịch hoặc Thuyết minh, ngôn ngữ trong game, giọng đọc (cơ bản, AI offline, Gemini), tốc độ đọc, phóng hình và chất lượng hình (chất lượng hình áp dụng bằng cách kết nối lại).\n\n" +
+                    "⚙  Cài đặt: Dịch hoặc Thuyết minh, ngôn ngữ trong game, giọng đọc (cơ bản, AI Gemini), tốc độ đọc, phóng hình và chất lượng hình (chất lượng hình áp dụng bằng cách kết nối lại).\n\n" +
                     "Hai nút dưới thanh công cụ:\n" +
                     "• Dịch hết chữ: đọc và dịch toàn bộ chữ đang có trên hình MỘT lần (kể cả phụ đề), giữ vài giây rồi tự tắt, hoặc tắt ngay khi cảnh đổi.\n" +
                     "• Dịch menu: dịch liên tục chữ trong menu, vật phẩm, kỹ năng, nhiệm vụ… Bản dịch hiện đè đúng chỗ chữ gốc; viền vàng là bản dịch còn nghi ngờ. Giữ nút này để xem chuỗi chưa dịch được.\n\n" +
@@ -1656,7 +1656,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     /**
      * Bảng cài đặt ngay trong màn chơi (không rời màn nên phiên Remote Play được giữ nguyên): chọn Dịch hoặc Thuyết minh,
-     * ngôn ngữ trong game, giọng đọc (cơ bản / AI offline / Gemini, chọn giọng, tốc độ, nghe thử) và lối vào chất lượng hình.
+     * ngôn ngữ trong game, giọng đọc (cơ bản / AI Gemini, chọn giọng, tốc độ, nghe thử) và lối vào chất lượng hình.
      */
     private fun showSettings() {
         val a = this
