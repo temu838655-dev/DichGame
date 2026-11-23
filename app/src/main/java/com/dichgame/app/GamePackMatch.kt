@@ -25,4 +25,15 @@ object GamePackMatch {
 
     fun selected(currentGame: String, candidate: String): Boolean =
         currentGame.trim().equals(candidate.trim(), ignoreCase = true)
+
+    /** Bảo toàn tên trò chơi chứa dấu phẩy; người dùng có thể đặt thể loại sau dấu phẩy. */
+    fun title(description: String, profile: String, explicit: String, defaultProfile: String): String {
+        if (explicit.isNotBlank()) return explicit.trim()
+        val value = description.trim()
+        val name = profile.trim()
+        if (name.isNotBlank() && name != defaultProfile &&
+            (value.equals(name, ignoreCase = true) ||
+                value.startsWith("$name, ", ignoreCase = true))) return name
+        return value.substringBefore(',').trim().ifEmpty { if (name != defaultProfile) name else "" }
+    }
 }
