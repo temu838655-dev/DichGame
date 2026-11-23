@@ -29,7 +29,7 @@ public partial class MainWindow : Window
 
     private void OpenImage_Click(object sender, RoutedEventArgs e)
     {
-        var picker = new OpenFileDialog
+        var picker = new Microsoft.Win32.OpenFileDialog
         {
             Filter = "Ảnh game|*.png;*.jpg;*.jpeg;*.bmp;*.webp|Tất cả tệp|*.*",
             Title = "Chọn ảnh chụp game"
