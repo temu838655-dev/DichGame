@@ -25,6 +25,8 @@ object VietsubGuard {
         "phai", "hieu", "biet", "nay", "day", "duoc", "muon", "nguoi", "bao")
     // Các chữ mang dấu/chữ cái đặc trưng của tiếng Việt. Không tính dấu câu hay chữ Latin thường.
     private val viDiacritics = "ăâđêôơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ"
+    private val commonTone = "áàéèíìóòúùýỳ"
+    private val safeShort = setOf("có", "dạ", "vâng", "không", "đi", "ừ", "được", "chạy", "cứu", "đừng", "thôi", "nhé")
 
     fun isVietnamese(raw: String): Boolean {
         val text = raw.trim()
@@ -34,6 +36,10 @@ object VietsubGuard {
         val low = text.lowercase(Locale.ROOT)
         val tokens = word.findAll(low).map { it.value }.toList()
         val count = tokens.count { it in vietnameseWords }
+        // Lời thoại Vietsub ngắn như "Có!" hoặc "Xin chào!" có thể chỉ chứa dấu sắc/huyền
+        // (cũng tồn tại ở ngôn ngữ Latin khác); yêu cầu từ vựng Việt rõ thay vì bỏ sót.
+        if (tokens.size == 1 && tokens[0] in safeShort) return true
+        if (count >= 2 && low.any { it in commonTone } && guess == null) return true
         val noAccentCount = tokens.count { it in noAccentWords }
         val accents = low.count { it in viDiacritics }
         // Phụ đề không dấu có thể bị bộ đoán ngôn ngữ đánh nhầm chỉ bởi 1-2 từ
