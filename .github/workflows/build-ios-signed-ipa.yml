@@ -1,0 +1,122 @@
+name: Build signed iPhone IPA (Ad Hoc)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-ipa:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      IOS_P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
+      IOS_P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
+      IOS_MOBILEPROVISION_BASE64: ${{ secrets.IOS_MOBILEPROVISION_BASE64 }}
+      IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+      IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate signing configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in IOS_P12_BASE64 IOS_P12_PASSWORD IOS_MOBILEPROVISION_BASE64 IOS_TEAM_ID IOS_BUNDLE_ID; do
+            if [ -z "${!key}" ]; then
+              echo "::error::Missing GitHub Actions secret: $key"
+              exit 1
+            fi
+          done
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate native project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Import distribution certificate and Ad Hoc profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/dichgame-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
+          printf '%s' "$IOS_P12_BASE64" | base64 -D > "$RUNNER_TEMP/distribution.p12"
+          printf '%s' "$IOS_MOBILEPROVISION_BASE64" | base64 -D > "$RUNNER_TEMP/distribution.mobileprovision"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/distribution.p12" -k "$KEYCHAIN_PATH" -P "$IOS_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security cms -D -i "$RUNNER_TEMP/distribution.mobileprovision" -o "$RUNNER_TEMP/profile.plist"
+          UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$RUNNER_TEMP/profile.plist")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" "$RUNNER_TEMP/profile.plist")
+          PROFILE_TEAM=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" "$RUNNER_TEMP/profile.plist")
+          if [ "$PROFILE_TEAM" != "$IOS_TEAM_ID" ]; then
+            echo "::error::The provisioning profile belongs to a different Apple Team."
+            exit 1
+          fi
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$RUNNER_TEMP/distribution.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
+          echo "PROFILE_UUID=$UUID" >> "$GITHUB_ENV"
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+      - name: Archive signed iPhone app
+        working-directory: ios
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project DichGameiOS.xcodeproj \
+            -scheme DichGameiOS \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/DichGameiOS.xcarchive" \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_ID" \
+            archive
+      - name: Export signed Ad Hoc IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, plistlib
+          data = {
+              "method": "ad-hoc",
+              "signingStyle": "manual",
+              "teamID": os.environ["IOS_TEAM_ID"],
+              "provisioningProfiles": {os.environ["IOS_BUNDLE_ID"]: os.environ["PROFILE_UUID"]},
+          }
+          with open(os.environ["RUNNER_TEMP"] + "/ExportOptions.plist", "wb") as f:
+              plistlib.dump(data, f)
+          PY
+          mkdir -p ios/dist/signed
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/DichGameiOS.xcarchive" \
+            -exportPath ios/dist/signed \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+          IPA="$(find ios/dist/signed -maxdepth 1 -name '*.ipa' -type f | head -n 1)"
+          test -n "$IPA"
+          mv "$IPA" ios/dist/DichGame-iPhone-signed-AdHoc.ipa
+          unzip -tq ios/dist/DichGame-iPhone-signed-AdHoc.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DichGame-iPhone-IPA-signed-AdHoc
+          path: ios/dist/DichGame-iPhone-signed-AdHoc.ipa
+          if-no-files-found: error
+      - name: Clean up signing materials
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${PROFILE_UUID:-}" ]; then
+            rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          fi
+          if [ -n "${KEYCHAIN_PATH:-}" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
+          rm -f "$RUNNER_TEMP/distribution.p12" "$RUNNER_TEMP/distribution.mobileprovision" \
+            "$RUNNER_TEMP/profile.plist" "$RUNNER_TEMP/ExportOptions.plist"
