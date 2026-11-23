@@ -244,7 +244,7 @@ class CaptureService : Service() {
 
         val tr = TextTranslator(this, Prefs(this), lang)
         tt = tr
-        speakers = SpeakerBook(PackStore.cast(Prefs(this)).map { it.name })
+        speakers = SpeakerBook((PackStore.cast(Prefs(this)).map { it.name } + Prefs(this).detectedSpeakers()))
         // dựng sẵn bộ nhớ câu Việt hoá (có thể hàng chục nghìn câu nhập từ file) ở nền để câu đầu tiên không bị khựng
         val warmPrefs = Prefs(this)
         Thread { try { PackStore.memory(applicationContext, warmPrefs).warm() } catch (_: Throwable) {} }.start()
@@ -711,12 +711,18 @@ class CaptureService : Service() {
         if (sig != cand) { cand = sig; stable = 1 } else stable++
         if (stable < requiredStable(utts)) { finishBusy(); return }
         last = sig
+        // Chỉ nhớ người nói khi OCR đã ổn định; không lưu tên chưa được xác nhận.
+        val prefs = Prefs(this)
+        for (u in utts) if (!u.nameLike && !u.speaker.isNullOrBlank()) prefs.rememberSpeaker(u.speaker!!)
         stats.inc("ocr_cau", utts.size.toLong())
         if (narrate) {
             // Không đọc nhãn tên đứng riêng khi đã có câu thoại thực sự trong khung.
             val spoken = utts.filter { !it.nameLike }.ifEmpty { utts }
-            val text = spoken.joinToString(sep) { it.text.replace("\n", sep) }
-            showCards(listOf(Card(null, "", TextTranslator.Tr(text, null, false, "doc"), false)), Src.OCR)
+            val cards = spoken.map { u ->
+                val phrase = u.text.replace("\n", sep)
+                Card(u.speaker, "", TextTranslator.Tr(phrase, null, false, "doc"), false)
+            }
+            showCards(cards, Src.OCR)
             finishBusy()
             return
         }
