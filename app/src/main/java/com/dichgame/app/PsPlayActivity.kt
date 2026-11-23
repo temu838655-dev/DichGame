@@ -1824,18 +1824,22 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
             fun drawMode() {
                 hMode.removeAllViews()
-                hMode.addView(Ui.segmented(a, listOf("Dịch sang tiếng Việt", "Thuyết minh"), if (pr.narrate) 1 else 0) { i ->
-                    val n = i == 1
-                    if (n != pr.narrate) {
-                        pr.narrate = n
+                hMode.addView(Ui.segmented(a, listOf("Dịch", "Đọc Vietsub", "✦ AI Tự động"),
+                    when (pr.mode) { Prefs.MODE_VIETSUB -> 1; Prefs.MODE_AUTO -> 2; else -> 0 }) { i ->
+                    val next = when (i) { 1 -> Prefs.MODE_VIETSUB; 2 -> Prefs.MODE_AUTO; else -> Prefs.MODE_TRANSLATE }
+                    if (next != pr.mode) {
+                        pr.mode = next
                         restartTranslation()
                     }
                     drawMode()
                     drawVoice()
                 })
                 hMode.addView(Ui.tv(a,
-                    if (pr.narrate) "Thuyết minh: game hoặc phim đã có phụ đề tiếng Việt, app chỉ đọc to phụ đề, không dịch."
-                    else "Dịch: đọc chữ ${Prefs.srcNameOf(pr.lang)} trong game rồi dịch sang tiếng Việt.", 12.5f, Ui.SUB), Ui.lpm(a, 8, 2))
+                    when (pr.mode) {
+                        Prefs.MODE_VIETSUB -> "Đọc Vietsub: chỉ đọc phụ đề tiếng Việt của phim/game đã Việt hóa, không dịch."
+                        Prefs.MODE_AUTO -> "AI Tự động: nhận game khi tựa hiện rõ 2 lần, ưu tiên Việt hóa → trí nhớ game → Gemini (khóa dự phòng); giọng theo nhân vật khi dùng TTS Gemini."
+                        else -> "Dịch: đọc chữ ${Prefs.srcNameOf(pr.lang)} trong game rồi dịch sang tiếng Việt."
+                    }, 12.5f, Ui.SUB), Ui.lpm(a, 8, 2))
                 if (!pr.narrate) {
                     val codes = Prefs.LANGS.map { it.first }.filter { it != "vi" }
                     hMode.addView(Ui.dropRow(a, "Ngôn ngữ trong game",
