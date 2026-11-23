@@ -747,18 +747,14 @@ Test your might = Thử thách sức mạnh
     )
 
     fun castFor(name: String): List<String> {
-        val n = name.lowercase()
-        // "Grand Theft Auto V" là tiền tố của "Grand Theft Auto VI":
-        // khớp ranh giới từ để không trộn nhân vật của hai phiên bản.
-        fun matches(key: String): Boolean =
-            if (key in setOf("grand theft auto v", "gta v", "grand theft auto vi", "gta vi"))
-                Regex(Regex.escape(key) + "(?![a-z0-9])").containsMatchIn(n)
-            else n.contains(key)
-        return CAST.filter { (keys, _) -> keys.any(::matches) }.flatMap { it.second }
+        return CAST.filter { (keys, _) ->
+            keys.any { GamePackMatch.contains(name, it) }
+        }.flatMap { it.second }
     }
 
     fun specificLines(name: String): List<Pair<String, String>> {
-        val n = name.lowercase()
-        return SPECIFIC_LINES.filter { (keys, _) -> keys.any { n.contains(it) } }.flatMap { it.second }
+        return SPECIFIC_LINES.filter { (keys, _) ->
+            keys.any { GamePackMatch.contains(name, it) }
+        }.flatMap { it.second }
     }
 }
