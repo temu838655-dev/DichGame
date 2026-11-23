@@ -61,7 +61,8 @@ object LearnedTranslations {
             val map = LinkedHashMap<String, Entry>()
             try {
                 val f = file(ctx, profile)
-                if (f.exists() && f.length() < 12_000_000) {
+                // AtomicFile có thể phục hồi từ .bak sau khi app bị tắt giữa lúc ghi.
+                if (f.length() < 12_000_000) {
                     val items = JSONArray(String(AtomicFile(f).readFully(), Charsets.UTF_8))
                     for (i in 0 until items.length()) {
                         val o = items.optJSONObject(i) ?: continue
@@ -132,9 +133,14 @@ object LearnedTranslations {
         }
     }
 
-    fun recent(ctx: Context, profile: String, game: String, limit: Int = 50): List<Entry> = synchronized(lock) {
-        data(ctx, profile).values.filter { it.game.equals(game, ignoreCase = true) }
-            .takeLast(limit.coerceIn(1, 100)).asReversed()
+    fun recent(ctx: Context, profile: String, game: String, limit: Int = 50,
+               search: String = ""): List<Entry> = synchronized(lock) {
+        val query = LearnedTranslationRules.normalize(search)
+        data(ctx, profile).values.filter {
+            it.game.equals(game, ignoreCase = true) &&
+                (query.isEmpty() || LearnedTranslationRules.normalize(it.original).contains(query) ||
+                    LearnedTranslationRules.normalize(it.vi).contains(query))
+        }.takeLast(limit.coerceIn(1, 100)).asReversed()
     }
 
     fun count(ctx: Context, profile: String, game: String): Int = synchronized(lock) {
