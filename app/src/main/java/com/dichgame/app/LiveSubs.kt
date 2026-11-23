@@ -213,7 +213,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             if (speak) {
                 speaker = Speaker(act, pr).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() } }
             }
-            speakers = SpeakerBook(PackStore.cast(pr).map { it.name })
+            speakers = SpeakerBook(PackStore.cast(pr).map { it.name } + pr.detectedSpeakers())
             if (narrate) {
                 // không cần mô hình dịch: sẵn sàng ngay, câu đọc được đi thẳng tới phần hiển thị và đọc to
                 tt = null
@@ -459,6 +459,9 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (sig != cand) { cand = sig; stable = 1 } else stable++
         if (stable < requiredStable(utts)) { finishBusy(); return }
         last = sig
+        // Chỉ nhớ người nói khi OCR đã ổn định; không lưu tên chưa được xác nhận.
+        val prefs = Prefs(act)
+        for (u in utts) if (!u.nameLike && !u.speaker.isNullOrBlank()) prefs.rememberSpeaker(u.speaker!!)
         stats.inc("ocr_cau", utts.size.toLong())
         Log.i(TAG, "doc: " + utts.joinToString(" | ") { (it.speaker?.let { n -> "$n: " } ?: "") + it.text })
         if (Prefs(act).autoLang && !narrate) {
