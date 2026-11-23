@@ -33,7 +33,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
     private val main = Handler(Looper.getMainLooper())
     private val io by lazy { Executors.newSingleThreadExecutor() }
     private val local: TextRecognizer? =
-        if (Prefs.isCloudOcr(lang)) null
+        if (Prefs.isCloudOcr(lang) || lang == "auto-ai") null
         else TextRecognition.getClient(
             when (lang) {
                 "ja" -> JapaneseTextRecognizerOptions.Builder().build()
@@ -96,7 +96,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
         }
         if (p.geminiKeys().isEmpty()) {
             recycleInput(bmp)
-            fail("Chữ ${Prefs.srcNameOf(lang)} cần khóa Google Gemini. Vào Cách dịch để nhập khóa.")
+            fail(if (lang == "auto-ai") "OCR AI tự nhận diện cần khóa Gemini. Mở Cách dịch để nhập khóa." else "Chữ ${Prefs.srcNameOf(lang)} cần khóa Google Gemini. Vào Cách dịch để nhập khóa.")
             return
         }
         val model = p.geminiModel
@@ -222,7 +222,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
         } finally {
             if (small !== bmp && !small.isRecycled) runCatching { small.recycle() }
         }
-        val instruction = if (lang == "auto") {
+        val instruction = if (lang == "auto" || lang == "auto-ai") {
             "Tự xác định ngôn ngữ gốc trong ảnh rồi chép nguyên văn mọi phụ đề nhìn thấy. "
         } else {
             "Đọc toàn bộ chữ " + Prefs.srcNameOf(lang) + " trong ảnh. "
