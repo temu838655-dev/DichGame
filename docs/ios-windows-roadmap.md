@@ -44,7 +44,7 @@ Thêm vào **GitHub → Settings → Secrets and variables → Actions → Repos
 - `IOS_TEAM_ID`: Apple Developer Team ID.
 - `IOS_BUNDLE_ID`: Bundle ID đúng trong provisioning profile (ví dụ `com.dichgame.ios` khi App ID chưa đổi).
 
-Để lấy base64 trên Mac, dùng `base64 -i file.p12 | tr -d '\\n'` và `base64 -i profile.mobileprovision | tr -d '\\n'` trực tiếp trên máy riêng, rồi dán vào GitHub Secrets, **không đưa chuỗi này vào issue hoặc tin nhắn**.
+Để lấy base64 trên Mac, dùng `base64 -i file.p12 | tr -d '\n'` và `base64 -i profile.mobileprovision | tr -d '\n'` trực tiếp trên máy riêng, rồi dán vào GitHub Secrets, **không đưa chuỗi này vào issue hoặc tin nhắn**.
 
 Sau đó mở **GitHub → Actions → Build signed iPhone IPA (Ad Hoc) → Run workflow**. Nếu ký/xuất thành công, tải artifact `DichGame-iPhone-IPA-signed-AdHoc`. File này dành cho các iPhone có UDID trong hồ sơ Ad Hoc; chưa phải bản TestFlight, App Store, cũng không có nghĩa là đã được Apple kiểm duyệt.
 
