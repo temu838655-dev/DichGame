@@ -68,6 +68,31 @@ class DialogueSplitterTest {
         assertEquals("Objective: Find the key", r[0].text)
     }
 
+    @Test fun clearCharacterLabelGetsVoiceIdentityOnFirstScan() {
+        val r = DialogueSplitter.split(
+            listOf(OcrLine("Lucia: Let's go, Jason!", Box(0, 0, 420, 35))), false
+        )
+        assertEquals("Lucia", r.single().speaker)
+        assertEquals("Let's go, Jason!", r.single().text)
+    }
+
+    @Test fun questAndMissionLabelsAreNotMistakenForSpeakers() {
+        for (label in listOf("Objective", "Quest", "Mission", "Nhiệm vụ")) {
+            val line = "$label: Find the key"
+            val r = DialogueSplitter.split(listOf(OcrLine(line, Box(0, 0, 420, 35))), false)
+            assertNull(r.single().speaker)
+            assertEquals(line, r.single().text)
+        }
+    }
+
+    @Test fun storedRecognizedNameCanBeUsedAsKnownSpeaker() {
+        val r = DialogueSplitter.split(
+            listOf(line("Lucia", 100, 800, 220, 830), line("Follow me.", 100, 840, 700, 870)),
+            false, SpeakerBook(listOf("Lucia"))
+        )
+        assertEquals("Lucia", r.single().speaker)
+    }
+
     @Test fun colonLabelWithCastNameIsExtracted() {
         val r = DialogueSplitter.split(listOf(OcrLine("Geralt: Hmm.", Box(0, 0, 400, 30))), false, SpeakerBook(listOf("Geralt")))
         assertEquals("Geralt", r[0].speaker)
