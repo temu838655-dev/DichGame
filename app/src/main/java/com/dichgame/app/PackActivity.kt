@@ -85,6 +85,48 @@ class PackActivity : Activity() {
             }, Ui.lpm(this@PackActivity, 8, 0))
             put(m, 0, 12)
 
+            // Bộ nhớ dịch AI lưu trên thiết bị theo hồ sơ, tách khỏi gói Việt hóa nhập tay.
+            val learned = LearnedTranslations.count(this@PackActivity, p.profile, name)
+            val learnedCard = Ui.card(this@PackActivity)
+            learnedCard.addView(Ui.section(this@PackActivity, "🧠", "Bộ nhớ dịch theo game"))
+            if (name.isBlank()) learnedCard.addView(Ui.tv(this@PackActivity,
+                "Hãy chọn game ở Kho game để bộ nhớ không bị trộn giữa các trò chơi.",
+                12.5f, Ui.DANGER), Ui.lpm(this@PackActivity, 2, 6))
+            learnedCard.addView(Ui.switchRow(this@PackActivity, "Dùng lại và tự nhớ bản dịch AI",
+                "Tắt sẽ ngừng dùng và ngừng lưu câu AI mới; dữ liệu đã nhớ vẫn giữ cho đến khi bạn xóa.",
+                p.learnTranslations) { enabled ->
+                p.learnTranslations = enabled
+                render()
+            })
+            learnedCard.addView(Ui.tv(this@PackActivity,
+                "$learned câu đã lưu riêng cho hồ sơ ${p.profile}. Dữ liệu nằm trên thiết bị, " +
+                    "không sao lưu lên đám mây; gỡ ứng dụng có thể mất dữ liệu. " +
+                    "Gặp lại đúng câu và người nói sẽ không tốn lượt Gemini.",
+                12.5f, Ui.SUB), Ui.lpm(this@PackActivity, 8, 10))
+            if (learned > 0) {
+                learnedCard.addView(Ui.button(this@PackActivity, "Xem và sửa câu đã nhớ") {
+                    reviewLearnedTranslations()
+                }, Ui.lpm(this@PackActivity, 2, 5))
+                learnedCard.addView(Ui.button(this@PackActivity, "Tìm câu đã nhớ (gốc hoặc tiếng Việt)") {
+                    searchLearnedTranslations()
+                }, Ui.lpm(this@PackActivity, 2, 5))
+                learnedCard.addView(Ui.button(this@PackActivity, "Xóa toàn bộ $learned câu dịch đã nhớ") {
+                    AlertDialog.Builder(this@PackActivity, R.style.DgDialog)
+                        .setTitle("Xóa bộ nhớ dịch của ${p.profile}?")
+                        .setMessage("Chỉ xóa câu do AI tự ghi nhớ. Không xóa gói Việt hóa đã nhập, từ điển hoặc giọng nhân vật.")
+                        .setPositiveButton("Xóa bộ nhớ") { _, _ ->
+                            LearnedTranslations.clear(this@PackActivity, p.profile, name)
+                            render()
+                        }
+                        .setNegativeButton("Hủy", null).show()
+                }, Ui.lpm(this@PackActivity, 4, 0))
+            }
+            learnedCard.addView(Ui.tv(this@PackActivity,
+                "Lưu ý: AI vẫn có thể dịch sai dù qua kiểm tra. Hãy sửa hoặc xóa câu nhớ sai; " +
+                    "app không tự lưu lời thoại ngắn, dễ phụ thuộc ngữ cảnh.",
+                12f, Ui.SUB), Ui.lpm(this@PackActivity, 9, 0))
+            put(learnedCard, 0, 12)
+
             // Tự nhận diện người nói từ phụ đề và gán giọng cho từng nhân vật.
             val v = Ui.card(this@PackActivity)
             val detected = p.detectedSpeakers()
@@ -167,6 +209,62 @@ class PackActivity : Activity() {
             t.addView(Ui.tv(this@PackActivity, NguonVietHoa.SAFETY, 11.5f, Ui.SUB), Ui.lpm(this@PackActivity, 10, 0))
             put(t, 0, 0)
         }
+    }
+
+    private fun searchLearnedTranslations() {
+        val field = Ui.field(this, "Nhập từ/câu cần tìm trong bản gốc hoặc tiếng Việt", "")
+        val box = Ui.vbox(this).apply {
+            val pad = Ui.dp(this@PackActivity, 20)
+            setPadding(pad, pad / 2, pad, 0)
+            addView(field)
+        }
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Tìm trong bộ nhớ dịch")
+            .setView(box)
+            .setPositiveButton("Tìm") { _, _ ->
+                reviewLearnedTranslations(field.text.toString().trim())
+            }
+            .setNegativeButton("Hủy", null).show()
+    }
+
+    private fun reviewLearnedTranslations(search: String = "") {
+        val entries = LearnedTranslations.recent(
+            this, p.profile, PackStore.gameName(p), 80, search)
+        if (entries.isEmpty()) {
+            Toast.makeText(this, "Không có câu dịch nào khớp từ khóa.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val choices = entries.map { it.original.take(65) + "\n→ " + it.vi.take(85) }.toTypedArray()
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle(if (search.isBlank()) "Câu đã nhớ · ${p.profile}" else "Kết quả: $search")
+            .setItems(choices) { _, index -> editLearnedTranslation(entries[index]) }
+            .setNegativeButton("Đóng", null).show()
+    }
+
+    private fun editLearnedTranslation(entry: LearnedTranslations.Entry) {
+        val field = Ui.field(this, "Bản tiếng Việt chính xác", entry.vi)
+        field.minLines = 3
+        field.inputType = android.text.InputType.TYPE_CLASS_TEXT or
+            android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+            android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        val box = Ui.vbox(this)
+        val pad = Ui.dp(this, 18)
+        box.setPadding(pad, pad / 2, pad, 0)
+        box.addView(Ui.tv(this, "Câu gốc: " + entry.original, 13f, Ui.SUB), Ui.lpm(this, 0, 8))
+        box.addView(field)
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Sửa bản dịch đã nhớ")
+            .setView(box)
+            .setPositiveButton("Lưu bản sửa") { _, _ ->
+                if (!LearnedTranslations.edit(this, p.profile, entry.key, field.text.toString()))
+                    Toast.makeText(this, "Bản dịch không hợp lệ.", Toast.LENGTH_SHORT).show()
+                render()
+            }
+            .setNeutralButton("Xóa câu này") { _, _ ->
+                LearnedTranslations.delete(this, p.profile, entry.key)
+                render()
+            }
+            .setNegativeButton("Hủy", null).show()
     }
 
     private fun deleteDetectedSpeaker(detected: List<String>) {

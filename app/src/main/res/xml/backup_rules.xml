@@ -4,4 +4,6 @@
     <exclude domain="sharedpref" path="ps.xml" />
     <!-- Legacy preferences may still contain unencrypted pairing keys before migration. -->
     <exclude domain="sharedpref" path="ps_remote_play.xml" />
+    <!-- Bản dịch AI được lưu nội bộ, không sao lưu nguyên văn lời thoại lên cloud. -->
+    <exclude domain="file" path="learned_translations/" />
 </full-backup-content>

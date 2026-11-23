@@ -160,6 +160,11 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("packon", true)
         set(v) = sp.edit().putBoolean("packon", v).apply()
 
+    /** Tự lưu và tái sử dụng bản dịch AI đã qua kiểm tra, riêng trên thiết bị. */
+    var learnTranslations: Boolean
+        get() = sp.getBoolean("learn_translations", true)
+        set(v) = sp.edit().putBoolean("learn_translations", v).apply()
+
     /** Thẻ nhân vật của hồ sơ hiện tại, mỗi dòng "Tên = mô tả giọng, xưng hô; nhịp: chậm". */
     var cast: String
         get() = sp.getString("cast_$profile", "").orEmpty()
@@ -489,6 +494,7 @@ class Prefs(ctx: Context) {
             .remove("active_speaker_$name").remove("auto_voices_$name")
             .remove("auto_voice_count_$name").remove("ignored_speakers_$name").apply()
         PackStore.deleteLines(app, name)
+        LearnedTranslations.clearProfile(app, name)
     }
 
     var fontSize: Int

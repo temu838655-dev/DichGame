@@ -118,6 +118,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      */
     fun translateFull(text: String, speaker: String?, ui: Boolean, done: (Tr) -> Unit) {
         val st = SessionStats.live
+        val profile = p.profile
+        val game = PackStore.gameName(p)
         val key = (if (ui) "ui|" else "") + (speaker?.lowercase() ?: "") + "|" + OcrGuard.key(text)
         val hist = if (ui) emptyList() else history.takeLast(p.ctxCount)
         if (!ui) {
@@ -129,6 +131,19 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             st.inc("dich_goi"); if (h.fuzzy) st.inc("dich_goi_gan")
             done(Tr(h.vi, null, false, "goi")); return
         }
+        // Gói Việt hóa do người dùng nhập có ưu tiên cao nhất; tiếp theo là bản dịch đã
+        // lưu lâu dài trên máy. Khớp đúng nguồn + ngôn ngữ + người nói, không khớp mờ.
+        if (p.learnTranslations) {
+            LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text)?.let { saved ->
+                st.inc("dich_nho")
+                val cast = PackStore.cast(p)
+                val pace = if (ui) null else
+                    (Cast.byName(speaker, cast) ?: Cast.speakerOf(text, cast))?.pace
+                val delivery = if (p.emoTr && !ui) Emo.detect(text, saved.vi, pace) else null
+                done(Tr(saved.vi, delivery, false, "nho"))
+                return
+            }
+        }
         cache[key]?.let { st.inc("dich_cache"); done(it); return }
         val terms = PackStore.terms(p)
         val cast = PackStore.cast(p)
@@ -136,9 +151,15 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         val pace = if (ui) null else (Cast.byName(speaker, cast) ?: Cast.speakerOf(text, cast))?.pace
         val aiOn = Ai.enabled(p)
         fun finish(t: Tr) {
+            // Chỉ tự lưu bản Gemini/CloudAPI chắc chắn đạt TranslationGuard.OK.
+            // Không ghi bản dịch máy dự phòng hoặc bản dịch AI bị nghi ngờ.
+            val saved = p.learnTranslations && t.via == "ai" && !t.uncertain &&
+                LearnedTranslationRules.canRemember(text, t.text)
+            if (saved) LearnedTranslations.remember(ctx, profile, game, lang, speaker, ui, text, t.text)
             if (t.uncertain) st.inc("dich_nghi")
-            // bản dịch máy do AI đang lỗi thì đừng nhớ: lần sau gặp lại câu này còn được thử AI (bộ nhớ đệm chỉ giữ bản đạt)
-            else if (t.via != "may" || !aiOn) cache[key] = t
+            // Câu đã lưu lâu dài không giữ thêm trong cache: khi người dùng xóa bộ nhớ
+            // sẽ không bị trả lại bản cũ từ cache trong cùng phiên chơi.
+            else if (!saved && (t.via != "may" || !aiOn)) cache[key] = t
             done(t)
         }
         if (!aiOn) { translateLocal(text, names, pace, ::finish); return }
