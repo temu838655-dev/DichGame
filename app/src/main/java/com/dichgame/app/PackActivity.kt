@@ -27,12 +27,25 @@ class PackActivity : Activity() {
     /** Bước 1 của "Ghép 2 file": file chữ gốc đã chọn, chờ file Việt hoá. */
     private var origName = ""
     private var origText: String? = null
+    private var fileScope: Pair<String, String>? = null
+    private fun scope(): Pair<String, String> = p.profile to PackStore.gameName(p)
+    private fun requireScope(expected: Pair<String, String>?) {
+        require(expected != null && expected == scope()) { "Game đã thay đổi. Hãy chọn lại file cho đúng game." }
+    }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         render()
+        if (b?.containsKey("file_profile") == true) {
+            fileScope = b.getString("file_profile").orEmpty() to b.getString("file_game").orEmpty()
+        }
         // mở từ Kho game ("Nhập file Việt hoá của game này"): hỏi luôn cách nhập
         if (b == null && intent.getBooleanExtra("import", false)) importMenu()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        fileScope?.let { outState.putString("file_profile", it.first); outState.putString("file_game", it.second) }
+        super.onSaveInstanceState(outState)
     }
 
     private fun render() {
@@ -365,6 +378,7 @@ class PackActivity : Activity() {
     }
 
     private fun pickFile(req: Int) {
+        if (req != 34) fileScope = scope()
         @Suppress("DEPRECATION")
         startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), req)
     }
@@ -438,6 +452,7 @@ class PackActivity : Activity() {
     }
 
     private fun saveFile() {
+        fileScope = scope()
         val n = PackStore.gameName(p).ifEmpty { p.profile }.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), "-").trim('-')
         @Suppress("DEPRECATION")
         startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/plain")
@@ -474,12 +489,18 @@ class PackActivity : Activity() {
         super.onActivityResult(req, res, data)
         val uri = data?.data ?: return
         if (res != RESULT_OK) return
+        val expected = fileScope
+        if (req in 31..34 && (expected == null || expected != scope())) {
+            origText = null
+            done("Game đã thay đổi. Hãy chọn lại file cho đúng game.")
+            return
+        }
         if (req == 31) {
             val nm = nameOf(uri)
             Thread {
                 val msg = try {
                     val tmp = copyToCache(uri)
-                    try { PackStore.importFile(this, p, nm, tmp) } finally { tmp.delete() }
+                    try { requireScope(expected); PackStore.importFile(this, p, nm, tmp) } finally { tmp.delete() }
                 } catch (e: Exception) { "Không đọc được file: " + (e.message ?: e.javaClass.simpleName) }
                 runOnUiThread { done(msg) }
             }.start()
@@ -489,6 +510,7 @@ class PackActivity : Activity() {
                 try {
                     val t = readText(uri)
                     runOnUiThread {
+                        if (expected != scope()) { done("Game đã thay đổi. Hãy chọn lại file."); return@runOnUiThread }
                         origName = nm; origText = t
                         Toast.makeText(this, "Đã đọc file gốc. Bước 2: chọn file đã Việt hoá.", Toast.LENGTH_LONG).show()
                         pickFile(34)
@@ -502,7 +524,7 @@ class PackActivity : Activity() {
             if (o == null) { done("Chưa có file gốc. Hãy chọn lại từ bước 1."); return }
             val nm = nameOf(uri)
             Thread {
-                val msg = try { PackStore.importJoined(this, p, origName, o, nm, readText(uri)) } catch (e: Exception) { "Không đọc được file Việt hoá: " + (e.message ?: e.javaClass.simpleName) }
+                val msg = try { val translated = readText(uri); requireScope(expected); PackStore.importJoined(this, p, origName, o, nm, translated) } catch (e: Exception) { "Không đọc được file Việt hoá: " + (e.message ?: e.javaClass.simpleName) }
                 runOnUiThread { origText = null; done(msg) }
             }.start()
         } else if (req == 32) {
