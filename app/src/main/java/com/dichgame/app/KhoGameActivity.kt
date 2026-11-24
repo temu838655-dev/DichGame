@@ -70,10 +70,6 @@ class KhoGameActivity : Activity() {
                 startActivity(Intent(this@KhoGameActivity, PackActivity::class.java))
             }, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@KhoGameActivity, 10) })
             put(row, 0, 14)
-            put(Ui.button(this@KhoGameActivity, "🌐  Kho PS Việt hoá (PS4 / PS5)") {
-                web("https://psviethoa.com/viethoa")
-            }, 0, 8)
-            put(Ui.tv(this@KhoGameActivity, "Nguồn bản vá cộng đồng. Chỉ gói lời thoại tương thích đã nhập mới dùng được trong Remote Play; danh mục trên website không đồng nghĩa đã có dữ liệu dịch offline.", 12f, Ui.SUB), 0, 12)
 
             grid = Ui.vbox(this@KhoGameActivity)
             put(grid, 0, 0)
