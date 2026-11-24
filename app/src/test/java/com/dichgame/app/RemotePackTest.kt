@@ -15,6 +15,11 @@ class RemotePackTest {
         assertEquals("Mở cửa", RemotePack.verify(m, bytes).lines.single().second)
     }
 
+    @Test fun transientCloudFailuresMayRetryButPermanentFailuresDoNot() {
+        for (code in listOf(408, 429, 500, 502, 503, 504)) assertTrue(RemotePack.retryableHttp(code))
+        for (code in listOf(200, 301, 400, 401, 403, 404, 413)) assertFalse(RemotePack.retryableHttp(code))
+    }
+
     @Test fun versionsDoNotDowngradeOrAcceptConflictingContent() {
         assertEquals(RemotePack.Decision.INSTALL, RemotePack.versionDecision(null, null, 1, hash))
         assertEquals(RemotePack.Decision.SAME, RemotePack.versionDecision(2, hash, 2, hash))
