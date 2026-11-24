@@ -46,7 +46,20 @@ object PackStore {
     private fun slug(profile: String): String =
         profile.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), "_").trim('_').take(40) + "_" + Integer.toHexString(profile.hashCode())
 
-    private fun linesFile(ctx: Context, profile: String) = File(File(ctx.filesDir, "lines"), slug(profile) + ".tsv")
+    private fun legacyLinesFile(ctx: Context, profile: String) = File(File(ctx.filesDir, "lines"), slug(profile) + ".tsv")
+    private fun scopedDir(ctx: Context, profile: String) = File(File(ctx.filesDir, "lines-v2"), slug(profile))
+
+    private fun linesFile(ctx: Context, profile: String): File {
+        val prefs = Prefs(ctx)
+        val game = GamePackMatch.title(prefs.gameOf(profile), profile,
+            prefs.selectedGameTitleOf(profile), Prefs.DEFAULT_PROFILE)
+        // Keep existing named-profile data; never copy it into a different game.
+        if (game.isBlank() || GamePackMatch.selected(game, profile)) return legacyLinesFile(ctx, profile)
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(game.trim().lowercase(java.util.Locale.ROOT).toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 255) }
+        return File(scopedDir(ctx, profile), digest + ".tsv")
+    }
 
     @Synchronized
     fun readLines(ctx: Context, profile: String): List<Pair<String, String>> {
@@ -64,10 +77,11 @@ object PackStore {
     /** Thêm câu thoại vào hồ sơ (trùng câu gốc thì lấy bản mới). Trả về số câu sau khi gộp. */
     @Synchronized
     fun addLines(ctx: Context, profile: String, add: List<Pair<String, String>>): Int {
-        val map = LinkedHashMap<String, Pair<String, String>>()
+        val map = LinkedHashMap<Triple<String, String, String>, Pair<String, String>>()
         for (e in readLines(ctx, profile) + add) {
             val k = Canon.key(e.first)
-            if (Canon.usable(k) && e.second.isNotBlank()) map[k] = e.first.replace('\t', ' ').replace('\n', ' ') to e.second.replace('\t', ' ').replace('\n', ' ')
+            val identity = Triple(k, digitSig(e.first), SubtitleMeaning.signature(e.first))
+            if (Canon.usable(k) && e.second.isNotBlank()) map[identity] = e.first.replace('\t', ' ').replace('\n', ' ') to e.second.replace('\t', ' ').replace('\n', ' ')
         }
         val list = map.values.toList().takeLast(PackText.MAX_LINES)
         val f = linesFile(ctx, profile)
@@ -92,6 +106,13 @@ object PackStore {
     @Synchronized
     fun deleteLines(ctx: Context, profile: String) {
         AtomicFile(linesFile(ctx, profile)).delete()
+        mem = null; memKey = ""
+    }
+
+    @Synchronized
+    fun deleteProfileLines(ctx: Context, profile: String) {
+        AtomicFile(legacyLinesFile(ctx, profile)).delete()
+        scopedDir(ctx, profile).deleteRecursively()
         mem = null; memKey = ""
     }
 
@@ -128,6 +149,10 @@ object PackStore {
             if (t != null) return "File này là file chữ một ngôn ngữ của game (${t.size} mục), chưa có cặp \"gốc = Việt hoá\" để nhập. " +
                 "Nếu có cả file gốc và file đã Việt hoá, dùng \"Ghép 2 file\" và chọn lần lượt hai file."
             return "File không có gì để nhập. Cần các mục [thuật ngữ], [nhân vật] hoặc [câu thoại], hoặc dùng \"Ghép 2 file\" với file gốc và file Việt hoá."
+        }
+        val currentGame = gameName(p)
+        if (pack.name.isNotBlank() && (currentGame.isBlank() || !GamePackMatch.selected(currentGame, pack.name))) {
+            return "Gói dành cho ${pack.name}, nhưng game đang chọn là ${currentGame.ifBlank { "chưa chọn" }}. Hãy chọn đúng game trong Kho game trước khi nhập."
         }
         val before = p.glossary.lines().count { it.contains('=') }
         p.glossary = VietHoa.merge(p.glossary, pack.terms)
@@ -261,6 +286,7 @@ object PackStore {
     /** Download a user-authorized direct pack link, including ZIP and MO, with a bounded temporary file. */
     fun importLink(ctx: Context, p: Prefs, link: String): String {
         val profile = p.profile
+        val game = gameName(p)
         var u = link.trim()
         val github = Regex("^https://github[.]com/([^/]+/[^/]+)/blob/(.+)$").find(u)
         if (github != null) u = "https://raw.githubusercontent.com/${github.groupValues[1]}/${github.groupValues[2]}"
@@ -290,7 +316,7 @@ object PackStore {
                     }
                 }
             } finally { c.disconnect() }
-            if (p.profile != profile) throw java.io.IOException("Hồ sơ game đã thay đổi. Hãy chọn lại game.")
+            if (p.profile != profile || gameName(p) != game) throw java.io.IOException("Game hoặc hồ sơ đã thay đổi. Hãy chọn lại game.")
             return importFile(ctx, p, url.path.substringAfterLast('/'), tmp)
         } finally { tmp.delete() }
     }

@@ -486,8 +486,10 @@ class Prefs(ctx: Context) {
     fun gameOf(p: String): String = sp.getString("game_$p", null) ?: if (p == profile) sp.getString("game", "").orEmpty() else ""
 
     /** Tên nguyên bản từ Kho game (có thể chứa dấu phẩy); không bị cắt khi thêm thể loại. */
+    fun selectedGameTitleOf(profile: String): String = sp.getString("game_title_$profile", "").orEmpty()
+
     var selectedGameTitle: String
-        get() = sp.getString("game_title_$profile", "").orEmpty()
+        get() = selectedGameTitleOf(profile)
         set(v) = sp.edit().putString("game_title_$profile", v.trim()).apply()
 
     var game: String
@@ -512,7 +514,7 @@ class Prefs(ctx: Context) {
             .remove("active_speaker_$name").remove("auto_voices_$name")
             .remove("auto_voice_count_$name").remove("ignored_speakers_$name")
             .remove("packon_$name").remove("game_title_$name").apply()
-        PackStore.deleteLines(app, name)
+        PackStore.deleteProfileLines(app, name)
         LearnedTranslations.clearProfile(app, name)
     }
 
