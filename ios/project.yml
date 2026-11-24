@@ -19,9 +19,16 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: DichGameiOS
-        excludes: [dichgame-lg.ipk]
+        excludes: [dichgame-lg.ipk, DichGame-Samsung-source.zip, vd_tizen_dev_author_ca.cer, vd_tizen_dev_public2.crt]
       - path: DichGameiOS/dichgame-lg.ipk
         optional: true
+        buildPhase: resources
+      - path: DichGameiOS/DichGame-Samsung-source.zip
+        optional: true
+        buildPhase: resources
+      - path: DichGameiOS/vd_tizen_dev_author_ca.cer
+        buildPhase: resources
+      - path: DichGameiOS/vd_tizen_dev_public2.crt
         buildPhase: resources
     dependencies:
       - package: ZIPFoundation
