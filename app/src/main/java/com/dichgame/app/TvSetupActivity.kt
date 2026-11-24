@@ -399,6 +399,28 @@ class TvSetupActivity : Activity() {
                 p.sp.edit().putBoolean("web_legacy", enabled).apply()
                 TvOut.web?.legacyEnabled = enabled
             }, Ui.lpm(this, 8, 8))
+            val appearance = WebTvStyle.read(p.sp)
+            fun refreshStyle() { TvOut.web?.setStyle(WebTvStyle.read(p.sp)) }
+            c.addView(Ui.tv(this, "TÙY CHỈNH PHỤ ĐỀ LG / SAMSUNG", 13f, Ui.GOLD, true), Ui.lpm(this, 12, 8))
+            c.addView(Ui.seekRow(this, "Cỡ chữ", { "$it px" }, 24, 80, appearance.size) {
+                p.sp.edit().putInt("web_tv_size", it).apply(); refreshStyle()
+            })
+            c.addView(Ui.seekRow(this, "Độ đậm nền", { "$it%" }, 0, 100, appearance.background) {
+                p.sp.edit().putInt("web_tv_background", it).apply(); refreshStyle()
+            })
+            val colors = listOf("#ffffff", "#ffff00", "#00ffff")
+            c.addView(Ui.button(this, "Màu chữ: " + listOf("Trắng", "Vàng", "Xanh")[colors.indexOf(appearance.color).coerceAtLeast(0)]) {
+                AlertDialog.Builder(this, R.style.DgDialog).setTitle("Màu phụ đề")
+                    .setItems(arrayOf("Trắng", "Vàng", "Xanh")) { _, i ->
+                        p.sp.edit().putString("web_tv_color", colors[i]).apply(); refreshStyle(); render()
+                    }.show()
+            }, Ui.lpm(this, 8, 8))
+            c.addView(Ui.switchRow(this, "Phụ đề ở phía trên", "Tắt để đặt phía dưới.", appearance.top) {
+                p.sp.edit().putBoolean("web_tv_top", it).apply(); refreshStyle()
+            })
+            c.addView(Ui.switchRow(this, "Đọc bằng giọng TV (thử nghiệm)", "Chỉ hoạt động nếu trình duyệt TV có Speech Synthesis tiếng Việt.", appearance.speak) {
+                p.sp.edit().putBoolean("web_tv_speak", it).apply(); refreshStyle()
+            })
             if (urls.isEmpty()) {
                 c.addView(Ui.tv(this, "Chưa thấy địa chỉ Wi-Fi của điện thoại. Hãy kết nối Wi-Fi rồi mở lại trang này.", 13f, Ui.DANGER), Ui.lpm(this, 10, 0))
             } else for (u in urls) {

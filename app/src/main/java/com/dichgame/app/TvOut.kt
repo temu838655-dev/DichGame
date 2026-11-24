@@ -38,7 +38,10 @@ object TvOut {
             if (prefs != null) server.pairing = WebReceiverPairing(saved = prefs.getStringSet("web_receiver_tokens", emptySet()).orEmpty(), persist = { prefs.edit().putStringSet("web_receiver_tokens", it).apply() })
             web = server
         }
-        if (prefs != null) w.legacyEnabled = prefs.getBoolean("web_legacy", false)
+        if (prefs != null) {
+            w.legacyEnabled = prefs.getBoolean("web_legacy", false)
+            w.setStyle(WebTvStyle.read(prefs))
+        }
         return try { w.start() } catch (_: Exception) { null }
     }
 
@@ -48,16 +51,18 @@ object TvOut {
         web = null
     }
 
-    fun publish(ctx: Context, kind: String, text: String) {
-        if (kind != "sub" && kind != "clear") return
+    fun publish(ctx: Context, kind: String, text: String, speak: Boolean = false) {
+        if (kind !in listOf("sub", "clear", "region")) return
         val t = if (kind == "clear") "" else text
         val p = ctx.applicationContext.getSharedPreferences("dg", Context.MODE_PRIVATE)
         if (p.getBoolean("websub", false)) {
             if (web?.running != true) startWeb(ctx)
-            web?.push(t)
+            web?.setStyle(WebTvStyle.read(p))
+            web?.push(if (kind == "clear" && speak) text else t, kind, speak)
         }
         val ip = p.getString("lgip", "").orEmpty()
         val key = p.getString("lgkey", "").orEmpty()
+        if (kind == "region") return
         if (t.isBlank()) pending.set(null)
         if (ip.isNotEmpty() && key.isNotEmpty() && p.getBoolean("lgsubs", true) && t.isNotBlank()) {
             if (lgIp != ip || lgKey != key) resetLg()

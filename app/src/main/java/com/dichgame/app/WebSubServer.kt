@@ -23,6 +23,10 @@ class WebSubServer(private val port: Int = 8780) {
     private val lock = Object()
     private var seq = 0L
     private var text = ""
+    private var region = ""
+    private var style = WebTvStyle()
+    private var speechSeq = 0L
+    private var speech = ""
     private val clients = java.util.concurrent.Semaphore(16)
     @Volatile private var stopped = false
 
@@ -53,10 +57,29 @@ class WebSubServer(private val port: Int = 8780) {
     }
 
     /** Đặt phụ đề hiện tại (chuỗi rỗng = xóa chữ). */
-    fun push(t: String) {
+    fun push(t: String, kind: String = "sub", speak: Boolean = false) {
         synchronized(lock) {
-            if (t == text) return
-            text = t
+            val oldText = text
+            val oldRegion = region
+            when (kind) {
+                "region" -> region = t
+                "clear" -> { text = ""; region = "" }
+                else -> text = t
+            }
+            val voiced = speak && t.isNotBlank() && style.speak
+            if (voiced && (speech != t || oldText != text || oldRegion != region)) {
+                speech = t
+                speechSeq++
+            } else if (!voiced && oldText == text && oldRegion == region) return
+            seq++
+            lock.notifyAll()
+        }
+    }
+
+    internal fun setStyle(next: WebTvStyle) {
+        synchronized(lock) {
+            if (style == next) return
+            style = next
             seq++
             lock.notifyAll()
         }
@@ -118,7 +141,8 @@ class WebSubServer(private val port: Int = 8780) {
                             if (left <= 0) break
                             lock.wait(left)
                         }
-                        body = JSONObject().put("seq", seq).put("text", text).toString()
+                        body = JSONObject().put("seq", seq).put("text", text).put("region", region)
+                            .put("style", style.json()).put("speechSeq", speechSeq).put("speech", speech).toString()
                     }
                     if ((receiver && !pairing.valid(param("token"))) || (!receiver && !legacyEnabled)) reply(c, 403, "text/plain", "Pair receiver first", receiver)
                     else reply(c, 200, "application/json; charset=utf-8", body, cors = receiver)

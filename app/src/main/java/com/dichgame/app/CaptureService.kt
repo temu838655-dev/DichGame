@@ -975,7 +975,7 @@ class CaptureService : Service() {
         val hidden = kind == "sub" && Prefs(this).listenOnly
         val outKind = if (hidden) "clear" else kind
         val outText = if (hidden && !speakIt) "" else text
-        TvOut.publish(this, outKind, outText)
+        TvOut.publish(this, outKind, outText, speakIt)
         val p = getSharedPreferences("dg", MODE_PRIVATE)
         val ip = p.getString("tvip", "").orEmpty()
         val tok = p.getString("tvtoken", "").orEmpty()

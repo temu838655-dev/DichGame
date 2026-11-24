@@ -774,7 +774,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         val hidden = kind == "sub" && Prefs(act).listenOnly
         val outKind = if (hidden) "clear" else kind
         val outText = if (hidden && !speakIt) "" else text
-        TvOut.publish(act, outKind, outText)
+        TvOut.publish(act, outKind, outText, speakIt)
         val p = act.getSharedPreferences("dg", Context.MODE_PRIVATE)
         val ip = p.getString("tvip", "").orEmpty()
         val tok = p.getString("tvtoken", "").orEmpty()
