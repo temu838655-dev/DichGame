@@ -64,6 +64,7 @@ class SubtitleFusion(
             if (relation(text, p.text) != Rel.NONE) { it.remove(); note("asr_xac_nhan_boi_ocr") }
         }
         for (s in shown) {
+            if (speaker != null && s.speaker != null && !speaker.equals(s.speaker, ignoreCase = true)) continue
             val r = relation(text, s.text)
             if (r == Rel.NONE) continue
             if (s.gone && s.src != Src.ASR) {
@@ -178,11 +179,11 @@ class SubtitleFusion(
         val minLen = if (cjk) 3 else 8
         val short = if (ka.length <= kb.length) ka else kb
         val long = if (ka.length <= kb.length) kb else ka
-        if (OcrGuard.similarity(ka, kb) >= 0.78f && minOf(ka.length, kb.length) * 100 / maxOf(ka.length, kb.length) >= 70) return Rel.SAME
         if (short.length >= minLen && short.length * 100 / long.length >= 30) {
-            val inside = long.contains(short) || fuzzyPrefix(long, short)
+            val inside = long.contains(short) || (long.length - short.length >= if (cjk) 3 else 5) && fuzzyPrefix(long, short)
             if (inside) return if (ka.length > kb.length) Rel.A_EXTENDS_B else Rel.B_EXTENDS_A
         }
+        if (OcrGuard.similarity(ka, kb) >= 0.78f && minOf(ka.length, kb.length) * 100 / maxOf(ka.length, kb.length) >= 70) return Rel.SAME
         return Rel.NONE
     }
 
