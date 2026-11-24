@@ -8,6 +8,24 @@ import java.util.Locale
 /** Versioned manifest for an authorized, HTTPS-hosted game-specific CSV. */
 internal object RemotePack {
     data class Manifest(val game: String, val version: Int, val url: URL, val bytes: Int, val sha256: String)
+    enum class Decision { INSTALL, SAME, REJECT }
+
+    fun versionDecision(oldVersion: Int?, oldHash: String?, version: Int, hash: String): Decision =
+        when {
+            oldVersion == null || version > oldVersion -> Decision.INSTALL
+            version == oldVersion && hash == oldHash -> Decision.SAME
+            else -> Decision.REJECT
+        }
+
+    /** Manual/imported local translations always override cloud entries by literal source. */
+    fun mergeOffline(cloud: List<Pair<String, String>>, local: List<Pair<String, String>>): List<Pair<String, String>> {
+        val map = LinkedHashMap<String, Pair<String, String>>()
+        for (rows in listOf(cloud, local)) for ((source, vi) in rows) {
+            if (source.isNotBlank() && vi.isNotBlank()) map[Canon.literal(source)] = source to vi
+        }
+        return map.values.toList()
+    }
+
     fun parse(raw: String, selectedGame: String): Manifest {
         val obj = JSONObject(raw)
         require(obj.getInt("schema") == 1) { "Định dạng gói Cloud chưa được hỗ trợ." }

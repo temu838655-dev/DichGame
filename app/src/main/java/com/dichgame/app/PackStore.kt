@@ -70,16 +70,81 @@ object PackStore {
         }
     }
 
+    private fun cloudFile(local: File) = File(local.path + ".cloud")
+    private data class CloudData(val version: Int, val sha256: String, val lines: List<Pair<String, String>>)
+
+    private fun readCloud(local: File): CloudData? {
+        val f = cloudFile(local)
+        if (!f.exists() && !File(f.path + ".bak").exists()) return null
+        return AtomicFile(f).openRead().bufferedReader(Charsets.UTF_8).use { reader ->
+            val header = reader.readLine()?.split('\t') ?: error("Kho Cloud trống.")
+            require(header.size == 3 && header[0] == "DG-CLOUD-1") { "Kho Cloud không hợp lệ." }
+            val version = header[1].toInt()
+            require(version > 0 && Regex("^[0-9a-f]{64}$").matches(header[2]))
+            val rows = ArrayList<Pair<String, String>>()
+            reader.forEachLine { line ->
+                val i = line.indexOf('\t')
+                require(i > 0 && rows.size < PackText.MAX_LINES)
+                rows.add(line.substring(0, i) to line.substring(i + 1))
+            }
+            CloudData(version, header[2], rows)
+        }
+    }
+
+    private fun combined(local: File): List<Pair<String, String>> =
+        RemotePack.mergeOffline(readCloud(local)?.lines.orEmpty(), readFile(local))
+
     @Synchronized
-    fun readLines(ctx: Context, profile: String): List<Pair<String, String>> =
-        try { readFile(linesFile(ctx, profile)) } catch (_: Exception) { emptyList() }
+    fun readLines(ctx: Context, profile: String): List<Pair<String, String>> {
+        val f = linesFile(ctx, profile)
+        val local = runCatching { readFile(f) }.getOrDefault(emptyList())
+        val cloud = runCatching { readCloud(f)?.lines.orEmpty() }.getOrDefault(emptyList())
+        return RemotePack.mergeOffline(cloud, local)
+    }
+
+    @Synchronized
+    private fun saveCloud(local: File, manifest: RemotePack.Manifest, rows: List<Pair<String, String>>): String {
+        val previous = readCloud(local)
+        when (RemotePack.versionDecision(previous?.version, previous?.sha256, manifest.version, manifest.sha256)) {
+            RemotePack.Decision.SAME -> return "Gói Cloud đã ở phiên bản ${manifest.version}; dùng kho offline hiện có."
+            RemotePack.Decision.REJECT -> throw java.io.IOException("Phiên bản Cloud cũ hơn hoặc trùng phiên bản nhưng khác nội dung. Kho offline được giữ nguyên.")
+            RemotePack.Decision.INSTALL -> Unit
+        }
+        val unique = RemotePack.mergeOffline(rows, emptyList())
+        val total = RemotePack.mergeOffline(unique, readFile(local)).size
+        require(total <= PackText.MAX_LINES) { "Kho vượt giới hạn số câu. Không thay đổi dữ liệu." }
+        val f = cloudFile(local)
+        f.parentFile?.mkdirs()
+        val atomic = AtomicFile(f)
+        val output = atomic.startWrite()
+        try {
+            val writer = output.bufferedWriter(Charsets.UTF_8)
+            writer.write("DG-CLOUD-1\t${manifest.version}\t${manifest.sha256}")
+            writer.newLine()
+            for ((source, vi) in unique) {
+                writer.write(source.replace('\t', ' ').replace('\r', ' ').replace('\n', ' '))
+                writer.write("\t")
+                writer.write(vi.replace('\t', ' ').replace('\r', ' ').replace('\n', ' '))
+                writer.newLine()
+            }
+            writer.flush()
+            atomic.finishWrite(output)
+        } catch (e: Exception) {
+            atomic.failWrite(output)
+            throw e
+        }
+        mem = null; memKey = ""
+        return "Đã lưu kho Cloud ${manifest.game} v${manifest.version} (${unique.size} câu Cloud, $total câu tổng). Bản dịch cá nhân được ưu tiên."
+    }
 
     fun lineCount(ctx: Context, profile: String): Int = readLines(ctx, profile).size
 
     /** Thêm câu thoại vào hồ sơ (trùng câu gốc thì lấy bản mới). Trả về số câu sau khi gộp. */
     @Synchronized
     fun addLines(ctx: Context, profile: String, add: List<Pair<String, String>>): Int {
-        return addLinesTo(linesFile(ctx, profile), add, false)
+        val f = linesFile(ctx, profile)
+        addLinesTo(f, add, false)
+        return readLines(ctx, profile).size
     }
 
     @Synchronized
@@ -95,6 +160,9 @@ object PackStore {
         if (preserveExisting && map.size > PackText.MAX_LINES)
             throw java.io.IOException("Kho vượt giới hạn câu; không thay đổi dữ liệu đang lưu.")
         val list = map.values.toList().takeLast(PackText.MAX_LINES)
+        require(RemotePack.mergeOffline(readCloud(f)?.lines.orEmpty(), list).size <= PackText.MAX_LINES) {
+            "Kho vượt giới hạn số câu. Không thay đổi dữ liệu."
+        }
         f.parentFile?.mkdirs()
         val atomic = AtomicFile(f)
         val output = atomic.startWrite()
@@ -115,13 +183,17 @@ object PackStore {
 
     @Synchronized
     fun deleteLines(ctx: Context, profile: String) {
-        AtomicFile(linesFile(ctx, profile)).delete()
+        val f = linesFile(ctx, profile)
+        AtomicFile(f).delete()
+        AtomicFile(cloudFile(f)).delete()
         mem = null; memKey = ""
     }
 
     @Synchronized
     fun deleteProfileLines(ctx: Context, profile: String) {
-        AtomicFile(legacyLinesFile(ctx, profile)).delete()
+        val legacy = legacyLinesFile(ctx, profile)
+        AtomicFile(legacy).delete()
+        AtomicFile(cloudFile(legacy)).delete()
         scopedDir(ctx, profile).deleteRecursively()
         mem = null; memKey = ""
     }
@@ -134,10 +206,11 @@ object PackStore {
     fun memory(ctx: Context, p: Prefs): TransMemory {
         val f = linesFile(ctx, p.profile)
         val name = gameName(p)
-        val key = p.profile + "\u0000" + name + "\u0000" + (p.packOn || p.aiAuto) + "\u0000" + f.lastModified() + "\u0000" + f.length()
+        val cf = cloudFile(f)
+        val key = p.profile + "\u0000" + name + "\u0000" + (p.packOn || p.aiAuto) + "\u0000" + f.lastModified() + "\u0000" + f.length() + "\u0000" + cf.lastModified() + "\u0000" + cf.length()
         mem?.let { if (key == memKey) return it }
         val built = if (p.packOn || p.aiAuto) VietHoa.linesFor(name) else emptyList()
-        val imported = try { readFile(f) } catch (_: Exception) { emptyList() }
+        val imported = readLines(ctx, p.profile)
         return TransMemory(built + imported).also { mem = it; memKey = key }
     }
 
@@ -278,7 +351,7 @@ object PackStore {
         PackText.format(gameName(p).ifEmpty { p.profile }, p.glossary, p.cast, readLines(ctx, p.profile))
 
     fun exportCsv(ctx: Context, p: Prefs): String =
-        PackText.formatScopedCsv(gameName(p), readFile(linesFile(ctx, p.profile)))
+        PackText.formatScopedCsv(gameName(p), combined(linesFile(ctx, p.profile)))
 
     /** Tải văn bản từ link (chỉ https, tối đa 4 MB). Link GitHub dạng /blob/ được đổi sang bản thô. Chạy ở luồng nền. */
     fun fetch(url: String): String {
@@ -310,13 +383,18 @@ object PackStore {
             require(game.isNotBlank()) { "Hãy chọn đúng game trước khi tải gói Cloud." }
             val target = linesFile(ctx, profile)
             val manifest = RemotePack.parse(fetchBounded(url, 64_000).toString(Charsets.UTF_8), game)
+            val previous = synchronized(this) { readCloud(target) }
+            when (RemotePack.versionDecision(previous?.version, previous?.sha256, manifest.version, manifest.sha256)) {
+                RemotePack.Decision.SAME -> return "Kho Cloud đã ở phiên bản ${manifest.version}; không cần tải lại."
+                RemotePack.Decision.REJECT -> throw java.io.IOException("Phiên bản Cloud cũ hơn hoặc trùng phiên bản nhưng khác nội dung.")
+                RemotePack.Decision.INSTALL -> Unit
+            }
             val data = fetchBounded(manifest.url, manifest.bytes)
             val pack = RemotePack.verify(manifest, data)
             if (p.profile != profile || gameName(p) != game) throw java.io.IOException("Game hoặc hồ sơ đã thay đổi. Hãy chọn lại game.")
             val filtered = LocFormat.filter(pack.lines, "cloud")
             require(filtered.pairs.isNotEmpty()) { "Không có câu Việt hóa hợp lệ." }
-            val total = addLinesTo(target, filtered.pairs, true)
-            return "Đã lưu gói Cloud ${manifest.game} phiên bản ${manifest.version} vào bộ nhớ offline ($total câu trong kho). Bản dịch đang có được giữ nguyên."
+            return saveCloud(target, manifest, filtered.pairs)
         }
         val tmp = File.createTempFile("remote-pack", ".tmp", ctx.cacheDir)
         try {
