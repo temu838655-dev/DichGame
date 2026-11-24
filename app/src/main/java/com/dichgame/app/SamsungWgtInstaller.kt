@@ -62,9 +62,8 @@ internal object SamsungWgtInstaller {
     fun install(context: Context, ip: String, uri: Uri, status: (String) -> Unit): String {
         val bytes = read(context, uri)
         validate(context, bytes)
-        SamsungSdb(ip).use { sdb ->
+        run {
             status("Đang kết nối SDB...")
-            sdb.connect()
             val capabilities = runCatching { SamsungSdb(ip).use { probe -> probe.connect(); probe.capabilities() } }.getOrDefault("")
             val dir = capabilities.lineSequence().firstOrNull { it.startsWith("sdk_toolpath:") }
                 ?.substringAfter(':')?.trim()?.trimEnd('/')
@@ -73,7 +72,7 @@ internal object SamsungWgtInstaller {
             val remote = "$dir/dichgame-" + UUID.randomUUID().toString() + ".wgt"
             try {
                 status("Đang truyền WGT đã ký...")
-                sdb.push(remote, bytes)
+                SamsungSdb(ip).use { transfer -> transfer.connect(); transfer.push(remote, bytes) }
                 status("Đang cài ứng dụng...")
                 val result = SamsungSdb(ip).use { install ->
                     install.connect()
@@ -85,11 +84,9 @@ internal object SamsungWgtInstaller {
                     !result.contains("install failed", ignoreCase = true)) {
                     "TV chưa xác nhận cài thành công: " + result.take(400)
                 }
-                status("Đang xác nhận ứng dụng đã cài...")
-                val apps = SamsungSdb(ip).use { verify -> verify.connect(); verify.shell("0 vd_applist") }
-                check(apps.contains(APP) || apps.contains(PKG)) { "Chưa xác nhận được DichGame trong danh sách app TV" }
-                val opened = runCatching { SamsungSdb(ip).use { launcher -> launcher.connect(); launcher.shell("0 was_execute $APP") { it.contains(APP) && (it.contains("launched", true) || it.contains("resumed", true)) } } }.getOrDefault("")
-                return if (opened.contains(APP) && (opened.contains("launched", true) || opened.contains("resumed", true))) {
+                status("TV đã báo cài thành công. Đang mở ứng dụng...")
+                val opened = runCatching { SamsungSdb(ip).use { launcher -> launcher.connect(); launcher.shell("0 was_execute $APP", 20000) { it.contains("launched", true) || it.contains("resumed", true) || it.contains("spend time", true) } } }.getOrDefault("")
+                return if ((opened.contains("launched", true) || opened.contains("resumed", true)) && !opened.contains("failed", true)) {
                     "TV xác nhận đã cài và mở DichGame."
                 } else "TV xác nhận đã cài. Hãy mở DichGame trong Apps trên TV."
             } finally { runCatching { SamsungSdb(ip).use { cleanup -> cleanup.connect(); cleanup.shell("0 rmfile $remote", 5000) } } }

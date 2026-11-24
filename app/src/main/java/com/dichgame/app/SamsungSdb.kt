@@ -10,7 +10,7 @@ import java.nio.ByteOrder
 
 /** Minimal sequential SDB transport for the user's own Developer Mode TV.
  * No authentication bypass: unsupported AUTH or secure transports fail closed. */
-internal class SamsungSdb(private val ip: String) : java.io.Closeable {
+internal class SamsungSdb(private val ip: String, private val connectedSocket: Socket? = null) : java.io.Closeable {
     internal data class Packet(val cmd: Int, val a: Int, val b: Int, val data: ByteArray)
     companion object {
         internal const val CNXN = 0x4e584e43
@@ -44,21 +44,21 @@ internal class SamsungSdb(private val ip: String) : java.io.Closeable {
         }
     }
 
-    private val socket = Socket()
+    private val socket = connectedSocket ?: Socket()
     private var nextId = 1
     private var maxPayload = 4096
     private lateinit var input: InputStream
     private var deadline = 0L
     fun connect() {
         require(LgDeveloperKey.isPrivateIpv4(ip)) { "IP TV phải là IPv4 nội bộ" }
-        socket.connect(InetSocketAddress(ip, 26101), 8000)
+        if (!socket.isConnected) socket.connect(InetSocketAddress(ip, 26101), 8000)
         socket.soTimeout = 15000
         input = socket.getInputStream().buffered()
         deadline = System.nanoTime() + 15_000_000_000L
-        send(CNXN, 0x00100000, LIMIT, "host::\u0000".toByteArray())
+        send(CNXN, 0x01000000, LIMIT, "host::\u0000".toByteArray())
         val reply = read()
         check(reply.cmd != AUTH) { "TV yêu cầu xác thực SDB chưa được hỗ trợ" }
-        check(reply.cmd == CNXN && reply.b >= 1024 && reply.data.toString(Charsets.UTF_8).startsWith("device::")) {
+        check(reply.cmd == CNXN && reply.b >= 1024 && reply.data.isNotEmpty()) {
             "TV chưa chấp nhận SDB. Kiểm tra Developer Mode và Host PC IP"
         }
         maxPayload = minOf(reply.b, LIMIT)
@@ -69,7 +69,7 @@ internal class SamsungSdb(private val ip: String) : java.io.Closeable {
     private fun read(): Packet {
         val remaining = (deadline - System.nanoTime()) / 1_000_000L
         check(remaining > 0) { "TV phản hồi quá lâu" }
-        socket.soTimeout = remaining.coerceIn(1, 15000).toInt()
+        socket.soTimeout = remaining.coerceIn(1, 120000).toInt()
         return decode(input)
     }
     private inner class Stream(val local: Int, val remote: Int) {
@@ -139,7 +139,7 @@ internal class SamsungSdb(private val ip: String) : java.io.Closeable {
     fun shell(command: String, timeout: Long = 30000, terminal: ((String) -> Boolean)? = null): String =
         open("shell:$command", timeout).finish(terminal).toString(Charsets.UTF_8)
     fun capabilities(): String {
-        val raw = open("capability:", 10000).finish()
+        val raw = open("capability:", 10000).finish { it.contains("sdk_toolpath:") && it.endsWith("\n") }
         if (raw.size >= 2) {
             val n = (raw[0].toInt() and 255) or ((raw[1].toInt() and 255) shl 8)
             if (n in 1..4095 && n <= raw.size - 2) return raw.copyOfRange(2, n + 2).toString(Charsets.UTF_8)
@@ -161,8 +161,8 @@ internal class SamsungSdb(private val ip: String) : java.io.Closeable {
         val result = stream.readAtLeast(8)
         val tag = String(result, 0, 4, Charsets.US_ASCII)
         check(tag == "OKAY") { "TV không xác nhận truyền WGT: $tag" }
-        stream.write(syncFrame("QUIT", 0))
-        stream.close()
+        // The SYNC OKAY is the transfer confirmation. Some TV versions close without ACKing QUIT.
+        // This connection is single-purpose and the caller closes it immediately.
     }
     override fun close() { runCatching { socket.close() } }
 }

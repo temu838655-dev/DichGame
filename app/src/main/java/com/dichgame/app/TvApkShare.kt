@@ -11,10 +11,13 @@ internal object TvApkShare {
     private const val ASSET = "tv/DichGame-TV.apk"
     private const val PORT = 8781
     private var active: ServerSocket? = null
+    private val peers = java.util.concurrent.ConcurrentHashMap.newKeySet<Socket>()
     private val slots = Semaphore(4)
     @Synchronized fun stop() {
         runCatching { active?.close() }
         active = null
+        peers.forEach { runCatching { it.close() } }
+        peers.clear()
     }
 
     @Synchronized fun start(context: Context): List<String> {
@@ -34,9 +37,10 @@ internal object TvApkShare {
                 while (!server.isClosed && android.os.SystemClock.elapsedRealtime() < expires) {
                     val peer = try { server.accept() } catch (_: java.net.SocketTimeoutException) { continue } catch (_: Exception) { break }
                     if (!peer.inetAddress.isSiteLocalAddress || !slots.tryAcquire()) { peer.close(); continue }
+                    peers.add(peer)
                     Thread({
                         try { serve(peer, token, apk, expires, server) }
-                        finally { runCatching { peer.close() }; slots.release() }
+                        finally { peers.remove(peer); runCatching { peer.close() }; slots.release() }
                     }, "dg-tv-apk-peer").apply { isDaemon = true; start() }
                 }
             } finally { runCatching { server.close() } }
@@ -75,7 +79,13 @@ internal object TvApkShare {
             }
             output.write(("HTTP/1.1 200 OK\r\nContent-Type: application/vnd.android.package-archive\r\n" +
                 "Content-Disposition: attachment; filename=DichGame-TV.apk\r\nContent-Length: ${apk.size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").toByteArray())
-            if (first[0] == "GET") output.write(apk)
+            if (first[0] == "GET") {
+                var pos = 0
+                while (pos < apk.size && !server.isClosed && android.os.SystemClock.elapsedRealtime() < expires) {
+                    val n = minOf(32768, apk.size - pos)
+                    output.write(apk, pos, n); pos += n
+                }
+            }
             output.flush()
         } catch (_: Exception) {}
     }

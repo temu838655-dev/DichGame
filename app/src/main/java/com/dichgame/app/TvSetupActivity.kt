@@ -403,6 +403,7 @@ class TvSetupActivity : Activity() {
                 label.text = "Nhập IP nội bộ của TV."; return@button
             }
             samsungIp = address
+            p.sp.edit().putString("samsung_pending_ip", address).apply()
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
             }, 7319)
@@ -414,7 +415,8 @@ class TvSetupActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != 7319 || resultCode != RESULT_OK || samsungInstalling) return
         val uri = data?.data ?: return
-        val address = samsungIp
+        val address = samsungIp.ifBlank { p.sp.getString("samsung_pending_ip", "").orEmpty() }
+        p.sp.edit().remove("samsung_pending_ip").apply()
         if (!LgDeveloperKey.isPrivateIpv4(address)) return
         AlertDialog.Builder(this, R.style.DgDialog).setTitle("Cài DichGame TV")
             .setMessage("Cài WGT bạn vừa chọn lên TV Samsung tại $address?")
@@ -552,8 +554,8 @@ class TvSetupActivity : Activity() {
                 "1. Trên TV vào Apps, trên remote bấm lần lượt 1 2 3 4 5, cửa sổ Developer mode hiện ra.\n" +
                 "2. Chọn On, nhập IP của máy bạn dùng để cài (Host PC IP), khởi động lại TV.\n" +
                 "3. Cài gói .wgt bằng Tizen Studio hoặc công cụ sdb (cổng 26101).\n" +
-                "4. App Tizen phải ký bằng chứng chỉ Samsung gắn với mã DUID của đúng TV bạn, nên không thể làm sẵn một gói chung cho mọi người, và điện thoại cũng không tự cài được.\n\n" +
-                "Dịch game có mã nguồn app Tizen thử nghiệm, chưa có WGT đã ký và chưa có trình cài từ điện thoại."
+                "4. App Tizen cần WGT ký bằng chứng chỉ phù hợp với DUID TV. Android có trình chọn và cài WGT đã ký qua SDB; chưa tự cấp chứng chỉ.\n\n" +
+                "Dịch game có trình cài Android thử nghiệm cho WGT đã ký. Chưa có WGT ký chung hoặc xác nhận tương thích TV thật."
         }
         AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Hướng dẫn chi tiết")

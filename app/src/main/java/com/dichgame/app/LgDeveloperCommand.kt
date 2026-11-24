@@ -13,6 +13,7 @@ internal object LgDeveloperCommand {
         check(session.isConnected) { "Chưa kết nối TV" }
         val channel = session.openChannel("exec") as ChannelExec
         val output = ByteArrayOutputStream()
+        val stdout = ByteArrayOutputStream()
         try {
             channel.setCommand(command)
             channel.setInputStream(stdin)
@@ -29,7 +30,10 @@ internal object LgDeveloperCommand {
                         if (count <= 0) break
                         check(output.size() + count <= 262144) { "Phản hồi TV quá lớn" }
                         output.write(buffer, 0, count)
-                        if (stream === input && terminal?.invoke(output.toString("UTF-8")) == true) return Result(0, output.toString("UTF-8"))
+                        if (stream === input) {
+                            stdout.write(buffer, 0, count)
+                            if (terminal?.invoke(stdout.toString("UTF-8")) == true) return Result(0, stdout.toString("UTF-8"))
+                        }
                     }
                 }
                 if (channel.isClosed && input.available() == 0 && errors.available() == 0) {
