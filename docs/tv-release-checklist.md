@@ -7,3 +7,5 @@
 - No release claim until build and hardware tests pass.
 
 - iPhone Samsung installer (experimental branch): signed WGT document import, target IP confirmation, SDB transfer and install result parsing. Verify build, real-device authorization, TV certificate and successful HDMI window before release. Does not issue certificates.
+
+- iPhone LG installer experimental: pinned CSSH2 source dependency, bounded key download, explicit SHA256 trust before authentication, bundled IPK, byte count and Luna install/launch verification. Review dependency security and test on actual TV before release.

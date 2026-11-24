@@ -6,6 +6,9 @@ settings:
     SWIFT_VERSION: 5.0
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
 packages:
+  CSSH2:
+    url: https://github.com/Lakr233/libssh2-spm.git
+    revision: d211fdf8587532cd952927d9f9f3f5167ce6a77f
   ZIPFoundation:
     url: https://github.com/weichsel/ZIPFoundation.git
     exactVersion: 0.9.19
@@ -16,8 +19,14 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: DichGameiOS
+        excludes: [dichgame-lg.ipk]
+      - path: DichGameiOS/dichgame-lg.ipk
+        optional: true
+        buildPhase: resources
     dependencies:
       - package: ZIPFoundation
+      - package: CSSH2
+        product: CSSH2
     info:
       path: Generated/Info.plist
       properties:

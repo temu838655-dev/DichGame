@@ -27,6 +27,14 @@ jobs:
               exit 1
             fi
           done
+      - name: Bundle LG receiver IPK
+        run: |
+          npm install -g @webos-tools/cli
+          bash webos/package-dev.sh
+          packages=(webos/dist/*.ipk)
+          test "${#packages[@]}" -eq 1
+          test -s "${packages[0]}"
+          cp "${packages[0]}" ios/DichGameiOS/dichgame-lg.ipk
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate native project
