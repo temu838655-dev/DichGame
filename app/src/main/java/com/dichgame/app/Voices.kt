@@ -40,7 +40,10 @@ object Voices {
 
     fun dir(ctx: Context, id: String) = File(ctx.filesDir, "voices/$id")
 
-    fun installed(ctx: Context, id: String): Boolean = File(dir(ctx, id), "ok").exists()
+    fun installed(ctx: Context, id: String): Boolean = pack(id) != null && dir(ctx, id).let { d ->
+        File(d, "ok").isFile && File(d, "model.onnx").let { it.isFile && it.length() > 0 } &&
+            File(d, "tokens.txt").let { it.isFile && it.length() > 0 }
+    }
 
     fun sizeMb(ctx: Context, id: String): Int =
         ((dir(ctx, id).listFiles()?.sumOf { it.length() } ?: 0L) / (1024 * 1024)).toInt()
@@ -58,6 +61,7 @@ object Voices {
         val root = File(ctx.filesDir, "voices")
         val tmp = File(root, pack.id + ".tmp")
         val dst = dir(ctx, pack.id)
+        var connection: HttpURLConnection? = null
         try {
             root.mkdirs()
             if (root.usableSpace < (pack.downloadMb * 2L + 40L) * 1024 * 1024) return "Máy không đủ chỗ trống (cần khoảng ${pack.downloadMb * 2} MB)."
@@ -69,6 +73,7 @@ object Voices {
                 instanceFollowRedirects = true
                 setRequestProperty("User-Agent", "DichGame")
             }
+            connection = conn
             if (conn.responseCode != 200) return "Không tải được giọng (mã ${conn.responseCode})."
             val total = conn.contentLengthLong
             var got = 0L
@@ -103,7 +108,8 @@ object Voices {
                     if (out == "tokens.txt") haveTokens = true
                 }
             }
-            if (!haveModel || !haveTokens) return "Gói giọng tải về bị thiếu file."
+            if (cancel.get()) throw CancelledException()
+            if (!haveModel || !haveTokens || File(tmp, "model.onnx").length() == 0L || File(tmp, "tokens.txt").length() == 0L) return "Gói giọng tải về bị thiếu file."
             File(tmp, "ok").writeText("1")
             dst.deleteRecursively()
             if (!tmp.renameTo(dst)) return "Không lưu được giọng."
@@ -118,6 +124,9 @@ object Voices {
         } catch (e: Exception) {
             tmp.deleteRecursively()
             return "Tải giọng lỗi: " + (e.message ?: e.javaClass.simpleName)
+        } finally {
+            connection?.disconnect()
+            tmp.deleteRecursively()
         }
     }
 
