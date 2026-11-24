@@ -304,7 +304,6 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                     if (!disposed && my == tvSeq.get()) cb(pcm, 1f) // tốc độ đã nằm trong âm thanh
                 } else {
                     val voiceName = p.aiVoiceFor(speakerName, text)
-                    val key = voiceName + "|" + p.ttsModel + "|" + style + "|" + text
                     val pcm: Pcm? = try {
                         aiPcm(text, style, voiceName)
                     } catch (_: Exception) { null }
