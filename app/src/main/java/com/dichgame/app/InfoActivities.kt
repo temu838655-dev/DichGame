@@ -77,7 +77,9 @@ class FeaturesActivity : Activity() {
             Triple("App iOS, Windows, Mac", "Chưa có, hiện chỉ có Android.", false)
         )
         screen("Tính năng") {
-            put(Ui.tv(this@FeaturesActivity, "Mọi tính năng đều dùng miễn phí, không gia hạn, không quảng cáo.", 14f, Ui.SUB), 0, 12)
+            val pricing = if (BuildConfig.PLAY_BUILD) "Mua một lần trên Google Play. Không gia hạn, không quảng cáo."
+                else "Mọi tính năng đều dùng miễn phí, không gia hạn, không quảng cáo."
+            put(Ui.tv(this@FeaturesActivity, pricing, 14f, Ui.SUB), 0, 12)
             val c = Ui.card(this@FeaturesActivity)
             items.forEachIndexed { i, it ->
                 val row = Ui.hbox(this@FeaturesActivity)

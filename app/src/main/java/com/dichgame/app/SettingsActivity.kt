@@ -550,7 +550,7 @@ class SettingsActivity : Activity() {
             group("PHIÊN BẢN", 16, 4) {
                 addView(Ui.tv(a, "Dịch game $ver" + (if (BuildConfig.BUILD_NO > 0) " (bản dựng ${BuildConfig.BUILD_NO})" else ""), 16f, Ui.TEXT, true))
                 addView(Ui.tv(a, "Có bản mới thì app tự báo khi mở, và cập nhật ngay trong app, không cần ra trình duyệt.", 13.5f, Ui.SUB), Ui.lpm(a, 6, 0))
-                row(Ui.button(a, "Kiểm tra bản mới") { UpdateUi.show(a, check = true) }, 12, 6)
+                if (!BuildConfig.PLAY_BUILD) row(Ui.button(a, "Kiểm tra bản mới") { UpdateUi.show(a, check = true) }, 12, 6)
             }
             group("HỖ TRỢ", 0) {
                 addView(Ui.navRow(a, null, "Báo lỗi / yêu cầu game", "Mở trang tạo báo cáo trên GitHub, đã điền sẵn thông tin máy") { report() })

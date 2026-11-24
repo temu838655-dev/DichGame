@@ -68,8 +68,10 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         render()
-        com.dichgame.update.Updater.onResume()
-        com.dichgame.update.Updater.check(false)
+        if (!BuildConfig.PLAY_BUILD) {
+            com.dichgame.update.Updater.onResume()
+            com.dichgame.update.Updater.check(false)
+        }
         CrashLog.showIfAny(this)
         // "Chọn và dịch ngay" trong Kho game: mở luôn bước bắt đầu
         if (intent?.getBooleanExtra("go", false) == true) {

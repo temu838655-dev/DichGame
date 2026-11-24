@@ -30,7 +30,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.7"
+          gradle-version: "8.11.1"
 
       # Hai lần build chỉ khác số bản dựng (-PbuildNo): mã phiên bản 21 và 22 cho điện thoại, 4 và 5 cho TV. Cùng khóa ký như bản phát hành.
       - name: Build bản cũ (số bản dựng 1)

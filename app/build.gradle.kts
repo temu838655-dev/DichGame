@@ -7,7 +7,8 @@ plugins {
 // Số bản dựng do GitHub Actions truyền vào (-PbuildNo=<số lần chạy>), build ở máy thì là 0.
 val buildNo = (project.findProperty("buildNo") as String?)?.toIntOrNull() ?: 0
 // -PnoNative bỏ qua việc dựng engine Remote Play (nặng, mất vài chục phút): dùng cho bản thử giao diện trên máy ảo x86.
-val withNative = !project.hasProperty("noNative")
+val playBuild = project.hasProperty("playBuild")
+val withNative = !playBuild && !project.hasProperty("noNative")
 
 // Thư viện đọc giọng offline (sherpa-onnx, Apache-2.0). File .aar khá nặng nên không để trong git:
 // Gradle tự tải về thư mục app/libs/ ở lần build đầu tiên.
@@ -28,11 +29,13 @@ val downloadSherpa by tasks.registering {
 
 android {
     namespace = "com.dichgame.app"
-    compileSdk = 34
+    compileSdk = if (playBuild) 36 else 34
     defaultConfig {
         applicationId = "com.dichgame.app"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = if (playBuild) 36 else 34
+        buildConfigField("boolean", "PLAY_BUILD", playBuild.toString())
+        if (playBuild) ndk { abiFilters += "arm64-v8a" }
         versionCode = 20 + buildNo
         versionName = if (buildNo > 0) "2.0.$buildNo" else "2.0"
         buildConfigField("int", "BUILD_NO", "$buildNo")
@@ -65,6 +68,7 @@ android {
     ndkVersion = "28.2.13676358"
     // Phần cập nhật trong app dùng chung với app TV (update-common/)
     sourceSets.getByName("main").java.srcDir("$rootDir/update-common/src")
+    if (playBuild) sourceSets.getByName("release").manifest.srcFile("src/play/AndroidManifest.xml")
     if (withNative) {
         externalNativeBuild {
             cmake {
@@ -77,7 +81,7 @@ android {
     // Máy điện thoại đời mới dùng bản arm64-v8a. Không đóng gói x86 32-bit (gần như không còn máy nào).
     splits {
         abi {
-            isEnable = true
+            isEnable = !playBuild
             reset()
             include("arm64-v8a", "armeabi-v7a", "x86_64")
             isUniversalApk = true
