@@ -21,6 +21,10 @@ internal object LearnedTranslationRules {
         listOf(normalize(game), lang.lowercase(Locale.ROOT), if (ui) "menu" else "dialogue",
             normalize(speaker.orEmpty()), normalize(source)).joinToString("\u0001")
 
+    /** Evict oldest automatically learned entry, never a correction made by the user. */
+    fun evictionKey(entries: Iterable<Pair<String, Boolean>>): String? =
+        entries.firstOrNull { !it.second }?.first
+
     fun canRemember(source: String, vi: String): Boolean {
         val src = source.trim()
         val translated = vi.trim()
@@ -44,6 +48,8 @@ object LearnedTranslations {
     private val loaded = HashMap<String, LinkedHashMap<String, Entry>>()
     private val pending = HashSet<String>()
     private val scheduled = HashSet<String>()
+    private val readOnly = HashSet<String>()
+    private val writeFailures = HashMap<String, Int>()
     private val writer = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "DichGame-Learned-Translations").apply { isDaemon = true }
     }
@@ -62,7 +68,9 @@ object LearnedTranslations {
             try {
                 val f = file(ctx, profile)
                 // AtomicFile có thể phục hồi từ .bak sau khi app bị tắt giữa lúc ghi.
-                if (f.length() < 12_000_000) {
+                val backup = File(f.path + ".bak")
+                if (f.exists() || backup.exists()) {
+                    require(maxOf(f.length(), backup.length()) < 12_000_000) { "Translation cache exceeds safe read limit" }
                     val items = JSONArray(String(AtomicFile(f).readFully(), Charsets.UTF_8))
                     for (i in 0 until items.length()) {
                         val o = items.optJSONObject(i) ?: continue
@@ -72,12 +80,14 @@ object LearnedTranslations {
                         if (key.isNotEmpty() && source.isNotBlank() && vi.isNotBlank()) {
                             map.remove(key)
                             map[key] = Entry(key, o.optString("game"), source, vi, o.optBoolean("manual"))
-                            if (map.size > LIMIT) map.remove(map.keys.first())
+                            if (map.size > LIMIT) LearnedTranslationRules.evictionKey(map.values.map { it.key to it.manual })?.let { map.remove(it) }
                         }
                     }
                 }
-            } catch (_: Exception) {
-                // Lỗi tệp bộ nhớ không được làm gián đoạn dịch game.
+            } catch (e: Exception) {
+                // Keep damaged data intact rather than overwriting it with an empty cache.
+                readOnly.add(profile)
+                android.util.Log.w("DG_LEARN", "Translation store could not be read; preserving original file", e)
             }
             map
         }
@@ -91,6 +101,7 @@ object LearnedTranslations {
 
     /** Must be called under lock. */
     private fun schedule(ctx: Context, profile: String) {
+        if (profile in readOnly) return
         pending.add(profile)
         if (!scheduled.add(profile)) return
         val app = ctx.applicationContext
@@ -107,8 +118,15 @@ object LearnedTranslations {
                     stream = target.startWrite()
                     stream.write(snapshot.toByteArray(Charsets.UTF_8))
                     target.finishWrite(stream)
-                } catch (_: Exception) {
-                    if (stream != null) target.failWrite(stream)
+                    synchronized(lock) { writeFailures.remove(profile) }
+                } catch (e: Exception) {
+                    if (stream != null) runCatching { target.failWrite(stream) }
+                    android.util.Log.w("DG_LEARN", "Could not save learned translations", e)
+                    synchronized(lock) {
+                        val failures = (writeFailures[profile] ?: 0) + 1
+                        writeFailures[profile] = failures
+                        if (failures <= 3) schedule(app, profile)
+                    }
                 }
             }
         }, 300, TimeUnit.MILLISECONDS)
@@ -127,9 +145,12 @@ object LearnedTranslations {
         synchronized(lock) {
             val key = LearnedTranslationRules.key(game, lang, speaker, ui, source)
             val map = data(ctx, profile)
-            if (map.containsKey(key)) return
+            if (profile in readOnly || map.containsKey(key)) return
+            if (map.size >= LIMIT) {
+                val victim = LearnedTranslationRules.evictionKey(map.values.map { it.key to it.manual }) ?: return
+                map.remove(victim)
+            }
             map[key] = Entry(key, game, source.trim(), vi.trim(), false)
-            if (map.size > LIMIT) map.remove(map.keys.first())
             schedule(ctx, profile)
         }
     }
@@ -154,6 +175,7 @@ object LearnedTranslations {
         if (vi.isEmpty() || vi.length > 1400) return false
         synchronized(lock) {
             val map = data(ctx, profile)
+            if (profile in readOnly) return false
             val old = map[key] ?: return false
             map.remove(key)
             map[key] = old.copy(vi = vi, manual = true)

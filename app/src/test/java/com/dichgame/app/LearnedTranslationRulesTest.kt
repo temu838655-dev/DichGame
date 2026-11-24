@@ -38,6 +38,11 @@ class LearnedTranslationRulesTest {
             "We need to get out of here!", ""))
     }
 
+    @Test fun evictionPreservesAllManualCorrections() {
+        assertEquals("auto1", LearnedTranslationRules.evictionKey(listOf("manual" to true, "auto1" to false, "auto2" to false)))
+        assertEquals(null, LearnedTranslationRules.evictionKey(listOf("manual1" to true, "manual2" to true)))
+    }
+
     @Test fun normalizeDoesNotRemovePunctuationThatCanChangeMeaning() {
         val a = LearnedTranslationRules.key("GTA VI", "en", null, false, "Don't shoot!")
         val b = LearnedTranslationRules.key("GTA VI", "en", null, false, "Don't shoot?")
