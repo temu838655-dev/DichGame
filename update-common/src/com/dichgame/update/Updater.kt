@@ -181,17 +181,20 @@ object Updater {
 
     /** Trả về file đã tải đủ, hoặc null nếu người dùng hủy giữa chừng. */
     private fun download(info: Update.Info): File? {
+        val maxBytes = 512L * 1024 * 1024
+        if (Update.testApi == null && !Update.validAssetUrl(info.apk, asset)) throw IOException("Đường dẫn APK không hợp lệ")
+        if (info.size > maxBytes) throw IOException("APK quá lớn")
         val dir = dir()
         dir.listFiles()?.forEach { if (!it.name.contains("-${info.no}.")) it.delete() }
         val file = File(dir, "${asset.removeSuffix(".apk")}-${info.no}.apk")
         val part = File(dir, file.name + ".part")
-        if (file.exists() && (info.size <= 0 || file.length() == info.size)) return file
+        if (file.exists() && file.length() in 1..maxBytes && (info.size <= 0 || file.length() == info.size) && Update.verifyDigest(file, info.sha256)) return file
         file.delete()
         var attempt = 0
         while (true) {
             attempt++
             var have = if (part.exists()) part.length() else 0L
-            if (info.size > 0 && have > info.size) { part.delete(); have = 0L }
+            if (have > maxBytes || (info.size > 0 && have > info.size)) { part.delete(); have = 0L }
             if (info.size > 0 && have == info.size) break
             val c = URL(info.apk).openConnection() as HttpURLConnection
             try {
@@ -203,6 +206,15 @@ object Updater {
                 if (code == 416 && attempt < 3) { part.delete(); continue }
                 if (code != 200 && code != 206) throw IOException("HTTP $code")
                 val append = code == 206
+                if (append) {
+                    val range = c.getHeaderField("Content-Range").orEmpty()
+                    val start = Regex("^bytes (\\d+)-\\d+/(?:\\d+|\\*)$").matchEntire(range)?.groupValues?.get(1)?.toLongOrNull()
+                    if (start != have) {
+                        part.delete()
+                        if (attempt < 3) continue
+                        throw IOException("Máy chủ trả sai vị trí tải tiếp")
+                    }
+                }
                 if (!append) have = 0L
                 val total = if (info.size > 0) info.size else c.contentLengthLong.let { if (it > 0) it + have else -1L }
                 var done = have
@@ -214,6 +226,8 @@ object Updater {
                             if (cancelled) return null
                             val n = inp.read(buf)
                             if (n < 0) break
+                            if (done + n > maxBytes || (info.size > 0 && done + n > info.size))
+                                throw IOException("APK vượt kích thước công bố")
                             out.write(buf, 0, n)
                             done += n
                             val now = System.currentTimeMillis()
@@ -230,6 +244,11 @@ object Updater {
         if (info.size > 0 && part.length() != info.size) {
             part.delete()
             throw IOException("file tải về không đủ dung lượng")
+        }
+        if (cancelled) return null
+        if (!Update.verifyDigest(part, info.sha256)) {
+            part.delete()
+            throw IOException("Mã SHA-256 của APK không khớp bản phát hành")
         }
         if (!part.renameTo(file)) throw IOException("không lưu được file")
         return file
@@ -272,6 +291,11 @@ object Updater {
             set(S.Failed(info, "File tải về không đúng là bản của app này nên không cài. Bấm Thử lại để tải lại."))
             return
         }
+        if (buildNo > 0 && av.second != curCode + (info.no - buildNo).toLong()) {
+            f.delete()
+            set(S.Failed(info, "Mã phiên bản APK không khớp bản phát hành."))
+            return
+        }
         if (av.second <= curCode) {
             set(S.Failed(info, "File tải về không mới hơn bản đang cài (mã ${av.second} so với $curCode)."))
             return
@@ -281,7 +305,7 @@ object Updater {
             val p = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
             p.setAppPackageName(app.packageName)
             p.setSize(f.length())
-            if (Build.VERSION.SDK_INT >= 31) p.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+            if (Build.VERSION.SDK_INT >= 31) p.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
             val id = pi.createSession(p)
             pi.openSession(id).use { s ->
                 f.inputStream().use { inp ->
