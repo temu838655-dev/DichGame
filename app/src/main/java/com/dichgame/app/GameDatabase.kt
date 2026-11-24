@@ -76,13 +76,13 @@ internal class GameDatabase private constructor(private val app: Context) :
     private val migrated = HashSet<Pair<String, String>>()
 
     /** Serialize first migration, not subsequent lookups. Do not mark a failed import. */
-    @Synchronized private fun migrate(kind: String, profile: String, import: (SQLiteDatabase) -> Unit, cleanup: () -> Unit = {}) {
+    @Synchronized private fun migrate(kind: String, profile: String, importRows: (SQLiteDatabase) -> Unit, cleanup: () -> Unit = {}) {
         val key = kind to profile
         if (key in migrated) return
         transaction { db ->
             val present = DatabaseUtils.longForQuery(db, "SELECT COUNT(*) FROM migration WHERE kind=? AND profile=?", arrayOf(kind, profile)) > 0
             if (!present) {
-                import(db)
+                importRows(db)
                 db.execSQL("INSERT INTO migration(kind,profile) VALUES(?,?)", arrayOf(kind, profile))
             }
         }
