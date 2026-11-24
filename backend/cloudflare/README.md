@@ -3,9 +3,16 @@
 Independent backend; no affiliation with any other translator. D1 starts empty.
 Only publish game data and translations you have permission to distribute.
 A client token is suitable for a small trusted group, not a public app-wide secret.
-Do not put either token in GitHub, APK source, or a public release. For public rollout,
+Do not put either token in GitHub source, APK source, logs or a public release. GitHub Actions encrypted secrets may hold them for deployment. For public rollout,
 replace shared client credentials with individual accounts/tokens and per-user rate limits.
 No account or payment system is required for this beta.
+
+## Deploy through GitHub Actions (no local computer required)
+
+1. In Cloudflare create an account-scoped API token with Workers Scripts Edit (or equivalent Workers create/deploy permission), D1 Edit and Account Settings Read. Copy your Account ID.
+2. In the GitHub repository Settings > Secrets and variables > Actions, create four encrypted repository secrets: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `DICHGAME_ADMIN_TOKEN`, `DICHGAME_CLIENT_TOKEN`. The last two are distinct random strings you generate yourself (24–500 characters); retain the client token for the app. Never paste values into a chat or commit.
+3. Once the deploy workflow exists on the default branch, open Actions > Deploy DichGame Cloudflare (manual) > Run workflow. Choose the reviewed branch. This creates or reuses only `dichgame-community`, applies pending migrations, deploys the Worker with its two secrets, and prints the HTTPS origin. It never runs automatically on a pull request or push.
+4. Enter that origin and the client token in the app, then enable lookup and test connection. Do not enter the Cloudflare API token or admin token in the app.
 
 ## Deploy on your own Cloudflare account
 Requires Node.js and an authenticated Cloudflare account. Use the current Wrangler 4 CLI.
