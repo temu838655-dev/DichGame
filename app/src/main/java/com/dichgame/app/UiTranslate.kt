@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Matrix
 import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
@@ -28,7 +29,7 @@ import android.widget.Toast
  * vẫn bấm bình thường.
  */
 class UiOverlay(ctx: Context) : View(ctx) {
-    class Draw(val rect: RectF, val text: String, val bg: Int, val fg: Int, val unsure: Boolean)
+    class Draw(val rect: RectF, val text: String, val bg: Int, val fg: Int, val unsure: Boolean, val corners: FloatArray? = null, val lines: Int = 1)
 
     private var draws: List<Draw> = emptyList()
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -61,48 +62,45 @@ class UiOverlay(ctx: Context) : View(ctx) {
     }
 
     private fun drawOne(cv: Canvas, d: Draw) {
-        val padX = dp(3f)
-        val padY = dp(2f)
-        val base = RectF(d.rect).apply { inset(-padX, -padY) }
-        val textW = (base.width() - padX * 2).toInt().coerceAtLeast(dp(20f).toInt())
-        // cỡ chữ lớn nhất theo chiều cao khung chữ gốc, thu nhỏ dần tới khi vừa; tiếng Việt thường dài hơn tiếng gốc
-        var size = minOf(base.height() * 0.82f, sp(22f))
-        val minSize = sp(8.5f)
+        if (d.unsure || d.text.isBlank()) return
+        val quad = d.corners?.takeIf { it.size == 8 && it.all { n -> n.isFinite() } }
+            ?: floatArrayOf(d.rect.left,d.rect.top,d.rect.right,d.rect.top,d.rect.right,d.rect.bottom,d.rect.left,d.rect.bottom)
+        fun edge(a: Int, b: Int): Float = kotlin.math.hypot(quad[a]-quad[b],quad[a+1]-quad[b+1])
+        val w = (edge(0,2)+edge(6,4))/2f
+        val h = (edge(0,6)+edge(2,4))/2f
+        if (w < 8f || h < 6f) return
+        val transform = Matrix()
+        if (!transform.setPolyToPoly(floatArrayOf(0f,0f,w,0f,w,h,0f,h),0,quad,0,4)) return
+        val pad = minOf(dp(1.5f), h * 0.06f)
+        val tw = (w - pad * 2).toInt().coerceAtLeast(1)
+        val available = h - pad * 2
+        // Fit complete Vietnamese text inside the original block. Never ellipsize or cover adjacent icons.
+        val originalSize = (h / d.lines.coerceAtLeast(1) * 0.82f).coerceAtMost(sp(28f))
+        val minSize = minOf(originalSize, maxOf(sp(8f), originalSize * 0.55f))
         tp.color = d.fg
-        var lay = layout(d.text, textW, size, Int.MAX_VALUE)
-        while (lay.height > base.height() && size > minSize) {
-            size -= sp(0.75f)
-            lay = layout(d.text, textW, size, Int.MAX_VALUE)
+        var size = originalSize
+        var lay = layout(d.text, tw, size, d.lines > 1)
+        while ((lay.height > available || lay.getLineEnd(lay.lineCount - 1) < d.text.length) && size > minSize) {
+            size = maxOf(minSize, size - 0.6f)
+            lay = layout(d.text, tw, size, d.lines > 1)
         }
-        // vẫn không vừa ở cỡ nhỏ nhất: cho khung cao thêm (tối đa 1,8 lần, đối xứng) rồi cắt bớt bằng dấu ba chấm, không phủ quá rộng
-        val maxH = base.height() * 1.8f
-        if (lay.height > maxH) {
-            val lineH = (lay.height / lay.lineCount.toFloat()).coerceAtLeast(1f)
-            lay = layout(d.text, textW, size, maxOf(1, (maxH / lineH).toInt()))
-        }
-        val h = maxOf(base.height(), lay.height + padY * 2)
-        val r = RectF(base.left, base.centerY() - h / 2f, base.right, base.centerY() + h / 2f)
-        bgPaint.color = (d.bg and 0x00FFFFFF) or 0xEE000000.toInt()
-        cv.drawRoundRect(r, dp(4f), dp(4f), bgPaint)
-        if (d.unsure) {
-            // bản dịch còn nghi ngờ: viền vàng mảnh để người chơi biết đây chưa chắc
-            markPaint.color = 0xCCF2B84B.toInt()
-            markPaint.strokeWidth = dp(1f)
-            cv.drawRoundRect(r, dp(4f), dp(4f), markPaint)
-        }
+        if (lay.height > available || lay.getLineEnd(lay.lineCount - 1) < d.text.length) return
         cv.save()
-        cv.translate(r.left + padX, r.centerY() - lay.height / 2f)
+        cv.concat(transform)
+        cv.clipRect(0f,0f,w,h)
+        bgPaint.color = d.bg
+        cv.drawRect(0f,0f,w,h,bgPaint)
+        cv.translate(pad, (h-lay.height)/2f)
         lay.draw(cv)
         cv.restore()
     }
 
-    private fun layout(text: String, width: Int, size: Float, maxLines: Int): StaticLayout {
+    private fun layout(text: String, width: Int, size: Float, multiline: Boolean): StaticLayout {
         tp.textSize = size
         return StaticLayout.Builder.obtain(text, 0, text.length, tp, width)
-            .setAlignment(Layout.Alignment.ALIGN_CENTER)
-            .setIncludePad(false)
-            .setMaxLines(maxLines)
-            .setEllipsize(TextUtils.TruncateAt.END)
+            .setAlignment(if (multiline) Layout.Alignment.ALIGN_NORMAL else Layout.Alignment.ALIGN_CENTER)
+            .setIncludePad(true)
+            .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
             .build()
     }
 }
@@ -174,7 +172,7 @@ class UiTranslate(
 
     /** [via]/[at]: bản dịch đang hiện do đâu và từ lúc nào; bản dịch máy (AI đang lỗi) được dịch lại bằng AI khi AI dùng được ([upgrading]: đang chờ bản mới). */
     private class Entry(var vi: String? = null, var unsure: Boolean = false, var failed: Boolean = false, var via: String = "", var at: Long = 0L, var upgrading: Boolean = false)
-    private class Item(val src: String, val key: String, val box: RectF, val bg: Int, val fg: Int)
+    private class Item(val src: String, val key: String, val box: RectF, val bg: Int, val fg: Int, val corners: FloatArray?, val lines: Int)
 
     private val cache = HashMap<String, Entry>()
     /** Cài đặt của lượt dịch đang chạy (đặt ở start). */
@@ -412,8 +410,14 @@ class UiTranslate(
         val vw = overlay.width.toFloat()
         val vh = overlay.height.toFloat()
         if (vw < 2f || vh < 2f) return
-        val kx = vw / bw
-        val ky = vh / bh
+        val sv = video() ?: return
+        val surfaceLoc = IntArray(2); sv.getLocationOnScreen(surfaceLoc)
+        val overlayLoc = IntArray(2); overlay.getLocationOnScreen(overlayLoc)
+        val dx = (surfaceLoc[0] - overlayLoc[0]).toFloat()
+        val dy = (surfaceLoc[1] - overlayLoc[1]).toFloat()
+        val kx = sv.width.toFloat() / bw
+        val ky = sv.height.toFloat() / bh
+        if (kx <= 0f || ky <= 0f) return
         // "Dịch hết chữ" dịch cả vùng phụ đề; chế độ liên tục để phần phụ đề cho dịch phụ đề lo
         val ex = if (once) null else exclude()
         val out = ArrayList<Item>()
@@ -430,10 +434,10 @@ class UiTranslate(
                 val sub = RectF(ex.left * bw, ex.top * bh, ex.right * bw, ex.bottom * bh)
                 if (overlapFrac(box, sub) > 0.5f) continue
             }
-            val bg = keep?.let { sampleBackground(it, box.left, box.top, box.right, box.bottom) } ?: Color.BLACK
-            val fg = if (luminance(bg) > 150) 0xFF101010.toInt() else Color.WHITE
+            val style = keep?.let { NativeTextStyle.sample(it, b) } ?: continue
             val key = UiText.key(src)
-            out.add(Item(src, key, RectF(box.left * kx, box.top * ky, box.right * kx, box.bottom * ky), bg, fg))
+            val corners = b.corners?.mapIndexed { i, v -> if (i % 2 == 0) v * kx + dx else v * ky + dy }?.toFloatArray()
+            out.add(Item(src, key, RectF(box.left * kx + dx, box.top * ky + dy, box.right * kx + dx, box.bottom * ky + dy), style.first, style.second, corners, b.lineCount))
             request(src, key)
         }
         items = out
@@ -451,27 +455,6 @@ class UiTranslate(
         val own = (r.width() * r.height()).toFloat().coerceAtLeast(1f)
         return area / own
     }
-
-    /** Màu nền quanh khối chữ: trung vị các điểm ngay sát bên ngoài khung (chữ nằm trong khung nên không lẫn vào). */
-    private fun sampleBackground(bmp: Bitmap, l: Int, t: Int, r: Int, b: Int): Int {
-        val m = 3
-        val xs = intArrayOf(l - m, (l + r) / 2, r + m)
-        val ys = intArrayOf(t - m, (t + b) / 2, b + m)
-        val rs = ArrayList<Int>()
-        val gs = ArrayList<Int>()
-        val bs = ArrayList<Int>()
-        for (yi in ys.indices) for (xi in xs.indices) {
-            if (xi == 1 && yi == 1) continue
-            val x = xs[xi].coerceIn(0, bmp.width - 1)
-            val y = ys[yi].coerceIn(0, bmp.height - 1)
-            val c = bmp.getPixel(x, y)
-            rs.add(Color.red(c)); gs.add(Color.green(c)); bs.add(Color.blue(c))
-        }
-        fun med(v: ArrayList<Int>): Int { v.sort(); return v[v.size / 2] }
-        return Color.rgb(med(rs), med(gs), med(bs))
-    }
-
-    private fun luminance(c: Int): Int = (Color.red(c) * 3 + Color.green(c) * 6 + Color.blue(c)) / 10
 
     /**
      * Xin dịch một khối chữ nếu chưa có trong bộ nhớ. Chạy tối đa [MAX_INFLIGHT] khối cùng lúc, khối còn lại xếp hàng và tự
@@ -542,7 +525,7 @@ class UiTranslate(
         for (it in items) {
             val e = cache[it.key] ?: continue
             val vi = e.vi ?: continue
-            list.add(UiOverlay.Draw(it.box, vi, it.bg, it.fg, e.unsure))
+            if (!e.unsure) list.add(UiOverlay.Draw(it.box, vi, it.bg, it.fg, false, it.corners, it.lines))
         }
         overlay.set(list)
     }
