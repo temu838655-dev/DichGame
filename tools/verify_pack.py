@@ -19,10 +19,10 @@ def verify(directory, game):
     if url.scheme != "https" or not url.hostname or url.username or url.password or url.fragment:
         raise ValueError("Invalid pack URL")
     path = root / "pack.csv"
-    if path.stat().st_size > 24 * 1024 * 1024:
+    if path.stat().st_size > 24_000_000:
         raise ValueError("Pack too large")
     data = path.read_bytes()
-    if len(data) > 24 * 1024 * 1024 or type(manifest["bytes"]) is not int or len(data) != manifest["bytes"] or hashlib.sha256(data).hexdigest() != manifest["sha256"]:
+    if len(data) > 24_000_000 or type(manifest["bytes"]) is not int or len(data) != manifest["bytes"] or hashlib.sha256(data).hexdigest() != manifest["sha256"]:
         raise ValueError("Pack integrity mismatch")
     count = 0
     seen = set()
