@@ -3,10 +3,8 @@ package com.dichgame.app
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
-import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.SecureRandom
-import org.json.JSONObject
 
 /** Browser-based login using Samsung SDK's loopback callback. No password capture or persistence. */
 internal class SamsungAccountLogin : java.io.Closeable {
@@ -29,11 +27,6 @@ internal class SamsungAccountLogin : java.io.Closeable {
         return null
     }
 
-    private fun params(s: String): Map<String,String> = s.split('&').mapNotNull {
-        val i = it.indexOf('=')
-        if (i < 0) null else URLDecoder.decode(it.substring(0,i),"UTF-8") to URLDecoder.decode(it.substring(i+1),"UTF-8")
-    }.toMap()
-
     fun await(): SamsungCertificateAuthority.Account {
         val deadline = System.nanoTime() + 300_000_000_000L
         listener.soTimeout = 1000
@@ -43,37 +36,27 @@ internal class SamsungAccountLogin : java.io.Closeable {
                 c.soTimeout = 5000
                 val result = runCatching {
                     val input = c.getInputStream().buffered()
-                    val request = line(input)?.split(' ') ?: error("Invalid callback")
-                    require(request.size == 3 && request[0] in listOf("GET","POST"))
-                    require(request[1].substringBefore('?') == "/signin/callback")
+                    val request = line(input) ?: error("Invalid callback")
                     val headers = linkedMapOf<String,String>()
                     var ended = false
                     repeat(32) {
                         if (!ended) {
                             val h = line(input) ?: error("Incomplete callback")
                             if (h.isEmpty()) ended = true
-                            else { require(h.contains(':')); headers[h.substringBefore(':').lowercase()] = h.substringAfter(':').trim() }
+                            else {
+                                require(h.contains(':'))
+                                val key = h.substringBefore(':').lowercase()
+                                require(key !in headers || key !in listOf("host","origin","content-type","content-length","transfer-encoding"))
+                                headers[key] = h.substringAfter(':').trim()
+                            }
                         }
                     }
                     require(ended)
-                    require(headers["host"] in listOf("localhost:${listener.localPort}","127.0.0.1:${listener.localPort}"))
-                    headers["origin"]?.let { origin ->
-                        require(origin == "https://account.samsung.com" || origin == "null")
-                    }
-                    val length = headers["content-length"]?.toIntOrNull() ?: 0
+                    val length = headers["content-length"]?.let { it.toIntOrNull() ?: error("Invalid length") } ?: 0
                     require(length in 0..65536 && !headers.containsKey("transfer-encoding"))
                     val body = ByteArray(length)
                     java.io.DataInputStream(input).readFully(body)
-                    val values = params(request[1].substringAfter('?',"")) + params(body.toString(Charsets.UTF_8))
-                    // A missing or wrong state is never accepted; fail closed if Samsung changes callback semantics.
-                    require(values["dg_state"] == state || values["state"] == state)
-                    val code = JSONObject(values["code"] ?: error("Missing response"))
-                    val token = code.optString("access_token")
-                    val uid = code.optString("userId")
-                    val email = code.optString("inputEmailID")
-                    require(token.isNotBlank() && token.length <= 32768 && uid.isNotBlank() && uid.length <= 512)
-                    require(code.optLong("access_token_expires_in",0) > 0)
-                    SamsungCertificateAuthority.Account(token,uid,email.take(320))
+                    SamsungOAuthCallback.parse(request,headers,body.toString(Charsets.UTF_8),listener.localPort,state)
                 }.getOrNull()
                 val html = if (result == null) "Invalid Samsung callback. Return to DichGame and retry." else "Samsung login received. Return to DichGame to confirm the account."
                 val body = html.toByteArray(Charsets.UTF_8)

@@ -45,11 +45,16 @@ class TvSetupActivity : Activity() {
         render()
     }
 
+    override fun onDestroy() {
+        samsungLogin?.close()
+        super.onDestroy()
+    }
+
     private fun render() {
         val a = this
         if (p.webSub) TvOut.startWeb(this)
         screen("Phụ đề trên TV") {
-            put(Ui.tv(a, "Bản dịch hiện ngay trên màn hình TV, phía trên hình game. Giọng đọc cũng phát ra loa TV được (Android TV).", 14f, Ui.SUB), 0, 4)
+            put(Ui.tv(a, "Gửi bản dịch đến app TV. Hiển thị trên HDMI tùy hệ điều hành và model TV; LG webOS app không phủ trực tiếp lên HDMI.", 14f, Ui.SUB), 0, 4)
 
             group("TV CỦA BẠN HÃNG GÌ?", 14) {
                 val row = Ui.hbox(a)
@@ -623,6 +628,10 @@ class TvSetupActivity : Activity() {
                 val server = TvOut.web
                 server?.push("DichGame: phụ đề thử nghiệm")
                 android.os.Handler(mainLooper).postDelayed({ server?.clearTestSubtitle("DichGame: phụ đề thử nghiệm") }, 5000)
+            }, Ui.lpm(this, 8, 8))
+            c.addView(Ui.button(this, "Làm mới yêu cầu ghép TV") {
+                TvOut.web?.clearPendingReceivers()
+                Toast.makeText(this, "Đã xóa yêu cầu chờ. Mở lại kết nối trên TV để lấy mã mới.", Toast.LENGTH_LONG).show()
             }, Ui.lpm(this, 8, 8))
             c.addView(Ui.button(this, "Bỏ ghép tất cả app TV") { TvOut.web?.revokeReceivers(); Toast.makeText(this, "Đã bỏ ghép", Toast.LENGTH_SHORT).show() }, Ui.lpm(this, 8, 8))
             c.addView(Ui.switchRow(this, "Cho phép trình duyệt không cần mã", "Chỉ bật khi cần; mọi thiết bị cùng mạng có thể đọc phụ đề.", p.sp.getBoolean("web_legacy", false)) { enabled ->

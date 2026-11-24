@@ -18,6 +18,7 @@ class WebSubServer(private val port: Int = 8780, private val clock: () -> Long =
     internal var pairing = WebReceiverPairing(now = clock)
     @Volatile var legacyEnabled = false
     fun approveReceiver(code: String): Boolean = pairing.approve(code)
+    fun clearPendingReceivers() = pairing.clearPending()
     fun revokeReceivers() { pairing.revokeAll(); synchronized(lock) { seq++; lock.notifyAll() } }
     private var server: ServerSocket? = null
     private val lock = Object()
@@ -29,7 +30,8 @@ class WebSubServer(private val port: Int = 8780, private val clock: () -> Long =
     private var speech = ""
     private var textUntil = 0L
     private var regionUntil = 0L
-    private val clients = java.util.concurrent.Semaphore(16)
+    private val clients = java.util.concurrent.Semaphore(32)
+    private val polls = java.util.concurrent.Semaphore(16)
     @Volatile private var stopped = false
 
     val running: Boolean get() = server?.isClosed == false
@@ -113,7 +115,7 @@ class WebSubServer(private val port: Int = 8780, private val clock: () -> Long =
 
     private fun handle(c: Socket) {
         try {
-            c.soTimeout = 30_000
+            c.soTimeout = 5000
             val rd = BufferedReader(InputStreamReader(c.getInputStream(), Charsets.ISO_8859_1))
             val line = boundedLine(rd) ?: return
             var headers = 0
@@ -126,7 +128,7 @@ class WebSubServer(private val port: Int = 8780, private val clock: () -> Long =
             fun param(name: String): String = query.split('&').firstOrNull { it.startsWith("$name=") }?.substringAfter('=').orEmpty()
             when (path) {
                 "/receiver/register" -> {
-                    val request = pairing.register()
+                    val request = pairing.register(c.inetAddress.hostAddress.orEmpty())
                     if (request == null) reply(c, 429, "text/plain", "Busy", true)
                     else reply(c, 200, "application/json", JSONObject().put("id", request.id).put("code", request.code).toString(), true)
                 }
@@ -144,6 +146,8 @@ class WebSubServer(private val port: Int = 8780, private val clock: () -> Long =
                     val since = query.split('&').firstOrNull { it.startsWith("since=") }?.substringAfter('=')?.let {
                         try { URLDecoder.decode(it, "UTF-8").toLongOrNull() } catch (_: Exception) { null }
                     } ?: -1L
+                    if (!polls.tryAcquire()) { reply(c,429,"text/plain","Busy",receiver); return }
+                    try {
                     val body: String
                     synchronized(lock) {
                         val end = System.nanoTime() / 1000000L + 20_000
@@ -159,6 +163,7 @@ class WebSubServer(private val port: Int = 8780, private val clock: () -> Long =
                     }
                     if (stopped || (receiver && !pairing.valid(param("token"))) || (!receiver && !legacyEnabled)) reply(c, 403, "text/plain", "Pair receiver first", receiver)
                     else reply(c, 200, "application/json; charset=utf-8", body, cors = receiver)
+                    } finally { polls.release() }
                 }
                 "/", "/index.html" -> if (legacyEnabled) reply(c, 200, "text/html; charset=utf-8", PAGE) else reply(c, 403, "text/plain", "Enable browser mode on phone")
                 else -> reply(c, 404, "text/plain; charset=utf-8", "404")

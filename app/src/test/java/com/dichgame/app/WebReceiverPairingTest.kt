@@ -25,6 +25,19 @@ class WebReceiverPairingTest {
         assertTrue(saved.isEmpty())
     }
 
+    @Test fun perPeerLimitAndResetPreserveApprovedToken() {
+        val p = WebReceiverPairing(now = { 0L })
+        val r = p.register("192.168.1.2")!!
+        assertTrue(p.approve(r.code))
+        val token = p.request(r.id)!!.token!!
+        assertNotNull(p.register("192.168.1.2"))
+        assertNull(p.register("192.168.1.2"))
+        assertNotNull(p.register("192.168.1.3"))
+        p.clearPending()
+        assertTrue(p.valid(token))
+        assertNotNull(p.register("192.168.1.2"))
+    }
+
     @Test fun pendingLimit() {
         val p = WebReceiverPairing(now = { 0L })
         repeat(8) { assertNotNull(p.register()) }
