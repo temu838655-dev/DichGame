@@ -81,6 +81,7 @@ class CaptureService : Service() {
     private var overlay: TextView? = null
     private var menuOverlay: UiOverlay? = null
     private var menuGeneration = 0
+    private var renderingMenu = false
     private var tt: TextTranslator? = null
     private var speaker: Speaker? = null
     private var speak = false
@@ -408,6 +409,7 @@ class CaptureService : Service() {
 
     private fun clearMenuOverlay() {
         menuGeneration++
+        if (renderingMenu) { renderingMenu = false; finishBusy() }
         menuOverlay?.clear()
         menuOverlay?.visibility = View.GONE
     }
@@ -450,10 +452,12 @@ class CaptureService : Service() {
         if (!running || items.isEmpty()) { finishBusy(); return }
         val t = tt ?: run { finishBusy(); return }
         val generation = ++menuGeneration
+        renderingMenu = true
+        menuUntil = Long.MAX_VALUE
         val context = gameContext(Prefs(this))
         val screenW = cw; val screenH = ch
         val v = try { ensureMenuOverlay() } catch (_: Exception) {
-            finishBusy(); show("Không tạo được lớp phủ chữ trên màn hình.", false); return
+            renderingMenu = false; menuUntil = 0L; finishBusy(); show("Không tạo được lớp phủ chữ trên màn hình.", false); return
         }
         overlay?.visibility = View.GONE
         pacer.cleared()
@@ -481,16 +485,17 @@ class CaptureService : Service() {
         fun complete() {
             if (finished || generation != menuGeneration) return
             finished = true
-            finishBusy()
+            renderingMenu = false
             menuUntil = System.currentTimeMillis() + 12000
+            finishBusy()
             val texts = translated.filterNotNull()
             if (texts.isEmpty()) {
-                clearMenuOverlay()
+                v.clear(); v.visibility = View.GONE
                 show("Chưa dịch được chữ rõ ràng trên màn hình.", false)
             } else sendTv("region", texts.joinToString("\n"))
             handler.postDelayed({
                 if (generation == menuGeneration) {
-                    clearMenuOverlay(); menuUntil = 0L; autoShown = false; sendTv("clear", "")
+                    clearMenuOverlay(); menuUntil = 0L; autoShown = false; show("")
                 }
             }, 12000)
         }
@@ -1153,6 +1158,9 @@ class CaptureService : Service() {
 
     /** Dịch toàn bộ chữ giao diện trong ảnh, vẽ từng khối tại vị trí gốc. */
     private fun menuOnce() {
+        if (menuOverlay?.visibility == View.VISIBLE) {
+            clearMenuOverlay(); menuUntil = 0L; show(""); return
+        }
         if (busy || !ready || editing || narrate) return
         clearMenuOverlay()
         busy = true
@@ -1310,7 +1318,7 @@ class CaptureService : Service() {
         doneBtn?.visibility = if (on) View.VISIBLE else View.GONE
         wm.updateViewLayout(f, flp)
         last = ""; cand = ""; stable = 0; lastFine = null
-        if (on) { jobs.clear(); fusion.clear() }
+        if (on) { clearMenuOverlay(); menuUntil = 0L; jobs.clear(); fusion.clear() }
         show(if (on) "Kéo khung xanh tới dòng phụ đề, kéo ô vuông góc dưới phải để đổi cỡ. Xong thì kéo thông báo xuống, bấm \"Chỉnh/Khóa khung\"." else "")
         if (!on) pump()
     }

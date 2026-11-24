@@ -168,6 +168,8 @@ class UiTranslate(
     private var copyFails = 0
     private var inflight = 0
     private var gen = 0
+    private var gameScope = ""
+    private fun scope(p: Prefs) = listOf(p.profile, PackStore.gameName(p), p.lang).joinToString("\u0000")
     private var lastNoticeAt = 0L
 
     /** [via]/[at]: bản dịch đang hiện do đâu và từ lúc nào; bản dịch máy (AI đang lỗi) được dịch lại bằng AI khi AI dùng được ([upgrading]: đang chờ bản mới). */
@@ -215,6 +217,8 @@ class UiTranslate(
         if (running) return
         val pr = Prefs(act)
         prefs = pr
+        val newScope = scope(pr)
+        if (newScope != gameScope) { cache.clear(); missed.clear(); gameScope = newScope }
         lang = pr.lang
         cjk = Prefs.isCjk(lang)
         running = true
@@ -307,13 +311,19 @@ class UiTranslate(
 
     private val tick = object : Runnable {
         override fun run() {
+            val tickGeneration = gen
             try {
+                val p = prefs
+                if (p != null && scope(p) != gameScope) {
+                    if (once) finishOnce() else { stop(); start() }
+                    return
+                }
                 if (!checkOnce()) capture()
             } catch (t: Throwable) {
                 Log.e(TAG, "tick loi", t)
                 busy = false
             } finally {
-                if (running) handler.postDelayed(this, delay())
+                if (running && tickGeneration == gen) handler.postDelayed(this, delay())
             }
         }
     }
@@ -340,7 +350,8 @@ class UiTranslate(
         val bmp = try { Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888) } catch (_: Throwable) { return }
         busy = true
         try {
-            PixelCopy.request(sv, bmp, { res -> onCopied(res, bmp) }, handler)
+            val g = gen
+            PixelCopy.request(sv, bmp, { res -> if (g == gen) onCopied(res, bmp) else bmp.recycle() }, handler)
         } catch (e: Throwable) {
             runCatching { bmp.recycle() }
             busy = false
@@ -385,16 +396,18 @@ class UiTranslate(
         val keep = try { bmp.copy(Bitmap.Config.ARGB_8888, false) } catch (_: Throwable) { null }
         val bw = bmp.width
         val bh = bmp.height
+        val g = gen
         o.read(bmp, { msg ->
             keep?.let { runCatching { it.recycle() } }
+            if (g != gen) return@read
             busy = false
             if (msg.isNotEmpty()) notice(msg)
         }) { blocks ->
             try {
-                if (running) onBlocks(blocks, keep, bw, bh)
+                if (running && g == gen) onBlocks(blocks, keep, bw, bh)
             } finally {
                 keep?.let { runCatching { it.recycle() } }
-                busy = false
+                if (g == gen) busy = false
             }
         }
     }
