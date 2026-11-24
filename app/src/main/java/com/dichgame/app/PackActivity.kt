@@ -106,6 +106,29 @@ class PackActivity : Activity() {
                 if (cloud == null) "Chưa có kho Cloud cho game đang chọn."
                 else "Phiên bản ${cloud.version} đã lưu trên máy. Khi mất mạng vẫn dùng được. Bản nhập tay được ưu tiên.",
                 13f, Ui.SUB), Ui.lpm(this@PackActivity, 0, 8))
+            cloudCard.addView(Ui.button(this@PackActivity, "Địa chỉ danh mục Cloud") {
+                val field = android.widget.EditText(this@PackActivity).apply {
+                    setSingleLine(true)
+                    setText(p.packCatalogUrl)
+                    hint = "https://.../catalog.json"
+                }
+                AlertDialog.Builder(this@PackActivity, R.style.DgDialog)
+                    .setTitle("Danh mục Việt hóa HTTPS")
+                    .setView(field)
+                    .setPositiveButton("Lưu") { _, _ ->
+                        val value = field.text.toString().trim()
+                        val valid = value.isEmpty() || runCatching {
+                            val u = java.net.URL(value)
+                            u.protocol == "https" && u.host.isNotBlank() && u.userInfo == null && u.ref == null
+                        }.getOrDefault(false)
+                        if (valid) p.packCatalogUrl = value
+                        else android.widget.Toast.makeText(this@PackActivity, "Link HTTPS không hợp lệ", android.widget.Toast.LENGTH_SHORT).show()
+                        render()
+                    }.setNegativeButton("Hủy", null).show()
+            })
+            cloudCard.addView(Ui.switchRow(this@PackActivity, "Tự kiểm tra kho Cloud",
+                "Tìm nguồn trong danh mục hoặc kiểm tra nguồn đã lưu khi chơi, mỗi 30 phút. Không xóa kho offline khi lỗi mạng.",
+                p.autoPackRefresh) { p.autoPackRefresh = it })
             cloudCard.addView(Ui.button(this@PackActivity, if (linkBusy) "Đang tải…" else if (cloud?.source != null) "Kiểm tra bản Cloud mới" else "Nhập link gói Cloud") {
                 val source = cloud?.source
                 if (source != null) downloadLink(source) else linkDialog()
