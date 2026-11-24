@@ -1,0 +1,9 @@
+{
+  "id": "com.dichgame.subtitles",
+  "version": "1.0.0",
+  "vendor": "DichGame",
+  "type": "web",
+  "main": "index.html",
+  "title": "DichGame Subtitles",
+  "icon": "icon.png"
+}
