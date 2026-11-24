@@ -37,6 +37,12 @@ object AiRetry {
         else -> Kind.OTHER
     }
 
+    /** Chỉ chuyển nhà cung cấp khi lỗi kết nối, hạn mức hoặc cấu hình; không thử vượt bộ lọc nội dung. */
+    fun canFallback(e: Throwable): Boolean = when (kindOf(e)) {
+        Kind.QUOTA, Kind.NETWORK, Kind.BAD -> true
+        else -> false
+    }
+
     /** Tên bộ đếm thống kê cho mỗi loại lỗi (xem [SessionStats]). */
     fun statKey(k: Kind): String = when (k) {
         Kind.QUOTA -> "may_het_luot"

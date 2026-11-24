@@ -15,7 +15,7 @@ class AiException(
 
 /** Dịch bằng AI đám mây: Google Gemini hoặc CloudAPI (chuẩn OpenAI /chat/completions). Hàm ở đây chặn luồng, hãy gọi từ luồng nền. */
 object Ai {
-    fun enabled(p: Prefs): Boolean = if (p.aiAuto) p.geminiKeys().isNotEmpty() else when (p.engine) {
+    fun enabled(p: Prefs): Boolean = if (p.aiAuto) p.geminiKeys().isNotEmpty() || autoCloud(p) else when (p.engine) {
         Prefs.ENGINE_GEMINI -> p.geminiKeys().isNotEmpty()
         Prefs.ENGINE_CLOUD -> p.cloudKey.isNotEmpty() && p.cloudUrl.isNotEmpty()
         else -> false
@@ -61,6 +61,12 @@ object Ai {
         if (list.isEmpty()) return ""
         return " Bắt buộc dùng đúng các thuật ngữ sau (gốc = tiếng Việt): " + list.joinToString("; ") { it.first + " = " + it.second } + "."
     }
+
+    private fun autoCloud(p: Prefs): Boolean = p.autoCloudFallback &&
+        p.cloudUrl.startsWith("https://", ignoreCase = true) && p.cloudKey.isNotBlank() && p.cloudModel.isNotBlank()
+
+    private fun cloudScope(p: Prefs) = "cloud:" + p.cloudUrl + ":" + p.cloudModel
+    private fun cloudWait(p: Prefs) = KeyRing.waitMs(listOf(p.cloudKey), cloudScope(p))
 
     fun cloudEndpoint(base: String): String {
         val b = base.trim().trimEnd('/')
@@ -135,8 +141,8 @@ object Ai {
     }
 
     /** Một lần gọi AI (không thử lại). Dịch câu thì dùng [translateRetry]. */
-    fun translate(p: Prefs, prompt: String): String {
-        val out: String = if (!p.aiAuto && p.engine == Prefs.ENGINE_CLOUD) {
+    fun translate(p: Prefs, prompt: String, forceCloud: Boolean = false): String {
+        val out: String = if (forceCloud || (!p.aiAuto && p.engine == Prefs.ENGINE_CLOUD)) {
             val body = JSONObject()
                 .put("model", p.cloudModel)
                 .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
@@ -169,7 +175,10 @@ object Ai {
 
     /** Còn bao lâu nữa AI mới được thử lại sau khi hết lượt (0 nếu đang dùng được); trong lúc đó câu dịch thẳng bằng dịch máy, khỏi chờ vô ích. */
     fun coolingMs(p: Prefs): Long =
-        if (usesGemini(p)) KeyRing.waitMs(p.geminiKeys(), p.geminiModel)
+        if (p.aiAuto && autoCloud(p)) {
+            if (p.geminiKeys().isEmpty()) cloudWait(p)
+            else minOf(KeyRing.waitMs(p.geminiKeys(), p.geminiModel), cloudWait(p))
+        } else if (usesGemini(p)) KeyRing.waitMs(p.geminiKeys(), p.geminiModel)
         else (cooldownUntil - System.currentTimeMillis()).coerceAtLeast(0L)
 
     /**
@@ -177,6 +186,23 @@ object Ai {
      * mốc nghỉ [coolingMs] để các câu sau không phải chờ. Hàm chặn luồng, gọi từ luồng nền.
      */
     fun translateRetry(p: Prefs, prompt: String): String {
+        if (p.aiAuto && autoCloud(p)) {
+            var primaryError: Exception? = null
+            if (p.geminiKeys().isNotEmpty() && KeyRing.waitMs(p.geminiKeys(), p.geminiModel) == 0L) {
+                try { return translate(p, prompt) }
+                catch (e: Exception) {
+                    if (!AiRetry.canFallback(e)) throw e
+                    primaryError = e
+                }
+            }
+            if (cloudWait(p) > 0L) throw primaryError ?: AiException(429, "CloudAPI đang nghỉ", cloudWait(p))
+            try {
+                return translate(p, prompt, forceCloud = true)
+            } catch (e: AiException) {
+                KeyRing.report(p.cloudKey, cloudScope(p), e)
+                throw e
+            }
+        }
         try {
             val r = AiRetry.run(AiRetry.Plan(), { Thread.sleep(it) }) { translate(p, prompt) }
             if (!usesGemini(p)) cooldownUntil = 0L
@@ -190,8 +216,8 @@ object Ai {
     }
 
     /** Thử dịch một câu để kiểm tra khóa. Trả về chuỗi bắt đầu bằng "OK" nếu chạy được, ngược lại là lý do lỗi. */
-    fun test(p: Prefs): String = try {
-        "OK: " + translate(p, prompt(p, "tiếng Anh", "", emptyList(), "Hello, how are you?"))
+    fun test(p: Prefs, forceCloud: Boolean = false): String = try {
+        "OK: " + translate(p, prompt(p, "tiếng Anh", "", emptyList(), "Hello, how are you?"), forceCloud = forceCloud)
     } catch (e: AiException) {
         when (e.code) {
             400 -> "Lỗi 400: sai tên model hoặc yêu cầu không hợp lệ. ${e.message.orEmpty()}"

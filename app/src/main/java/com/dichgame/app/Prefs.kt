@@ -127,6 +127,10 @@ class Prefs(ctx: Context) {
         set(v) = sp.edit().putString("gmodel", v.trim()).apply()
 
     /** CloudAPI: dịch vụ AI đám mây theo chuẩn OpenAI (/chat/completions), cần địa chỉ, khóa và tên model. */
+    var autoCloudFallback: Boolean
+        get() = sp.getBoolean("auto_cloud_fallback", false)
+        set(v) = sp.edit().putBoolean("auto_cloud_fallback", v).apply()
+
     var cloudUrl: String
         get() = sp.getString("curl", "").orEmpty()
         set(v) = sp.edit().putString("curl", v.trim()).apply()
@@ -205,8 +209,8 @@ class Prefs(ctx: Context) {
 
     /** Hai lựa chọn giọng: "system" (cơ bản) và "ai" (Gemini); tự đọc cơ bản nếu AI lỗi. */
     var voiceEngine: String
-        get() = if (sp.getString("voiceengine", "system") == "ai") "ai" else "system"
-        set(v) = sp.edit().putString("voiceengine", if (v == "ai") "ai" else "system").apply()
+        get() = sp.getString("voiceengine", "system").orEmpty().takeIf { it in setOf("ai", "offline") } ?: "system"
+        set(v) = sp.edit().putString("voiceengine", if (v in setOf("ai", "offline")) v else "system").apply()
     var aiVoice: String
         get() = sp.getString("aivoice", "Kore").orEmpty().ifBlank { "Kore" }
         set(v) = sp.edit().putString("aivoice", v).apply()

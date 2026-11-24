@@ -82,6 +82,13 @@ class TranslateActivity : Activity() {
                     geminiBlock(this)
                     addView(Ui.tv(a, "Chế độ này ưu tiên bản Việt hóa và câu đã nhớ trước khi gọi Gemini. Hết lượt 401/403/429 sẽ tự thử khóa kế tiếp; các khóa trong cùng dự án Google có thể chung hạn mức. Nếu chưa có khóa, ứng dụng thử dịch trên máy khi được hỗ trợ.", 13f, Ui.SUB), Ui.lpm(a, 8, 2))
                 }
+                group("CLOUDAPI DỰ PHÒNG") {
+                    addView(Ui.switchRow(a, "Dùng CloudAPI khi Gemini lỗi", "Gửi câu thoại và ngữ cảnh tới dịch vụ HTTPS bạn cấu hình (ví dụ Groq). Có thể phát sinh phí.", p.autoCloudFallback) {
+                        p.autoCloudFallback = it
+                        render()
+                    })
+                    if (p.autoCloudFallback) cloudBlock(this, true)
+                }
                 group("NGỮ CẢNH AI") { addView(ctxRow()) }
             } else if (!p.narrate) {
                 group("BỘ DỊCH", 0) {
@@ -214,7 +221,7 @@ class TranslateActivity : Activity() {
         c.addView(status, Ui.lpm(a, 4, 0))
     }
 
-    private fun cloudBlock(c: LinearLayout) {
+    private fun cloudBlock(c: LinearLayout, fallback: Boolean = false) {
         val a = this
         val url = Ui.field(a, "Địa chỉ CloudAPI (vd https://api.example.com/v1)", p.cloudUrl)
         val key = Ui.field(a, "Khóa API CloudAPI", p.cloudKey, true)
@@ -226,20 +233,20 @@ class TranslateActivity : Activity() {
         c.addView(key, Ui.lpm(a, 0, 8))
         c.addView(model, Ui.lpm(a, 0, 8))
         val status = Ui.tv(a, "", 13f, Ui.SUB)
-        c.addView(Ui.button(a, "Kiểm tra kết nối", true) { runTest(status) }, Ui.lpm(a, 4, 6))
+        c.addView(Ui.button(a, "Kiểm tra kết nối", true) { runTest(status, fallback) }, Ui.lpm(a, 4, 6))
         c.addView(status, Ui.lpm(a, 4, 0))
     }
 
-    private fun runTest(status: TextView) {
+    private fun runTest(status: TextView, forceCloud: Boolean = false) {
         status.setTextColor(Ui.SUB)
-        if (!Ai.enabled(p)) {
+        if (if (forceCloud) !p.cloudUrl.startsWith("https://", ignoreCase = true) || p.cloudKey.isBlank() || p.cloudModel.isBlank() else !Ai.enabled(p)) {
             status.setTextColor(Ui.DANGER)
             status.text = if (p.engine == Prefs.ENGINE_CLOUD) "Hãy nhập địa chỉ và khóa API." else "Hãy thêm khóa API."
             return
         }
         status.text = "Đang kiểm tra..."
         Thread {
-            val r = Ai.test(p)
+            val r = Ai.test(p, forceCloud)
             runOnUiThread {
                 status.setTextColor(if (r.startsWith("OK")) Ui.OK else Ui.DANGER)
                 status.text = if (r.startsWith("OK")) "Kết nối được. Thử dịch \"Hello, how are you?\" → ${r.removePrefix("OK: ")}" else r

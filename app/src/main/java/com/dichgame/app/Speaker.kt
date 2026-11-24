@@ -36,6 +36,20 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         override fun sizeOf(key: String, value: Pcm): Int = value.data.size
     }
 
+    private val diskCache = VoiceDiskCache(java.io.File(app.cacheDir, "ai-voice-v1"))
+
+    private fun aiPcm(text: String, style: String, voice: String): Pcm {
+        val key = VoiceDiskCache.key("gemini-v1", voice, p.ttsModel, style, text)
+        cache.get(key)?.let { return it }
+        diskCache.get(key)?.let { cache.put(key, it); return it }
+        return AiSpeech.synth(p, text, style, voice).also {
+            if (it.data.isNotEmpty()) {
+                cache.put(key, it)
+                diskCache.put(key, it)
+            }
+        }
+    }
+
     @Volatile var ready = false
         private set
 
@@ -149,9 +163,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
             if (!current()) throw java.util.concurrent.CancellationException()
             val voiceName = p.aiVoiceFor(line.speaker, line.text)
             val style = styleFor(line.text, line.delivery)
-            val key = voiceName + "|" + p.ttsModel + "|" + style + "|" + line.text
-            cache.get(key) ?: AiSpeech.synth(p, line.text, style, voiceName)
-                .also { if (it.data.isNotEmpty()) cache.put(key, it) }
+            aiPcm(line.text, style, voiceName)
         }
         val first = chunks.first()
         if (chunks.any { it.rate != first.rate || it.channels != first.channels })
@@ -221,14 +233,12 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         try { tts?.stop() } catch (_: Exception) {}
         val style = styleFor(text, d)
         val voiceName = p.aiVoiceFor(speakerName, text)
-        val key = voiceName + "|" + p.ttsModel + "|" + style + "|" + text
         val backlog = p.autoFast && System.currentTimeMillis() < aiPlayUntil
         val speed = ((p.rate10 / 10f) * (if (backlog) 1.35f else 1f)).coerceIn(0.5f, 2.5f)
         submit {
             if (my != seq.get()) return@submit
-            val cached: Pcm? = cache.get(key)
-            val pcm: Pcm = cached ?: try {
-                AiSpeech.synth(p, text, style, voiceName).also { cache.put(key, it) }
+            val pcm: Pcm = try {
+                aiPcm(text, style, voiceName)
             } catch (e: Exception) {
                 if (my == seq.get()) main.post { if (!disposed && my == seq.get()) fallback(text, d, e) }
                 return@submit
@@ -294,9 +304,8 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                     if (!disposed && my == tvSeq.get()) cb(pcm, 1f) // tốc độ đã nằm trong âm thanh
                 } else {
                     val voiceName = p.aiVoiceFor(speakerName, text)
-                    val key = voiceName + "|" + p.ttsModel + "|" + style + "|" + text
-                    val pcm: Pcm? = cache.get(key) ?: try {
-                        AiSpeech.synth(p, text, style, voiceName).also { cache.put(key, it) }
+                    val pcm: Pcm? = try {
+                        aiPcm(text, style, voiceName)
                     } catch (_: Exception) { null }
                     if (!disposed && my == tvSeq.get()) cb(pcm, speed)
                 }
