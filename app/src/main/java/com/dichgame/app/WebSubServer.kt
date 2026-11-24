@@ -62,6 +62,7 @@ class WebSubServer(private val port: Int = 8780) {
             val line = rd.readLine() ?: return
             while (true) { val h = rd.readLine() ?: break; if (h.isEmpty()) break }
             val parts = line.split(' ')
+            if (parts.firstOrNull() != "GET") { reply(c, 404, "text/plain; charset=utf-8", "404"); return }
             val target = parts.getOrElse(1) { "/" }
             val path = target.substringBefore('?')
             val query = target.substringAfter('?', "")
@@ -80,7 +81,7 @@ class WebSubServer(private val port: Int = 8780) {
                         }
                         body = JSONObject().put("seq", seq).put("text", text).toString()
                     }
-                    reply(c, 200, "application/json; charset=utf-8", body)
+                    reply(c, 200, "application/json; charset=utf-8", body, cors = true)
                 }
                 "/", "/index.html" -> reply(c, 200, "text/html; charset=utf-8", PAGE)
                 else -> reply(c, 404, "text/plain; charset=utf-8", "404")
@@ -91,10 +92,10 @@ class WebSubServer(private val port: Int = 8780) {
         }
     }
 
-    private fun reply(c: Socket, code: Int, type: String, body: String) {
+    private fun reply(c: Socket, code: Int, type: String, body: String, cors: Boolean = false) {
         val b = body.toByteArray(Charsets.UTF_8)
         val head = "HTTP/1.1 $code ${if (code == 200) "OK" else "Not Found"}\r\nContent-Type: $type\r\nContent-Length: ${b.size}\r\n" +
-            "Cache-Control: no-store\r\nConnection: close\r\n\r\n"
+            "Cache-Control: no-store\r\n" + (if (cors) "Access-Control-Allow-Origin: *\r\n" else "") + "Connection: close\r\n\r\n"
         val o = c.getOutputStream()
         o.write(head.toByteArray(Charsets.ISO_8859_1))
         o.write(b)
