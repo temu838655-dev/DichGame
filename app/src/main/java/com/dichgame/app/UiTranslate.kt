@@ -158,6 +158,9 @@ class UiTranslate(
         }
     }
     private val handler = Handler(Looper.getMainLooper())
+    // PixelCopy owns a bitmap until its completion callback. Do not remove this
+    // callback when stopping the scanner; it must still recycle stale frames.
+    private val copyHandler = Handler(Looper.getMainLooper())
 
     var running = false
         private set
@@ -184,7 +187,7 @@ class UiTranslate(
     private var inflight = 0
     private var gen = 0
     private var gameScope = ""
-    private fun scope(p: Prefs) = listOf(p.profile, PackStore.gameName(p), p.lang).joinToString("\u0000")
+    private fun scope(p: Prefs) = listOf(p.profile, PackStore.gameName(p), p.game, p.lang, p.glossary, p.cast).joinToString("\u0000")
     private var lastNoticeAt = 0L
     private var pumping = false
 
@@ -368,7 +371,7 @@ class UiTranslate(
         busy = true
         try {
             val g = gen
-            PixelCopy.request(sv, bmp, { res -> if (g == gen) onCopied(res, bmp) else bmp.recycle() }, handler)
+            PixelCopy.request(sv, bmp, { res -> if (g == gen) onCopied(res, bmp) else bmp.recycle() }, copyHandler)
         } catch (e: Throwable) {
             runCatching { bmp.recycle() }
             busy = false
