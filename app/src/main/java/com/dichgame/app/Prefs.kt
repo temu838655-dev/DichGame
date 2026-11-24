@@ -209,8 +209,8 @@ class Prefs(ctx: Context) {
 
     /** Hai lựa chọn giọng: "system" (cơ bản) và "ai" (Gemini); tự đọc cơ bản nếu AI lỗi. */
     var voiceEngine: String
-        get() = if (sp.getString("voiceengine", "system") == "ai") "ai" else "system"
-        set(v) = sp.edit().putString("voiceengine", if (v == "ai") "ai" else "system").apply()
+        get() = sp.getString("voiceengine", "system").orEmpty().takeIf { it in setOf("ai", "offline") } ?: "system"
+        set(v) = sp.edit().putString("voiceengine", if (v in setOf("ai", "offline")) v else "system").apply()
     var aiVoice: String
         get() = sp.getString("aivoice", "Kore").orEmpty().ifBlank { "Kore" }
         set(v) = sp.edit().putString("aivoice", v).apply()
