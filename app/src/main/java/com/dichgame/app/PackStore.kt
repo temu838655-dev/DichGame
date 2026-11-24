@@ -42,52 +42,36 @@ object PackStore {
     }
 
     // ---- bộ nhớ câu thoại ----
-    private fun slug(profile: String): String =
-        profile.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), "_").trim('_').take(40) + "_" + Integer.toHexString(profile.hashCode())
+    fun readLines(ctx: Context, profile: String): List<Pair<String,String>> =
+        GameDatabase.get(ctx).readPack(profile)
+    fun lineCount(ctx: Context, profile: String): Int =
+        runCatching { GameDatabase.get(ctx).packCount(profile) }.getOrDefault(0)
 
-    private fun linesFile(ctx: Context, profile: String) = File(File(ctx.filesDir, "lines"), slug(profile) + ".tsv")
-
-    fun readLines(ctx: Context, profile: String): List<Pair<String, String>> {
-        val f = linesFile(ctx, profile)
-        if (!f.exists()) return emptyList()
-        return try {
-            f.readLines(Charsets.UTF_8).mapNotNull { l ->
-                val t = l.indexOf('\t')
-                if (t <= 0) null else l.substring(0, t) to l.substring(t + 1)
-            }
-        } catch (_: Exception) { emptyList() }
+    /** Nhập theo transaction, câu gốc trùng lấy bản mới. */
+    @Synchronized fun addLines(ctx: Context, profile: String, add: List<Pair<String,String>>): Int {
+        val count = GameDatabase.get(ctx).addPack(profile,add)
+        mem = null; memKey = ""
+        return count
     }
-
-    fun lineCount(ctx: Context, profile: String): Int = readLines(ctx, profile).size
-
-    /** Thêm câu thoại vào hồ sơ (trùng câu gốc thì lấy bản mới). Trả về số câu sau khi gộp. */
-    fun addLines(ctx: Context, profile: String, add: List<Pair<String, String>>): Int {
-        val map = LinkedHashMap<String, Pair<String, String>>()
-        for (e in readLines(ctx, profile) + add) {
-            val k = Canon.key(e.first)
-            if (Canon.usable(k) && e.second.isNotBlank()) map[k] = e.first.replace('\t', ' ').replace('\n', ' ') to e.second.replace('\t', ' ').replace('\n', ' ')
-        }
-        val list = map.values.toList().takeLast(PackText.MAX_LINES)
-        val f = linesFile(ctx, profile)
-        f.parentFile?.mkdirs()
-        f.writeText(list.joinToString("\n") { it.first + "\t" + it.second }, Charsets.UTF_8)
-        return list.size
+    @Synchronized fun deleteLines(ctx: Context, profile: String) {
+        GameDatabase.get(ctx).clearPack(profile)
+        mem = null; memKey = ""
     }
-
-    fun deleteLines(ctx: Context, profile: String) { try { linesFile(ctx, profile).delete() } catch (_: Exception) {} }
 
     private var memKey = ""
     private var mem: TransMemory? = null
 
-    /** Bộ nhớ câu thoại đang dùng: gói có sẵn (nếu bật) rồi câu đã nhập; câu nhập sau đè câu có sẵn. */
-    @Synchronized
-    fun memory(ctx: Context, p: Prefs): TransMemory {
-        val f = linesFile(ctx, p.profile)
+    /** Cache trong RAM cho đối chiếu gần đúng; dữ liệu bền vững nằm trong SQLite. */
+    @Synchronized fun memory(ctx: Context, p: Prefs): TransMemory {
         val name = gameName(p)
-        val key = p.profile + "\u0000" + name + "\u0000" + (p.packOn || p.aiAuto) + "\u0000" + f.lastModified() + "\u0000" + f.length()
+        val key = p.profile + "\u0000" + name + "\u0000" + (p.packOn || p.aiAuto)
         mem?.let { if (key == memKey) return it }
         val built = if (p.packOn || p.aiAuto) VietHoa.linesFor(name) else emptyList()
-        return TransMemory(built + readLines(ctx, p.profile)).also { mem = it; memKey = key }
+        val imported = try { readLines(ctx,p.profile) } catch (_: Exception) {
+            android.util.Log.w("DG_DB","Cannot read imported pack")
+            return TransMemory(built) // Do not cache failures; retry on next request.
+        }
+        return TransMemory(built + imported).also { mem = it; memKey = key }
     }
 
     /** Số mục có sẵn cho game: (thuật ngữ, nhân vật, câu thoại). */

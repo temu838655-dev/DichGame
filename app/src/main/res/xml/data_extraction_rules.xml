@@ -6,6 +6,9 @@
         <exclude domain="sharedpref" path="dg_api_secrets.xml" />
         <!-- Legacy settings can still contain credentials until first migration. -->
         <exclude domain="sharedpref" path="dg.xml" />
+        <exclude domain="database" path="dichgame.db" />
+        <exclude domain="database" path="dichgame.db-wal" />
+        <exclude domain="database" path="dichgame.db-shm" />
         <exclude domain="sharedpref" path="ps_remote_play.xml" />
         <!-- Không đẩy lời thoại và bản dịch AI đã nhớ lên Android cloud backup. -->
         <exclude domain="file" path="learned_translations/" />
@@ -16,6 +19,9 @@
         <exclude domain="sharedpref" path="dg_api_secrets.xml" />
         <!-- Legacy settings can still contain credentials until first migration. -->
         <exclude domain="sharedpref" path="dg.xml" />
+        <exclude domain="database" path="dichgame.db" />
+        <exclude domain="database" path="dichgame.db-wal" />
+        <exclude domain="database" path="dichgame.db-shm" />
         <exclude domain="sharedpref" path="ps_remote_play.xml" />
     </device-transfer>
 </data-extraction-rules>

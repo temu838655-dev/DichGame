@@ -152,8 +152,8 @@ class Prefs(ctx: Context) {
     /** Số câu trước đưa cho AI để hiểu mạch truyện. */
     /** Từ điển riêng của hồ sơ hiện tại, mỗi dòng "gốc = tiếng Việt". Dùng cho cả dịch AI lẫn dịch trên máy. */
     var glossary: String
-        get() = sp.getString("gloss_$profile", "").orEmpty()
-        set(v) = sp.edit().putString("gloss_$profile", v).apply()
+        get() = runCatching { GameDatabase.get(app).profileText(profile,"glossary") }.getOrElse { sp.getString("gloss_$profile","").orEmpty() }
+        set(v) { GameDatabase.get(app).setProfileText(profile,"glossary",v) }
 
     var ctxCount: Int
         get() = sp.getInt("ctxn", DEFAULT_CONTEXT_COUNT).coerceIn(0, 10)
@@ -186,8 +186,8 @@ class Prefs(ctx: Context) {
 
     /** Thẻ nhân vật của hồ sơ hiện tại, mỗi dòng "Tên = mô tả giọng, xưng hô; nhịp: chậm". */
     var cast: String
-        get() = sp.getString("cast_$profile", "").orEmpty()
-        set(v) = sp.edit().putString("cast_$profile", v).apply()
+        get() = runCatching { GameDatabase.get(app).profileText(profile,"cast_text") }.getOrElse { sp.getString("cast_$profile","").orEmpty() }
+        set(v) { GameDatabase.get(app).setProfileText(profile,"cast_text",v) }
 
     /** Dịch theo cảm xúc và nhịp nhân vật (AI trả thẻ cảm xúc, app dùng để đổi giọng đọc). */
     var emoTr: Boolean
@@ -554,6 +554,7 @@ class Prefs(ctx: Context) {
             .remove("packon_$name").remove("game_title_$name").apply()
         PackStore.deleteLines(app, name)
         LearnedTranslations.clearProfile(app, name)
+        GameDatabase.get(app).clearProfileText(name)
     }
 
     var fontSize: Int

@@ -112,8 +112,9 @@ class KhoGameActivity : Activity() {
     private fun fill() {
         grid.removeAllViews()
         val q = query.lowercase()
-        val known = Catalog.GAMES.map { it.first }.toSet()
-        val base = if (tab == 0) p.played else Catalog.GAMES.map { it.first }
+        val catalog = runCatching { GameDatabase.get(this).catalog() }.getOrDefault(Catalog.GAMES)
+        val known = catalog.map { it.first }.toSet()
+        val base = if (tab == 0) p.played else catalog.map { it.first }
         val pool = base.filter { n ->
             (q.isEmpty() || n.lowercase().contains(q)) &&
                 (plat == null || n !in known || Catalog.runsOn(n, plat!!)) // game tự thêm luôn hiện
