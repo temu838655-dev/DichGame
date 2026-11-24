@@ -159,7 +159,7 @@ class CaptureService : Service() {
         }
     }
 
-    private fun gameContext(p: Prefs): String = p.profile + "\u0000" + p.game
+    private fun gameContext(p: Prefs): String = listOf(p.profile, PackStore.gameName(p), p.game).joinToString("\u0000")
 
     /** Kho game vừa chuyển trò chơi: loại bỏ phụ đề/nhân vật của hồ sơ cũ
      * mà không phải cấp lại quyền MediaProjection. */

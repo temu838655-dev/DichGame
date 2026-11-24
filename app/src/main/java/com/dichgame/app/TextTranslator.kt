@@ -21,6 +21,10 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     // Một instance có thể sống qua thao tác chọn game ở Kho game. Không cho cache
     // hoặc ngữ cảnh của game cũ đi vào lời nhắc của game mới.
     private var activeGameContext = ""
+    private val aiExecutor = java.util.concurrent.ThreadPoolExecutor(
+        2, 2, 0L, java.util.concurrent.TimeUnit.MILLISECONDS,
+        java.util.concurrent.ArrayBlockingQueue<Runnable>(12)
+    )
     @Volatile private var closed = false
 
     /** Nếu đặt, mỗi lần dịch AI lỗi và phải dùng dịch trên máy thì gọi hàm này (thay vì hiện thông báo một lần). */
@@ -202,7 +206,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         if (lang == "vi") { emit(Tr(text, null, false, "may")); return }
         if (!aiOn) { fallbackLocal(); return }
         val emo = p.emoTr && !ui
-        Thread {
+        try { aiExecutor.execute {
+            if (!stillCurrent()) return@execute
             var chosen: Tr? = null
             var strict: String? = null
             val cool = Ai.coolingMs(p)
@@ -211,6 +216,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 st.inc(AiRetry.statKey(AiRetry.Kind.QUOTA))
                 warn(AiRetry.explain(AiRetry.Kind.QUOTA, 429, cool))
             } else for (attempt in 0..1) {
+                if (!stillCurrent()) return@execute
                 val prompt = Ai.prompt(p, srcName(), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui)
                 var raw: String? = null
                 try {
@@ -239,7 +245,9 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 if (!stillCurrent()) return@post
                 if (res != null) finish(res) else fallbackLocal()
             }
-        }.start()
+        } } catch (_: java.util.concurrent.RejectedExecutionException) {
+            if (stillCurrent()) fallbackLocal()
+        }
     }
 
     private fun deliveryOf(text: String, vi: String, pace: Pace?): Delivery? = if (p.emoTr) Emo.detect(text, vi, pace) else null
@@ -286,6 +294,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
 
     fun close() {
         closed = true
+        aiExecutor.shutdownNow()
         try { local?.close() } catch (_: Exception) {}
     }
 }

@@ -283,7 +283,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         runCatching { tvExec.shutdown() }
     }
 
-    private fun gameContext(p: Prefs): String = p.profile + "\u0000" + p.game
+    private fun gameContext(p: Prefs): String = listOf(p.profile, PackStore.gameName(p), p.game).joinToString("\u0000")
 
     /** Đổi game trong Kho game khi Remote Play vẫn chạy: bỏ hàng chờ của game cũ
      * và tải lại danh sách nhân vật. Không tắt kết nối hoặc xin quyền ghi hình lại. */
