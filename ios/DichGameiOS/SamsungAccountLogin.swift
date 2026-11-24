@@ -11,6 +11,7 @@ final class SamsungAccountLogin {
     private var listener: NWListener?
     private var connections: [UUID:NWConnection] = [:]
     private var finished = false
+    private var callbackPort: UInt16 = 0
     private let completion: (Result<SamsungCertificateAuthority.Account,Error>)->Void
     init(completion: @escaping (Result<SamsungCertificateAuthority.Account,Error>)->Void) {self.completion = completion}
     func start(open: @escaping (URL)->Void) {
@@ -18,6 +19,7 @@ final class SamsungAccountLogin {
             guard !self.finished,self.listener == nil else {return}
             do {
                 let port = NWEndpoint.Port(rawValue:UInt16.random(in:4794...4813))!
+                self.callbackPort = port.rawValue
                 let parameters = NWParameters.tcp
                 parameters.requiredLocalEndpoint = .hostPort(host:"127.0.0.1",port:port)
                 let listener = try NWListener(using:parameters,on:port)
@@ -79,24 +81,8 @@ final class SamsungAccountLogin {
     }
     private func handle(_ id: UUID,header: [String],body: String) {
         guard let conn = connections[id] else {return}
-        var account: SamsungCertificateAuthority.Account?
-        if let first = header.first {
-            let parts = first.split(separator:" ")
-            if parts.count == 3,["GET","POST"].contains(String(parts[0])),
-               let url = URLComponents(string:String(parts[1])),url.path == "/signin/callback" {
-                var values = [String:String]()
-                for item in url.queryItems ?? [] {values[item.name] = item.value}
-                var form = URLComponents();form.percentEncodedQuery = body.replacingOccurrences(of:"+",with:"%20")
-                for item in form.queryItems ?? [] {values[item.name] = item.value}
-                if (values["dg_state"] == state || values["state"] == state),let code = values["code"],
-                   let json = (try? JSONSerialization.jsonObject(with:Data(code.utf8))) as? [String:Any],
-                   let token = json["access_token"] as? String,!token.isEmpty,token.utf8.count <= 32768,
-                   let user = json["userId"] as? String,!user.isEmpty,user.utf8.count <= 512,
-                   (Int(String(describing:json["access_token_expires_in"] ?? 0)) ?? 0)>0 {
-                    account = .init(token:token,userID:user,email:String((json["inputEmailID"] as? String ?? "").prefix(320)))
-                }
-            }
-        }
+        let account = SamsungOAuthCallback.parse(header:header,body:body,port:callbackPort,state:state)
+            .map { SamsungCertificateAuthority.Account(token:$0.token,userID:$0.userID,email:$0.email) }
         let message = account == nil ? "Invalid Samsung callback. Retry in DichGame." : "Samsung login received. Return to DichGame."
         let body = Data(message.utf8)
         let status = account == nil ? "400 Bad Request" : "200 OK"

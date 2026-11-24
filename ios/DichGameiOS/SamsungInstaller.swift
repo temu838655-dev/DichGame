@@ -58,7 +58,7 @@ private final class SamsungSDB {
             }
             try send(cnxn, 0x00100000, UInt32(limit), Data("host::\u{0}".utf8))
             let p = try read()
-            guard p.cmd == cnxn, p.b >= 1024, !p.data.isEmpty else { throw SamsungInstallError.message("TV chưa chấp nhận SDB hoặc yêu cầu xác thực chưa hỗ trợ") }
+            guard p.cmd == cnxn, p.b >= 1024, String(decoding:p.data,as:UTF8.self).hasPrefix("device::") else { throw SamsungInstallError.message("TV chưa chấp nhận SDB hoặc yêu cầu xác thực chưa hỗ trợ") }
             maxPayload = min(Int(p.b), limit)
         } catch { close(); throw error }
     }
@@ -149,6 +149,18 @@ private final class SamsungSDB {
         }
         return String(decoding: data, as: UTF8.self)
     }
+    func capabilities() throws -> String {
+        let stream = try start("capability:",seconds:10)
+        var data = Data()
+        while try accept(read(),stream,&data) {
+            if data.count >= 2 {
+                let length = Int(data[0]) | (Int(data[1]) << 8)
+                guard (1...4095).contains(length) else {throw SamsungInstallError.message("SDB capability length không hợp lệ")}
+                if data.count >= length+2 {return String(decoding:data.dropFirst(2).prefix(length),as:UTF8.self)}
+            }
+        }
+        throw SamsungInstallError.message("SDB capability thiếu dữ liệu")
+    }
     private func frame(_ tag: String, _ length: UInt32, _ payload: Data = Data()) -> Data {
         var data = Data(tag.utf8); data.append(Self.word(length)); data.append(payload); return data
     }
@@ -185,7 +197,7 @@ enum SamsungInstaller {
     static func duid(ip: String) throws -> String {
         let caps = (try? { () throws -> String in
             let s = try SamsungSDB(ip:ip)
-            return try s.response("capability:",seconds:5){$0.contains("sdk_toolpath:") && $0.hasSuffix("\n")}
+            return try s.capabilities()
         }()) ?? ""
         var commands = ["0 getduid","0 getduidgadget","/opt/etc/duid-gadget 2.0 2> /dev/null"]
         if caps.contains("product_version:1.0") {commands.swapAt(0,1)}
@@ -234,7 +246,7 @@ enum SamsungInstaller {
         try validate(bytes)
         progress("Đang kết nối Developer Mode")
         let probe = try SamsungSDB(ip: ip)
-        let caps = (try? probe.response("capability:", seconds: 5) { $0.contains("sdk_toolpath:") && $0.hasSuffix("\n") }) ?? ""
+        let caps = (try? probe.capabilities()) ?? ""
         probe.close()
         let reported = caps.split(separator: "\n").first { $0.hasPrefix("sdk_toolpath:") }.map { String($0.dropFirst(13)).trimmingCharacters(in: .whitespacesAndNewlines) }
         let allowed = ["/home/owner/share/tmp/sdk_tools", "/opt/usr/apps/tmp"]
