@@ -162,7 +162,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 return
             }
         }
-        if (packHit != null) {
+        if (packHit != null && !Ai.enabled(p)) {
             st.inc("dich_goi"); st.inc("dich_goi_gan")
             emit(Tr(packHit.vi, null, false, "goi")); return
         }
@@ -212,14 +212,17 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 if (v.level != TranslationGuard.Level.REJECT) {
                     val d = if (emo) parsed.delivery ?: Emo.detect(text, fixed, pace) else null
                     chosen = Tr(fixed, d, v.level == TranslationGuard.Level.SUSPECT, "ai")
-                    st.inc("dich_ai")
-                    break
+                    if (v.level == TranslationGuard.Level.OK || attempt == 1) { st.inc("dich_ai"); break }
+                    // Kết quả còn nghi ngờ: giữ làm dự phòng và yêu cầu dịch lại một lần.
+                    strict = v.reasons.joinToString("; ").ifBlank { "câu dịch còn nghi ngờ" }
+                    continue
                 }
                 st.inc("dich_loai")
                 strict = v.reasons.joinToString("; ")
                 if (attempt == 1) st.inc("may_loai")
             }
             val res = chosen
+            if (res?.uncertain == true) st.inc("dich_ai")
             main.post {
                 if (closed) return@post
                 if (res != null) finish(res) else translateLocal(text, names, pace, ::finish)

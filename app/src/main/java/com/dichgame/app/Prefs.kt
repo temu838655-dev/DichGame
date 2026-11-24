@@ -11,6 +11,7 @@ class Prefs(ctx: Context) {
     val sp: SharedPreferences = app.getSharedPreferences("dg", Context.MODE_PRIVATE)
 
     companion object {
+        fun parseGeminiKeys(raw: List<String>): List<String> = raw.flatMap { it.split(Regex("[,;\\s]+")) }.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         const val ENGINE_LOCAL = "local"
         const val ENGINE_CLOUD = "cloud"
         const val ENGINE_GEMINI = "gemini"
@@ -111,12 +112,12 @@ class Prefs(ctx: Context) {
 
     /** Tất cả khóa Gemini theo thứ tự: khóa chính rồi các khóa dự phòng. */
     fun geminiKeys(): List<String> =
-        (listOf(geminiKey) + geminiSpare.lines()).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        parseGeminiKeys(listOf(geminiKey, geminiSpare))
 
     /** Lưu danh sách khóa. Khóa mới thêm (kể cả khóa vừa bị gỡ rồi thêm lại) được dùng thử ngay, không mang theo tình trạng cũ. */
     fun setGeminiKeys(list: List<String>) {
         val before = geminiKeys().toSet()
-        val k = list.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val k = parseGeminiKeys(list)
         geminiKey = k.firstOrNull().orEmpty()
         geminiSpare = k.drop(1).joinToString("\n")
         for (n in k) if (n !in before) KeyRing.forget(n)
@@ -425,6 +426,32 @@ class Prefs(ctx: Context) {
     var style: Int
         get() = sp.getInt("style", 0).coerceIn(0, 3)
         set(v) = sp.edit().putInt("style", v).apply()
+
+    // Các lựa chọn độc lập, 0 giữ nguyên kiểu phụ đề cũ của người dùng.
+    var subtitleFgChoice: Int
+        get() = sp.getInt("subtitle_fg_choice", 0).coerceIn(0, 5)
+        set(v) = sp.edit().putInt("subtitle_fg_choice", v.coerceIn(0, 5)).apply()
+    var subtitleBgChoice: Int
+        get() = sp.getInt("subtitle_bg_choice", 0).coerceIn(0, 4)
+        set(v) = sp.edit().putInt("subtitle_bg_choice", v.coerceIn(0, 4)).apply()
+    var subtitleColoredNames: Boolean
+        get() = sp.getBoolean("subtitle_colored_names", true)
+        set(v) = sp.edit().putBoolean("subtitle_colored_names", v).apply()
+    fun subtitleFg(): Int = when (subtitleFgChoice) {
+        1 -> 0xFFFFF4DF.toInt(); 2 -> 0xFFFFFFFF.toInt(); 3 -> 0xFFFFEB3B.toInt();
+        4 -> 0xFF9FFFE0.toInt(); 5 -> 0xFF000000.toInt()
+        else -> when (style) { 1 -> 0xFFFFEB3B.toInt(); 2 -> 0xFF000000.toInt(); else -> 0xFFFFF4DF.toInt() }
+    }
+    fun subtitleBg(): Int = when (subtitleBgChoice) {
+        1 -> 0; 2 -> 0x66000000; 3 -> 0xD9000000.toInt(); 4 -> 0xE6FFFFFF.toInt()
+        else -> when (style) { 2 -> 0xE6FFFFFF.toInt(); 3 -> 0; else -> 0xB3000000.toInt() }
+    }
+    fun subtitleNameColor(name: String): Int = if (!subtitleColoredNames) subtitleFg() else when (name.trim().lowercase(java.util.Locale.ROOT)) {
+        "stranger" -> 0xFF64D9EE.toInt()
+        "cop" -> 0xFFE481FF.toInt()
+        "jason" -> 0xFFE5F56B.toInt()
+        else -> SpeakerColor.of(name)
+    }
 
     /** "phone" hoặc "tv": nơi chơi game. */
     var playOn: String

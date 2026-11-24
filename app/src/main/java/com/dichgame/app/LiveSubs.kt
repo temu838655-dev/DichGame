@@ -75,7 +75,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (!running || speaker == null) return
         runCatching { speaker?.shutdown() }
         speaker = try {
-            Speaker(act, Prefs(act)).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() }; if (Prefs(act).voiceEngine == "offline") sp.prepare() }
+            Speaker(act, Prefs(act)).also { sp -> sp.onAiError = { m -> android.util.Log.w("DG_VOICE", m) }; if (Prefs(act).voiceEngine == "offline") sp.prepare() }
         } catch (_: Throwable) { null }
     }
 
@@ -154,13 +154,9 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     val isAdjusting: Boolean get() = adjusting
 
-    private fun fg(): Int = when (act.getSharedPreferences("dg", Context.MODE_PRIVATE).getInt("style", 0)) {
-        1 -> 0xFFFFEB3B.toInt(); 2 -> Color.BLACK; else -> Color.WHITE
-    }
+    private fun fg(): Int = Prefs(act).subtitleFg()
 
-    private fun bg(): Int = when (act.getSharedPreferences("dg", Context.MODE_PRIVATE).getInt("style", 0)) {
-        2 -> 0xE6FFFFFF.toInt(); 3 -> 0; else -> 0xB3000000.toInt()
-    }
+    private fun bg(): Int = Prefs(act).subtitleBg()
 
     private fun styleView() {
         val pr = Prefs(act)
@@ -171,7 +167,12 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     /** Cỡ chữ/kiểu phụ đề vừa đổi trong cài đặt: áp dụng ngay, không cần tắt bật dịch. */
     fun restyle() {
-        try { styleView() } catch (_: Throwable) {}
+        try {
+            styleView()
+            val current = pacer.showing
+            val payload = current?.payload as? Payload
+            if (view.visibility == View.VISIBLE && current != null && payload != null) showCards(payload.cards, current.src, true)
+        } catch (_: Throwable) {}
     }
 
     /** Bật/tắt đọc to bản dịch ngay khi đang dịch (loa trên biểu tượng 🔊). */
@@ -180,7 +181,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (!running) return
         if (on && speaker == null) {
             try {
-                speaker = Speaker(act, Prefs(act)).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() } }
+                speaker = Speaker(act, Prefs(act)).also { sp -> sp.onAiError = { m -> android.util.Log.w("DG_VOICE", m) } }
             } catch (_: Throwable) { speaker = null }
         } else if (!on) {
             runCatching { speaker?.shutdown() }
@@ -213,7 +214,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         try {
             ocr = Ocr(pr, lang)
             if (speak) {
-                speaker = Speaker(act, pr).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() } }
+                speaker = Speaker(act, pr).also { sp -> sp.onAiError = { m -> android.util.Log.w("DG_VOICE", m) } }
             }
             activeGameContext = gameContext(pr)
             speakers = SpeakerBook(PackStore.cast(pr).map { it.name } + pr.detectedSpeakers())
@@ -224,7 +225,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
                 ready = true
                 Log.i(TAG, "san sang (thuyet minh)")
             } else {
-                val tr = TextTranslator(act, pr, lang)
+                val tr = TextTranslator(act, pr, lang).apply { onFallback = { m -> Log.w(TAG, m) } }
                 tt = tr
                 val warmPrefs = pr
                 Thread { try { PackStore.memory(act.applicationContext, warmPrefs).warm() } catch (_: Throwable) {} }.start()
@@ -661,7 +662,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             LangDetect.scriptOfLang(newLang) == 'L' && LangDetect.scriptOfLang(lang) == 'L'
         if (!ok) { langTrack?.current = lang; return }
         pendingLang = newLang
-        val t2 = TextTranslator(act, Prefs(act), newLang)
+        val t2 = TextTranslator(act, Prefs(act), newLang).apply { onFallback = { m -> Log.w(TAG, m) } }
         t2.prepare { done ->
             pendingLang = null
             if (!running || !done) {
@@ -680,7 +681,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     // ---- hiển thị
 
-    private fun showCards(cards: List<Card>, src: Src) {
+    private fun showCards(cards: List<Card>, src: Src, refreshOnly: Boolean = false) {
         if (adjusting) return
         styleView()
         val sb = SpannableStringBuilder()
@@ -696,14 +697,13 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         }
         if (pr.showPrev) add(prevVi, 0.7f, (fg and 0x00FFFFFF) or 0x99000000.toInt())
         for ((i, c) in cards.withIndex()) {
-            if (pr.showOrig && !narrate) add((if (src != Src.OCR && c.orig.isNotEmpty()) "🔊 " else "") + c.orig, 0.75f, dim)
             val d = c.tr.delivery
             if (i == cards.lastIndex && pr.emoTr && pr.emoLabel && d != null && d.label.isNotEmpty()) add("● " + d.label, 0.62f, d.mood.color)
             val a = sb.length
             val name = c.speaker
             if (name != null) {
                 sb.append(name).append(": ")
-                sb.setSpan(ForegroundColorSpan(SpeakerColor.of(name)), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                sb.setSpan(ForegroundColorSpan(pr.subtitleNameColor(name)), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 sb.setSpan(StyleSpan(Typeface.BOLD), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             val b = sb.length
@@ -717,9 +717,23 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             sb.append("\n")
             sb.setSpan(RelativeSizeSpan(1.15f), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
+        // Song ngữ: bản dịch phía trên, câu gốc phía dưới, tên giữ đúng màu ở cả hai.
+        if (pr.showOrig && !narrate) for (c in cards) {
+            if (c.orig.isBlank()) continue
+            val start = sb.length
+            c.speaker?.let { name ->
+                sb.append(name).append(": ")
+                sb.setSpan(ForegroundColorSpan(pr.subtitleNameColor(name)), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            val body = sb.length
+            sb.append(c.orig).append("\n")
+            sb.setSpan(ForegroundColorSpan(dim), body, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            sb.setSpan(RelativeSizeSpan(0.85f), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
         view.text = sb
         view.visibility = View.VISIBLE
+        if (refreshOnly) return
         val vi = cards.joinToString(" ") { it.tr.text }
         val tvSpeaks = speak && tvSpeakOn() && !tvVoiceOn()
         val tvText = if (tvSpeaks || cards.none { it.speaker != null }) vi

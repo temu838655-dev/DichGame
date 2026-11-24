@@ -38,7 +38,7 @@ object Ai {
             Cast.promptLine(cast, history.joinToString(" ") + " " + text + " " + (speaker ?: "")) +
             (if (speaker != null) " Người đang nói câu này: $speaker (giữ đúng giọng và cách xưng hô của người này, không đổi tên)." else "") +
             (if (emo) Emo.instruction() else "") +
-            " Chọn xưng hô (tôi, anh, em, cậu, ông, bà...) hợp quan hệ và ngữ cảnh, sửa lỗi đọc chữ rõ ràng, giữ nguyên tên riêng." +
+            " Chọn xưng hô hợp quan hệ và ngữ cảnh. Giữ chính xác chủ ngữ, người được nói tới, ngôi xưng (I/you/we/they), phủ định, thời, câu hỏi và mệnh lệnh. Không đổi người thực hiện hành động; không biến câu hỏi thành câu khẳng định. Giữ tên riêng, số, thuật ngữ và mức độ thô tục; không tự thêm câu hoặc tình tiết. Chỉ sửa lỗi OCR khi rõ ràng." +
             (if (emo) " Chỉ trả về thẻ rồi bản dịch." else " Chỉ trả về bản dịch.") +
             (if (history.isNotEmpty()) "\nCác câu trước (chỉ để hiểu mạch truyện, không dịch lại):\n" + history.joinToString("\n") else "") +
             "\nCần dịch: $text" +
@@ -99,8 +99,10 @@ object Ai {
         val keys = p.geminiKeys()
         if (keys.isEmpty()) throw AiException(401, "Chưa có khóa Gemini", badKey = true)
         var last: AiException? = null
-        while (true) {
-            val k = KeyRing.pick(keys, scope) ?: break
+        val remaining = keys.toMutableList()
+        while (remaining.isNotEmpty()) {
+            val k = KeyRing.pick(remaining, scope) ?: break
+            remaining.remove(k)
             try {
                 val r = call(k)
                 if (KeyRing.success(k, scope)) SessionStats.live.inc("khoa_doi")

@@ -267,11 +267,11 @@ class CaptureService : Service() {
         addOverlay()
         if (speak) {
             val sp = Speaker(this, Prefs(this))
-            sp.onAiError = { m -> android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_LONG).show() }
+            sp.onAiError = { m -> android.util.Log.w("DG_VOICE", m) }
             speaker = sp
         }
 
-        val tr = TextTranslator(this, Prefs(this), lang)
+        val tr = TextTranslator(this, Prefs(this), lang).apply { onFallback = { m -> android.util.Log.w("DG_TRANSLATE", m) } }
         tt = tr
         activeGameContext = gameContext(Prefs(this))
         speakers = SpeakerBook((PackStore.cast(Prefs(this)).map { it.name } + Prefs(this).detectedSpeakers()))
@@ -1012,14 +1012,13 @@ class CaptureService : Service() {
         }
         if (pr.showPrev) add(prevVi, 0.7f, (fg and 0x00FFFFFF) or 0x99000000.toInt())
         for ((i, c) in cards.withIndex()) {
-            if (pr.showOrig) add((if (src != Src.OCR && c.orig.isNotEmpty()) "🔊 " else "") + c.orig, 0.75f, dim)
             val d = c.tr.delivery
             if (i == cards.lastIndex && pr.emoTr && pr.emoLabel && d != null && d.label.isNotEmpty()) add("● " + d.label, 0.62f, d.mood.color)
             val a = sb.length
             val name = c.speaker
             if (name != null) {
                 sb.append(name).append(": ")
-                sb.setSpan(ForegroundColorSpan(SpeakerColor.of(name)), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                sb.setSpan(ForegroundColorSpan(pr.subtitleNameColor(name)), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 sb.setSpan(StyleSpan(Typeface.BOLD), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             val b = sb.length
@@ -1033,8 +1032,25 @@ class CaptureService : Service() {
             sb.append("\n")
             sb.setSpan(RelativeSizeSpan(1.15f), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
+        // Song ngữ: bản dịch phía trên, câu gốc phía dưới, tên giữ đúng màu ở cả hai.
+        if (pr.showOrig) for (c in cards) {
+            if (c.orig.isBlank()) continue
+            val start = sb.length
+            c.speaker?.let { name ->
+                sb.append(name).append(": ")
+                sb.setSpan(ForegroundColorSpan(pr.subtitleNameColor(name)), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            val body = sb.length
+            sb.append(c.orig).append("\n")
+            sb.setSpan(ForegroundColorSpan(dim), body, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            sb.setSpan(RelativeSizeSpan(0.85f), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
-        overlay?.apply { text = sb; visibility = View.VISIBLE }
+        overlay?.apply {
+            setTextColor(fg); setBackgroundColor(styleBg())
+            textSize = (pr.fontSize * pr.subScale / 100f).coerceIn(10f, 40f)
+            text = sb; visibility = View.VISIBLE
+        }
         val vi = cards.joinToString(" ") { it.tr.text }
         val tvSpeaks = speak && tvSpeakOn() && !tvVoiceOn()
         // TV tự đọc thì chỉ gửi lời dịch; không đọc thì gửi kèm tên người nói
@@ -1129,13 +1145,9 @@ class CaptureService : Service() {
         return "g" + g.hashCode() + (if (cw > ch) "l" else "p") + k
     }
 
-    private fun styleFg(): Int = when (getSharedPreferences("dg", MODE_PRIVATE).getInt("style", 0)) {
-        1 -> 0xFFFFEB3B.toInt(); 2 -> Color.BLACK; else -> Color.WHITE
-    }
+    private fun styleFg(): Int = Prefs(this).subtitleFg()
 
-    private fun styleBg(): Int = when (getSharedPreferences("dg", MODE_PRIVATE).getInt("style", 0)) {
-        2 -> 0xE6FFFFFF.toInt(); 3 -> 0; else -> 0xB3000000.toInt()
-    }
+    private fun styleBg(): Int = Prefs(this).subtitleBg()
 
     /** Màn hình xoay (game thường chạy ngang): nạp lại khung theo hướng mới và đóng khung cam. */
     private fun relayoutFrame() {

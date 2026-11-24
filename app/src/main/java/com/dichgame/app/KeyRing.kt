@@ -96,7 +96,7 @@ object KeyRing {
     // ---- đọc lỗi từ máy chủ
 
     /** Phản hồi lỗi 429 nói hạn mức theo ngày (GenerateRequestsPerDay...). */
-    fun isDailyQuota(body: String): Boolean = body.contains("PerDay", ignoreCase = true) || body.contains("per day", ignoreCase = true)
+    fun isDailyQuota(body: String): Boolean = listOf("perday", "per day", "per_day", "daily quota", "requests/day").any { body.contains(it, ignoreCase = true) }
 
     /** Lỗi cho biết chính khóa này không dùng được (sai, hết hạn, bị thu hồi). 403 khác (ví dụ model chưa mở cho khóa) thì không tính. */
     fun isBadKey(code: Int, body: String): Boolean {
@@ -104,7 +104,7 @@ object KeyRing {
         if (code != 400 && code != 403) return false
         val b = body.lowercase()
         return b.contains("api_key_invalid") || b.contains("api key not valid") || b.contains("api key expired") ||
-            b.contains("api key was reported as leaked") || b.contains("reported as leaked") || b.contains("api key is invalid")
+            b.contains("api key was reported as leaked") || b.contains("reported as leaked") || b.contains("api key is invalid") || b.contains("api_key_service_blocked") || b.contains("api_key_http_referrer_blocked") || b.contains("api_key_ip_address_blocked")
     }
 
     /** Mốc 0 giờ sáng kế tiếp theo giờ Thái Bình Dương (Gemini hồi hạn mức theo ngày vào lúc đó), thêm một phút cho chắc. */
