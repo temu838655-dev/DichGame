@@ -142,7 +142,7 @@ object PackStore {
 
     /** Nhập một gói (văn bản) vào hồ sơ hiện tại. Phần đã có được giữ nguyên. Trả về câu báo kết quả. */
     fun importText(ctx: Context, p: Prefs, text: String, fileName: String = ""): String {
-        val pack = PackText.parseAny(text)
+        val pack = PackText.parseScopedCsv(text) ?: PackText.parseAny(text)
         if (pack.isEmpty) {
             // file có cả chữ gốc lẫn bản Việt hoá bên trong (cột en + vi, XLIFF, TMX, .srt hai dòng, Ren'Py...)
             Bilingual.parse(text, fileName)?.let { return importFound(ctx, p, it) }
@@ -269,6 +269,9 @@ object PackStore {
     /** Xuất phần của người dùng trong hồ sơ hiện tại thành file gói để chia sẻ. */
     fun exportText(ctx: Context, p: Prefs): String =
         PackText.format(gameName(p).ifEmpty { p.profile }, p.glossary, p.cast, readLines(ctx, p.profile))
+
+    fun exportCsv(ctx: Context, p: Prefs): String =
+        PackText.formatScopedCsv(gameName(p), readFile(linesFile(ctx, p.profile)))
 
     /** Tải văn bản từ link (chỉ https, tối đa 4 MB). Link GitHub dạng /blob/ được đổi sang bản thô. Chạy ở luồng nền. */
     fun fetch(url: String): String {
