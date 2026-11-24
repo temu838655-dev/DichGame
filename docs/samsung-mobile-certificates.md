@@ -1,0 +1,9 @@
+# Samsung mobile certificate provisioning (experimental)
+
+Android flow: enter TV IPv4, read or enter the certificate DUID, confirm author identity and target, log in in the external Samsung Account browser, confirm returned account, obtain Samsung author and Public distributor certificates, then sign the exact bundled DichGame receiver and install via SDB.
+
+Implementation follows Samsung Electronics' Apache-2.0 tizen-agent-skills certificate manager (https://github.com/Samsung/tizen-agent-skills/tree/main/tizen-sdk-skills/common/lib/core). CA certificates are public trust material from its samsung-tv-ca asset directory. TLS uses the platform trust store and never disables verification. Login callback binds only 127.0.0.1, requires an unpredictable state echoed in the callback, accepts no credentials from a LAN host, and has a five-minute deadline. If the Samsung service discards the state or rejects the mobile OAuth redirect, the flow stops rather than accepting an unverified callback. No token or Samsung password is stored; non-exportable RSA keys stay in Android Keystore. Samsung-issued certificates are stored in no-backup app storage. Author identity is retained for future app updates. The distributor certificate must be valid, signed by the expected Samsung CA, match its local RSA key and contain the target DUID.
+
+Only the four known source files are signed. Author signature covers those files; distributor signature covers those plus author-signature.xml; both contain W3C widget role and profile properties. The TV remains the ultimate verifier. No fake, shared or self-signed distributor certificate is used.
+
+Pending: complete CA/login interoperability test with an actual Samsung account and TV, independent XML signature verification, certificate renewal/backup strategy and iOS equivalent. No physical TV test yet. The existing signed-WGT import remains a fallback.

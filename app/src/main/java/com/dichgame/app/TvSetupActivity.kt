@@ -35,6 +35,7 @@ class TvSetupActivity : Activity() {
     private lateinit var codeField: EditText
     private var samsungIp = ""
     private var samsungInstalling = false
+    @Volatile private var samsungLogin: SamsungAccountLogin? = null
     private var samsungStatus: TextView? = null
 
     override fun onCreate(b: Bundle?) {
@@ -393,9 +394,45 @@ class TvSetupActivity : Activity() {
         c.addView(Ui.tv(this, "Trên Samsung: Apps → nhập 12345 → Developer Mode ON → Host PC IP là IP điện thoại → khởi động lại TV. IP điện thoại: " + ips.joinToString(), 14f, Ui.TEXT))
         val ip = Ui.field(this, "IP TV Samsung", p.sp.getString("samsung_dev_ip", "").orEmpty())
         c.addView(ip, Ui.lpm(this, 8, 8))
-        val label = Ui.tv(this, if (samsungInstalling) "Đang cài..." else "Chọn DichGame WGT đã ký cho TV của bạn. Chưa hỗ trợ tự tạo chứng chỉ.", 13f, Ui.SUB)
+        val label = Ui.tv(this, if (samsungInstalling) "Đang cài..." else "Tạo chứng chỉ & ký WGT trên điện thoại (thử nghiệm), hoặc chọn WGT đã ký.", 13f, Ui.SUB)
         samsungStatus = label
         c.addView(label)
+        val duid = Ui.field(this, "DUID chứng chỉ TV (không phải SmartThings ID)", "")
+        val name = Ui.field(this, "Tên tác giả chứng chỉ", "DichGame")
+        c.addView(duid, Ui.lpm(this, 8, 8))
+        c.addView(Ui.button(this, "Đọc DUID từ TV") {
+            val address = ip.text.toString().trim()
+            if (samsungInstalling || !LgDeveloperKey.isPrivateIpv4(address)) return@button
+            samsungInstalling = true
+            label.text = "Đang đọc DUID..."
+            Thread {
+                val result = runCatching { SamsungCertificateAuthority.duid(address) }
+                runOnUiThread {
+                    samsungInstalling = false
+                    result.fold({ value -> duid.setText(value); label.text = "Đã đọc DUID. Xác minh đúng TV trước khi cấp chứng chỉ." },
+                        { error -> label.text = error.message ?: "Không đọc được DUID" })
+                }
+            }.start()
+        }, Ui.lpm(this, 0, 8))
+        c.addView(name, Ui.lpm(this, 0, 8))
+        c.addView(Ui.button(this, "Đăng nhập Samsung · tự ký & cài", true) {
+            val address = ip.text.toString().trim()
+            val device = duid.text.toString().trim()
+            val identity = name.text.toString().trim()
+            if (samsungInstalling) return@button
+            if (!LgDeveloperKey.isPrivateIpv4(address) || !SamsungCertificateCrypto.validDuid(device) ||
+                identity.length !in 1..80 || identity.any { it.isISOControl() }) {
+                label.text = "Kiểm tra IP, DUID chứng chỉ và tên tác giả."; return@button
+            }
+            AlertDialog.Builder(this, R.style.DgDialog)
+                .setTitle("Cấp chứng chỉ & cài Samsung")
+                .setMessage("TV: $address\nDUID: $device\nĐăng nhập trực tiếp tại Samsung. Khóa riêng giữ trong Android Keystore. Chỉ cài DichGame lên TV đã chọn.")
+                .setNegativeButton("Hủy", null)
+                .setPositiveButton("Tiếp tục") { _, _ -> provisionSamsung(address,device,identity) }.show()
+        }, Ui.lpm(this, 8, 8))
+        c.addView(Ui.button(this, "Hủy đăng nhập Samsung") {
+            samsungLogin?.close()
+        }, Ui.lpm(this, 0, 8))
         c.addView(Ui.button(this, "Xuất dự án Tizen để ký WGT") {
             startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
@@ -434,6 +471,60 @@ class TvSetupActivity : Activity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
             }, 7319)
         }, Ui.lpm(this, 8, 8))
+    }
+
+    private fun provisionSamsung(address: String, duid: String, identity: String) {
+        if (samsungInstalling) return
+        samsungInstalling = true
+        Thread {
+            val result = runCatching {
+                var account: SamsungCertificateAuthority.Account? = null
+                fun login(): SamsungCertificateAuthority.Account {
+                    val flow = SamsungAccountLogin()
+                    samsungLogin = flow
+                    try {
+                        runOnUiThread {
+                            if (isFinishing || isDestroyed) flow.close()
+                            else {
+                                samsungStatus?.text = "Đăng nhập trong trình duyệt, sau đó quay về DichGame."
+                                runCatching { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(flow.url))) }
+                                    .onFailure { flow.close() }
+                            }
+                        }
+                        val auth = flow.await()
+                        val gate = java.util.concurrent.CountDownLatch(1)
+                        val allowed = java.util.concurrent.atomic.AtomicBoolean(false)
+                        runOnUiThread {
+                            if (isFinishing || isDestroyed) gate.countDown()
+                            else AlertDialog.Builder(this,R.style.DgDialog).setTitle("Xác nhận tài khoản Samsung")
+                                .setMessage("Dùng tài khoản " + auth.email.ifBlank { auth.userId } + " để cấp chứng chỉ DichGame cho TV đã chọn?")
+                                .setNegativeButton("Hủy") { _, _ -> gate.countDown() }
+                                .setPositiveButton("Xác nhận") { _, _ -> allowed.set(true); gate.countDown() }
+                                .setOnCancelListener { gate.countDown() }.show()
+                        }
+                        check(gate.await(90,java.util.concurrent.TimeUnit.SECONDS) && allowed.get()) { "Chưa xác nhận tài khoản Samsung" }
+                        return auth
+                    } finally { flow.close(); samsungLogin = null }
+                }
+                val report: (String) -> Unit = { msg -> runOnUiThread { samsungStatus?.text = msg } }
+                val cached = SamsungCertificateAuthority.hasCertificates(applicationContext,duid)
+                if (!cached) account = login()
+                val wgt = if (!cached) SamsungCertificateAuthority.signReceiver(applicationContext,duid,identity,account,report)
+                    else runCatching { SamsungCertificateAuthority.signReceiver(applicationContext,duid,identity,null,report) }
+                        .getOrElse { account = login(); SamsungCertificateAuthority.signReceiver(applicationContext,duid,identity,account,report) }
+                SamsungWgtInstaller.installBytes(applicationContext,address,wgt,report)
+            }
+            runOnUiThread {
+                samsungInstalling = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.fold({ message ->
+                    p.sp.edit().putString("samsung_dev_ip",address).apply()
+                    p.webSub = true; TvOut.startWeb(this)
+                    if (brand == 2) render()
+                    Toast.makeText(this,message + " Ghép mã 8 số trên TV.",Toast.LENGTH_LONG).show()
+                }, { error -> samsungStatus?.text = "Chưa hoàn tất: " + (error.message ?: "Lỗi chứng chỉ hoặc SDB") })
+            }
+        }.start()
     }
 
     @Deprecated("Activity result callback for document picker")
