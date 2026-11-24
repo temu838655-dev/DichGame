@@ -166,7 +166,12 @@ jobs:
           signer=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
           for apk in dist/*.apk; do
             "$signer" verify --print-certs "$apk" > "$RUNNER_TEMP/apk-cert.txt"
-            grep -Fx "Signer #1 certificate SHA-256 digest: $SIGNER_SHA256" "$RUNNER_TEMP/apk-cert.txt"
+            cat "$RUNNER_TEMP/apk-cert.txt"
+            actual=$(awk -F ': ' '/^Signer .*certificate SHA-256 digest: / { print tolower($NF) }' "$RUNNER_TEMP/apk-cert.txt" | tr -d ':' | sort -u)
+            if [[ "$actual" != "$SIGNER_SHA256" ]]; then
+              echo "::error file=$apk::Chứng chỉ APK không trùng chứng chỉ đã cấu hình."
+              exit 1
+            fi
           done
 
       - uses: actions/upload-artifact@v4
