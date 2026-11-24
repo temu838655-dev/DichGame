@@ -65,7 +65,7 @@ object Hub {
             return tile
         }
         fun pair(left: View, right: View) {
-            val row = Ui.hbox(a).apply { gravity = Gravity.TOP; baselineAligned = false }
+            val row = Ui.hbox(a).apply { gravity = Gravity.TOP; setBaselineAligned(false) }
             row.addView(left, Ui.lp(0, WRAP_CONTENT, 1f))
             row.addView(right, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(a, 10) })
             grid.addView(row, Ui.lpm(a, if (grid.childCount == 0) 0 else 10))
