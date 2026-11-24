@@ -33,6 +33,9 @@ class TvSetupActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var ipField: EditText
     private lateinit var codeField: EditText
+    private var samsungIp = ""
+    private var samsungInstalling = false
+    private var samsungStatus: TextView? = null
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -74,6 +77,7 @@ class TvSetupActivity : Activity() {
                     group("XEM PHỤ ĐỀ BẰNG TRÌNH DUYỆT (THỬ NGHIỆM)") { webCard(this) }
                 }
                 else -> {
+                    group("CÀI WGT TỪ ĐIỆN THOẠI (THỬ NGHIỆM)") { developerSamsung(this) }
                     group("CÁCH DÙNG") { stepsSamsung(this) }
                     group("XEM PHỤ ĐỀ BẰNG TRÌNH DUYỆT (THỬ NGHIỆM)") { webCard(this) }
                     group("CHIẾU MÀN HÌNH ĐIỆN THOẠI LÊN TV") { mirrorBlock(this) }
@@ -381,6 +385,58 @@ class TvSetupActivity : Activity() {
     }
 
     // ---------------- TV Samsung ----------------
+
+    private fun developerSamsung(c: LinearLayout) {
+        val ips = PsFinder.localIps(this).filter { LgDeveloperKey.isPrivateIpv4(it) }
+        c.addView(Ui.tv(this, "Trên Samsung: Apps → nhập 12345 → Developer Mode ON → Host PC IP là IP điện thoại → khởi động lại TV. IP điện thoại: " + ips.joinToString(), 14f, Ui.TEXT))
+        val ip = Ui.field(this, "IP TV Samsung", p.sp.getString("samsung_dev_ip", "").orEmpty())
+        c.addView(ip, Ui.lpm(this, 8, 8))
+        val label = Ui.tv(this, if (samsungInstalling) "Đang cài..." else "Chọn DichGame WGT đã ký cho TV của bạn. Chưa hỗ trợ tự tạo chứng chỉ.", 13f, Ui.SUB)
+        samsungStatus = label
+        c.addView(label)
+        c.addView(Ui.button(this, "Chọn WGT đã ký & cài", true) {
+            if (samsungInstalling) return@button
+            val address = ip.text.toString().trim()
+            if (!LgDeveloperKey.isPrivateIpv4(address)) {
+                label.text = "Nhập IP nội bộ của TV."; return@button
+            }
+            samsungIp = address
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
+            }, 7319)
+        }, Ui.lpm(this, 8, 8))
+    }
+
+    @Deprecated("Activity result callback for document picker")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != 7319 || resultCode != RESULT_OK || samsungInstalling) return
+        val uri = data?.data ?: return
+        val address = samsungIp
+        if (!LgDeveloperKey.isPrivateIpv4(address)) return
+        AlertDialog.Builder(this, R.style.DgDialog).setTitle("Cài DichGame TV")
+            .setMessage("Cài WGT bạn vừa chọn lên TV Samsung tại $address?")
+            .setNegativeButton("Hủy", null).setPositiveButton("Cài") { _, _ ->
+                samsungInstalling = true
+                Thread {
+                    val result = runCatching {
+                        SamsungWgtInstaller.install(applicationContext, address, uri) { message ->
+                            runOnUiThread { samsungStatus?.text = message }
+                        }
+                    }
+                    runOnUiThread {
+                        samsungInstalling = false
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        result.fold({ message ->
+                            p.sp.edit().putString("samsung_dev_ip", address).apply()
+                            p.webSub = true; TvOut.startWeb(this)
+                            if (brand == 2) render()
+                            Toast.makeText(this, message + " Ghép mã 8 số trên TV.", Toast.LENGTH_LONG).show()
+                        }, { error -> samsungStatus?.text = "Chưa cài được: " + (error.message ?: "Lỗi SDB") })
+                    }
+                }.start()
+            }.show()
+    }
 
     private fun stepsSamsung(c: LinearLayout) {
         c.addView(step(1, "Ghép nối PS4/PS5 trong app một lần: Trang chủ, Ghép nối máy chơi game."))
