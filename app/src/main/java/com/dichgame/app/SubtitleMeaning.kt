@@ -35,6 +35,18 @@ internal object SubtitleMeaning {
     )
     private val qualifier = Regex("""\b(?:unless|until|only|except|without)\b""", RegexOption.IGNORE_CASE)
 
+    private val directionEn = Regex("""^(?:please,?\s+)?(?:turn|go|move|look|head|drive)\s+(?:to\s+the\s+)?(left|right)\b""", RegexOption.IGNORE_CASE)
+    private val directionVi = Regex("""^(?:(?:hãy|xin|vui lòng|làm ơn)\s+)*(?:rẽ|quẹo|đi|di chuyển|nhìn|quay|lái)\s+(?:(?:sang|về|qua|bên|phía|hướng)\s+)*(trái|phải)(?![\p{L}\p{N}])""", RegexOption.IGNORE_CASE)
+
+    fun reversesDirection(source: String, vietnamese: String): Boolean {
+        if ('?' in source || '?' in vietnamese || qualifier.containsMatchIn(source)) return false
+        val en = directionEn.find(source.trimStart()) ?: return false
+        val vi = directionVi.find(vietnamese.trimStart()) ?: return false
+        // Skip commands with multiple directional references; they need context.
+        if (Regex("""\b(?:left|right)\b""", RegexOption.IGNORE_CASE).findAll(source).count() != 1) return false
+        return en.groupValues[1].equals("left", true) != vi.groupValues[1].equals("trái", true)
+    }
+
     fun reversesCommand(source: String, vietnamese: String): Boolean {
         val en = sourceCommand.find(source.trimStart()) ?: return false
         val vi = targetCommand.find(vietnamese.trimStart()) ?: return false

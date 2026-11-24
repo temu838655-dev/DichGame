@@ -24,6 +24,24 @@ class TranslationGuardTest {
         assertEquals(Level.OK, lv("Don't open it until dawn.", "Hãy mở nó khi trời sáng."))
     }
 
+    @Test fun directDirectionsMustNotBeReversed() {
+        assertEquals(Level.REJECT, lv("Turn left.", "Rẽ phải."))
+        assertEquals(Level.REJECT, lv("Go right!", "Đi sang trái!"))
+        assertEquals(Level.OK, lv("Turn left.", "Rẽ trái."))
+    }
+
+    @Test fun shortEnglishEchoIsNotTranslation() {
+        assertEquals(Level.REJECT, lv("Continue", "Continue"))
+        assertEquals(Level.REJECT, lv("Look out!", "Look out!"))
+        assertEquals(Level.OK, lv("Continue", "Tiếp tục"))
+        assertEquals(Level.OK, lv("Lucia", "Lucia"))
+    }
+
+    @Test fun numberMultiplicityAndNewSingleDigitsAreChecked() {
+        assertEquals(Level.SUSPECT, lv("Bring 12 swords and 12 shields.", "Mang 12 thanh kiếm và khiên."))
+        assertEquals(Level.SUSPECT, lv("Bring the sword.", "Mang 9 thanh kiếm."))
+    }
+
     @Test fun cleanStripsWrappers() {
         assertEquals("Đứng yên!", TranslationGuard.clean("Bản dịch: \"Đứng yên!\"", "Don't move!"))
         assertEquals("Đứng yên!", TranslationGuard.clean("```\nĐứng yên!\n```", "Don't move!"))

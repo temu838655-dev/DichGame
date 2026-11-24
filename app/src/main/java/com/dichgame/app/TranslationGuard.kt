@@ -22,6 +22,7 @@ object TranslationGuard {
         "tôi không thể dịch", "không thể dịch", "dưới đây là bản dịch", "đây là bản dịch", "bản dịch của câu",
         "cần thêm ngữ cảnh", "không có đủ ngữ cảnh", "nội dung không phù hợp",
     )
+    private val commonEnglish = setOf("yes", "no", "wait", "stop", "run", "go", "help", "continue", "retry", "cancel", "exit", "settings", "loading", "new game", "game over", "try again", "thank you", "come here", "look out", "watch out", "good morning", "good night", "i love you")
     private val QUOTES = "\"“”«»'‘’「」『』"
 
     /** Bỏ phần AI hay thêm vào quanh bản dịch: rào markdown, nhãn "Bản dịch:", dấu ngoặc kép bao ngoài, dòng ghi chú. */
@@ -55,6 +56,13 @@ object TranslationGuard {
         val low = t.lowercase(Locale.ROOT)
         if (sourceLang == "en" && SubtitleMeaning.reversesCommand(src, t)) {
             return Verdict(Level.REJECT, t, listOf("bản dịch đảo nghĩa mệnh lệnh khẳng định/phủ định"))
+        }
+        if (sourceLang == "en" && SubtitleMeaning.reversesDirection(src, t)) {
+            return Verdict(Level.REJECT, t, listOf("bản dịch đảo hướng trái/phải"))
+        }
+        if (sourceLang == "en" && words(src.lowercase(Locale.ROOT)).joinToString(" ") in commonEnglish &&
+            words(low).joinToString(" ") == words(src.lowercase(Locale.ROOT)).joinToString(" ")) {
+            return Verdict(Level.REJECT, t, listOf("câu tiếng Anh ngắn chưa được dịch"))
         }
         if (REFUSAL.any { low.contains(it) }) { reject = true; reasons.add("AI viết lời giải thích hoặc từ chối") }
         if (t.contains("```")) { reject = true; reasons.add("còn định dạng markdown") }
@@ -101,8 +109,12 @@ object TranslationGuard {
         val sd = digitRuns(src)
         val od = digitRuns(t)
         val outTokens = ow.toSet()
-        if (sd.any { it !in od && !spelledOut(it, outTokens) }) reasons.add("mất hoặc đổi số")
-        else if (od.any { it.length >= 2 && it !in sd }) reasons.add("thêm số không có trong câu gốc")
+        val remaining = od.toMutableList()
+        val missing = sd.filterNot { remaining.remove(it) }
+        if (missing.any { !spelledOut(it, outTokens) } ||
+            missing.groupingBy { it }.eachCount().any { (n, count) -> count > 1 && spelledOut(n, outTokens) }) {
+            reasons.add("mất hoặc đổi số")
+        } else if (remaining.isNotEmpty()) reasons.add("thêm số không có trong câu gốc")
 
         // tên nhân vật, thuật ngữ bắt buộc
         val srcLow = src.lowercase(Locale.ROOT)
