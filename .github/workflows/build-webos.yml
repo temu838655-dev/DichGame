@@ -1,0 +1,27 @@
+name: Build LG webOS IPK
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'webos/**'
+      - '.github/workflows/build-webos.yml'
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install webOS CLI
+        run: npm install -g @webos-tools/cli
+      - name: Package receiver
+        run: bash webos/package-dev.sh
+      - name: Verify package exists
+        run: |
+          test -n "$(find webos/dist -name '*.ipk' -type f -size +0c -print -quit)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DichGame-LG-IPK
+          path: webos/dist/*.ipk
+          if-no-files-found: error
