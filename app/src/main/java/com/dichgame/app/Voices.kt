@@ -48,7 +48,10 @@ object Voices {
     fun sizeMb(ctx: Context, id: String): Int =
         ((dir(ctx, id).listFiles()?.sumOf { it.length() } ?: 0L) / (1024 * 1024)).toInt()
 
+    @Synchronized
     fun delete(ctx: Context, id: String) {
+        if (pack(id) == null) return
+        File(ctx.filesDir, "voices/$id.bak").deleteRecursively()
         dir(ctx, id).deleteRecursively()
         File(ctx.filesDir, "voices/$id.tmp").deleteRecursively()
     }
@@ -57,13 +60,19 @@ object Voices {
      * Tải gói rồi giải nén thẳng từ luồng mạng (không tốn chỗ cho file nén). Chạy ở luồng nền.
      * Trả về null nếu xong, hoặc câu báo lỗi. [onProgress] nhận 0..100.
      */
+    @Synchronized
     fun download(ctx: Context, pack: VoicePack, cancel: AtomicBoolean, onProgress: (Int) -> Unit): String? {
+        if (Voices.pack(pack.id) !== pack) return "Gói giọng không hợp lệ."
         val root = File(ctx.filesDir, "voices")
         val tmp = File(root, pack.id + ".tmp")
         val dst = dir(ctx, pack.id)
+        val backup = File(root, pack.id + ".bak")
+        val maxDownload = (pack.downloadMb * 2L + 20L) * 1024 * 1024
+        val maxExtract = (pack.downloadMb * 4L + 40L) * 1024 * 1024
         var connection: HttpURLConnection? = null
         try {
             root.mkdirs()
+            if (backup.exists() && !dst.exists() && !backup.renameTo(dst)) return "Không khôi phục được giọng cũ."
             if (root.usableSpace < (pack.downloadMb * 2L + 40L) * 1024 * 1024) return "Máy không đủ chỗ trống (cần khoảng ${pack.downloadMb * 2} MB)."
             tmp.deleteRecursively()
             tmp.mkdirs()
@@ -76,6 +85,7 @@ object Voices {
             connection = conn
             if (conn.responseCode != 200) return "Không tải được giọng (mã ${conn.responseCode})."
             val total = conn.contentLengthLong
+            if (total > maxDownload) return "Gói giọng quá lớn."
             var got = 0L
             var last = -1
             val counted = object : FilterInputStream(conn.inputStream) {
@@ -84,6 +94,7 @@ object Voices {
                 fun bump(n: Int) {
                     if (cancel.get()) throw CancelledException()
                     got += n
+                    if (got > maxDownload) throw java.io.IOException("Gói giọng quá lớn")
                     if (total > 0) {
                         val pct = (got * 99 / total).toInt()
                         if (pct != last) { last = pct; onProgress(pct) }
@@ -92,6 +103,8 @@ object Voices {
             }
             var haveModel = false
             var haveTokens = false
+            var extracted = 0L
+            val seen = HashSet<String>()
             TarArchiveInputStream(BZip2CompressorInputStream(counted.buffered(1 shl 16))).use { tar ->
                 while (true) {
                     val e = tar.nextEntry ?: break
@@ -103,6 +116,9 @@ object Voices {
                         base == "MODEL_CARD" -> "MODEL_CARD"
                         else -> null
                     } ?: continue
+                    if (!e.isFile || !seen.add(out) || e.size < 0 || e.size > maxExtract - extracted)
+                        throw java.io.IOException("Gói giọng không hợp lệ")
+                    extracted += e.size
                     File(tmp, out).outputStream().buffered(1 shl 16).use { o -> copy(tar, o, cancel) }
                     if (out == "model.onnx") haveModel = true
                     if (out == "tokens.txt") haveTokens = true
@@ -111,8 +127,13 @@ object Voices {
             if (cancel.get()) throw CancelledException()
             if (!haveModel || !haveTokens || File(tmp, "model.onnx").length() == 0L || File(tmp, "tokens.txt").length() == 0L) return "Gói giọng tải về bị thiếu file."
             File(tmp, "ok").writeText("1")
-            dst.deleteRecursively()
-            if (!tmp.renameTo(dst)) return "Không lưu được giọng."
+            if (backup.exists() && !backup.deleteRecursively()) return "Không dọn được bản sao cũ."
+            if (dst.exists() && !dst.renameTo(backup)) return "Không sao lưu được giọng cũ."
+            if (!tmp.renameTo(dst)) {
+                if (backup.exists()) backup.renameTo(dst)
+                return "Không lưu được giọng."
+            }
+            backup.deleteRecursively()
             onProgress(100)
             return null
         } catch (_: CancelledException) {
