@@ -56,9 +56,9 @@ private final class SamsungSDB {
                     throw SamsungInstallError.message("Không kết nối được TV; kiểm tra Developer Mode và Host PC IP")
                 }
             }
-            try send(cnxn, 0x01000000, UInt32(limit), Data("host::\u{0}".utf8))
+            try send(cnxn, 0x00100000, UInt32(limit), Data("host::\u{0}".utf8))
             let p = try read()
-            guard p.cmd == cnxn, p.b >= 1024, !p.data.isEmpty else { throw SamsungInstallError.message("TV chưa chấp nhận SDB hoặc yêu cầu xác thực chưa hỗ trợ") }
+            guard p.cmd == cnxn, p.b >= 1024, String(decoding:p.data,as:UTF8.self).hasPrefix("device::") else { throw SamsungInstallError.message("TV chưa chấp nhận SDB hoặc yêu cầu xác thực chưa hỗ trợ") }
             maxPayload = min(Int(p.b), limit)
         } catch { close(); throw error }
     }
@@ -149,6 +149,18 @@ private final class SamsungSDB {
         }
         return String(decoding: data, as: UTF8.self)
     }
+    func capabilities() throws -> String {
+        let stream = try start("capability:",seconds:10)
+        var data = Data()
+        while try accept(read(),stream,&data) {
+            if data.count >= 2 {
+                let length = Int(data[0]) | (Int(data[1]) << 8)
+                guard (1...4095).contains(length) else {throw SamsungInstallError.message("SDB capability length không hợp lệ")}
+                if data.count >= length+2 {return String(decoding:data.dropFirst(2).prefix(length),as:UTF8.self)}
+            }
+        }
+        throw SamsungInstallError.message("SDB capability thiếu dữ liệu")
+    }
     private func frame(_ tag: String, _ length: UInt32, _ payload: Data = Data()) -> Data {
         var data = Data(tag.utf8); data.append(Self.word(length)); data.append(payload); return data
     }
@@ -182,6 +194,28 @@ private final class SamsungSDB {
 }
 
 enum SamsungInstaller {
+    static func duid(ip: String) throws -> String {
+        let caps = (try? { () throws -> String in
+            let s = try SamsungSDB(ip:ip)
+            return try s.capabilities()
+        }()) ?? ""
+        var commands = ["0 getduid","0 getduidgadget","/opt/etc/duid-gadget 2.0 2> /dev/null"]
+        if caps.contains("product_version:1.0") {commands.swapAt(0,1)}
+        for command in commands {
+            if let output = try? { () throws -> String in
+                let s = try SamsungSDB(ip:ip)
+                return try s.response("shell:"+command,seconds:12) { text in
+                    text.components(separatedBy:.newlines).contains{SamsungCertificateCrypto.validDUID($0.trimmingCharacters(in:.whitespacesAndNewlines))}
+                }
+            }() {
+                for line in output.components(separatedBy:.newlines) {
+                    let value = line.replacingOccurrences(of:"(?i)^duid:\\s*",with:"",options:.regularExpression).trimmingCharacters(in:.whitespacesAndNewlines)
+                    if SamsungCertificateCrypto.validDUID(value) {return value}
+                }
+            }
+        }
+        throw SamsungInstallError.message("Không đọc được DUID. Nhập DUID chứng chỉ từ TV.")
+    }
     private static func validate(_ bytes: Data) throws {
         let archive = try Archive(data: bytes, accessMode: .read)
         guard let config = archive["config.xml"], config.uncompressedSize <= 65536,
@@ -205,10 +239,14 @@ enum SamsungInstaller {
         guard (1...32*1024*1024).contains(size) else { throw SamsungInstallError.message("WGT rỗng hoặc vượt 32 MB") }
         let bytes = try Data(contentsOf: file)
         guard bytes.count <= 32*1024*1024 else { throw SamsungInstallError.message("WGT quá lớn") }
+        return try install(ip:ip,bytes:bytes,progress:progress)
+    }
+    static func install(ip: String, bytes: Data, progress: (String)->Void) throws -> String {
+        guard TVLink.privateIPv4(ip),(1...32*1024*1024).contains(bytes.count) else {throw SamsungInstallError.message("IP hoặc WGT không hợp lệ")}
         try validate(bytes)
         progress("Đang kết nối Developer Mode")
         let probe = try SamsungSDB(ip: ip)
-        let caps = (try? probe.response("capability:", seconds: 5) { $0.contains("sdk_toolpath:") && $0.hasSuffix("\n") }) ?? ""
+        let caps = (try? probe.capabilities()) ?? ""
         probe.close()
         let reported = caps.split(separator: "\n").first { $0.hasPrefix("sdk_toolpath:") }.map { String($0.dropFirst(13)).trimmingCharacters(in: .whitespacesAndNewlines) }
         let allowed = ["/home/owner/share/tmp/sdk_tools", "/opt/usr/apps/tmp"]

@@ -35,6 +35,7 @@ jobs:
           test "${#packages[@]}" -eq 1
           test -s "${packages[0]}"
           cp "${packages[0]}" ios/DichGameiOS/dichgame-lg.ipk
+          python3 samsung/export-project.py ios/DichGameiOS/DichGame-Samsung-source.zip
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate native project
