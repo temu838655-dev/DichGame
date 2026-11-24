@@ -54,6 +54,15 @@ class PipelineTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     run(*args, "Game B", 1)
                 self.assertEqual(call.call_count, 1)
+            with self.assertRaises(ValueError):
+                collect(root / "prepared", root / "translated", root / "wrong.csv", "Game B")
+            self.assertFalse((root / "wrong.csv").exists())
+            self.assertEqual(collect(root / "prepared", root / "translated", root / "right.csv", "Game A")["restored_rows"], 1)
+            mapping = root / "prepared/id-map.json"
+            mapping.write_text(json.dumps({"1": ["1", "2"]}), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                collect(root / "prepared", root / "translated", root / "tampered.csv", "Game A")
+            self.assertFalse((root / "tampered.csv").exists())
 
     def test_invalid_results(self):
         source = [{"id": "1", "source": "Hello %s"}]
