@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 import AVFoundation
 import UIKit
+import UniformTypeIdentifiers
 
 private enum Palette {
     static let bg = Color(red: 0.047, green: 0.055, blue: 0.073)
@@ -37,6 +38,22 @@ struct ContentView: View {
     @State private var tvStatus = ""
     @StateObject private var webTV = TVSubtitleServer()
     @State private var webCode = ""
+    @State private var apkPicker = false
+    @State private var apkBusy = false
+    @State private var apkStatus = ""
+    @AppStorage("dichgame.samsung.ip") private var samsungIP = ""
+    @State private var samsungFile: URL?
+    @State private var samsungPicker = false
+    @State private var samsungConfirm = false
+    @State private var samsungBusy = false
+    @State private var samsungStatus = ""
+    @AppStorage("dichgame.lg.ip") private var lgIP = ""
+    @State private var lgPass = ""
+    @State private var lgBusy = false
+    @State private var lgStatus = ""
+    @State private var lgFingerprint = ""
+    @State private var lgTrustDialog = false
+    @State private var lgDecision: ((Bool)->Void)?
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -61,8 +78,11 @@ struct ContentView: View {
                         contextPanel
                         imagePanel
                         resultPanel
+                        tvAPKPanel
                         tvPanel
                         webTVPanel
+                        lgInstallPanel
+                        samsungInstallPanel
                         settingsPanel
                         footer
                     }
@@ -284,6 +304,43 @@ struct ContentView: View {
         }
     }
 
+    private var tvAPKPanel: some View {
+        panel(title: "Cài Android TV từ iPhone", subtitle: "Chuyển APK qua Wi-Fi · xác nhận trên TV", icon: "arrow.down.tv") {
+            Text("Tải DichGame-TV.apk chính thức vào Tệp. Chọn APK, mở Downloader trên TV, nhập link nội bộ rồi xác nhận cài đặt. Giữ DichGame mở; link hết hạn sau 10 phút.")
+                .font(.system(size:12)).foregroundStyle(Palette.muted)
+            if let release = URL(string:"https://github.com/temu838655-dev/DichGame/releases") {
+                Link("Mở bản phát hành chính thức", destination:release)
+            }
+            Button(apkBusy ? "Đang đọc APK..." : "Chọn APK & tạo link Wi-Fi") { apkPicker = true }
+                .disabled(apkBusy)
+            ForEach(webTV.apkLinks, id: \.self) { link in
+                Text(link).font(.system(size:12)).textSelection(.enabled)
+                Button("Chép link") { UIPasteboard.general.string = link }
+            }
+            if !webTV.apkLinks.isEmpty {
+                Button("Dừng chia sẻ APK") { webTV.stopAPK(); apkStatus = "Đã dừng chia sẻ." }
+            }
+            Text(apkStatus).font(.system(size:12)).foregroundStyle(Palette.muted)
+        }.tint(Palette.gold)
+        .fileImporter(isPresented:$apkPicker, allowedContentTypes:[.data]) { result in
+            switch result {
+            case .failure(let error): apkStatus = error.localizedDescription
+            case .success(let url):
+                apkBusy = true
+                DispatchQueue.global(qos:.userInitiated).async {
+                    let read = Result { try TVAPKDocument.read(url) }
+                    DispatchQueue.main.async {
+                        apkBusy = false
+                        switch read {
+                        case .success(let data): webTV.shareAPK(data); apkStatus = "Đang tạo link. Nếu chưa hiện, kiểm tra quyền mạng nội bộ."
+                        case .failure(let error): apkStatus = error.localizedDescription
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var tvPanel: some View {
         panel(title: "Phụ đề trên Android TV", subtitle: "Gửi bản dịch ảnh qua Wi-Fi nội bộ", icon: "tv") {
             Text("Mở app DichGame TV, cấp quyền hiển thị và nhập mã 8 số. Đây chưa phải dịch trực tiếp khi chơi game trên iOS.")
@@ -317,6 +374,108 @@ struct ContentView: View {
             Text(tvStatus.isEmpty ? (tvReady ? "Đã lưu kết nối TV" : "Chưa ghép TV") : tvStatus)
                 .font(.system(size: 12)).foregroundStyle(Palette.muted)
         }.tint(Palette.gold)
+    }
+
+    private var lgInstallPanel: some View {
+        panel(title: "Cài app LG từ iPhone", subtitle: "Developer Mode · SSH · thử nghiệm", icon: "arrow.down.tv") {
+            Text("Bật Developer Mode và Key Server trên TV LG, nhập IP TV và passphrase 6 ký tự. Xác nhận fingerprint của TV trước khi cài.")
+                .font(.system(size: 12)).foregroundStyle(Palette.muted)
+            TextField("IP TV LG", text: $lgIP).keyboardType(.decimalPad).inputStyle()
+            SecureField("Passphrase 6 ký tự", text: $lgPass).textInputAutocapitalization(.never).autocorrectionDisabled().inputStyle()
+            Button("Cài IPK & mở app") { installLG() }
+                .disabled(lgBusy || !TVLink.privateIPv4(lgIP.trimmingCharacters(in: .whitespacesAndNewlines)) || lgPass.utf8.count != 6)
+            Text(lgStatus).font(.system(size:12)).foregroundStyle(Palette.muted)
+        }.tint(Palette.gold)
+        .alert("Xác nhận khóa TV LG", isPresented: $lgTrustDialog) {
+            Button("Hủy",role:.cancel) { lgDecision?(false); lgDecision = nil }
+            Button("Tin cậy") { lgDecision?(true); lgDecision = nil }
+        } message: { Text(lgFingerprint + "\nChỉ chấp nhận nếu đã xác minh đúng TV.") }
+    }
+
+    private func installLG() {
+        let ip = lgIP.trimmingCharacters(in:.whitespacesAndNewlines), pass = lgPass
+        guard !lgBusy, TVLink.privateIPv4(ip), pass.utf8.count == 6 else { return }
+        lgPass = ""; lgBusy = true; lgStatus = "Đang lấy khóa Developer Mode..."
+        webTV.start()
+        let phoneIP = TVSubtitleServer.localAddresses().first { $0.split(separator:".").dropLast() == ip.split(separator:".").dropLast() }
+        Task {
+            do {
+                let key = try await LGInstaller.key(ip:ip)
+                DispatchQueue.global(qos:.userInitiated).async {
+                    let result = Result {
+                        try LGInstaller.install(ip:ip,key:key,passphrase:pass,phoneIP:phoneIP,approve:{ fingerprint in
+                            let storage = "dichgame.lg.fingerprint." + ip
+                            if UserDefaults.standard.string(forKey:storage) == fingerprint { return true }
+                            let gate = DispatchSemaphore(value:0)
+                            let decision = LGTrustDecision()
+                            DispatchQueue.main.async {
+                                lgFingerprint = ip + "\n" + fingerprint
+                                lgDecision = { accepted in decision.set(accepted); gate.signal() }
+                                lgTrustDialog = true
+                            }
+                            let completed = gate.wait(timeout:.now()+90) == .success
+                            let allowed = completed && decision.accepted
+                            if allowed { UserDefaults.standard.set(fingerprint,forKey:storage) }
+                            if !completed { DispatchQueue.main.async { lgTrustDialog = false; lgDecision = nil } }
+                            return allowed
+                        },progress:{ message in DispatchQueue.main.async { lgStatus = message } })
+                    }
+                    DispatchQueue.main.async {
+                        lgBusy = false
+                        switch result {
+                        case .success(let message): lgStatus = message; webTV.start()
+                        case .failure(let error): lgStatus = error.localizedDescription
+                        }
+                    }
+                }
+            } catch { lgBusy = false; lgStatus = error.localizedDescription }
+        }
+    }
+
+    private var samsungInstallPanel: some View {
+        panel(title: "Cài app Samsung từ iPhone", subtitle: "Developer Mode · WGT đã ký · thử nghiệm", icon: "arrow.down.tv") {
+            Text("Bật máy chủ phụ đề để xem IP iPhone. Trên Samsung vào Apps, nhập 12345, bật Developer Mode, đặt Host PC IP là IP iPhone và khởi động lại TV. Cần WGT đã ký phù hợp với TV.")
+                .font(.system(size: 12)).foregroundStyle(Palette.muted)
+            TextField("IP TV Samsung", text: $samsungIP).keyboardType(.decimalPad).inputStyle()
+            Button("Chọn WGT đã ký") { samsungPicker = true }
+                .disabled(samsungBusy || !TVLink.privateIPv4(samsungIP.trimmingCharacters(in: .whitespacesAndNewlines)))
+            Text(samsungStatus).font(.system(size: 12)).foregroundStyle(Palette.muted)
+        }.tint(Palette.gold)
+        .fileImporter(isPresented: $samsungPicker, allowedContentTypes: [.data]) { result in
+            switch result {
+            case .success(let file): samsungFile = file; samsungConfirm = true
+            case .failure(let error): samsungStatus = error.localizedDescription
+            }
+        }
+        .alert("Cài DichGame TV?", isPresented: $samsungConfirm) {
+            Button("Hủy", role: .cancel) { samsungFile = nil }
+            Button("Cài") { installSamsung() }
+        } message: {
+            Text("Cài WGT đã chọn lên Samsung tại \(samsungIP).")
+        }
+    }
+
+    private func installSamsung() {
+        guard let file = samsungFile, !samsungBusy else { return }
+        let ip = samsungIP.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard TVLink.privateIPv4(ip) else { return }
+        samsungBusy = true
+        samsungStatus = "Đang chuẩn bị..."
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = Result {
+                try SamsungInstaller.install(ip: ip, file: file) { message in
+                    DispatchQueue.main.async { samsungStatus = message }
+                }
+            }
+            DispatchQueue.main.async {
+                samsungBusy = false
+                samsungFile = nil
+                switch result {
+                case .success(let message): samsungStatus = message; webTV.start()
+                case .failure(let error): samsungStatus = error.localizedDescription
+                }
+            }
+        }
     }
 
     private var webTVPanel: some View {
@@ -471,4 +630,11 @@ private struct PremiumInput: ViewModifier {
 
 private extension View {
     func inputStyle() -> some View { modifier(PremiumInput()) }
+}
+
+private final class LGTrustDecision {
+    private let lock = NSLock()
+    private var value = false
+    func set(_ accepted: Bool) { lock.lock(); value = accepted; lock.unlock() }
+    var accepted: Bool { lock.lock(); defer { lock.unlock() }; return value }
 }

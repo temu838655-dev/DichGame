@@ -14,6 +14,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Print Xcode version
         run: xcodebuild -version
+      - name: Bundle LG receiver IPK
+        run: |
+          npm install -g @webos-tools/cli
+          bash webos/package-dev.sh
+          packages=(webos/dist/*.ipk)
+          test "${#packages[@]}" -eq 1
+          test -s "${packages[0]}"
+          cp "${packages[0]}" ios/DichGameiOS/dichgame-lg.ipk
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate native iOS project
@@ -47,6 +55,14 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Bundle LG receiver IPK
+        run: |
+          npm install -g @webos-tools/cli
+          bash webos/package-dev.sh
+          packages=(webos/dist/*.ipk)
+          test "${#packages[@]}" -eq 1
+          test -s "${packages[0]}"
+          cp "${packages[0]}" ios/DichGameiOS/dichgame-lg.ipk
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate native iOS project
