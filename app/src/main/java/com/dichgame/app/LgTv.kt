@@ -101,6 +101,29 @@ class LgTv(
      * Gửi thông báo chữ lên TV (ssap://system.notifications/createToast). Trả về null nếu TV nhận, hoặc câu lỗi.
      * Phải gọi [connect] trước và nên gọi từ luồng nền.
      */
+    fun launchReceiver(): String? {
+        val s = ws ?: return "chưa kết nối TV"
+        val id = "launch_${++seq}"
+        return try {
+            s.send(JSONObject().put("type", "request").put("id", id)
+                .put("uri", "ssap://system.launcher/launch")
+                .put("payload", JSONObject().put("id", "com.dichgame.subtitles")).toString())
+            s.setTimeout(3000)
+            val end = System.currentTimeMillis() + 5000
+            var result: String? = "TV chưa xác nhận mở ứng dụng"
+            while (System.currentTimeMillis() < end) {
+                val raw = s.receive() ?: break
+                val j = JSONObject(raw)
+                if (j.optString("id") != id) continue
+                result = if (j.optString("type") == "response" &&
+                    j.optJSONObject("payload")?.optBoolean("returnValue", false) == true) null
+                    else j.optString("error", j.optJSONObject("payload")?.optString("errorText") ?: "TV không mở được ứng dụng")
+                break
+            }
+            result
+        } catch (e: Exception) { e.message ?: "lỗi mở ứng dụng" }
+    }
+
     fun toast(text: String): String? {
         val s = ws ?: return "chưa kết nối TV"
         val id = "toast_${++seq}"

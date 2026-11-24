@@ -87,7 +87,7 @@ class TvSetupActivity : Activity() {
 
     private fun brandInfo(): String = when (brand) {
         0 -> "TV Sony, TCL, Xiaomi... chạy Android TV hoặc Google TV, Android 8 trở lên. Cài app ngay trên TV bằng remote, không cần máy tính."
-        1 -> "TV LG webOS: Dịch game ghép với TV qua LG Connect Apps rồi gửi phụ đề thành thông báo chữ của TV, nằm đè lên cả hình HDMI của máy chơi game. (thử nghiệm, chưa thử trên TV LG thật; chưa có app riêng cài lên TV LG)"
+        1 -> "TV LG webOS: Dịch game ghép với TV qua LG Connect Apps rồi gửi phụ đề thành thông báo chữ của TV, nằm đè lên cả hình HDMI của máy chơi game. (thử nghiệm, chưa thử trên TV LG thật; app webOS đang thử nghiệm, chưa có bộ cài từ điện thoại)"
         else -> "TV Samsung (Tizen): Samsung không cho app ngoài hiện chữ đè lên hình HDMI, và app Tizen phải ký bằng chứng chỉ Samsung nên chưa có app cài lên TV. Dùng chiếu màn hình hoặc trang web phụ đề. (thử nghiệm)"
     }
 
@@ -179,10 +179,27 @@ class TvSetupActivity : Activity() {
         c.addView(Ui.button(this, "Kết nối TV", true) { connectLgNow() }, Ui.lpm(this, 4, 8))
         c.addView(Ui.button(this, "Gửi câu thử lên TV") { testLg() }, Ui.lpm(this, 0, 8))
         if (p.lgPaired) {
+            c.addView(Ui.button(this, "Mở app trên TV LG (thử nghiệm)") { openLgReceiver() }, Ui.lpm(this, 0, 8))
             c.divide()
             c.addView(Ui.switchRow(this, "Gửi phụ đề lên TV LG khi đang dịch", "Tắt nếu chỉ muốn thử ghép.", p.lgSubs) { p.lgSubs = it }, Ui.lpm(this, 12, 12))
             c.addView(Ui.button(this, "Bỏ ghép TV LG") { p.clearLg(); TvOut.resetLg(); render() })
         }
+    }
+
+    private fun openLgReceiver() {
+        val ip = p.lgIp
+        val key = p.lgKey
+        val label = status
+        label.text = "Đang mở ứng dụng trên TV LG..."
+        Thread {
+            val tv = LgTv(ip, key)
+            val err = try { tv.connect(8000) ?: tv.launchReceiver() } finally { tv.close() }
+            runOnUiThread {
+                if (isFinishing || isDestroyed || brand != 1 || status !== label) return@runOnUiThread
+                label.setTextColor(if (err == null) Ui.OK else Ui.DANGER)
+                label.text = if (err == null) "TV đã xác nhận mở app phụ đề." else "Chưa mở được app: $err. Kiểm tra app webOS đã cài."
+            }
+        }.start()
     }
 
     private fun findLg() {
@@ -313,7 +330,7 @@ class TvSetupActivity : Activity() {
                 "3. Mở app, đăng nhập tài khoản đó, bật \"Dev Mode Status\" và \"Key Server\"; TV khởi động lại. Ghi lại địa chỉ IP và mã (passphrase) trên màn hình.\n" +
                 "4. Chế độ này tự hết hạn sau một thời gian, phải mở app và gia hạn (Extend).\n" +
                 "5. Cài gói .ipk bằng ares-cli trên máy tính (ares-setup-device, ares-install).\n\n" +
-                "Dịch game hiện CHƯA có gói .ipk cho LG và điện thoại chưa cài được app lên TV LG, nên bước B chưa cần.\n\n" +
+                "Dịch game đã có mã nguồn app webOS thử nghiệm nhưng chưa có gói .ipk hoàn chỉnh và điện thoại chưa cài được app lên TV LG, nên bước B chưa cần.\n\n" +
                 "iPhone: Dịch game chỉ có bản Android, nên không cài hay ghép từ iPhone được. iPhone vẫn xem được phụ đề bằng trang web phụ đề."
             else -> "TV SAMSUNG (Tizen)\n\n" +
                 "A. Xem phụ đề\n" +
