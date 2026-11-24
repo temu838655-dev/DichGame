@@ -8,7 +8,7 @@ import java.io.ByteArrayOutputStream
 internal object LgDeveloperCommand {
     data class Result(val exitCode: Int, val output: String)
 
-    fun execute(session: Session, command: String, timeoutMs: Long = 60000): Result {
+    fun execute(session: Session, command: String, timeoutMs: Long = 60000, terminal: ((String) -> Boolean)? = null): Result {
         require(timeoutMs in 1000L..120000L)
         check(session.isConnected) { "Chưa kết nối TV" }
         val channel = session.openChannel("exec") as ChannelExec
@@ -29,6 +29,7 @@ internal object LgDeveloperCommand {
                         if (count <= 0) break
                         check(output.size() + count <= 262144) { "Phản hồi TV quá lớn" }
                         output.write(buffer, 0, count)
+                        if (terminal?.invoke(output.toString("UTF-8")) == true) return Result(0, output.toString("UTF-8"))
                     }
                 }
                 if (channel.isClosed && input.available() == 0 && errors.available() == 0) {
