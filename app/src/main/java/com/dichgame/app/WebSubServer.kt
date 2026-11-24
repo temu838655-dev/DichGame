@@ -19,6 +19,7 @@ class WebSubServer(private val port: Int = 8780) {
     private val lock = Object()
     private var seq = 0L
     private var text = ""
+    private val clients = java.util.concurrent.Semaphore(16)
     @Volatile private var stopped = false
 
     val running: Boolean get() = server?.isClosed == false
@@ -32,7 +33,9 @@ class WebSubServer(private val port: Int = 8780) {
         Thread({
             while (!stopped) {
                 val c = try { s.accept() } catch (_: SocketException) { break } catch (_: Exception) { continue }
-                Thread({ handle(c) }, "dg-websub-conn").apply { isDaemon = true; start() }
+                if (!c.inetAddress.isSiteLocalAddress && !c.inetAddress.isLoopbackAddress) { c.close(); continue }
+                if (!clients.tryAcquire()) { c.close(); continue }
+                Thread({ try { handle(c) } finally { clients.release() } }, "dg-websub-conn").apply { isDaemon = true; start() }
             }
         }, "dg-websub").apply { isDaemon = true; start() }
         return s.localPort
@@ -55,12 +58,24 @@ class WebSubServer(private val port: Int = 8780) {
         }
     }
 
+    private fun boundedLine(rd: BufferedReader): String? {
+        val b = StringBuilder()
+        while (b.length < 4096) {
+            val ch = rd.read()
+            if (ch < 0) return null
+            if (ch == 10) return b.toString().trimEnd(13.toChar())
+            b.append(ch.toChar())
+        }
+        return null
+    }
+
     private fun handle(c: Socket) {
         try {
             c.soTimeout = 30_000
             val rd = BufferedReader(InputStreamReader(c.getInputStream(), Charsets.ISO_8859_1))
-            val line = rd.readLine() ?: return
-            while (true) { val h = rd.readLine() ?: break; if (h.isEmpty()) break }
+            val line = boundedLine(rd) ?: return
+            var headers = 0
+            while (true) { val h = boundedLine(rd) ?: return; if (h.isEmpty()) break; if (++headers > 64) return }
             val parts = line.split(' ')
             if (parts.firstOrNull() != "GET") { reply(c, 404, "text/plain; charset=utf-8", "404"); return }
             val target = parts.getOrElse(1) { "/" }
