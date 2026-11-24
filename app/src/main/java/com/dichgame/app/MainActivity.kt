@@ -116,7 +116,7 @@ class MainActivity : Activity() {
             val more = Ui.hbox(this@MainActivity)
             more.addView(chip("📦", "Gói Việt hoá") { open(PackActivity::class.java) }, Ui.lp(0, MATCH_PARENT, 1f))
             more.addView(chip("💡", "Hướng dẫn") { open(GuideActivity::class.java) }, tileLp(8))
-            more.addView(chip("👑", "Tính năng") { open(FeaturesActivity::class.java) }, tileLp(8))
+            more.addView(chip("ℹ", "Tính năng") { open(FeaturesActivity::class.java) }, tileLp(8))
             put(more, 0, 12)
             put(Ui.button(this@MainActivity, if (CaptureService.active) "Dừng dịch màn hình" else "Bắt đầu dịch màn hình") {
                 if (CaptureService.active) stopService() else begin()
@@ -166,12 +166,6 @@ class MainActivity : Activity() {
         col.addView(Ui.tv(this, "by Huyy Đâyy", 12f, Ui.GOLD, true).apply { setShadowLayer(3f, 0f, 1f, Color.BLACK) })
         col.addView(Ui.tv(this, "Chơi game nào cũng hiểu", 12f, Ui.TEXT).apply { maxLines = 2; setShadowLayer(3f, 0f, 1f, Color.BLACK) })
         row.addView(col, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@MainActivity, 12) })
-        row.addView(TextView(this).apply {
-            text = "👑"; textSize = 20f; gravity = Gravity.CENTER
-            background = Ui.bg(this@MainActivity, Color.parseColor("#1A1405"), 26, Ui.GOLD, 2)
-            setOnClickListener { open(FeaturesActivity::class.java) }
-            contentDescription = "Tính năng"
-        }, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 44)))
         row.addView(Ui.tv(this, "⚙", 28f, Ui.TEXT).apply {
             gravity = Gravity.CENTER
             background = Ui.bg(this@MainActivity, Ui.CARD2, 22, Ui.LINE, 1)
@@ -244,7 +238,7 @@ class MainActivity : Activity() {
         game.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 4))
         val gcol = Ui.vbox(this)
         gcol.addView(Ui.tv(this, name.ifEmpty { "Chưa chọn game" }, 15f, Ui.TEXT, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-        gcol.addView(Ui.tv(this, "👑 " + vietHoaLabel(), 12.5f, Ui.GOLD, true))
+        gcol.addView(Ui.tv(this, vietHoaLabel(), 12.5f, Ui.GOLD, true))
         game.addView(gcol, Ui.lp(0, WRAP_CONTENT, 1f))
         game.addView(Ui.tv(this, "Chọn ›", 13.5f, Ui.GOLD))
         game.setOnClickListener { open(KhoGameActivity::class.java) }

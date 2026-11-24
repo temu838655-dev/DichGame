@@ -160,7 +160,7 @@ class DockWings(c: Context, private val gapDp: Float = 52f, private val lenScale
 }
 
 /**
- * Logo "Xin chào các anh em" ở giữa đáy màn hình chính: huy hiệu kính tối viền vàng có vương miện, chữ vàng có viền và bóng đổ,
+ * Logo "Xin chào các anh em" ở giữa đáy màn hình chính: huy hiệu kính tối viền vàng, chữ vàng có viền và bóng đổ,
  * ánh sáng chạy qua chữ mỗi vài giây, quầng sáng thở nhẹ. Đang dịch thì viền và quầng chuyển xanh lá.
  * Chỉ để trang trí: không có nút nào, chạm vào không làm gì.
  */
@@ -170,7 +170,6 @@ class HelloLogo(c: Context, private val running: Boolean) : View(c) {
     private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; strokeJoin = Paint.Join.ROUND }
     private val pill = RectF()
     private val r = RectF()
-    private val path = Path()
     private var phase = 0.7f
     private var anim: ValueAnimator? = null
     private val titleFace: Typeface = Typeface.create("sans-serif-black", Typeface.ITALIC)
@@ -179,7 +178,6 @@ class HelloLogo(c: Context, private val running: Boolean) : View(c) {
     private val gold1 = Color.parseColor("#FFF3B0")
     private val gold2 = Color.parseColor("#FFD54A")
     private val gold3 = Color.parseColor("#F2A900")
-    private val gold4 = Color.parseColor("#B97800")
     private val green1 = Color.parseColor("#B8FFD0")
     private val green2 = Color.parseColor("#2EE06B")
     private val green3 = Color.parseColor("#0E8A3A")
@@ -299,36 +297,6 @@ class HelloLogo(c: Context, private val running: Boolean) : View(c) {
             cv.drawCircle(far + side * 3f * d, ly, 1.8f * d, p)
         }
 
-        // vương miện đặt lên viền trên
-        val cw = 40f * d
-        val ch = 24f * d
-        val cl = cx - cw / 2f
-        val ct = 1f * d
-        path.reset()
-        path.moveTo(cl + 0.10f * cw, ct + ch)
-        path.lineTo(cl, ct + 0.22f * ch)
-        path.lineTo(cl + 0.27f * cw, ct + 0.58f * ch)
-        path.lineTo(cl + 0.5f * cw, ct)
-        path.lineTo(cl + 0.73f * cw, ct + 0.58f * ch)
-        path.lineTo(cl + cw, ct + 0.22f * ch)
-        path.lineTo(cl + 0.90f * cw, ct + ch)
-        path.close()
-        p.style = Paint.Style.FILL
-        p.shader = LinearGradient(0f, ct, 0f, ct + ch, intArrayOf(gold1, gold2, gold3), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
-        cv.drawPath(path, p)
-        p.shader = null
-        p.style = Paint.Style.STROKE
-        p.strokeWidth = 1.4f * d
-        p.strokeJoin = Paint.Join.ROUND
-        p.color = 0xFF000000.toInt() or brown
-        cv.drawPath(path, p)
-        p.style = Paint.Style.FILL
-        p.color = 0x99FFFFFF.toInt()
-        r.set(cl + 0.14f * cw, ct + 0.80f * ch, cl + 0.86f * cw, ct + 0.80f * ch + 1.2f * d)
-        cv.drawRoundRect(r, 0.6f * d, 0.6f * d, p)
-        p.color = Color.parseColor("#FFFBE3")
-        cv.drawCircle(cl, ct + 0.22f * ch, 2.4f * d, p)
-        cv.drawCircle(cl + 0.5f * cw, ct, 2.6f * d, p)
-        cv.drawCircle(cl + cw, ct + 0.22f * ch, 2.4f * d, p)
+
     }
 }
