@@ -9,9 +9,15 @@ final class TVSubtitleServer: ObservableObject {
     @Published private(set) var running = false
     @Published private(set) var status = "Chưa bật máy chủ"
     @Published private(set) var addresses: [String] = []
+    @Published private(set) var apkLinks: [String] = []
+    private var apkData: Data?
+    private var apkPath = ""
+    private var apkExpiry: TimeInterval = 0
+    private var apkGeneration = UUID()
     private let queue = DispatchQueue(label: "dichgame.ios.tvserver")
     private var listener: NWListener?
     private var connections: [UUID: NWConnection] = [:]
+    private var apkTransfers = Set<UUID>()
     private struct PairRequest {
         let code: String
         let expiry: TimeInterval
@@ -37,7 +43,7 @@ final class TVSubtitleServer: ObservableObject {
                 server.stateUpdateHandler = { [weak self, weak server] state in
                     guard let self, let server, self.listener === server else { return }
                     switch state {
-                    case .ready: self.report(true, "Máy chủ đang chạy", addresses: Self.localAddresses())
+                    case .ready: self.report(true, "Máy chủ đang chạy", addresses: Self.localAddresses()); self.reportAPKLinks()
                     case .failed(let error): self.stopInternal(); self.report(false, error.localizedDescription)
                     case .cancelled: self.stopInternal(); self.report(false, "Đã tắt")
                     default: break
@@ -59,9 +65,43 @@ final class TVSubtitleServer: ObservableObject {
         old?.cancel()
         connections.values.forEach { $0.cancel() }
         connections.removeAll()
+        apkTransfers.removeAll()
         requests.removeAll()
+        clearAPKInternal()
         subtitle = ""
         sequence += 1
+    }
+
+    /// Share only a document explicitly selected by the user; never install silently.
+    func shareAPK(_ data: Data) {
+        queue.async { [weak self] in
+            guard let self, (1024...32*1024*1024).contains(data.count) else { return }
+            self.clearAPKInternal()
+            self.apkData = data
+            self.apkPath = "/" + Self.secret() + "/DichGame-TV.apk"
+            self.apkExpiry = ProcessInfo.processInfo.systemUptime + 600
+            self.apkGeneration = UUID()
+            let generation = self.apkGeneration
+            self.queue.asyncAfter(deadline: .now() + 600) { [weak self] in
+                guard let self, self.apkGeneration == generation else { return }
+                self.clearAPKInternal()
+            }
+            if self.listener == nil { self.start() } else { self.reportAPKLinks() }
+        }
+    }
+
+    func stopAPK() { queue.async { [weak self] in self?.clearAPKInternal() } }
+
+    private func clearAPKInternal() {
+        for id in Array(apkTransfers) { close(id) }
+        apkData = nil; apkPath = ""; apkExpiry = 0; apkGeneration = UUID()
+        DispatchQueue.main.async { [weak self] in self?.apkLinks = [] }
+    }
+
+    private func reportAPKLinks() {
+        guard apkData != nil, !apkPath.isEmpty else { return }
+        let links = Self.localAddresses().map { "http://\($0):8780\(apkPath)" }
+        DispatchQueue.main.async { [weak self] in self?.apkLinks = links }
     }
 
     func publish(_ text: String) {
@@ -129,11 +169,14 @@ final class TVSubtitleServer: ObservableObject {
         let id = UUID()
         connections[id] = connection
         connection.start(queue: queue)
-        queue.asyncAfter(deadline: .now() + 8) { [weak self] in self?.close(id) }
+        queue.asyncAfter(deadline: .now() + 8) { [weak self] in
+            guard let self, !self.apkTransfers.contains(id) else { return }
+            self.close(id)
+        }
         receive(id, data: Data())
     }
 
-    private func close(_ id: UUID) { connections.removeValue(forKey: id)?.cancel() }
+    private func close(_ id: UUID) { apkTransfers.remove(id); connections.removeValue(forKey: id)?.cancel() }
 
     private func receive(_ id: UUID, data: Data) {
         guard let conn = connections[id] else { return }
@@ -152,9 +195,15 @@ final class TVSubtitleServer: ObservableObject {
     private func handle(_ id: UUID, request: String) {
         let first = request.components(separatedBy: "\r\n").first ?? ""
         let parts = first.split(separator: " ")
-        guard parts.count == 3, parts[0] == "GET", parts[1].hasPrefix("/"),
+        guard parts.count == 3, (parts[0] == "GET" || parts[0] == "HEAD"), parts[1].hasPrefix("/"),
               let url = URLComponents(string: String(parts[1])) else { reply(id, 400, [:]); return }
         func param(_ name: String) -> String { url.queryItems?.first(where: { $0.name == name })?.value ?? "" }
+        if !apkPath.isEmpty && url.path == apkPath && url.query == nil {
+            guard let data = apkData, ProcessInfo.processInfo.systemUptime < apkExpiry else { reply(id, 404, [:]); return }
+            serveAPK(id, data: data, headOnly: parts[0] == "HEAD")
+            return
+        }
+        guard parts[0] == "GET" else { reply(id, 404, [:]); return }
         prune()
         switch url.path {
         case "/receiver/register":
@@ -186,6 +235,29 @@ final class TVSubtitleServer: ObservableObject {
         reply(id, 200, ["seq": sequence, "text": subtitle, "region": ""])
     }
 
+    private func serveAPK(_ id: UUID, data: Data, headOnly: Bool) {
+        guard let conn = connections[id] else { return }
+        let header = "HTTP/1.1 200 OK\r\nContent-Type: application/vnd.android.package-archive\r\nContent-Length: \(data.count)\r\nContent-Disposition: attachment; filename=DichGame-TV.apk\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
+        guard apkTransfers.count < 4 else { close(id); return }
+        apkTransfers.insert(id)
+        queue.asyncAfter(deadline: .now() + 120) { [weak self] in self?.close(id) }
+        let generation = apkGeneration
+        conn.send(content: Data(header.utf8), completion: .contentProcessed { [weak self] error in
+            guard let self, error == nil, !headOnly else { self?.close(id); return }
+            self.sendAPKChunk(id, data: data, offset: 0, generation: generation)
+        })
+    }
+
+    private func sendAPKChunk(_ id: UUID, data: Data, offset: Int, generation: UUID) {
+        guard let conn = connections[id], generation == apkGeneration,
+              ProcessInfo.processInfo.systemUptime < apkExpiry, offset < data.count else { close(id); return }
+        let end = min(offset + 65536, data.count)
+        conn.send(content: data.subdata(in: offset..<end), completion: .contentProcessed { [weak self] error in
+            guard let self, error == nil else { self?.close(id); return }
+            self.sendAPKChunk(id, data: data, offset: end, generation: generation)
+        })
+    }
+
     private func reply(_ id: UUID, _ status: Int, _ object: [String: Any]) {
         guard let conn = connections[id], let body = try? JSONSerialization.data(withJSONObject: object) else { close(id); return }
         let reason = status == 200 ? "OK" : "Error"
@@ -194,7 +266,7 @@ final class TVSubtitleServer: ObservableObject {
         conn.send(content: data, completion: .contentProcessed { [weak self] _ in self?.close(id) })
     }
 
-    private static func localAddresses() -> [String] {
+    static func localAddresses() -> [String] {
         var head: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&head) == 0, let first = head else { return [] }
         defer { freeifaddrs(first) }

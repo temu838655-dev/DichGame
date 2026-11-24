@@ -38,6 +38,9 @@ struct ContentView: View {
     @State private var tvStatus = ""
     @StateObject private var webTV = TVSubtitleServer()
     @State private var webCode = ""
+    @State private var apkPicker = false
+    @State private var apkBusy = false
+    @State private var apkStatus = ""
     @AppStorage("dichgame.samsung.ip") private var samsungIP = ""
     @State private var samsungFile: URL?
     @State private var samsungPicker = false
@@ -75,6 +78,7 @@ struct ContentView: View {
                         contextPanel
                         imagePanel
                         resultPanel
+                        tvAPKPanel
                         tvPanel
                         webTVPanel
                         lgInstallPanel
@@ -300,6 +304,43 @@ struct ContentView: View {
         }
     }
 
+    private var tvAPKPanel: some View {
+        panel(title: "Cài Android TV từ iPhone", subtitle: "Chuyển APK qua Wi-Fi · xác nhận trên TV", icon: "arrow.down.tv") {
+            Text("Tải DichGame-TV.apk chính thức vào Tệp. Chọn APK, mở Downloader trên TV, nhập link nội bộ rồi xác nhận cài đặt. Giữ DichGame mở; link hết hạn sau 10 phút.")
+                .font(.system(size:12)).foregroundStyle(Palette.muted)
+            if let release = URL(string:"https://github.com/temu838655-dev/DichGame/releases") {
+                Link("Mở bản phát hành chính thức", destination:release)
+            }
+            Button(apkBusy ? "Đang đọc APK..." : "Chọn APK & tạo link Wi-Fi") { apkPicker = true }
+                .disabled(apkBusy)
+            ForEach(webTV.apkLinks, id: \.self) { link in
+                Text(link).font(.system(size:12)).textSelection(.enabled)
+                Button("Chép link") { UIPasteboard.general.string = link }
+            }
+            if !webTV.apkLinks.isEmpty {
+                Button("Dừng chia sẻ APK") { webTV.stopAPK(); apkStatus = "Đã dừng chia sẻ." }
+            }
+            Text(apkStatus).font(.system(size:12)).foregroundStyle(Palette.muted)
+        }.tint(Palette.gold)
+        .fileImporter(isPresented:$apkPicker, allowedContentTypes:[.data]) { result in
+            switch result {
+            case .failure(let error): apkStatus = error.localizedDescription
+            case .success(let url):
+                apkBusy = true
+                DispatchQueue.global(qos:.userInitiated).async {
+                    let read = Result { try TVAPKDocument.read(url) }
+                    DispatchQueue.main.async {
+                        apkBusy = false
+                        switch read {
+                        case .success(let data): webTV.shareAPK(data); apkStatus = "Đang tạo link. Nếu chưa hiện, kiểm tra quyền mạng nội bộ."
+                        case .failure(let error): apkStatus = error.localizedDescription
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var tvPanel: some View {
         panel(title: "Phụ đề trên Android TV", subtitle: "Gửi bản dịch ảnh qua Wi-Fi nội bộ", icon: "tv") {
             Text("Mở app DichGame TV, cấp quyền hiển thị và nhập mã 8 số. Đây chưa phải dịch trực tiếp khi chơi game trên iOS.")
@@ -355,7 +396,8 @@ struct ContentView: View {
         let ip = lgIP.trimmingCharacters(in:.whitespacesAndNewlines), pass = lgPass
         guard !lgBusy, TVLink.privateIPv4(ip), pass.utf8.count == 6 else { return }
         lgPass = ""; lgBusy = true; lgStatus = "Đang lấy khóa Developer Mode..."
-        let phoneIP = webTV.addresses.first { $0.split(separator:".").dropLast() == ip.split(separator:".").dropLast() }
+        webTV.start()
+        let phoneIP = TVSubtitleServer.localAddresses().first { $0.split(separator:".").dropLast() == ip.split(separator:".").dropLast() }
         Task {
             do {
                 let key = try await LGInstaller.key(ip:ip)

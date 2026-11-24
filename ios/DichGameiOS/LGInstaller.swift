@@ -119,7 +119,9 @@ private final class LGSSH {
             }
         }
         try remaining()
-        guard libssh2_channel_send_eof(ch) == 0 else { throw LGInstallError.message("Không kết thúc được luồng SSH") }
+        if terminal == nil || input != nil {
+            guard libssh2_channel_send_eof(ch) == 0 else { throw LGInstallError.message("Không kết thúc được luồng SSH") }
+        } // Interactive Luna subscription must keep stdin open until the final reply.
         var output = Data(), buffer = [CChar](repeating: 0,count:4096)
         while true {
             try remaining()
