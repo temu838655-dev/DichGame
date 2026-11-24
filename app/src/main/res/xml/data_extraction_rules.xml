@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
+        <!-- Pairing credentials must stay on the original device. -->
+        <exclude domain="sharedpref" path="dg.xml" />
         <!-- Keystore keys are device-bound and cannot decrypt a restored preferences file. -->
         <exclude domain="sharedpref" path="ps.xml" />
         <exclude domain="sharedpref" path="ps_remote_play.xml" />
@@ -8,6 +10,8 @@
         <exclude domain="file" path="learned_translations/" />
     </cloud-backup>
     <device-transfer>
+        <!-- Pairing credentials must stay on the original device. -->
+        <exclude domain="sharedpref" path="dg.xml" />
         <!-- Do not transfer credentials without their original Keystore key. -->
         <exclude domain="sharedpref" path="ps.xml" />
         <exclude domain="sharedpref" path="ps_remote_play.xml" />

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Pairing credentials must stay on the original device. -->
+    <exclude domain="sharedpref" path="tv.xml" />
+</full-backup-content>

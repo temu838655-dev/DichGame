@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
+    <!-- Pairing credentials must stay on the original device. -->
+    <exclude domain="sharedpref" path="dg.xml" />
     <!-- Remote Play secrets are encrypted with a device-bound Android Keystore key. -->
     <exclude domain="sharedpref" path="ps.xml" />
     <!-- Legacy preferences may still contain unencrypted pairing keys before migration. -->

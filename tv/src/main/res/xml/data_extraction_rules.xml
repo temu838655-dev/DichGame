@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Pairing credentials must stay on the original device. -->
+        <exclude domain="sharedpref" path="tv.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <!-- Pairing credentials must stay on the original device. -->
+        <exclude domain="sharedpref" path="tv.xml" />
+    </device-transfer>
+</data-extraction-rules>
