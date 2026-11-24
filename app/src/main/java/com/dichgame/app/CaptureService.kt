@@ -203,6 +203,7 @@ class CaptureService : Service() {
         cloudRefresh.execute {
             try {
                 val source = PackStore.cloudInfo(applicationContext, profile, game)?.source
+                    ?: p.packCatalogUrl.takeIf { it.isNotBlank() }?.let { PackStore.catalogSource(it, game) }
                 if (source != null && p.autoPackRefresh && !Thread.currentThread().isInterrupted) {
                     PackStore.importLink(applicationContext, p, source, profile, game)
                 }
