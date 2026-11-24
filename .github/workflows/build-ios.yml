@@ -119,7 +119,7 @@ jobs:
           - DichGame-iOS-Simulator.zip: chỉ dùng trên iOS Simulator với Xcode/Mac.
           - SHA256SUMS.txt: mã kiểm tra toàn vẹn file.
 
-          Chức năng: chọn ảnh game để Gemini dịch, đọc tiếng Việt; chưa có phụ đề nổi
+          Chức năng: chọn ảnh game để Gemini dịch, đọc tiếng Việt, thử gửi kết quả đến Android TV và app LG/Samsung đã cài qua mạng nội bộ; chưa có phụ đề nổi
           lên game khác hoặc PS Remote Play tích hợp. Không phải ứng dụng App Store/TestFlight.
 
           Hướng dẫn ký ứng dụng và triển khai cho iPhone:

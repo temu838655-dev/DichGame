@@ -35,6 +35,9 @@ struct ContentView: View {
     @State private var tvCode = ""
     @State private var tvBusy = false
     @State private var tvStatus = ""
+    @StateObject private var webTV = TVSubtitleServer()
+    @State private var webCode = ""
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -59,6 +62,7 @@ struct ContentView: View {
                         imagePanel
                         resultPanel
                         tvPanel
+                        webTVPanel
                         settingsPanel
                         footer
                     }
@@ -73,6 +77,7 @@ struct ContentView: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .preferredColorScheme(.dark)
+        .onChange(of: scenePhase) { _, phase in if phase == .background { webTV.stop() } }
     }
 
     private var header: some View {
@@ -311,6 +316,30 @@ struct ContentView: View {
             }
             Text(tvStatus.isEmpty ? (tvReady ? "Đã lưu kết nối TV" : "Chưa ghép TV") : tvStatus)
                 .font(.system(size: 12)).foregroundStyle(Palette.muted)
+        }.tint(Palette.gold)
+    }
+
+    private var webTVPanel: some View {
+        panel(title: "Phụ đề LG / Samsung", subtitle: "Máy chủ Wi-Fi cho app TV đã cài", icon: "tv.badge.wifi") {
+            Text("Bật máy chủ, nhập địa chỉ iPhone trên app TV, rồi nhập mã 8 số TV hiển thị. Chỉ dùng mạng Wi-Fi tin cậy và giữ DichGame mở.")
+                .font(.system(size: 12)).foregroundStyle(Palette.muted)
+            Button(webTV.running ? "Tắt máy chủ" : "Bật máy chủ phụ đề") {
+                if webTV.running { webTV.stop() } else { webTV.start() }
+            }
+            ForEach(webTV.addresses, id: \.self) { ip in
+                Text("\(ip):8780").textSelection(.enabled).font(.system(size: 15, weight: .semibold))
+            }
+            if webTV.running {
+                TextField("Mã 8 số trên TV", text: $webCode).keyboardType(.numberPad).inputStyle()
+                Button("Ghép TV") { webTV.approve(webCode); webCode = "" }.disabled(webCode.count != 8)
+                HStack {
+                    Button("Gửi bản dịch") { webTV.publish(translation) }.disabled(translation.isEmpty)
+                    Button("Thử TV") { webTV.publish("DichGame: phụ đề thử nghiệm") }
+                    Button("Xóa chữ") { webTV.publish("") }
+                }.font(.system(size: 13))
+                Button("Bỏ ghép tất cả TV") { webTV.revoke() }
+            }
+            Text(webTV.status).font(.system(size: 12)).foregroundStyle(Palette.muted)
         }.tint(Palette.gold)
     }
 
