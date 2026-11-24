@@ -14,7 +14,6 @@ import android.os.SystemClock
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
-import android.text.TextUtils
 import android.util.Log
 import android.view.PixelCopy
 import android.view.SurfaceView
@@ -33,7 +32,6 @@ class UiOverlay(ctx: Context) : View(ctx) {
 
     private var draws: List<Draw> = emptyList()
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { isSubpixelText = true }
     private val dm = ctx.resources.displayMetrics
 
@@ -76,7 +74,8 @@ class UiOverlay(ctx: Context) : View(ctx) {
         val available = h - pad * 2
         // Fit complete Vietnamese text inside the original block. Never ellipsize or cover adjacent icons.
         val originalSize = (h / d.lines.coerceAtLeast(1) * 0.82f).coerceAtMost(sp(28f))
-        val minSize = minOf(originalSize, maxOf(sp(8f), originalSize * 0.55f))
+        if (originalSize < 7f) return
+        val minSize = minOf(originalSize, maxOf(7f, originalSize * 0.60f))
         tp.color = d.fg
         var size = originalSize
         var lay = layout(d.text, tw, size, d.lines > 1)

@@ -20,18 +20,6 @@ internal object NativeTextStyle {
             val y = ((1-v)*((1-u)*q[1]+u*q[3])+v*((1-u)*q[7]+u*q[5])).toInt()
             if (x in 0 until bmp.width && y in 0 until bmp.height) colors.add(bmp.getPixel(x,y))
         }
-        if (colors.size < 40) return null
-        fun lum(c: Int) = (Color.red(c)*3+Color.green(c)*6+Color.blue(c))/10
-        fun distance(a: Int,b: Int) = maxOf(kotlin.math.abs(Color.red(a)-Color.red(b)),kotlin.math.abs(Color.green(a)-Color.green(b)),kotlin.math.abs(Color.blue(a)-Color.blue(b)))
-        fun bucket(c: Int) = (Color.red(c)/32)*64+(Color.green(c)/32)*8+Color.blue(c)/32
-        fun median(cs: List<Int>): Int = Color.rgb(cs.map { Color.red(it) }.sorted()[cs.size/2],cs.map { Color.green(it) }.sorted()[cs.size/2],cs.map { Color.blue(it) }.sorted()[cs.size/2])
-        val dominant = colors.groupBy { bucket(it) }.values.maxByOrNull { it.size } ?: return null
-        val bg = median(dominant)
-        // Textured/animated scenery cannot be faithfully reconstructed from one flat color.
-        if (colors.count { distance(it,bg) <= 48 } < colors.size*0.48f) return null
-        val ink = colors.filter { kotlin.math.abs(lum(it)-lum(bg)) >= 65 }
-        val fg = if (ink.size >= 4) median(ink.groupBy { bucket(it) }.values.maxByOrNull { it.size } ?: ink)
-            else if (lum(bg)>145) 0xFF151515.toInt() else Color.WHITE
-        return bg to fg
+        return NativePalette.estimate(colors)
     }
 }
