@@ -15,6 +15,23 @@ class RemotePackTest {
         assertEquals("Mở cửa", RemotePack.verify(m, bytes).lines.single().second)
     }
 
+    @Test fun versionsDoNotDowngradeOrAcceptConflictingContent() {
+        assertEquals(RemotePack.Decision.INSTALL, RemotePack.versionDecision(null, null, 1, hash))
+        assertEquals(RemotePack.Decision.SAME, RemotePack.versionDecision(2, hash, 2, hash))
+        assertEquals(RemotePack.Decision.REJECT, RemotePack.versionDecision(2, hash, 1, hash))
+        assertEquals(RemotePack.Decision.REJECT, RemotePack.versionDecision(2, hash, 2, "a".repeat(64)))
+        assertEquals(RemotePack.Decision.INSTALL, RemotePack.versionDecision(2, hash, 3, "a".repeat(64)))
+    }
+
+    @Test fun localCorrectionsOverrideUpdatedCloudEntries() {
+        val cloud = listOf("Open the door" to "Mở cửa", "Continue" to "Tiếp tục")
+        val local = listOf("OPEN THE DOOR" to "Hãy mở cửa")
+        val merged = RemotePack.mergeOffline(cloud, local)
+        assertEquals(2, merged.size)
+        assertEquals("Hãy mở cửa", TransMemory(merged).lookup("Open the door"))
+        assertEquals("Tiếp tục", TransMemory(merged).lookup("Continue"))
+    }
+
     @Test fun rejectsDifferentGameAndTampering() {
         assertTrue(runCatching { RemotePack.parse(manifest(), "GTA V") }.isFailure)
         assertTrue(runCatching { RemotePack.parse(manifest(url = "http://packs.example.org/gta.csv"), "GTA VI") }.isFailure)
