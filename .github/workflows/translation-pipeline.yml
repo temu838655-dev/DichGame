@@ -23,4 +23,4 @@ jobs:
       - name: Pack builder self tests
         run: python tools/build_viet_pack.py --self-test
       - name: Batch pipeline tests
-        run: python -m unittest discover -s tools -p 'test_translation_pipeline.py' -v
+        run: python -m unittest discover -s tools -p 'test_*.py' -v
