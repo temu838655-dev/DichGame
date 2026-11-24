@@ -33,6 +33,28 @@ class PipelineTest(unittest.TestCase):
                     {"id": "3", "vi": "Tạm biệt"}])
             with self.assertRaises(ValueError):
                 run(prepared, translated, args[2], "other-model", "key", "Game", 1)
+    def test_context_isolation(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            source = root / "source.csv"
+            source.write_text("id,source,context\n1,Get down!,police\n2,Get down!,friend\n3,Get down!,police\n", encoding="utf-8")
+            self.assertEqual(prepare(source, root / "prepared")["unique"], 2)
+            mapping = json.loads((root / "prepared/id-map.json").read_text())
+            self.assertEqual(mapping, {"1": ["1", "3"], "2": ["2"]})
+
+    def test_game_isolation(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            source = root / "source.csv"
+            source.write_text("id,source\n1,Hello\n", encoding="utf-8")
+            prepare(source, root / "prepared")
+            args = (root / "prepared", root / "translated", "https://example.com/v1/chat/completions", "test", "key")
+            with patch("translate_batches.translate", return_value=[{"id":"1","vi":"Chào"}]) as call:
+                run(*args, "Game A", 1)
+                with self.assertRaises(ValueError):
+                    run(*args, "Game B", 1)
+                self.assertEqual(call.call_count, 1)
+
     def test_invalid_results(self):
         source = [{"id": "1", "source": "Hello %s"}]
         for bad in [[], [{"id":"2","vi":"Chào %s"}], [{"id":"1","vi":"Chào"}], [{"id":"1","vi":""}]]:
