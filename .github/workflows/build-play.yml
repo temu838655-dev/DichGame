@@ -25,7 +25,7 @@ jobs:
           gradle-version: '8.11.1'
       - name: Build and test the Play edition
         run: |
-          sdkmanager "platforms;android-36"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36"
           gradle :app:testDebugUnitTest :app:bundleRelease -PplayBuild -PbuildNo="$((1000000 + GITHUB_RUN_NUMBER))" --no-daemon --stacktrace
           test -s app/build/outputs/bundle/release/app-release.aab
           manifest=$(find app/build/intermediates/merged_manifests/release -name AndroidManifest.xml -print -quit)
