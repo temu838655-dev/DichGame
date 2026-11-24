@@ -5,6 +5,10 @@ settings:
   base:
     SWIFT_VERSION: 5.0
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+packages:
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    exactVersion: 0.9.19
 targets:
   DichGameiOS:
     type: application
@@ -12,6 +16,8 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: DichGameiOS
+    dependencies:
+      - package: ZIPFoundation
     info:
       path: Generated/Info.plist
       properties:

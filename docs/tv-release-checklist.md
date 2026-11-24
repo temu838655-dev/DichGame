@@ -5,3 +5,5 @@
 - Android/iOS installers: require tested developer protocol, device identity verification, secure credential storage, signed package and actual install/launch confirmation. No fake success.
 - iOS: screenshot translations can be sent to the Android TV receiver after eight-digit pairing. Verify local-network permission, ATS, voice and clearing on real devices. Foreground iOS subtitle server can also serve paired LG/Samsung receivers with screenshot results; verify on real devices. No live screen capture or direct LG/Samsung installer yet.
 - No release claim until build and hardware tests pass.
+
+- iPhone Samsung installer (experimental branch): signed WGT document import, target IP confirmation, SDB transfer and install result parsing. Verify build, real-device authorization, TV certificate and successful HDMI window before release. Does not issue certificates.

@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 import AVFoundation
 import UIKit
+import UniformTypeIdentifiers
 
 private enum Palette {
     static let bg = Color(red: 0.047, green: 0.055, blue: 0.073)
@@ -37,6 +38,12 @@ struct ContentView: View {
     @State private var tvStatus = ""
     @StateObject private var webTV = TVSubtitleServer()
     @State private var webCode = ""
+    @AppStorage("dichgame.samsung.ip") private var samsungIP = ""
+    @State private var samsungFile: URL?
+    @State private var samsungPicker = false
+    @State private var samsungConfirm = false
+    @State private var samsungBusy = false
+    @State private var samsungStatus = ""
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -63,6 +70,7 @@ struct ContentView: View {
                         resultPanel
                         tvPanel
                         webTVPanel
+                        samsungInstallPanel
                         settingsPanel
                         footer
                     }
@@ -317,6 +325,52 @@ struct ContentView: View {
             Text(tvStatus.isEmpty ? (tvReady ? "Đã lưu kết nối TV" : "Chưa ghép TV") : tvStatus)
                 .font(.system(size: 12)).foregroundStyle(Palette.muted)
         }.tint(Palette.gold)
+    }
+
+    private var samsungInstallPanel: some View {
+        panel(title: "Cài app Samsung từ iPhone", subtitle: "Developer Mode · WGT đã ký · thử nghiệm", icon: "arrow.down.tv") {
+            Text("Bật máy chủ phụ đề để xem IP iPhone. Trên Samsung vào Apps, nhập 12345, bật Developer Mode, đặt Host PC IP là IP iPhone và khởi động lại TV. Cần WGT đã ký phù hợp với TV.")
+                .font(.system(size: 12)).foregroundStyle(Palette.muted)
+            TextField("IP TV Samsung", text: $samsungIP).keyboardType(.decimalPad).inputStyle()
+            Button("Chọn WGT đã ký") { samsungPicker = true }
+                .disabled(samsungBusy || !TVLink.privateIPv4(samsungIP.trimmingCharacters(in: .whitespacesAndNewlines)))
+            Text(samsungStatus).font(.system(size: 12)).foregroundStyle(Palette.muted)
+        }.tint(Palette.gold)
+        .fileImporter(isPresented: $samsungPicker, allowedContentTypes: [.data]) { result in
+            switch result {
+            case .success(let file): samsungFile = file; samsungConfirm = true
+            case .failure(let error): samsungStatus = error.localizedDescription
+            }
+        }
+        .alert("Cài DichGame TV?", isPresented: $samsungConfirm) {
+            Button("Hủy", role: .cancel) { samsungFile = nil }
+            Button("Cài") { installSamsung() }
+        } message: {
+            Text("Cài WGT đã chọn lên Samsung tại \(samsungIP).")
+        }
+    }
+
+    private func installSamsung() {
+        guard let file = samsungFile, !samsungBusy else { return }
+        let ip = samsungIP.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard TVLink.privateIPv4(ip) else { return }
+        samsungBusy = true
+        samsungStatus = "Đang chuẩn bị..."
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = Result {
+                try SamsungInstaller.install(ip: ip, file: file) { message in
+                    DispatchQueue.main.async { samsungStatus = message }
+                }
+            }
+            DispatchQueue.main.async {
+                samsungBusy = false
+                samsungFile = nil
+                switch result {
+                case .success(let message): samsungStatus = message; webTV.start()
+                case .failure(let error): samsungStatus = error.localizedDescription
+                }
+            }
+        }
     }
 
     private var webTVPanel: some View {
