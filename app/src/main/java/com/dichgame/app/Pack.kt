@@ -40,6 +40,11 @@ object Canon {
         return sb.toString().replace("rn", "m").replace("vv", "w")
     }
 
+    /** Exact text identity: keep punctuation, word boundaries and meaningful letters. */
+    fun literal(s: String): String =
+        Normalizer.normalize(s, Normalizer.Form.NFC).trim().lowercase(Locale.ROOT)
+            .replace(Regex("\\s+"), " ")
+
     /** Khoá quá ngắn thì không đưa vào bộ nhớ câu (tránh khớp nhầm câu một chữ). */
     fun usable(key: String): Boolean = key.length >= 3 || (key.length >= 2 && key.any { isCjk(it) })
 }
@@ -52,14 +57,25 @@ private data class LineKey(val letters: String, val numbers: String, val cues: S
 
 /** Bộ nhớ câu thoại: "câu gốc -> câu Việt hoá chuẩn". Mục thêm sau đè mục thêm trước. */
 class TransMemory(pairs: Iterable<Pair<String, String>>) {
+    private val exactMap = HashMap<String, String>()
     private val map = HashMap<LineKey, String>()
+    private val ambiguous = HashSet<LineKey>()
 
     init {
+        // Last entry wins only when the actual source is identical.
         for ((s, v) in pairs) {
+            if (Canon.usable(Canon.key(s)) && v.isNotBlank()) exactMap[Canon.literal(s)] = v.trim()
+        }
+        // OCR folding can conflate distinct words ("modern" / "modem").
+        // Exclude conflicting translations from the fuzzy index entirely.
+        for ((s, v) in exactMap) {
             val k = LineKey.of(s)
-            if (Canon.usable(k.letters) && v.isNotBlank()) {
-                map[k] = v.trim()
-            }
+            if (k in ambiguous) continue
+            val prev = map[k]
+            if (prev != null && prev != v) {
+                map.remove(k)
+                ambiguous.add(k)
+            } else map[k] = v
         }
     }
 
@@ -71,7 +87,7 @@ class TransMemory(pairs: Iterable<Pair<String, String>>) {
     /** Dựng sẵn chỉ mục khớp gần đúng (gọi ở luồng nền khi bắt đầu dịch) để lần tra đầu tiên không bị khựng. */
     fun warm() { if (map.size > 1) fuzzyIndex }
 
-    val size: Int get() = map.size
+    val size: Int get() = exactMap.size
 
     /** Câu gốc toàn chữ hoa thì bản dịch cũng viết hoa (tiêu đề, thông báo trên màn hình). */
     private fun matchCase(src: String, vi: String): String {
@@ -80,7 +96,7 @@ class TransMemory(pairs: Iterable<Pair<String, String>>) {
     }
 
     private fun part(text: String): String? {
-        map[LineKey.of(text)]?.let { return matchCase(text, it) }
+        exactMap[Canon.literal(text)]?.let { return matchCase(text, it) }
         // nhiều thông báo dính liền không dấu câu ("YOU DIED Press any button"): cắt theo từ
         val words = text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
         if (words.size < 2 || words.size > 16) return null
@@ -92,7 +108,7 @@ class TransMemory(pairs: Iterable<Pair<String, String>>) {
             var j = minOf(words.size, i + 8)
             while (j > i && res == null) {
                 val chunk = words.subList(i, j).joinToString(" ")
-                val v = map[LineKey.of(chunk)]
+                val v = exactMap[Canon.literal(chunk)]
                 if (v != null) cover(j)?.let { res = listOf(matchCase(chunk, v)) + it }
                 j--
             }
@@ -109,11 +125,14 @@ class TransMemory(pairs: Iterable<Pair<String, String>>) {
     fun lookup(text: String): String? = lookupEx(text)?.vi
 
     fun lookupEx(text: String): Hit? {
-        if (map.isEmpty() || text.isBlank()) return null
+        if (exactMap.isEmpty() || text.isBlank()) return null
         exact(text)?.let { return Hit(it, false) }
         val q = LineKey.of(text)
+        if (q in ambiguous) return null
+        // Even a short OCR-folded match is not exact and must never be narrated as certain.
+        map[q]?.let { return Hit(matchCase(text, it), true) }
         if (q.letters.length < FuzzyIndex.minLen(q.letters)) return null
-        return fuzzyIndex.find(q)?.let { Hit(it, true) }
+        return fuzzyIndex.find(q)?.let { Hit(matchCase(text, it), true) }
     }
 
     private fun exact(text: String): String? {
@@ -131,18 +150,17 @@ class TransMemory(pairs: Iterable<Pair<String, String>>) {
  * đó thường là chữ bị đọc nhầm (0 thành o, 1 thành l, 5 thành s), không phải một con số.
  */
 internal fun digitSig(s: String): String {
-    val sb = StringBuilder()
-    for (i in s.indices) {
-        val c = s[i]
-        if (!c.isDigit()) continue
-        // chỉ xét cả cụm số: tìm biên của cụm chứa c
-        var a = i; while (a > 0 && s[a - 1].isDigit()) a--
-        var b = i; while (b + 1 < s.length && s[b + 1].isDigit()) b++
+    val groups = ArrayList<String>()
+    var i = 0
+    while (i < s.length) {
+        if (!s[i].isDigit()) { i++; continue }
+        val a = i
+        while (i < s.length && s[i].isDigit()) i++
         val left = a > 0 && s[a - 1].isLetter()
-        val right = b + 1 < s.length && s[b + 1].isLetter()
-        if (!(left && right)) sb.append(c)
+        val right = i < s.length && s[i].isLetter()
+        if (!(left && right)) groups.add(s.substring(a, i))
     }
-    return sb.toString()
+    return groups.joinToString("|")
 }
 
 /**
