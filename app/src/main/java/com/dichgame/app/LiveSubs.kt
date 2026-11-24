@@ -118,7 +118,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     private val rate = SubtitlePacer.SpeechRate()
     private val maxJobs = 12
     private val jobs = java.util.ArrayDeque<Job>()
-    private var tvLast = ""
+    @Volatile private var tvLast = ""
     private var tvVoiceWarned = false
     private val tvExec by lazy { java.util.concurrent.Executors.newSingleThreadExecutor() }
 
@@ -175,6 +175,13 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     }
 
     /** Bật/tắt đọc to bản dịch ngay khi đang dịch (loa trên biểu tượng 🔊). */
+    fun refreshSubtitleVisibility() {
+        if (Prefs(act).listenOnly) {
+            view.visibility = View.GONE
+            sendTv("clear", "", force = true)
+        }
+    }
+
     fun setSpeak(on: Boolean) {
         speak = on
         if (!running) return
@@ -719,7 +726,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         }
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
         view.text = sb
-        view.visibility = View.VISIBLE
+        view.visibility = if (pr.listenOnly) View.GONE else View.VISIBLE
         val vi = cards.joinToString(" ") { it.tr.text }
         val tvSpeaks = speak && tvSpeakOn() && !tvVoiceOn()
         val tvText = if (tvSpeaks || cards.none { it.speaker != null }) vi
@@ -764,12 +771,15 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     }
 
     private fun sendTv(kind: String, text: String, speakIt: Boolean = false, force: Boolean = false) {
-        TvOut.publish(act, kind, text)
+        val hidden = kind == "sub" && Prefs(act).listenOnly
+        val outKind = if (hidden) "clear" else kind
+        val outText = if (hidden && !speakIt) "" else text
+        TvOut.publish(act, outKind, outText)
         val p = act.getSharedPreferences("dg", Context.MODE_PRIVATE)
         val ip = p.getString("tvip", "").orEmpty()
         val tok = p.getString("tvtoken", "").orEmpty()
         if (p.getString("playon", "phone") != "tv" || ip.isEmpty() || tok.isEmpty()) return
-        val key = kind + ":" + text
+        val key = "$ip:$tok:$outKind:$speakIt:$outText"
         if (!force && key == tvLast) return
         tvLast = key
         val size = p.getInt("fs", 18) * p.getInt("subscale", 100) / 100 + 12
@@ -780,11 +790,10 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
                     val c = URL("http://$ip:8765/sub").openConnection() as HttpURLConnection
                     c.requestMethod = "POST"; c.connectTimeout = 1500; c.readTimeout = 1500; c.doOutput = true
                     c.setRequestProperty("X-Token", tok)
-                    val body = JSONObject().put("kind", kind).put("text", text).put("size", size).put("speak", speakIt).put("fg", f).put("bg", b)
+                    val body = JSONObject().put("kind", outKind).put("text", outText).put("size", size).put("speak", speakIt).put("fg", f).put("bg", b)
                     c.outputStream.use { it.write(body.toString().toByteArray()) }
-                    c.responseCode
-                    c.disconnect()
-                } catch (_: Exception) {}
+                    try { if (c.responseCode !in 200..299 && tvLast == key) tvLast = "" } finally { c.disconnect() }
+                } catch (_: Exception) { if (tvLast == key) tvLast = "" }
             }
         } catch (_: java.util.concurrent.RejectedExecutionException) {}
     }

@@ -73,7 +73,7 @@ class WebSubServer(private val port: Int = 8780) {
                     val body: String
                     synchronized(lock) {
                         val end = System.currentTimeMillis() + 20_000
-                        while (seq <= since && !stopped) {
+                        while (seq == since && !stopped) {
                             val left = end - System.currentTimeMillis()
                             if (left <= 0) break
                             lock.wait(left)
@@ -127,7 +127,7 @@ function poll(){
     try{var j=JSON.parse(x.responseText);seq=j.seq;sub.textContent=j.text;hint.style.display=j.text?'none':'block';}catch(e){}
     setTimeout(poll,50);
   };
-  x.onerror=x.ontimeout=function(){hint.style.display='block';hint.textContent='Mất kết nối, đang thử lại...';setTimeout(poll,1500);};
+  x.onerror=x.ontimeout=function(){seq=-1;sub.textContent='';hint.style.display='block';hint.textContent='Mất kết nối, đang thử lại...';setTimeout(poll,750);};
   x.send();
 }
 poll();
