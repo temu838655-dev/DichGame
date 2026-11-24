@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Collect translated JSON batches into id,vi CSV; fail closed on missing IDs."""
 import argparse
+import hashlib
 import csv
 import json
 import re
@@ -19,8 +20,19 @@ def load(path):
         return result
     return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique)
 
-def collect(prepared, translated, output):
+def collect(prepared, translated, output, game=None):
     prepared, translated = Path(prepared), Path(translated)
+    marker = translated / "job.json"
+    if marker.exists():
+        job = load(marker)
+        inputs = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                  for p in [*sorted(prepared.glob("batch-*.json")), prepared / "id-map.json"]}
+        if job.get("inputs") != inputs:
+            raise ValueError("Translated job does not match prepared data")
+        if game is not None and job.get("game") != game:
+            raise ValueError("Translated job belongs to another game")
+    elif game is not None:
+        raise ValueError("Missing game job manifest")
     mapping = load(prepared / "id-map.json")
     expected = {}
     for path in sorted(prepared.glob("batch-*.json")):
@@ -67,9 +79,10 @@ def main():
     p.add_argument("prepared")
     p.add_argument("translated")
     p.add_argument("output")
+    p.add_argument("--game", required=True, help="Exact game identifier from translation job")
     a = p.parse_args()
     try:
-        print(json.dumps(collect(a.prepared, a.translated, a.output)))
+        print(json.dumps(collect(a.prepared, a.translated, a.output, a.game)))
     except (ValueError, OSError, TypeError, KeyError) as e:
         p.error(str(e))
 
