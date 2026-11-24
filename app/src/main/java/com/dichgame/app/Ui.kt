@@ -76,22 +76,22 @@ class GlassDrawable(
         path.addRoundRect(rect, r, r, Path.Direction.CW)
 
         if (base != 0) baseP.color = base
-        val top = if (strong) 0x3AFFFFFF else 0x28FFFFFF
-        val bottom = if (strong) 0x16FFFFFF else 0x0AFFFFFF
+        val top = if (strong) 0xED2E2828.toInt() else 0xE7252226.toInt()
+        val bottom = if (strong) 0xED151316.toInt() else 0xED0C0D11.toInt()
         fillP.shader = LinearGradient(0f, rect.top, 0f, minOf(rect.bottom, b.bottom.toFloat()), top, bottom, Shader.TileMode.CLAMP)
         if (tint != 0) tintP.color = tint
         if (edge != 0) {
             edgeP.shader = null
             edgeP.color = edge
         } else {
-            edgeP.shader = LinearGradient(rect.left, rect.top, rect.right, minOf(rect.bottom, b.bottom.toFloat()), 0x78FFFFFF, 0x16FFFFFF, Shader.TileMode.CLAMP)
+            edgeP.shader = LinearGradient(rect.left, rect.top, rect.right, minOf(rect.bottom, b.bottom.toFloat()), intArrayOf(0xFFFBE2A4.toInt(), 0xFF93602D.toInt(), 0xA86B4928.toInt(), 0xFFFBC66B.toInt()), floatArrayOf(0f, 0.26f, 0.68f, 1f), Shader.TileMode.CLAMP)
         }
         sheen = rect.width() > r * 3f && rect.height() > r * 1.1f
         if (sheen) {
             sx0 = rect.left + r * 0.9f
             sx1 = rect.right - r * 0.9f
             sy = rect.top + sw * 1.8f
-            sheenP.shader = LinearGradient(sx0, 0f, sx1, 0f, intArrayOf(0x00FFFFFF, 0x70FFFFFF, 0x00FFFFFF), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+            sheenP.shader = LinearGradient(sx0, 0f, sx1, 0f, intArrayOf(0x00FFCF73, 0xB0FFE6AA.toInt(), 0x00FFCF73), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         }
     }
 
@@ -100,6 +100,21 @@ class GlassDrawable(
         if (base != 0) c.drawPath(path, baseP)
         c.drawPath(path, fillP)
         if (tint != 0) c.drawPath(path, tintP)
+        if (edge == 0) {
+            // Inner luminous amber rim; no bitmap, blur or software rendering needed.
+            val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = edgePx * 4f
+                color = 0x25FFAF45
+            }
+            c.save()
+            c.clipPath(path)
+            c.drawPath(path, glow)
+            glow.strokeWidth = edgePx * 2.2f
+            glow.color = 0x43FFD17D
+            c.drawPath(path, glow)
+            c.restore()
+        }
         if (sheen) c.drawLine(sx0, sy, sx1, sy, sheenP)
         c.drawPath(path, edgeP)
     }
@@ -117,14 +132,14 @@ class GlassDrawable(
 
 /** Bộ dựng giao diện kính tối/vàng bằng View thuần, không cần thư viện ngoài. */
 object Ui {
-    val BG = Color.parseColor("#070D09")
-    val CARD = Color.parseColor("#101912")
-    val CARD2 = Color.parseColor("#18251B")
-    val LINE = Color.parseColor("#33FFFFFF")
+    val BG = Color.parseColor("#08080C")
+    val CARD = Color.parseColor("#17151A")
+    val CARD2 = Color.parseColor("#272125")
+    val LINE = Color.parseColor("#55D6A65A")
     val TEXT = Color.WHITE
-    val SUB = Color.parseColor("#B8BCC2")
-    val GOLD = Color.parseColor("#FFD54A")
-    val GOLD2 = Color.parseColor("#F2A900")
+    val SUB = Color.parseColor("#D2CAC3")
+    val GOLD = Color.parseColor("#FFD786")
+    val GOLD2 = Color.parseColor("#E79A2F")
     val DANGER = Color.parseColor("#FF6B6B")
     val OK = Color.parseColor("#4CD964")
 
@@ -151,9 +166,9 @@ object Ui {
     }
 
     fun goldBg(c: Context, radius: Number = 28): GradientDrawable =
-        GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(GOLD, GOLD2)).apply {
+        GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFFFFF1B7.toInt(), GOLD, 0xFFF5B14C.toInt(), GOLD2)).apply {
             cornerRadius = dp(c, radius).toFloat()
-            setStroke(dp(c, 1).coerceAtLeast(1), Color.parseColor("#77FFF6C4"))
+            setStroke(dp(c, 1).coerceAtLeast(1), Color.parseColor("#FFFFE4A4"))
         }
 
     /** Hiệu ứng gợn khi bấm, bo theo [radius] dp. */
@@ -381,7 +396,7 @@ object Ui {
         val d = Dialog(a)
         d.requestWindowFeature(Window.FEATURE_NO_TITLE)
         val box = vbox(a)
-        box.background = GlassDrawable(dp(a, 28).toFloat(), true, true, Color.parseColor("#F0121C15"), 0, 0, dp(a, 1).toFloat())
+        box.background = GlassDrawable(dp(a, 28).toFloat(), true, true, Color.parseColor("#F0131115"), 0, 0, dp(a, 1).toFloat())
         val p = dp(a, 20)
         box.setPadding(p, dp(a, 10), p, p * 2)
         box.addView(View(a).apply { background = bg(a, Color.parseColor("#55FFFFFF"), 3) },

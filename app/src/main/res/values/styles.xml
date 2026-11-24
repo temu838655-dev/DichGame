@@ -2,12 +2,12 @@
     <!-- Nền tối, màu nhấn vàng; hộp thoại dùng kính bo tròn -->
     <style name="DgTheme" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:alertDialogTheme">@style/DgDialog</item>
-        <item name="android:colorAccent">#FFD54A</item>
+        <item name="android:colorAccent">#FFD786</item>
     </style>
 
     <style name="DgDialog" parent="@android:style/Theme.Material.Dialog.Alert">
         <item name="android:windowBackground">@drawable/dg_dialog_bg</item>
-        <item name="android:colorAccent">#FFD54A</item>
+        <item name="android:colorAccent">#FFD786</item>
         <item name="android:windowElevation">0dp</item>
     </style>
 </resources>

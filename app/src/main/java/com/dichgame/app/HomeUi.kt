@@ -16,7 +16,7 @@ import android.view.animation.LinearInterpolator
 import kotlin.math.PI
 import kotlin.math.sin
 
-/** Nền màn hình chính: xanh đậm, quầng sáng xanh ở góc, vài đường vàng cong và vòng cung xanh quanh nút tay cầm. */
+/** Nền đen điện ảnh với luồng sáng vàng và các lớp núi, vẽ bằng Canvas. */
 class GlowBackground(c: Context, private val calm: Boolean = false) : View(c) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
@@ -42,18 +42,33 @@ class GlowBackground(c: Context, private val calm: Boolean = false) : View(c) {
         if (w <= 0f || h <= 0f) return
 
         p.style = Paint.Style.FILL
-        p.shader = LinearGradient(0f, 0f, 0f, h, intArrayOf(Color.parseColor("#0C2A18"), Ui.BG, Ui.BG), floatArrayOf(0f, 0.42f, 1f), Shader.TileMode.CLAMP)
+        p.shader = LinearGradient(0f, 0f, w * 0.55f, h, intArrayOf(0xFF08080D.toInt(), 0xFF101014.toInt(), 0xFF08090D.toInt()), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
         cv.drawRect(0f, 0f, w, h, p)
-
-        p.shader = RadialGradient(w * 0.98f, 0f, w * 0.85f, Color.parseColor("#4A2EE06B"), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-        cv.drawRect(0f, 0f, w, h * 0.5f, p)
-        p.shader = RadialGradient(0f, h * 0.2f, w * 0.7f, Color.parseColor("#302EE06B"), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-        cv.drawRect(0f, 0f, w, h * 0.6f, p)
-
+        p.shader = RadialGradient(w * 0.89f, h * 0.04f, w * 0.77f, 0x58B86D1C, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        cv.drawRect(0f, 0f, w, h, p)
+        p.shader = RadialGradient(w * 0.62f, h * 0.90f, w * 0.85f, 0x50E7A04B, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        cv.drawRect(0f, 0f, w, h, p)
         if (calm) { p.shader = null; return }
-        val gold = Color.parseColor("#FFD54A")
-        streak(cv, d, w * 0.52f, 0f, w * 0.98f, h * 0.02f, w * 1.04f, h * 0.17f, gold, 0.75f)
-        streak(cv, d, -0.04f * w, h * 0.19f, w * 0.10f, h * 0.10f, w * 0.36f, h * 0.10f, Color.parseColor("#9CFF6B"), 0.5f)
+
+        val gold = 0xFFFFC56B.toInt()
+        streak(cv, d, w * 0.28f, h * 0.18f, w * 0.75f, -h * 0.02f, w * 1.06f, h * 0.05f, gold, 0.75f)
+        streak(cv, d, w * 0.57f, -h * 0.02f, w * 0.26f, h * 0.16f, w * 1.1f, h * 0.12f, gold, 0.42f)
+        // Three independently layered silhouettes keep the artwork readable on any aspect ratio.
+        fun ridge(points: FloatArray, top: Int, bottom: Int) {
+            path.reset()
+            path.moveTo(0f, h)
+            for (i in points.indices step 2) path.lineTo(w * points[i], h * points[i + 1])
+            path.lineTo(w, h)
+            path.close()
+            p.style = Paint.Style.FILL
+            p.shader = LinearGradient(0f, h * 0.79f, 0f, h, top, bottom, Shader.TileMode.CLAMP)
+            cv.drawPath(path, p)
+        }
+        ridge(floatArrayOf(0f,.88f,.09f,.84f,.18f,.89f,.32f,.86f,.42f,.91f,.58f,.86f,.71f,.89f,.83f,.82f,1f,.88f), 0xFF47404B.toInt(), 0xFF151923.toInt())
+        ridge(floatArrayOf(0f,.87f,.08f,.91f,.19f,.91f,.31f,.95f,.46f,.93f,.59f,.95f,.73f,.91f,.88f,.88f,1f,.83f), 0xFF29313E.toInt(), 0xFF080A10.toInt())
+        ridge(floatArrayOf(0f,.90f,.12f,.93f,.22f,.97f,.41f,.99f,.59f,.97f,.73f,.94f,.87f,.92f,1f,.88f), 0xFF141B27.toInt(), 0xFF06070B.toInt())
+        streak(cv, d, -w * .05f, h * .95f, w * .51f, h * .78f, w * 1.04f, h * .87f, gold, .82f)
+        streak(cv, d, w * .15f, h * 1.02f, w * .63f, h * .87f, w * 1.07f, h * .83f, 0xFFFFE7A5.toInt(), .62f)
 
         p.shader = null
     }
@@ -115,10 +130,10 @@ class DockWings(c: Context, private val gapDp: Float = 52f, private val lenScale
         path.reset()
         path.moveTo(-0.15f * w, h)
         path.quadTo(cx, 12f * d - h, 1.15f * w, h)
-        p.shader = LinearGradient(0f, 6f * d, 0f, h, Color.parseColor("#402EE06B"), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        p.shader = LinearGradient(0f, 6f * d, 0f, h, Color.parseColor("#40B9792F"), Color.TRANSPARENT, Shader.TileMode.CLAMP)
         cv.drawPath(path, p)
         p.style = Paint.Style.STROKE
-        p.shader = LinearGradient(0f, 0f, w, 0f, intArrayOf(Color.parseColor("#002EE06B"), Color.parseColor("#FF4CF07B"), Color.parseColor("#002EE06B")), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        p.shader = LinearGradient(0f, 0f, w, 0f, intArrayOf(Color.parseColor("#00FFD786"), Color.parseColor("#FFFFD786"), Color.parseColor("#00FFD786")), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         p.strokeWidth = 12f * d; p.alpha = 40; cv.drawPath(path, p)
         p.strokeWidth = 2.2f * d; p.alpha = 255; cv.drawPath(path, p)
         p.style = Paint.Style.FILL

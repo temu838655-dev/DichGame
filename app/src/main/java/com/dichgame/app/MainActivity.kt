@@ -93,7 +93,7 @@ class MainActivity : Activity() {
         val con = PsStore.load(this)?.takeIf { it.players.isNotEmpty() }
         val content = Ui.vbox(this)
         val pad = Ui.dp(this, 16)
-        content.setPadding(pad, Ui.dp(this, 10), pad, Ui.dp(this, 126))
+        content.setPadding(pad, Ui.dp(this, 10), pad, Ui.dp(this, 28))
         content.apply {
             put(header(con != null), 4, 14)
             UpdateUi.banner(this@MainActivity)?.let { put(it, 0, 12) }
@@ -106,7 +106,7 @@ class MainActivity : Activity() {
                 open(WebTranslateActivity::class.java)
             }, 0, 12)
             // bốn mục cài đặt gom trong một thẻ kính: Cách dịch, Giọng đọc, Phụ đề, Hồ sơ game
-            put(Hub.card(this@MainActivity, p), 0, 14)
+            put(Hub.homeGrid(this@MainActivity, p), 0, 14)
             put(Ui.hbox(this@MainActivity).apply {
                 addView(Ui.tv(this@MainActivity, "✨", 18f))
                 addView(Ui.tv(this@MainActivity, "Thêm", 16f, Ui.TEXT, true).apply { setPadding(Ui.dp(this@MainActivity, 10), 0, 0, 0) })
@@ -117,15 +117,16 @@ class MainActivity : Activity() {
             more.addView(chip("💡", "Hướng dẫn") { open(GuideActivity::class.java) }, tileLp(8))
             more.addView(chip("👑", "Tính năng") { open(FeaturesActivity::class.java) }, tileLp(8))
             put(more, 0, 12)
-            put(Ui.tv(this@MainActivity, "Dịch game ${versionName()} · Chạy hoàn toàn trên máy bạn, chỉ gửi chữ ra ngoài khi bạn bật dịch AI.", 12f, Ui.SUB).apply { gravity = Gravity.CENTER }, 8, 0)
+            put(Ui.tv(this@MainActivity, "Dịch game ${versionName()}", 12f, Ui.SUB).apply { gravity = Gravity.CENTER }, 8, 0)
+            put(dock(), 0, 0).layoutParams = Ui.lp(MATCH_PARENT, Ui.dp(this@MainActivity, 112))
         }
         val root = FrameLayout(this)
         root.addView(GlowBackground(this), FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         val sv = ScrollView(this)
+        sv.isFillViewport = true
         sv.isVerticalScrollBarEnabled = false
         sv.addView(content)
         root.addView(sv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-        root.addView(dock(), FrameLayout.LayoutParams(MATCH_PARENT, Ui.dp(this, 112), Gravity.BOTTOM))
         setContentView(root)
     }
 
@@ -140,9 +141,9 @@ class MainActivity : Activity() {
             scaleType = ImageView.ScaleType.FIT_CENTER
         }, Ui.lp(Ui.dp(this, 64), Ui.dp(this, 64)))
         val col = Ui.vbox(this)
-        col.addView(Ui.tv(this, "Dịch Game", 25f, Ui.GOLD, true).apply { setTypeface(typeface, android.graphics.Typeface.BOLD_ITALIC) })
+        col.addView(Ui.tv(this, "Dịch Game", 25f, Ui.TEXT, true))
         col.addView(Ui.tv(this, "by Huyy Đâyy", 14f, Ui.TEXT, true).apply { setTypeface(typeface, android.graphics.Typeface.BOLD_ITALIC) })
-        col.addView(Ui.tv(this, "★ Dịch game mọi lúc, mọi nơi ★", 11.5f, Ui.SUB).apply { maxLines = 1 })
+        col.addView(Ui.tv(this, "Chơi game nào cũng hiểu", 12f, Ui.SUB).apply { maxLines = 2 })
         row.addView(col, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@MainActivity, 12) })
         row.addView(TextView(this).apply {
             text = "👑"; textSize = 20f; gravity = Gravity.CENTER
@@ -151,6 +152,8 @@ class MainActivity : Activity() {
         }, Ui.lp(Ui.dp(this, 52), Ui.dp(this, 52)))
         row.addView(Ui.tv(this, "⚙", 28f, Ui.TEXT).apply {
             gravity = Gravity.CENTER
+            background = Ui.bg(this@MainActivity, Ui.CARD2, 22, Ui.LINE, 1)
+            contentDescription = "Cài đặt"
             setOnClickListener { open(SettingsActivity::class.java) }
         }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 52)).apply { leftMargin = Ui.dp(this@MainActivity, 6) })
         row.addView(View(this).apply {
@@ -171,7 +174,7 @@ class MainActivity : Activity() {
             background = Ui.bg(this@MainActivity, Ui.CARD, 20, Ui.LINE, 1)
             setPadding(Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 9), Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 9))
         }, Ui.lp(0, WRAP_CONTENT, 1f))
-        top.addView(segment(), Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = Ui.dp(this@MainActivity, 8) })
+        top.addView(segment(), Ui.lp(0, WRAP_CONTENT, 1.75f).apply { leftMargin = Ui.dp(this@MainActivity, 5) })
         top.addView(Ui.tv(this, "?", 20f, Ui.TEXT, true).apply {
             gravity = Gravity.CENTER
             background = Ui.bg(this@MainActivity, Ui.CARD2, 22, Ui.LINE, 1)
@@ -250,7 +253,7 @@ class MainActivity : Activity() {
         act.addView(GamepadGlyph(this, dark, Ui.GOLD), Ui.lp(Ui.dp(this, 30), Ui.dp(this, 22)))
         act.addView(Ui.tv(this, if (con != null) "Chơi và dịch trên ${con.name}" else "Ghép nối máy chơi game (làm 1 lần)", 16f, dark, true).apply {
             setPadding(Ui.dp(this@MainActivity, 10), 0, Ui.dp(this@MainActivity, 6), 0)
-        })
+        }, Ui.lp(0, WRAP_CONTENT, 1f))
         act.addView(Ui.tv(this, "›", 24f, dark, true))
         act.setOnClickListener { open(if (con != null) PsConnectActivity::class.java else PsPairActivity::class.java) }
         c.addView(act, Ui.lpm(this, 10, 0))
@@ -279,18 +282,18 @@ class MainActivity : Activity() {
             b.gravity = Gravity.CENTER
             val fg = if (on) Color.parseColor("#2A1A08") else Ui.TEXT
             if (on) b.background = Ui.goldBg(this, 20)
-            b.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8))
-            if (glyph) b.addView(GamepadGlyph(this, fg, Ui.GOLD), Ui.lp(Ui.dp(this, 20), Ui.dp(this, 14)).apply { rightMargin = Ui.dp(this@MainActivity, 6) })
-            b.addView(Ui.tv(this, label, 14f, fg).apply { maxLines = 1 })
+            b.setPadding(Ui.dp(this, 4), Ui.dp(this, 9), Ui.dp(this, 4), Ui.dp(this, 9))
+            if (glyph && resources.configuration.screenWidthDp >= 480) b.addView(GamepadGlyph(this, fg, Ui.GOLD), Ui.lp(Ui.dp(this, 20), Ui.dp(this, 14)).apply { rightMargin = Ui.dp(this@MainActivity, 6) })
+            b.addView(Ui.tv(this, label, 13f, fg).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
             b.setOnClickListener { click() }
             return b
         }
         seg.addView(item("Dịch", !p.narrate, true) {
             if (!CaptureService.active) { p.mode = Prefs.MODE_TRANSLATE; render() } else busyToast()
-        }, Ui.lp(0, WRAP_CONTENT, 1f))
+        }, Ui.lp(0, WRAP_CONTENT, 0.8f))
         seg.addView(item("Thuyết minh", p.narrate, false) {
             if (!CaptureService.active) { p.mode = Prefs.MODE_VIETSUB; render() } else busyToast()
-        }, Ui.lp(0, WRAP_CONTENT, 1f))
+        }, Ui.lp(0, WRAP_CONTENT, 1.3f))
         return seg
     }
 
@@ -309,7 +312,7 @@ class MainActivity : Activity() {
     private fun navCard(icon: String, title: String, sub: String, badge: String?, onClick: () -> Unit): View {
         val c = Ui.card(this, 14)
         val row = Ui.hbox(this)
-        row.addView(Ui.tv(this, icon, 24f).apply { setPadding(0, 0, Ui.dp(this@MainActivity, 14), 0) })
+        row.addView(Ui.tv(this, icon, 26f).apply { gravity = Gravity.CENTER; background = Ui.bg(this@MainActivity, Ui.CARD2, 14, Ui.LINE, 1) }, Ui.lp(Ui.dp(this, 46), Ui.dp(this, 46)).apply { rightMargin = Ui.dp(this@MainActivity, 12) })
         val col = Ui.vbox(this)
         col.addView(Ui.tv(this, title, 17f, Ui.TEXT, true))
         col.addView(Ui.tv(this, sub, 13f, Ui.SUB))
