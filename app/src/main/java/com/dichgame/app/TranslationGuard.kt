@@ -18,8 +18,8 @@ object TranslationGuard {
     private val FENCE = Regex("^```[a-zA-Z]*\\s*|\\s*```$")
     private val NOTE_LINE = Regex("^\\s*(\\(?\\s*(lưu ý|ghi chú|chú thích|giải thích|note|notes|translator'?s? note|hoặc|or)(?![\\p{L}]).*|[*•]\\s.*|\\d+[.)]\\s.*)$", RegexOption.IGNORE_CASE)
     private val REFUSAL = listOf(
-        "i cannot", "i can't", "i'm sorry", "i am sorry", "as an ai", "here is the translation", "here's the translation", "the translation is",
-        "tôi không thể dịch", "tôi xin lỗi", "xin lỗi, tôi", "không thể dịch", "dưới đây là bản dịch", "đây là bản dịch", "bản dịch của câu",
+        "i cannot translate", "i can't translate", "as an ai", "here is the translation", "here's the translation", "the translation is",
+        "tôi không thể dịch", "không thể dịch", "dưới đây là bản dịch", "đây là bản dịch", "bản dịch của câu",
         "cần thêm ngữ cảnh", "không có đủ ngữ cảnh", "nội dung không phù hợp",
     )
     private val QUOTES = "\"“”«»'‘’「」『』"
