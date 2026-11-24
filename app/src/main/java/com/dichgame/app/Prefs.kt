@@ -100,7 +100,7 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("community_contribute",false)
         set(v) = sp.edit().putBoolean("community_contribute",v).apply()
     var communityUrl: String
-        get() = sp.getString("community_url","").orEmpty()
+        get() = sp.getString("community_url","https://dichgame-community.temu838655.workers.dev").orEmpty()
         set(v) = sp.edit().putString("community_url",v.trim()).apply()
     var communityToken: String
         get() = ApiSecrets.read(app,"community_token")
