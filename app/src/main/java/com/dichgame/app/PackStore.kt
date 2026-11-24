@@ -410,6 +410,13 @@ object PackStore {
         } finally { c.disconnect() }
     }
 
+    fun catalogSource(link: String, game: String): String? {
+        val url = URL(link)
+        require(url.protocol == "https" && url.host.isNotBlank() && url.userInfo == null && url.ref == null)
+        return RemotePack.catalogSource(fetchWithRetry(url, 512_000) { !Thread.currentThread().isInterrupted }
+            .toString(Charsets.UTF_8), game)
+    }
+
     /** Download a user-authorized direct pack link, including ZIP and MO, with a bounded temporary file. */
     fun importLink(ctx: Context, p: Prefs, link: String, expectedProfile: String = p.profile, expectedGame: String = gameName(p)): String {
         val profile = expectedProfile
