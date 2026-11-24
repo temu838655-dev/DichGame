@@ -12,6 +12,9 @@ class Prefs(ctx: Context) {
 
     companion object {
         fun parseGeminiKeys(raw: List<String>): List<String> = raw.flatMap { it.split(Regex("[,;\\s]+")) }.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        const val DEFAULT_READ_CAREFULLY = true
+        const val DEFAULT_CONTEXT_COUNT = 6
+        const val DEFAULT_SCAN_MS = 333
         const val ENGINE_LOCAL = "local"
         const val ENGINE_CLOUD = "cloud"
         const val ENGINE_OPENAI = "openai"
@@ -91,7 +94,7 @@ class Prefs(ctx: Context) {
         set(v) = sp.edit().putString("langc", normalizeSource(v)).apply()
 
     var engine: String
-        get() = sp.getString("engine", null) ?: if (sp.getString("key", "").isNullOrEmpty()) ENGINE_LOCAL else ENGINE_GEMINI
+        get() = sp.getString("engine", null) ?: if (geminiKeys().isNotEmpty()) ENGINE_GEMINI else ENGINE_LOCAL
         set(v) = sp.edit().putString("engine", v).apply()
 
     var geminiKey: String
@@ -154,12 +157,12 @@ class Prefs(ctx: Context) {
         set(v) = sp.edit().putString("gloss_$profile", v).apply()
 
     var ctxCount: Int
-        get() = sp.getInt("ctxn", 3).coerceIn(0, 10)
+        get() = sp.getInt("ctxn", DEFAULT_CONTEXT_COUNT).coerceIn(0, 10)
         set(v) = sp.edit().putInt("ctxn", v.coerceIn(0, 10)).apply()
 
     /** Phong cách dịch AI (chỉ số trong TR_STYLES). */
     var trStyle: Int
-        get() = sp.getInt("trstyle", 1).coerceIn(0, TR_STYLES.size - 1)
+        get() = sp.getInt("trstyle", 0).coerceIn(0, TR_STYLES.size - 1)
         set(v) = sp.edit().putInt("trstyle", v).apply()
 
     /** Chỉ dẫn dịch đang dùng: phong cách đã chọn, hoặc prompt riêng. */
@@ -198,7 +201,7 @@ class Prefs(ctx: Context) {
 
     /** Khoảng cách giữa hai lần quét khung phụ đề, mili giây. Nhỏ hơn đỡ sót câu, lớn hơn đỡ nóng máy. */
     var scanMs: Int
-        get() = sp.getInt("scanms", 400).coerceIn(100, 3000)
+        get() = sp.getInt("scanms", DEFAULT_SCAN_MS).coerceIn(100, 3000)
         set(v) = sp.edit().putInt("scanms", v.coerceIn(100, 3000)).apply()
 
     /** Hai lựa chọn giọng: "system" (cơ bản) và "ai" (Gemini); tự đọc cơ bản nếu AI lỗi. */
@@ -555,7 +558,7 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("automenu", false)
         set(v) = sp.edit().putBoolean("automenu", v).apply()
     var slow: Boolean
-        get() = sp.getBoolean("slow", false)
+        get() = sp.getBoolean("slow", DEFAULT_READ_CAREFULLY)
         set(v) = sp.edit().putBoolean("slow", v).apply()
     var speak: Boolean
         get() = sp.getBoolean("speak", true)

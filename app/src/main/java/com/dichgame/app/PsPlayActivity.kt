@@ -1108,7 +1108,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 box.addView(Ui.tv(a, "Quét nhiều đỡ sót câu ngắn nhưng máy nóng và hao pin hơn.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 0))
                 box.addView(Ui.tv(a, "Cách đọc chữ trên hình", 15f, Ui.TEXT, true), Ui.lpm(a, 14, 0))
                 box.addView(Ui.segmented(a, listOf("Kỹ", "Nhanh"), if (pr.slow) 0 else 1) { pr.slow = it == 0; fill() }, Ui.lpm(a, 6, 0))
-                box.addView(Ui.tv(a, "Kỹ: chờ chữ hiện đủ rồi mới dịch (áp dụng từ lần bật dịch sau). Nhanh: dịch ngay khi thấy chữ.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 0))
+                box.addView(Ui.tv(a, "Kỹ (mặc định): chờ chữ ổn định, ưu tiên đúng nghĩa và ngữ cảnh (áp dụng từ lần bật dịch sau). Nhanh: dịch ngay khi thấy chữ.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 0))
                 box.addView(Ui.button(a, "Xong", true) { dlg.dismiss() }, Ui.lpm(a, 14, 0))
             }
             fill()

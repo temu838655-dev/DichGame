@@ -41,6 +41,7 @@ object Ai {
             (if (speaker != null) " Người đang nói câu này: $speaker (giữ đúng giọng và cách xưng hô của người này, không đổi tên)." else "") +
             (if (emo) Emo.instruction() else "") +
             " Chọn xưng hô hợp quan hệ và ngữ cảnh. Giữ chính xác chủ ngữ, người được nói tới, ngôi xưng (I/you/we/they), phủ định, thời, câu hỏi và mệnh lệnh. Không đổi người thực hiện hành động; không biến câu hỏi thành câu khẳng định. Giữ tên riêng, số, thuật ngữ và mức độ thô tục; không tự thêm câu hoặc tình tiết. Chỉ sửa lỗi OCR khi rõ ràng." +
+            (if (p.slow) " Trước khi trả lời, tự đối chiếu thầm từng mệnh đề với câu nguồn. Giữ đầy đủ ý, quan hệ nguyên nhân, sắc thái và người nói; không đổi đại từ hoặc suy diễn chủ ngữ bị lược trong tiếng Trung khi chưa đủ ngữ cảnh. Không chép lại lời thoại trước, không nối thêm câu của nhân vật khác. Khi nghĩa đen và cách nói tự nhiên khác nhau, ưu tiên giữ đúng ý rồi diễn đạt tự nhiên." else "") +
             (if (emo) " Chỉ trả về thẻ rồi bản dịch." else " Chỉ trả về bản dịch.") +
             (if (history.isNotEmpty()) "\nCác câu trước (chỉ để hiểu mạch truyện, không dịch lại):\n" + history.joinToString("\n") else "") +
             "\nCần dịch: $text" +

@@ -241,7 +241,7 @@ class CaptureService : Service() {
         RecentLines.clear()
         narrate = intent.getBooleanExtra("narrate", false)
         speak = intent.getBooleanExtra("speak", false) || narrate
-        needStable = if (intent.getBooleanExtra("slow", false)) 2 else 1
+        needStable = if (intent.getBooleanExtra("slow", Prefs(this).slow)) 2 else 1
         // chỉ khi bắt đầu từ màn hình chính (game chạy trên điện thoại); chơi PS trong app thì đã có âm thanh từ Remote Play
         val wantPhoneAudio = intent.getBooleanExtra("phoneaudio", false) && !narrate
         autoMenu = intent.getBooleanExtra("automenu", false) && !narrate

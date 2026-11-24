@@ -111,7 +111,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         // không hiện phụ đề cũ và không lưu vào bộ nhớ của game mới.
         fun stillCurrent(): Boolean = !closed && profile == p.profile && gameDescription == p.game
         fun emit(result: Tr) { if (stillCurrent()) done(result) }
-        val key = context + "\u0000" +
+        val key = context + "\u0000" + p.engine + "|" + p.aiAuto + "|" + p.slow + "|" + p.trStyle + "|" + p.customPrompt + "|" + p.ctxCount + "\u0000" +
             (if (ui) "ui|" else "") + (speaker?.lowercase() ?: "") + "|" + OcrGuard.key(text)
         val hist = if (ui) emptyList() else history.takeLast(p.ctxCount)
         if (!ui) {
@@ -139,7 +139,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 return
             }
         }
-        if (packHit != null && !Ai.enabled(p)) {
+        if (packHit != null && !Ai.enabled(p) && !p.slow) {
             st.inc("dich_goi"); st.inc("dich_goi_gan")
             emit(Tr(packHit.vi, null, false, "goi")); return
         }
