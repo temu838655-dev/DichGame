@@ -60,7 +60,11 @@ internal object SamsungWgtInstaller {
     }
 
     fun install(context: Context, ip: String, uri: Uri, status: (String) -> Unit): String {
-        val bytes = read(context, uri)
+        return installBytes(context, ip, read(context, uri), status)
+    }
+
+    fun installBytes(context: Context, ip: String, bytes: ByteArray, status: (String) -> Unit): String {
+        require(LgDeveloperKey.isPrivateIpv4(ip) && bytes.size in 1..MAX)
         validate(context, bytes)
         run {
             status("Đang kết nối SDB...")

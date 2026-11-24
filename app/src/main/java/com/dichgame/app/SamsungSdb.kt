@@ -55,10 +55,10 @@ internal class SamsungSdb(private val ip: String, private val connectedSocket: S
         socket.soTimeout = 15000
         input = socket.getInputStream().buffered()
         deadline = System.nanoTime() + 15_000_000_000L
-        send(CNXN, 0x01000000, LIMIT, "host::\u0000".toByteArray())
+        send(CNXN, 0x00100000, LIMIT, "host::\u0000".toByteArray())
         val reply = read()
         check(reply.cmd != AUTH) { "TV yêu cầu xác thực SDB chưa được hỗ trợ" }
-        check(reply.cmd == CNXN && reply.b >= 1024 && reply.data.isNotEmpty()) {
+        check(reply.cmd == CNXN && reply.b >= 1024 && reply.data.toString(Charsets.UTF_8).startsWith("device::")) {
             "TV chưa chấp nhận SDB. Kiểm tra Developer Mode và Host PC IP"
         }
         maxPayload = minOf(reply.b, LIMIT)
