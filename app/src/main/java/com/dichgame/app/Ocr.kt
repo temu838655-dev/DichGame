@@ -20,7 +20,7 @@ import org.json.JSONObject
 
 /** Một khối chữ đọc được trên màn hình, kèm khung bao (có thể null). */
 /** [conf] là độ tin cậy 0..1 do ML Kit báo (trung bình các dòng, có trọng số theo độ dài); 1 nếu bộ đọc không báo. */
-class Blk(val text: String, val box: Rect?, val conf: Float = 1f)
+class Blk(val text: String, val box: Rect?, val conf: Float = 1f, val corners: FloatArray? = null, val lineCount: Int = 1)
 
 /**
  * Đọc chữ từ ảnh chụp màn hình.
@@ -62,7 +62,10 @@ class Ocr(private val p: Prefs, private val lang: String) {
                 l.process(InputImage.fromBitmap(bmp, 0))
                     .addOnSuccessListener { r ->
                         recycleInput(bmp)
-                        ok(r.textBlocks.map { Blk(it.text, it.boundingBox, confOf(it)) })
+                        ok(r.textBlocks.map { block ->
+                            val quad = block.cornerPoints?.takeIf { it.size == 4 }?.flatMap { listOf(it.x.toFloat(), it.y.toFloat()) }?.toFloatArray()
+                            Blk(block.text, block.boundingBox, confOf(block), quad, block.lines.size.coerceAtLeast(1))
+                        })
                     }
                     .addOnFailureListener {
                         recycleInput(bmp)
@@ -158,7 +161,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
                 (b.optDouble(1) * w / 1000).toInt(), (b.optDouble(0) * h / 1000).toInt(),
                 (b.optDouble(3) * w / 1000).toInt(), (b.optDouble(2) * h / 1000).toInt()
             ) else null
-            out.add(Blk(t, box))
+            out.add(Blk(t, box, lineCount = t.lines().size.coerceAtLeast(1)))
         }
         return out
     }

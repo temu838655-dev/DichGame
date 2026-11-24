@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Matrix
 import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
@@ -13,7 +14,6 @@ import android.os.SystemClock
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
-import android.text.TextUtils
 import android.util.Log
 import android.view.PixelCopy
 import android.view.SurfaceView
@@ -28,12 +28,13 @@ import android.widget.Toast
  * vẫn bấm bình thường.
  */
 class UiOverlay(ctx: Context) : View(ctx) {
-    class Draw(val rect: RectF, val text: String, val bg: Int, val fg: Int, val unsure: Boolean)
+    class Draw(val rect: RectF, val text: String, val bg: Int, val fg: Int, val unsure: Boolean, val corners: FloatArray? = null, val lines: Int = 1)
 
     private var draws: List<Draw> = emptyList()
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { isSubpixelText = true }
+    private val prepared = java.util.IdentityHashMap<Draw, Prepared?>()
+    private data class Prepared(val matrix: Matrix, val w: Float, val h: Float, val pad: Float, val layout: StaticLayout)
     private val dm = ctx.resources.displayMetrics
 
     init {
@@ -45,6 +46,7 @@ class UiOverlay(ctx: Context) : View(ctx) {
     private var logDraw = false
 
     fun set(list: List<Draw>) {
+        prepared.keys.retainAll(list.toSet())
         draws = list
         logDraw = BuildConfig.DEBUG && list.isNotEmpty()
         invalidate()
@@ -61,48 +63,59 @@ class UiOverlay(ctx: Context) : View(ctx) {
     }
 
     private fun drawOne(cv: Canvas, d: Draw) {
-        val padX = dp(3f)
-        val padY = dp(2f)
-        val base = RectF(d.rect).apply { inset(-padX, -padY) }
-        val textW = (base.width() - padX * 2).toInt().coerceAtLeast(dp(20f).toInt())
-        // cỡ chữ lớn nhất theo chiều cao khung chữ gốc, thu nhỏ dần tới khi vừa; tiếng Việt thường dài hơn tiếng gốc
-        var size = minOf(base.height() * 0.82f, sp(22f))
-        val minSize = sp(8.5f)
-        tp.color = d.fg
-        var lay = layout(d.text, textW, size, Int.MAX_VALUE)
-        while (lay.height > base.height() && size > minSize) {
-            size -= sp(0.75f)
-            lay = layout(d.text, textW, size, Int.MAX_VALUE)
-        }
-        // vẫn không vừa ở cỡ nhỏ nhất: cho khung cao thêm (tối đa 1,8 lần, đối xứng) rồi cắt bớt bằng dấu ba chấm, không phủ quá rộng
-        val maxH = base.height() * 1.8f
-        if (lay.height > maxH) {
-            val lineH = (lay.height / lay.lineCount.toFloat()).coerceAtLeast(1f)
-            lay = layout(d.text, textW, size, maxOf(1, (maxH / lineH).toInt()))
-        }
-        val h = maxOf(base.height(), lay.height + padY * 2)
-        val r = RectF(base.left, base.centerY() - h / 2f, base.right, base.centerY() + h / 2f)
-        bgPaint.color = (d.bg and 0x00FFFFFF) or 0xEE000000.toInt()
-        cv.drawRoundRect(r, dp(4f), dp(4f), bgPaint)
-        if (d.unsure) {
-            // bản dịch còn nghi ngờ: viền vàng mảnh để người chơi biết đây chưa chắc
-            markPaint.color = 0xCCF2B84B.toInt()
-            markPaint.strokeWidth = dp(1f)
-            cv.drawRoundRect(r, dp(4f), dp(4f), markPaint)
-        }
+        val p = if (prepared.containsKey(d)) prepared[d] else prepare(d).also { prepared[d] = it }
+        if (p == null) return
         cv.save()
-        cv.translate(r.left + padX, r.centerY() - lay.height / 2f)
-        lay.draw(cv)
+        cv.concat(p.matrix)
+        cv.clipRect(0f,0f,p.w,p.h)
+        bgPaint.color = d.bg
+        cv.drawRect(0f,0f,p.w,p.h,bgPaint)
+        cv.translate(p.pad, (p.h-p.layout.height)/2f)
+        p.layout.draw(cv)
         cv.restore()
     }
 
-    private fun layout(text: String, width: Int, size: Float, maxLines: Int): StaticLayout {
-        tp.textSize = size
-        return StaticLayout.Builder.obtain(text, 0, text.length, tp, width)
-            .setAlignment(Layout.Alignment.ALIGN_CENTER)
-            .setIncludePad(false)
-            .setMaxLines(maxLines)
-            .setEllipsize(TextUtils.TruncateAt.END)
+    private fun prepare(d: Draw): Prepared? {
+        if (d.unsure || d.text.isBlank()) return null
+        val quad = d.corners?.takeIf { it.size == 8 && it.all { n -> n.isFinite() } }
+            ?: floatArrayOf(d.rect.left,d.rect.top,d.rect.right,d.rect.top,d.rect.right,d.rect.bottom,d.rect.left,d.rect.bottom)
+        fun edge(a: Int, b: Int): Float = kotlin.math.hypot(quad[a]-quad[b],quad[a+1]-quad[b+1])
+        val w = (edge(0,2)+edge(6,4))/2f
+        val h = (edge(0,6)+edge(2,4))/2f
+        if (w < 8f || h < 6f || !w.isFinite() || !h.isFinite()) return null
+        val transform = Matrix()
+        if (!transform.setPolyToPoly(floatArrayOf(0f,0f,w,0f,w,h,0f,h),0,quad,0,4)) return null
+        val pad = minOf(dp(1.5f), h * 0.06f)
+        val tw = (w - pad * 2).toInt().coerceAtLeast(1)
+        val available = h - pad * 2
+        // Fit complete Vietnamese text inside the original block. Never ellipsize or cover adjacent icons.
+        val originalSize = (h / d.lines.coerceAtLeast(1) * 0.82f).coerceAtMost(sp(28f))
+        if (originalSize < 7f) return null
+        val minSize = minOf(originalSize, maxOf(7f, originalSize * 0.60f))
+        val paint = TextPaint(tp).apply { color = d.fg }
+        var size = originalSize
+        var lay = layout(d.text, tw, size, d.lines > 1, paint)
+        while ((lay.height > available || lay.getLineEnd(lay.lineCount - 1) < d.text.length) && size > minSize) {
+            size = maxOf(minSize, size - 0.6f)
+            lay = layout(d.text, tw, size, d.lines > 1, paint)
+        }
+        // A modest horizontal condensation helps longer Vietnamese labels fit
+        // without sacrificing font height or dropping any words.
+        if (lay.height > available) {
+            paint.textScaleX = 0.88f
+            lay = layout(d.text, tw, size, d.lines > 1, paint)
+        }
+        if (lay.height > available || lay.getLineEnd(lay.lineCount - 1) < d.text.length) return null
+        if ((0 until lay.lineCount).any { lay.getLineWidth(it) > tw + 1f }) return null
+        return Prepared(transform, w, h, pad, lay)
+    }
+
+    private fun layout(text: String, width: Int, size: Float, multiline: Boolean, paint: TextPaint): StaticLayout {
+        paint.textSize = size
+        return StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
+            .setAlignment(if (multiline) Layout.Alignment.ALIGN_NORMAL else Layout.Alignment.ALIGN_CENTER)
+            .setIncludePad(true)
+            .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
             .build()
     }
 }
@@ -170,13 +183,15 @@ class UiTranslate(
     private var copyFails = 0
     private var inflight = 0
     private var gen = 0
+    private var gameScope = ""
+    private fun scope(p: Prefs) = listOf(p.profile, PackStore.gameName(p), p.lang).joinToString("\u0000")
     private var lastNoticeAt = 0L
 
     /** [via]/[at]: bản dịch đang hiện do đâu và từ lúc nào; bản dịch máy (AI đang lỗi) được dịch lại bằng AI khi AI dùng được ([upgrading]: đang chờ bản mới). */
     private class Entry(var vi: String? = null, var unsure: Boolean = false, var failed: Boolean = false, var via: String = "", var at: Long = 0L, var upgrading: Boolean = false)
-    private class Item(val src: String, val key: String, val box: RectF, val bg: Int, val fg: Int)
+    private class Item(val src: String, val key: String, val box: RectF, val bg: Int, val fg: Int, val corners: FloatArray?, val lines: Int)
 
-    private val cache = HashMap<String, Entry>()
+    private val cache = LinkedHashMap<String, Entry>(64, 0.75f, true)
     /** Cài đặt của lượt dịch đang chạy (đặt ở start). */
     private var prefs: Prefs? = null
     private var items: List<Item> = emptyList()
@@ -217,6 +232,8 @@ class UiTranslate(
         if (running) return
         val pr = Prefs(act)
         prefs = pr
+        val newScope = scope(pr)
+        if (newScope != gameScope) { cache.clear(); missed.clear(); gameScope = newScope }
         lang = pr.lang
         cjk = Prefs.isCjk(lang)
         running = true
@@ -309,13 +326,19 @@ class UiTranslate(
 
     private val tick = object : Runnable {
         override fun run() {
+            val tickGeneration = gen
             try {
+                val p = prefs
+                if (p != null && scope(p) != gameScope) {
+                    if (once) finishOnce() else { stop(); start() }
+                    return
+                }
                 if (!checkOnce()) capture()
             } catch (t: Throwable) {
                 Log.e(TAG, "tick loi", t)
                 busy = false
             } finally {
-                if (running) handler.postDelayed(this, delay())
+                if (running && tickGeneration == gen) handler.postDelayed(this, delay())
             }
         }
     }
@@ -342,7 +365,8 @@ class UiTranslate(
         val bmp = try { Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888) } catch (_: Throwable) { return }
         busy = true
         try {
-            PixelCopy.request(sv, bmp, { res -> onCopied(res, bmp) }, handler)
+            val g = gen
+            PixelCopy.request(sv, bmp, { res -> if (g == gen) onCopied(res, bmp) else bmp.recycle() }, handler)
         } catch (e: Throwable) {
             runCatching { bmp.recycle() }
             busy = false
@@ -387,16 +411,18 @@ class UiTranslate(
         val keep = try { bmp.copy(Bitmap.Config.ARGB_8888, false) } catch (_: Throwable) { null }
         val bw = bmp.width
         val bh = bmp.height
+        val g = gen
         o.read(bmp, { msg ->
             keep?.let { runCatching { it.recycle() } }
+            if (g != gen) return@read
             busy = false
             if (msg.isNotEmpty()) notice(msg)
         }) { blocks ->
             try {
-                if (running) onBlocks(blocks, keep, bw, bh)
+                if (running && g == gen) onBlocks(blocks, keep, bw, bh)
             } finally {
                 keep?.let { runCatching { it.recycle() } }
-                busy = false
+                if (g == gen) busy = false
             }
         }
     }
@@ -412,8 +438,14 @@ class UiTranslate(
         val vw = overlay.width.toFloat()
         val vh = overlay.height.toFloat()
         if (vw < 2f || vh < 2f) return
-        val kx = vw / bw
-        val ky = vh / bh
+        val sv = video() ?: return
+        val surfaceLoc = IntArray(2); sv.getLocationOnScreen(surfaceLoc)
+        val overlayLoc = IntArray(2); overlay.getLocationOnScreen(overlayLoc)
+        val dx = (surfaceLoc[0] - overlayLoc[0]).toFloat()
+        val dy = (surfaceLoc[1] - overlayLoc[1]).toFloat()
+        val kx = sv.width.toFloat() / bw
+        val ky = sv.height.toFloat() / bh
+        if (kx <= 0f || ky <= 0f) return
         // "Dịch hết chữ" dịch cả vùng phụ đề; chế độ liên tục để phần phụ đề cho dịch phụ đề lo
         val ex = if (once) null else exclude()
         val out = ArrayList<Item>()
@@ -430,13 +462,20 @@ class UiTranslate(
                 val sub = RectF(ex.left * bw, ex.top * bh, ex.right * bw, ex.bottom * bh)
                 if (overlapFrac(box, sub) > 0.5f) continue
             }
-            val bg = keep?.let { sampleBackground(it, box.left, box.top, box.right, box.bottom) } ?: Color.BLACK
-            val fg = if (luminance(bg) > 150) 0xFF101010.toInt() else Color.WHITE
+            val style = keep?.let { NativeTextStyle.sample(it, b) } ?: continue
             val key = UiText.key(src)
-            out.add(Item(src, key, RectF(box.left * kx, box.top * ky, box.right * kx, box.bottom * ky), bg, fg))
-            request(src, key)
+            val corners = b.corners?.mapIndexed { i, v -> if (i % 2 == 0) v * kx + dx else v * ky + dy }?.toFloatArray()
+            out.add(Item(src, key, RectF(box.left * kx + dx, box.top * ky + dy, box.right * kx + dx, box.bottom * ky + dy), style.first, style.second, corners, b.lineCount))
         }
         items = out
+        val visible = out.mapTo(HashSet()) { it.key }
+        val stale = queue.filter { it.second !in visible }
+        queue.removeAll(stale.toSet())
+        for ((_, key) in stale) {
+            val entry = cache[key] ?: continue
+            if (entry.vi == null) cache.remove(key) else entry.upgrading = false
+        }
+        for (item in out) request(item.src, item.key)
         if (once) emptyPasses = if (out.isEmpty()) emptyPasses + 1 else 0
         refresh()
     }
@@ -452,27 +491,6 @@ class UiTranslate(
         return area / own
     }
 
-    /** Màu nền quanh khối chữ: trung vị các điểm ngay sát bên ngoài khung (chữ nằm trong khung nên không lẫn vào). */
-    private fun sampleBackground(bmp: Bitmap, l: Int, t: Int, r: Int, b: Int): Int {
-        val m = 3
-        val xs = intArrayOf(l - m, (l + r) / 2, r + m)
-        val ys = intArrayOf(t - m, (t + b) / 2, b + m)
-        val rs = ArrayList<Int>()
-        val gs = ArrayList<Int>()
-        val bs = ArrayList<Int>()
-        for (yi in ys.indices) for (xi in xs.indices) {
-            if (xi == 1 && yi == 1) continue
-            val x = xs[xi].coerceIn(0, bmp.width - 1)
-            val y = ys[yi].coerceIn(0, bmp.height - 1)
-            val c = bmp.getPixel(x, y)
-            rs.add(Color.red(c)); gs.add(Color.green(c)); bs.add(Color.blue(c))
-        }
-        fun med(v: ArrayList<Int>): Int { v.sort(); return v[v.size / 2] }
-        return Color.rgb(med(rs), med(gs), med(bs))
-    }
-
-    private fun luminance(c: Int): Int = (Color.red(c) * 3 + Color.green(c) * 6 + Color.blue(c)) / 10
-
     /**
      * Xin dịch một khối chữ nếu chưa có trong bộ nhớ. Chạy tối đa [MAX_INFLIGHT] khối cùng lúc, khối còn lại xếp hàng và tự
      * chạy tiếp khi có chỗ (trước đây khối thừa bị bỏ, phải đợi lượt quét sau, mà hình đứng yên thì cả chục giây mới tới lượt).
@@ -481,7 +499,7 @@ class UiTranslate(
         val old = cache[key]
         if (old != null) {
             // khối này đang hiện bản dịch máy vì AI lỗi: sau ít giây (và AI không còn nghỉ) xin dịch lại bằng AI, bản cũ vẫn hiện trong lúc chờ
-            if (old.via == "may" && !old.upgrading && tt != null && prefs?.let { Ai.enabled(it) && Ai.coolingMs(it) == 0L } == true &&
+            if ((old.via == "may" || old.failed || old.unsure) && !old.upgrading && tt != null && prefs?.let { Ai.enabled(it) && Ai.coolingMs(it) == 0L } == true &&
                 SystemClock.uptimeMillis() - old.at > UPGRADE_AFTER_MS && queue.size < MAX_QUEUE) {
                 old.upgrading = true
                 queue.addLast(src to key)
@@ -491,7 +509,12 @@ class UiTranslate(
         }
         if (tt == null) return
         if (queue.size >= MAX_QUEUE) return   // quá nhiều khối một lúc: để lượt quét sau
-        if (cache.size > MAX_CACHE) { cache.clear(); queue.clear() }
+        if (cache.size >= MAX_CACHE) {
+            val visible = items.mapTo(HashSet()) { it.key }
+            val victim = cache.entries.firstOrNull { it.key !in visible && !it.value.upgrading && (it.value.vi != null || it.value.failed) }
+            if (victim == null) return
+            cache.remove(victim.key)
+        }
         cache[key] = Entry()
         queue.addLast(src to key)
         pump()
@@ -518,6 +541,7 @@ class UiTranslate(
                 e.upgrading = false
                 if (tr.via == "may") { e.at = SystemClock.uptimeMillis(); pump(); return@translateFull }   // AI vẫn lỗi: giữ bản cũ, thử lại sau
             }
+            e.at = SystemClock.uptimeMillis()
             val restored = UiText.restore(tr.text, prot)
             if (BuildConfig.DEBUG) Log.i(TAG, "dich: ${src.take(60)} => ${restored ?: "(mat ma giu cho)"} [${tr.via}]")
             val same = UiText.key(tr.text) == UiText.key(prot.text)
@@ -526,10 +550,11 @@ class UiTranslate(
                 same -> { e.failed = true; missed[src] = "chưa dịch được (bản dịch giống chữ gốc)" }
                 else -> {
                     e.vi = restored
+                    e.failed = false
                     e.via = tr.via
                     e.at = SystemClock.uptimeMillis()
                     e.unsure = tr.uncertain
-                    if (tr.uncertain) missed[src] = "nghi ngờ: $restored"
+                    if (tr.uncertain) missed[src] = "nghi ngờ: $restored" else missed.remove(src)
                 }
             }
             refresh()
@@ -542,7 +567,7 @@ class UiTranslate(
         for (it in items) {
             val e = cache[it.key] ?: continue
             val vi = e.vi ?: continue
-            list.add(UiOverlay.Draw(it.box, vi, it.bg, it.fg, e.unsure))
+            if (!e.unsure) list.add(UiOverlay.Draw(it.box, vi, it.bg, it.fg, false, it.corners, it.lines))
         }
         overlay.set(list)
     }

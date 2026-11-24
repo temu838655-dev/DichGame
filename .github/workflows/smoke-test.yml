@@ -40,6 +40,20 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Cài và kiểm tra ảnh hệ thống Android (thử lại nếu tải lỗi)
+        shell: bash
+        run: |
+          package="system-images;android-34;google_apis;x86_64"
+          for attempt in 1 2 3; do
+            if sdkmanager --install "$package" && test -s "$ANDROID_HOME/system-images/android-34/google_apis/x86_64/system.img"; then
+              exit 0
+            fi
+            sdkmanager --uninstall "$package" || true
+            sleep 10
+          done
+          echo "Không tải được ảnh hệ thống Android sau 3 lần."
+          exit 1
+
       - name: Chạy trên máy giả lập
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -60,6 +74,10 @@ jobs:
       - name: Đẩy ảnh lên nhánh ci-shots
         if: always()
         run: |
+          if [ ! -d shots ] || [ -z "$(find shots -type f -print -quit)" ]; then
+            echo "Không có ảnh kiểm thử để đẩy."
+            exit 0
+          fi
           cd shots
           git init -q
           git checkout -q -b ci-shots
