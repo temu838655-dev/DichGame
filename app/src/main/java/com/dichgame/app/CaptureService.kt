@@ -169,6 +169,7 @@ class CaptureService : Service() {
         val context = gameContext(p)
         if (context == activeGameContext) return false
         activeGameContext = context
+        nextCloudCheck = 0L
         speakers = SpeakerBook(PackStore.cast(p).map { it.name } + p.detectedSpeakers())
         translateToken++
         translating = false
@@ -185,10 +186,40 @@ class CaptureService : Service() {
         return true
     }
 
+    private val cloudRefresh = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private var nextCloudCheck = 0L
+    private val cloudBusy = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    private fun refreshCloudIfDue() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now < nextCloudCheck || cloudBusy.get()) return
+        nextCloudCheck = now + 60_000L
+        val p = Prefs(this)
+        if (!p.autoPackRefresh) return
+        val profile = p.profile
+        val game = PackStore.gameName(p)
+        if (game.isBlank()) return
+        if (!cloudBusy.compareAndSet(false, true)) return
+        cloudRefresh.execute {
+            try {
+                val source = PackStore.cloudInfo(applicationContext, profile, game)?.source
+                if (source != null && p.autoPackRefresh && !Thread.currentThread().isInterrupted) {
+                    PackStore.importLink(applicationContext, p, source, profile, game)
+                }
+            } catch (_: Exception) {
+                // Keep the existing offline pack on network or validation failure.
+            } finally {
+                cloudBusy.set(false)
+            }
+        }
+        nextCloudCheck = now + 30 * 60_000L
+    }
+
     private val tick = object : Runnable {
         override fun run() {
             try {
                 syncGameContext()
+                refreshCloudIfDue()
                 housekeeping()
                 capture()
             } catch (_: Throwable) {
@@ -1485,6 +1516,7 @@ class CaptureService : Service() {
 
     override fun onDestroy() {
         running = false
+        cloudRefresh.shutdownNow()
         jobs.clear()
         retired.forEach { runCatching { it.close() } }
         // dừng thu âm trước, rồi chờ bộ nhận dạng xử lý nốt, cuối cùng mới đóng hàng đợi; làm ở nền để không chặn luồng chính
