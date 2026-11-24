@@ -12,23 +12,25 @@ def prepare(source, output, max_rows=100, max_chars=12000):
     rows = {}
     with Path(source).open(encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f, strict=True)
-        if reader.fieldnames != ["id", "source"]:
-            raise ValueError("Expected id,source CSV")
+        if reader.fieldnames not in (["id", "source"], ["id", "source", "context"]):
+            raise ValueError("Expected id,source or id,source,context CSV")
         for row in reader:
             if None in row or any(v is None for v in row.values()):
                 raise ValueError("Malformed CSV row")
             key, value = row["id"].strip(), row["source"].strip()
             if not key or not value or key in rows:
                 raise ValueError("Empty text or duplicate ID")
-            rows[key] = value
+            rows[key] = (value, row.get("context", "").strip())
     if not rows:
         raise ValueError("Empty input")
     unique = {}
     for key, value in rows.items():
         unique.setdefault(value, []).append(key)
     batches, current, size = [], [], 2
-    for value, ids in unique.items():
+    for (value, context), ids in unique.items():
         item = {"id": ids[0], "source": value}
+        if context:
+            item["context"] = context
         cost = len(json.dumps(item, ensure_ascii=False)) + 2
         if cost + 2 > max_chars:
             raise ValueError("Single row exceeds character limit: " + ids[0])
