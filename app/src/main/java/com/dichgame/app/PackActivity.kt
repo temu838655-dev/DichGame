@@ -106,6 +106,9 @@ class PackActivity : Activity() {
                 if (cloud == null) "Chưa có kho Cloud cho game đang chọn."
                 else "Phiên bản ${cloud.version} đã lưu trên máy. Khi mất mạng vẫn dùng được. Bản nhập tay được ưu tiên.",
                 13f, Ui.SUB), Ui.lpm(this@PackActivity, 0, 8))
+            cloudCard.addView(Ui.switchRow(this@PackActivity, "Tự kiểm tra kho Cloud",
+                "Kiểm tra nguồn đã lưu khi chơi game, tối đa mỗi 30 phút. Không xóa kho offline khi lỗi mạng.",
+                p.autoPackRefresh) { p.autoPackRefresh = it })
             cloudCard.addView(Ui.button(this@PackActivity, if (linkBusy) "Đang tải…" else if (cloud?.source != null) "Kiểm tra bản Cloud mới" else "Nhập link gói Cloud") {
                 val source = cloud?.source
                 if (source != null) downloadLink(source) else linkDialog()
