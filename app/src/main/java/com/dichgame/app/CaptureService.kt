@@ -14,6 +14,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -543,13 +544,8 @@ class CaptureService : Service() {
         lastMenuSceneCheck = now
         val img = captureBuffer.reader?.acquireLatestImage() ?: return
         val thumb = try {
-            val p = img.planes[0]
-            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            try {
-                full.copyPixelsFromBuffer(p.buffer)
-                val cropped = cropAndRecycle(full, 0, 0, img.width, img.height)
-                try { Ocr.thumbFine(cropped) } finally { cropped.recycle() }
-            } finally { if (!full.isRecycled) full.recycle() }
+            val cropped = captureBitmap(img)
+            try { Ocr.thumbFine(cropped) } finally { cropped.recycle() }
         } finally { img.close() }
         if (watch.changed(thumb)) {
             clearMenuOverlay()
@@ -581,19 +577,25 @@ class CaptureService : Service() {
         }
     }
 
-    /**
-     * Tạo ảnh cắt độc lập rồi giải phóng bitmap toàn màn hình tạm.
-     * Các luồng OCR chỉ cần giữ ảnh crop; giữ cả ảnh gốc ở mỗi lần quét
-     * sẽ làm tăng áp lực bộ nhớ khi game chạy liên tục.
-     */
-    private fun cropAndRecycle(full: Bitmap, x: Int, y: Int, width: Int, height: Int): Bitmap {
-        // createBitmap may return the original object for an unchanged full-screen crop.
-        // Always return a separate bitmap before releasing the caller's original.
-        return try {
-            val cropped = Bitmap.createBitmap(full, x, y, width, height)
-            if (cropped === full) checkNotNull(full.copy(Bitmap.Config.ARGB_8888, false)) else cropped
-        } finally {
-            if (!full.isRecycled) runCatching { full.recycle() }
+    private val rgbaCrop = RgbaCrop()
+
+    private fun captureBitmap(img: Image, view: View? = null): Bitmap {
+        val plane = img.planes[0]
+        require(plane.pixelStride == 4)
+        val loc = IntArray(2)
+        view?.getLocationOnScreen(loc)
+        val x = loc[0].coerceIn(0, img.width - 1)
+        val y = loc[1].coerceIn(0, img.height - 1)
+        val width = (view?.width ?: img.width).coerceIn(1, img.width - x)
+        val height = (view?.height ?: img.height).coerceIn(1, img.height - y)
+        val pixels = rgbaCrop.pixels(plane.buffer, plane.rowStride, x, y, width, height)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        try {
+            bitmap.copyPixelsFromBuffer(pixels)
+            return bitmap
+        } catch (e: Throwable) {
+            bitmap.recycle()
+            throw e
         }
     }
 
@@ -611,15 +613,7 @@ class CaptureService : Service() {
         ensureSize()
         val img = captureBuffer.reader?.acquireLatestImage() ?: return
         val bmp = try {
-            val p = img.planes[0]
-            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            try {
-                full.copyPixelsFromBuffer(p.buffer)
-                cropAndRecycle(full, 0, 0, img.width, img.height)
-            } finally {
-                // Đảm bảo giải phóng ảnh toàn màn hình nếu copy pixel hoặc crop gặp lỗi.
-                if (!full.isRecycled) runCatching { full.recycle() }
-            }
+            captureBitmap(img)
         } finally { img.close() }
         busy = true
         val skip = listOfNotNull(rectOf(frame), rectOf(overlay))
@@ -1038,19 +1032,7 @@ class CaptureService : Service() {
             return
         }
         val crop = try {
-            val p = img.planes[0]
-            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            try {
-                full.copyPixelsFromBuffer(p.buffer)
-                val loc = IntArray(2)
-                box.getLocationOnScreen(loc)
-                val x = loc[0].coerceIn(0, img.width - 1)
-                val y = loc[1].coerceIn(0, img.height - 1)
-                cropAndRecycle(full, x, y, box.width.coerceIn(1, img.width - x), box.height.coerceIn(1, img.height - y))
-            } finally {
-                // Kể cả copy pixel hoặc lấy tọa độ lỗi, không giữ bitmap toàn màn hình.
-                if (!full.isRecycled) runCatching { full.recycle() }
-            }
+            captureBitmap(img, box)
         } catch (_: Exception) {
             reportFrameError()
             finishBusy()
@@ -1227,14 +1209,7 @@ class CaptureService : Service() {
             return
         }
         val bmp = try {
-            val p = img.planes[0]
-            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            try {
-                full.copyPixelsFromBuffer(p.buffer)
-                cropAndRecycle(full, 0, 0, img.width, img.height)
-            } finally {
-                if (!full.isRecycled) runCatching { full.recycle() }
-            }
+            captureBitmap(img)
         } catch (_: Exception) {
             reportFrameError()
             overlay?.visibility = View.VISIBLE
@@ -1426,22 +1401,7 @@ class CaptureService : Service() {
         val fr = frame ?: return
         val img = captureBuffer.reader?.acquireLatestImage() ?: return
         val crop = try {
-            val p = img.planes[0]
-            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
-            try {
-                full.copyPixelsFromBuffer(p.buffer)
-                val loc = IntArray(2)
-                fr.getLocationOnScreen(loc)
-                val x = loc[0].coerceIn(0, img.width - 1)
-                val y = loc[1].coerceIn(0, img.height - 1)
-                val w = fr.width.coerceIn(1, img.width - x)
-                val h = fr.height.coerceIn(1, img.height - y)
-                cropAndRecycle(full, x, y, w, h)
-            } finally {
-                // cropAndRecycle đã giải phóng ảnh gốc khi thành công; nhánh lỗi
-                // (copy pixel / lấy tọa độ / tạo crop) cũng phải giải phóng ảnh.
-                if (!full.isRecycled) runCatching { full.recycle() }
-            }
+            captureBitmap(img, fr)
         } finally { img.close() }
 
         val o = ocr

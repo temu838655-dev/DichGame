@@ -14,7 +14,6 @@ Dịch phụ đề game và phim sang tiếng Việt ngay trên màn hình, có 
 
 - `app/` – app điện thoại Android (`com.dichgame.app`): chụp màn hình, đọc chữ (OCR), dịch, hiện bản dịch nổi.
 - `tv/` – app nhận phụ đề cho Android TV / Google TV (`com.dichgame.tv`), vẽ nổi trên hình HDMI.
-- `keystore/` – khóa ký APK mặc định (xem mục "Khóa ký").
 - `.github/workflows/build-apk.yml` – tự build toàn bộ trên GitHub.
 
 ## Tính năng (app điện thoại)
@@ -42,7 +41,7 @@ Trong lúc chạy, thông báo có 3 nút: **Chỉnh/Khóa khung**, **Dịch men
 
 ## Build trên GitHub
 
-1. Tạo repo mới trên GitHub, đẩy **toàn bộ** thư mục này lên (nhớ cả thư mục ẩn `.github` và thư mục `keystore`).
+1. Tạo repo mới trên GitHub, đẩy **toàn bộ** thư mục này lên (nhớ cả thư mục ẩn `.github`).
    Dùng dòng lệnh: `git init && git add -A && git commit -m "Dịch game" && git branch -M main && git remote add origin <địa chỉ repo> && git push -u origin main`
 2. Vào tab **Actions** › workflow **Build APK**. Nó chạy tự động mỗi lần đẩy code, hoặc bấm **Run workflow**.
 3. Khi xong có 2 file APK:
@@ -61,9 +60,9 @@ Mỗi bản dựng trên nhánh `main` có số thứ tự (`build-N`), số nà
 
 ### Khóa ký
 
-Mặc định APK ký bằng khóa trong `keystore/dichgame.jks` (mật khẩu `dichgame123`). Khóa này nằm công khai trong repo, chỉ hợp để dùng cá nhân.
-Muốn dùng khóa riêng: tạo 4 secrets trên GitHub (`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`), workflow sẽ tự dùng.
-Lưu ý: đổi khóa thì phải gỡ app cũ rồi cài lại.
+Bản phát hành cần bốn GitHub Actions secrets: `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. Giữ khóa riêng và bản sao lưu ngoài Git. Nếu đã phát hành bằng một khóa riêng an toàn, tiếp tục sử dụng khóa đó. Workflow dừng nếu thiếu thông tin hoặc nếu chứng chỉ trùng với khóa từng công khai trong repo.
+
+APK thử nghiệm trên nhánh và pull request dùng khóa tạm từng lần chạy. Bản debug dùng khóa debug trên máy. Khi chuyển từ bản cũ dùng khóa công khai sang bản ký mới, người dùng cài APK trực tiếp cần xuất dữ liệu cần giữ trước khi gỡ bản cũ rồi cài lại.
 
 ## Ghép TV
 

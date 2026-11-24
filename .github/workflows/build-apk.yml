@@ -26,6 +26,39 @@ jobs:
         with:
           fetch-depth: 40   # đủ để lấy lời nhắn các commit của lần đẩy này làm ghi chú bản phát hành
 
+      - name: Chuẩn bị khóa ký
+        env:
+          PUBLISH: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
+          KEYSTORE_BASE64: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) && secrets.KEYSTORE_BASE64 || '' }}
+          KEYSTORE_PASSWORD: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) && secrets.KEYSTORE_PASSWORD || '' }}
+          KEY_ALIAS: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) && secrets.KEY_ALIAS || '' }}
+          KEY_PASSWORD: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) && secrets.KEY_PASSWORD || '' }}
+        run: |
+          set -euo pipefail
+          umask 077
+          path="$RUNNER_TEMP/android-signing.jks"
+          if [[ "$PUBLISH" == true ]]; then
+            : "${KEYSTORE_BASE64:?Thiếu KEYSTORE_BASE64}" "${KEYSTORE_PASSWORD:?Thiếu KEYSTORE_PASSWORD}" "${KEY_ALIAS:?Thiếu KEY_ALIAS}" "${KEY_PASSWORD:?Thiếu KEY_PASSWORD}"
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$path"
+          else
+            KEY_ALIAS=ci
+            KEYSTORE_PASSWORD=$(openssl rand -hex 24)
+            KEY_PASSWORD=$KEYSTORE_PASSWORD
+            keytool -genkeypair -keystore "$path" -alias "$KEY_ALIAS" -storepass:env KEYSTORE_PASSWORD -keypass:env KEY_PASSWORD -keyalg RSA -keysize 2048 -validity 7 -dname CN=Preview
+          fi
+          fingerprint=$(keytool -exportcert -keystore "$path" -storepass:env KEYSTORE_PASSWORD -alias "$KEY_ALIAS" | sha256sum | cut -d' ' -f1)
+          if [[ "$fingerprint" == 33eae1abcd6414312b96e9f6af7b34e3cd7e4893b36c1159e1ed7c1fd1537fcb ]]; then
+            echo "::error::Khóa này đã công khai trong lịch sử Git."
+            exit 1
+          fi
+          {
+            echo "KEYSTORE_FILE=$path"
+            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "KEY_ALIAS=$KEY_ALIAS"
+            echo "KEY_PASSWORD=$KEY_PASSWORD"
+            echo "SIGNER_SHA256=$fingerprint"
+          } >> "$GITHUB_ENV"
+
       # Engine Remote Play (chiaki-ng) nằm trong third_party/chiaki-ng. Chỉ lấy đúng các thư viện con cần dùng, không lấy cả repo.
       - name: Lấy engine Remote Play (chiaki-ng)
         run: |
@@ -60,23 +93,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
-
-      # Nếu đã tạo secrets KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD thì ký bằng khóa riêng của bạn,
-      # không thì dùng khóa mặc định trong thư mục keystore/.
-      - name: Dùng khóa ký riêng (nếu có)
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-            echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
-            echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> "$GITHUB_ENV"
-            echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> "$GITHUB_ENV"
-            echo "Đang ký bằng khóa riêng."
-          else
-            echo "Đang ký bằng khóa mặc định trong keystore/."
-          fi
 
       # Android NDK đôi lúc được SDK Manager tải thành tệp ZIP hỏng trên runner GitHub.
       # Chuẩn bị NDK trước khi chạy Gradle, thử lại thay vì làm hỏng cả bản phát hành.
@@ -143,6 +159,15 @@ jobs:
             echo "| --- | --- |"
             for f in dist/*.apk; do echo "| $(basename "$f") | $(du -h "$f" | cut -f1) |"; done
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Xác minh chữ ký của hai APK
+        run: |
+          set -euo pipefail
+          signer=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          for apk in dist/*.apk; do
+            "$signer" verify --print-certs "$apk" > "$RUNNER_TEMP/apk-cert.txt"
+            grep -Fx "Signer #1 certificate SHA-256 digest: $SIGNER_SHA256" "$RUNNER_TEMP/apk-cert.txt"
+          done
 
       - uses: actions/upload-artifact@v4
         with:

@@ -17,22 +17,20 @@ android {
         versionName = "1.2"
         buildConfigField("int", "BUILD_NO", "$buildNo")
     }
-    // Cùng cách ký với app điện thoại, xem app/build.gradle.kts.
     signingConfigs {
-        create("release") {
-            storeFile = file(System.getenv("KEYSTORE_FILE") ?: "$rootDir/keystore/dichgame.jks")
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "dichgame123"
-            keyAlias = System.getenv("KEY_ALIAS") ?: "dichgame"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: "dichgame123"
+        System.getenv("KEYSTORE_FILE")?.let { path ->
+            create("release") {
+                storeFile = file(path)
+                storePassword = requireNotNull(System.getenv("KEYSTORE_PASSWORD"))
+                keyAlias = requireNotNull(System.getenv("KEY_ALIAS"))
+                keyPassword = requireNotNull(System.getenv("KEY_PASSWORD"))
+            }
         }
     }
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
-        }
-        debug {
-            signingConfig = signingConfigs.getByName("release")
         }
     }
     lint {

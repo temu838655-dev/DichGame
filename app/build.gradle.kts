@@ -83,23 +83,20 @@ android {
             isUniversalApk = true
         }
     }
-    // Khóa ký: dùng khóa trong thư mục keystore/ (cùng khóa cho debug và release nên cài đè lên nhau được).
-    // Muốn dùng khóa riêng: đặt các biến môi trường KEYSTORE_FILE, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD (hoặc secrets trên GitHub).
     signingConfigs {
-        create("release") {
-            storeFile = file(System.getenv("KEYSTORE_FILE") ?: "$rootDir/keystore/dichgame.jks")
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "dichgame123"
-            keyAlias = System.getenv("KEY_ALIAS") ?: "dichgame"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: "dichgame123"
+        System.getenv("KEYSTORE_FILE")?.let { path ->
+            create("release") {
+                storeFile = file(path)
+                storePassword = requireNotNull(System.getenv("KEYSTORE_PASSWORD"))
+                keyAlias = requireNotNull(System.getenv("KEY_ALIAS"))
+                keyPassword = requireNotNull(System.getenv("KEY_PASSWORD"))
+            }
         }
     }
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
-        }
-        debug {
-            signingConfig = signingConfigs.getByName("release")
         }
     }
     lint {
