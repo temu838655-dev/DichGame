@@ -478,6 +478,7 @@ class Prefs(ctx: Context) {
         set(v) {
             // đổi hồ sơ: lưu tên game của hồ sơ cũ, rồi nạp tên game của hồ sơ mới vào khóa "game" mà CaptureService đang đọc
             val old = profile
+            if (old != v) RecentLines.clear()
             val cur = sp.getString("game", "").orEmpty()
             val next = if (v == old) cur else (sp.getString("game_$v", null) ?: "")
             sp.edit().putString("game_$old", cur).putString("profile", v).putString("game", next).apply()
@@ -490,12 +491,18 @@ class Prefs(ctx: Context) {
 
     var selectedGameTitle: String
         get() = selectedGameTitleOf(profile)
-        set(v) = sp.edit().putString("game_title_$profile", v.trim()).apply()
+        set(v) {
+            if (selectedGameTitle != v.trim()) RecentLines.clear()
+            sp.edit().putString("game_title_$profile", v.trim()).apply()
+        }
 
     var game: String
         get() = sp.getString("game", "").orEmpty()
-        set(v) = sp.edit().putString("game", v.trim()).putString("game_$profile", v.trim())
-            .remove("game_title_$profile").apply()
+        set(v) {
+            if (game != v.trim() || selectedGameTitle.isNotEmpty()) RecentLines.clear()
+            sp.edit().putString("game", v.trim()).putString("game_$profile", v.trim())
+                .remove("game_title_$profile").apply()
+        }
 
     fun addProfile(name: String): Boolean {
         val n = name.trim()
