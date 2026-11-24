@@ -183,7 +183,13 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
+    private var sharePressDevice: Int? = null
+    private var sharePulse: Runnable? = null
+
     private fun resetPhysicalControllerState() {
+        sharePulse?.let(ui::removeCallbacks)
+        sharePulse = null
+        sharePressDevice = null
         activePhysicalDeviceId = null
         phys = ControllerState()
         physicalL2Digital = false
@@ -204,6 +210,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         mode = intent.getStringExtra(EXTRA_MODE) ?: "phone"
         wantTranslate = intent.getBooleanExtra(EXTRA_TRANSLATE, false)
+        wantUiTr = Prefs(this).autoMenu
         player = intent.getIntExtra(EXTRA_PLAYER, 0)
         padOn = mode != "tv"
         val demoMode = if (BuildConfig.DEBUG) intent.getStringExtra("dg_demo") else null
@@ -1228,14 +1235,16 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             gameAudioPcmQueue = candidateAudioQueue
             candidateAudioQueue = null
             candidate = null
+            surface?.let { s.setSurface(it) }
+            push()
             val modelDirectory = java.io.File(filesDir, "whisper-tiny")
             if (WhisperTinyModelInstaller(modelDirectory).isInstalled()) {
                 val worker = GameAudioAsrWorker(
                     queue = gameAudioPcmQueue!!,
                     modelDirectory = modelDirectory,
                     language = Prefs(this).lang,
-                    onTranscript = { text -> routeAudio(text, 0L, 1f) },
-                    onTranscriptMeta = { text, ms, rms -> routeAudio(text, ms, rms) },
+                    onTranscript = { text -> ui.post { if (g == gen && session === s) routeAudio(text, 0L, 1f) } },
+                    onTranscriptMeta = { text, ms, rms -> ui.post { if (g == gen && session === s) routeAudio(text, ms, rms) } },
                     onError = { message ->
                         ui.post {
                             if (!isFinishing && !isDestroyed) {
@@ -1245,10 +1254,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     },
                 )
                 gameAudioAsrWorker = worker
-                worker.start()
+                ui.postDelayed({
+                    if (g == gen && session === s && gameAudioAsrWorker === worker && activityStarted) worker.start()
+                }, 800L)
             }
-            surface?.let { s.setSurface(it) }
-            push()
         } catch (e: Throwable) {
             // start() có thể ném lỗi trước khi Session được đưa vào biến session; giải phóng ứng viên để tránh rò tài nguyên native.
             candidate?.let { it.audioFrameCallback = null; try { it.stop() } catch (_: Throwable) {}; try { it.dispose() } catch (_: Throwable) {} }
@@ -1491,6 +1500,30 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     override fun dispatchKeyEvent(e: KeyEvent): Boolean {
         if (e.keyCode != KeyEvent.KEYCODE_BACK && isPad(e.source) && acceptsPhysicalDevice(e.deviceId)) {
             val down = e.action == KeyEvent.ACTION_DOWN
+            if (e.keyCode == KeyEvent.KEYCODE_BUTTON_SELECT &&
+                (Prefs(this).controllerTranslate || sharePressDevice == e.deviceId)) {
+                if (down && e.repeatCount == 0) sharePressDevice = e.deviceId
+                if (e.action == KeyEvent.ACTION_UP && sharePressDevice == e.deviceId) {
+                    sharePressDevice = null
+                    if (!e.isCanceled) {
+                        if (e.eventTime - e.downTime >= 600L) {
+                            translateOnce()
+                        } else {
+                            sharePulse?.let(ui::removeCallbacks)
+                            phys.buttons = phys.buttons or ControllerState.BUTTON_SHARE
+                            push()
+                            val release = Runnable {
+                                phys.buttons = phys.buttons and ControllerState.BUTTON_SHARE.inv()
+                                sharePulse = null
+                                push()
+                            }
+                            sharePulse = release
+                            ui.postDelayed(release, 90L)
+                        }
+                    }
+                }
+                return true
+            }
             when (e.keyCode) {
                 KeyEvent.KEYCODE_BUTTON_L2 -> { physicalL2Digital = down; updatePhysicalTriggers(); push(); return true }
                 KeyEvent.KEYCODE_BUTTON_R2 -> { physicalR2Digital = down; updatePhysicalTriggers(); push(); return true }
@@ -1668,19 +1701,17 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private fun translateOnce() {
         try {
             val u = ensureUiTr()
-            if (u.running && !u.once) {
-                Toast.makeText(this, "Dịch menu đang bật nên chữ trên hình đã được dịch liên tục. Muốn dịch một lần thì tắt Dịch menu trước.", Toast.LENGTH_LONG).show()
-                return
-            }
-            if (u.running) {
+            if (u.running && u.once) {
                 u.stop()
+                if (wantUiTr) startUiTr()
                 syncTools()
                 Toast.makeText(this, "Đã tắt Dịch hết chữ.", Toast.LENGTH_SHORT).show()
                 return
             }
-            wantUiTr = false
+            if (u.running) u.stop()
             u.startOnce {
                 if (demo) android.util.Log.i("DG_PLAY", "mot-lan da-tu-tat")
+                if (wantUiTr && activityStarted && !isFinishing && !isDestroyed) startUiTr()
                 syncTools()
             }
             syncTools()
@@ -1801,6 +1832,13 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                         syncTools()
                     })
                 }
+                hVoice.addView(Ui.switchRow(a, "Chỉ nghe, không hiện phụ đề", "Ẩn chữ dịch, vẫn đọc tiếng Việt.", pr.listenOnly) {
+                    pr.listenOnly = it
+                    live?.setSpeak(pr.speak || pr.narrate)
+                    live?.refreshSubtitleVisibility()
+                    syncTools()
+                    drawVoice()
+                })
                 hVoice.addView(Ui.segmented(a, listOf("Giọng cơ bản", "Giọng AI"),
                     if (pr.voiceEngine == "ai") 1 else 0) { i ->
                     pr.voiceEngine = if (i == 1) "ai" else "system"

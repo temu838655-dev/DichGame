@@ -306,7 +306,7 @@ class Prefs(ctx: Context) {
      * vì vậy không được tính lại giọng theo vị trí trong danh sách này sau khi đã gán.
      * Lần đầu nâng cấp, ghi nhận thứ tự cũ để những nhân vật đã chơi không bị đổi giọng.
      */
-    private fun stableAutoVoice(name: String, aliases: List<String>): String = synchronized(sp) {
+    private fun stableAutoVoice(name: String, aliases: List<String>, preferred: List<Pair<String, String>> = AI_VOICES): String = synchronized(sp) {
         val key = "auto_voices_$profile"
         val counterKey = "auto_voice_count_$profile"
         val old = sp.getString(key, null)
@@ -325,9 +325,11 @@ class Prefs(ctx: Context) {
         val stored = names.firstNotNullOfOrNull { alias ->
             mapping.optString(alias).takeIf { id -> AI_VOICES.any { it.first == id } }
         }
-        if (stored != null) return@synchronized stored
+        if (stored != null && preferred.any { it.first == stored }) return@synchronized stored
         val count = sp.getInt(counterKey, mapping.length()).coerceAtLeast(0)
-        val selected = AI_VOICES[count % AI_VOICES.size].first
+        val used = mapping.keys().asSequence().map { mapping.optString(it) }.toSet()
+        val available = preferred.filterNot { it.first in used }.ifEmpty { preferred }
+        val selected = available[count % available.size].first
         mapping.put(names.first(), selected)
         sp.edit().putString(key, mapping.toString()).putInt(counterKey, count + 1).apply()
         selected
@@ -365,11 +367,13 @@ class Prefs(ctx: Context) {
             listOf("cô gái", "cô bé", "phụ nữ", "nữ thần", "quý bà", "con gái", "người mẹ").any { it in desc }
         val male = Regex("(?:^|[\\s,;])(?:giọng\\s*)?(?:nam|male)(?=$|[\\s,;])").containsMatchIn(desc) ||
             listOf("đàn ông", "cậu bé", "anh chàng", "người cha", "con trai", "quý ông").any { it in desc }
-        if (female && !male) return femaleAiVoice
-        if (male && !female) return maleAiVoice
-        // Không suy luận giới tính từ tên. Giọng tự động được lưu cố định theo hồ sơ.
+        val pool = when {
+            female && !male -> FEMALE_AI_VOICES.sortedBy { if (it.first == femaleAiVoice) 0 else 1 }
+            male && !female -> MALE_AI_VOICES.sortedBy { if (it.first == maleAiVoice) 0 else 1 }
+            else -> AI_VOICES
+        }
         val canonical = card?.names?.firstOrNull() ?: name
-        return stableAutoVoice(canonical, card?.names.orEmpty() + name)
+        return stableAutoVoice(canonical, card?.names.orEmpty() + name, pool)
     }
     var ttsModel: String
         get() = sp.getString("ttsmodel", "gemini-3.8-flash-tts").orEmpty().ifBlank { "gemini-3.8-flash-tts" }
@@ -521,9 +525,19 @@ class Prefs(ctx: Context) {
     var slow: Boolean
         get() = sp.getBoolean("slow", false)
         set(v) = sp.edit().putBoolean("slow", v).apply()
+    var listenOnly: Boolean
+        get() = sp.getBoolean("listen_only", false)
+        set(v) = sp.edit().putBoolean("listen_only", v).apply()
+    var controllerTranslate: Boolean
+        get() = sp.getBoolean("controller_translate", true)
+        set(v) = sp.edit().putBoolean("controller_translate", v).apply()
     var speak: Boolean
-        get() = sp.getBoolean("speak", true)
-        set(v) = sp.edit().putBoolean("speak", v).apply()
+        get() = listenOnly || sp.getBoolean("speak", true)
+        set(v) {
+            val e = sp.edit().putBoolean("speak", v)
+            if (!v) e.putBoolean("listen_only", false)
+            e.apply()
+        }
     /** Tải ảnh bìa game từ Steam và Wikipedia cho Kho game (chỉ gửi tên game). */
     var covers: Boolean
         get() = sp.getBoolean("covers", true)

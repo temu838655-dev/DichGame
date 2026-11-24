@@ -281,6 +281,12 @@ class SettingsActivity : Activity() {
         val a = this
         screen("Phụ đề") {
             group(null, 16, 4) {
+                row(Ui.switchRow(a, "Chỉ nghe, không hiện phụ đề",
+                    "Đọc lời dịch tiếng Việt, ẩn phụ đề trên điện thoại và TV.", p.listenOnly) { p.listenOnly = it }, 2, 12)
+                divide()
+                row(Ui.switchRow(a, "Dịch bằng tay cầm",
+                    "Giữ Create/Share 0,6 giây rồi thả để dịch toàn màn hình. Bấm nhanh vẫn gửi Share.", p.controllerTranslate) { p.controllerTranslate = it }, 12, 12)
+                divide()
                 row(Ui.switchRow(a, "Hiện câu gốc ${Prefs.srcNameOf(p.lang)}", null, p.showOrig) { p.showOrig = it }, 2, 12)
                 divide()
                 row(Ui.switchRow(a, "Hiện câu thoại trước",

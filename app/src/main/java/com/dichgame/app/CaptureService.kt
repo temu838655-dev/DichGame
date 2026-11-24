@@ -131,7 +131,7 @@ class CaptureService : Service() {
     private var prevVi = ""
     private var menuUntil = 0L
     private val tvExec = java.util.concurrent.Executors.newSingleThreadExecutor()
-    private var tvLast = ""
+    @Volatile private var tvLast = ""
     private var autoMenu = false
     private var autoShown = false
     private var autoCand = ""
@@ -240,7 +240,7 @@ class CaptureService : Service() {
         stats.reset(System.currentTimeMillis(), batteryPct())
         RecentLines.clear()
         narrate = intent.getBooleanExtra("narrate", false)
-        speak = intent.getBooleanExtra("speak", false) || narrate
+        speak = intent.getBooleanExtra("speak", false) || narrate || Prefs(this).listenOnly
         needStable = if (intent.getBooleanExtra("slow", false)) 2 else 1
         // chỉ khi bắt đầu từ màn hình chính (game chạy trên điện thoại); chơi PS trong app thì đã có âm thanh từ Remote Play
         val wantPhoneAudio = intent.getBooleanExtra("phoneaudio", false) && !narrate
@@ -411,7 +411,7 @@ class CaptureService : Service() {
             } catch (_: Throwable) {
                 reportFrameError()
             } finally {
-                if (running && autoMenu) handler.postDelayed(this, 2000)
+                if (running && autoMenu) handler.postDelayed(this, 1000)
             }
         }
     }
@@ -972,12 +972,15 @@ class CaptureService : Service() {
 
     /** Gửi phụ đề lên app Dịch game TV (nếu đã ghép). kind: sub | region | clear. */
     private fun sendTv(kind: String, text: String, speakIt: Boolean = false, force: Boolean = false) {
-        TvOut.publish(this, kind, text)
+        val hidden = kind == "sub" && Prefs(this).listenOnly
+        val outKind = if (hidden) "clear" else kind
+        val outText = if (hidden && !speakIt) "" else text
+        TvOut.publish(this, outKind, outText)
         val p = getSharedPreferences("dg", MODE_PRIVATE)
         val ip = p.getString("tvip", "").orEmpty()
         val tok = p.getString("tvtoken", "").orEmpty()
         if (p.getString("playon", "phone") != "tv" || ip.isEmpty() || tok.isEmpty()) return
-        val key = kind + ":" + text
+        val key = "$ip:$tok:$outKind:$speakIt:$outText"
         if (!force && key == tvLast) return
         tvLast = key
         val size = p.getInt("fs", 18) * p.getInt("subscale", 100) / 100 + 12
@@ -986,11 +989,10 @@ class CaptureService : Service() {
                 val c = URL("http://$ip:8765/sub").openConnection() as HttpURLConnection
                 c.requestMethod = "POST"; c.connectTimeout = 1500; c.readTimeout = 1500; c.doOutput = true
                 c.setRequestProperty("X-Token", tok)
-                val body = JSONObject().put("kind", kind).put("text", text).put("size", size).put("speak", speakIt).put("fg", styleFg()).put("bg", styleBg())
+                val body = JSONObject().put("kind", outKind).put("text", outText).put("size", size).put("speak", speakIt).put("fg", styleFg()).put("bg", styleBg())
                 c.outputStream.use { it.write(body.toString().toByteArray()) }
-                c.responseCode
-                c.disconnect()
-            } catch (_: Exception) {}
+                try { if (c.responseCode !in 200..299 && tvLast == key) tvLast = "" } finally { c.disconnect() }
+            } catch (_: Exception) { if (tvLast == key) tvLast = "" }
         }
     }
 
@@ -1034,7 +1036,7 @@ class CaptureService : Service() {
             sb.setSpan(RelativeSizeSpan(1.15f), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
-        overlay?.apply { text = sb; visibility = View.VISIBLE }
+        overlay?.apply { text = sb; visibility = if (pr.listenOnly) View.GONE else View.VISIBLE }
         val vi = cards.joinToString(" ") { it.tr.text }
         val tvSpeaks = speak && tvSpeakOn() && !tvVoiceOn()
         // TV tự đọc thì chỉ gửi lời dịch; không đọc thì gửi kèm tên người nói

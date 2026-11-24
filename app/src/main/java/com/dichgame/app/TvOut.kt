@@ -53,7 +53,9 @@ object TvOut {
         }
         val ip = p.getString("lgip", "").orEmpty()
         val key = p.getString("lgkey", "").orEmpty()
+        if (t.isBlank()) pending.set(null)
         if (ip.isNotEmpty() && key.isNotEmpty() && p.getBoolean("lgsubs", true) && t.isNotBlank()) {
+            if (lgIp != ip || lgKey != key) resetLg()
             lgIp = ip
             lgKey = key
             pending.set(t)

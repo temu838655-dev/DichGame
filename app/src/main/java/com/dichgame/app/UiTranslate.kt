@@ -242,7 +242,7 @@ class UiTranslate(
                 else if (once) finishOnce("Không tải được mô hình dịch. Kiểm tra mạng rồi thử lại.")
                 else notice("Không tải được mô hình dịch. Kiểm tra mạng rồi tắt bật dịch giao diện lại.")
             }
-            handler.postDelayed(tick, 700)
+            handler.postDelayed(tick, 150)
         } catch (e: Throwable) {
             Log.e(TAG, "start loi", e)
             stop()
@@ -322,9 +322,10 @@ class UiTranslate(
 
     /** Chữ giao diện đổi chậm hơn phụ đề nên quét thưa hơn; đọc bằng Gemini thì thưa nữa để đỡ tốn lượt dùng. */
     private fun delay(): Long {
-        if (once) return 600L   // một lần: người chơi đang chờ kết quả nên quét sát hơn
-        val base = Prefs(act).scanMs.toLong().coerceIn(150L, 3000L) * 2
-        return (if (ocr?.isCloud == true) base * 3 else base).coerceIn(900L, 6000L)
+        if (once) return if (ocr?.isCloud == true) 600L else 250L
+        val base = Prefs(act).scanMs.toLong().coerceIn(150L, 3000L)
+        return if (ocr?.isCloud == true) (base * 6).coerceIn(900L, 6000L)
+        else base.coerceIn(350L, 3000L)
     }
 
     private fun capture() {
