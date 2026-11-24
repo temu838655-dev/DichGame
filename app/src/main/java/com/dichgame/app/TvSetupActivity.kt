@@ -144,6 +144,10 @@ class TvSetupActivity : Activity() {
     // ---------------- Google TV / Android TV ----------------
 
     private fun shareGoogle(c: LinearLayout) {
+        if (BuildConfig.PLAY_BUILD) {
+            c.addView(Ui.tv(this, "Cài DichGame TV riêng trên Android TV để ghép nối và nhận phụ đề.", 14f, Ui.TEXT))
+            return
+        }
         c.addView(Ui.tv(this, "Không cần máy tính hoặc tải từ GitHub trên TV. Mở Downloader hoặc trình duyệt hỗ trợ tải APK trên TV, nhập đường dẫn do điện thoại tạo. TV vẫn yêu cầu bạn xác nhận cài đặt.", 14f, Ui.TEXT))
         val links = Ui.vbox(this)
         var busy = false

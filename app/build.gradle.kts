@@ -8,7 +8,7 @@ plugins {
 val buildNo = (project.findProperty("buildNo") as String?)?.toIntOrNull() ?: 0
 // -PnoNative bỏ qua việc dựng engine Remote Play (nặng, mất vài chục phút): dùng cho bản thử giao diện trên máy ảo x86.
 val playBuild = project.hasProperty("playBuild")
-val withNative = !playBuild && !project.hasProperty("noNative")
+val withNative = !project.hasProperty("noNative")
 
 // Thư viện đọc giọng offline (sherpa-onnx, Apache-2.0). File .aar khá nặng nên không để trong git:
 // Gradle tự tải về thư mục app/libs/ ở lần build đầu tiên.
