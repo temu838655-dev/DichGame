@@ -245,7 +245,7 @@ class CaptureService : Service() {
         // chỉ khi bắt đầu từ màn hình chính (game chạy trên điện thoại); chơi PS trong app thì đã có âm thanh từ Remote Play
         val wantPhoneAudio = intent.getBooleanExtra("phoneaudio", false) && !narrate
         autoMenu = intent.getBooleanExtra("automenu", false) && !narrate
-        lang = if (narrate) "en" else intent.getStringExtra("lang") ?: "en"
+        lang = if (narrate) "en" else Prefs.normalizeSource(intent.getStringExtra("lang"))
         srcName = Prefs.srcNameOf(lang)
         val cjk = Prefs.isCjk(lang)
         sep = if (cjk) "" else " "
@@ -674,7 +674,7 @@ class CaptureService : Service() {
 
     /** Game đổi sang ngôn ngữ Latin khác (Anh sang Pháp...): nạp bộ dịch mới ở nền, xong mới thay; trong lúc đó vẫn dịch bằng bộ cũ. */
     private fun switchLang(newLang: String) {
-        val ok = newLang != lang && newLang != "vi" && newLang != pendingLang &&
+        val ok = Prefs.isSupportedSource(newLang) && newLang != lang && newLang != pendingLang &&
             LangDetect.scriptOfLang(newLang) == 'L' && LangDetect.scriptOfLang(lang) == 'L'
         if (!ok) { langTrack?.current = lang; return }
         pendingLang = newLang
@@ -779,7 +779,7 @@ class CaptureService : Service() {
         }
         if (Prefs(this).autoLang) {
             for (u in utts) {
-                if (!u.nameLike) langTrack?.observe(LangDetect.guess(u.text))?.let { switchLang(it) }
+                if (!u.nameLike) langTrack?.observe(LangDetect.guess(u.text)?.takeIf { Prefs.isSupportedSource(it.lang) })?.let { switchLang(it) }
             }
         }
         val fresh = ArrayList<Line>()

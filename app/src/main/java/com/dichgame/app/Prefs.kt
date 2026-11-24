@@ -19,20 +19,11 @@ class Prefs(ctx: Context) {
         const val MODE_TRANSLATE = "translate"
         const val MODE_VIETSUB = "vietsub"
         const val DEFAULT_PROFILE = "Mặc định"
-        /** Ngôn ngữ chữ trong game đọc được bằng OCR trên máy (chữ Latin, Hindi, Nhật, Hàn, Trung). "vi" chỉ dùng cho chế độ Thuyết minh. */
-        val LANGS = listOf(
-            "en" to "Tiếng Anh", "ja" to "Tiếng Nhật", "ko" to "Tiếng Hàn", "zh" to "Tiếng Trung",
-            "fr" to "Tiếng Pháp", "de" to "Tiếng Đức", "es" to "Tiếng Tây Ban Nha", "pt" to "Tiếng Bồ Đào Nha",
-            "it" to "Tiếng Ý", "id" to "Tiếng Indonesia", "nl" to "Tiếng Hà Lan", "pl" to "Tiếng Ba Lan",
-            "tr" to "Tiếng Thổ Nhĩ Kỳ", "hi" to "Tiếng Hindi",
-            "sv" to "Tiếng Thụy Điển", "cs" to "Tiếng Séc", "ro" to "Tiếng Romania", "hu" to "Tiếng Hungary",
-            "da" to "Tiếng Đan Mạch", "fi" to "Tiếng Phần Lan", "no" to "Tiếng Na Uy", "ms" to "Tiếng Mã Lai",
-            "ru" to "Tiếng Nga", "uk" to "Tiếng Ukraina", "th" to "Tiếng Thái", "ar" to "Tiếng Ả Rập",
-            "el" to "Tiếng Hy Lạp", "he" to "Tiếng Do Thái", "vi" to "Tiếng Việt"
-        )
-        /** Chữ mà bộ đọc chữ trên máy không có: app nhờ Google Gemini đọc ảnh (cần khóa Gemini, ảnh chụp được gửi cho Google). */
-        val CLOUD_OCR = setOf("ru", "uk", "th", "ar", "el", "he")
-        fun isCloudOcr(code: String) = code in CLOUD_OCR
+        /** Chỉ cung cấp hai ngôn ngữ nguồn: Anh và Trung; Việt dùng cho thuyết minh/đích. */
+        val LANGS = listOf("en" to "Tiếng Anh", "zh" to "Tiếng Trung", "vi" to "Tiếng Việt")
+        fun isSupportedSource(code: String?) = code == "en" || code == "zh"
+        fun normalizeSource(code: String?): String = if (code == "zh") "zh" else "en"
+        fun isCloudOcr(code: String) = false // cả hai nguồn đều có OCR đóng gói
         /** Tên hiển thị trong danh sách chọn ngôn ngữ. */
         fun langLabel(code: String) = langName(code) + if (isCloudOcr(code)) " (đọc bằng Gemini)" else ""
         /** Chữ Nhật, Hàn, Trung không có dấu cách giữa các từ. */
@@ -94,10 +85,10 @@ class Prefs(ctx: Context) {
             editor.apply()
         }
 
-    /** Ngôn ngữ trong game: en, ja, ko, zh. Khi thuyết minh thì nguồn luôn là tiếng Việt. */
+    /** Ngôn ngữ game: Anh hoặc Trung. Cấu hình cũ không còn hỗ trợ quay về Anh. */
     var lang: String
-        get() = sp.getString("langc", null) ?: arrayOf("en", "ja", "ko", "zh")[sp.getInt("lang", 0).coerceIn(0, 3)]
-        set(v) = sp.edit().putString("langc", v).apply()
+        get() = normalizeSource(sp.getString("langc", null) ?: arrayOf("en", "ja", "ko", "zh")[sp.getInt("lang", 0).coerceIn(0, 3)])
+        set(v) = sp.edit().putString("langc", normalizeSource(v)).apply()
 
     var engine: String
         get() = sp.getString("engine", null) ?: if (sp.getString("key", "").isNullOrEmpty()) ENGINE_LOCAL else ENGINE_GEMINI

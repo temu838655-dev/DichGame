@@ -36,43 +36,20 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     companion object {
         /** Mã ngôn ngữ của ML Kit cho ngôn ngữ trong game. */
         fun mlCode(lang: String): String = when (lang) {
-            "ja" -> TranslateLanguage.JAPANESE
-            "ko" -> TranslateLanguage.KOREAN
             "zh" -> TranslateLanguage.CHINESE
-            "fr" -> TranslateLanguage.FRENCH
-            "de" -> TranslateLanguage.GERMAN
-            "es" -> TranslateLanguage.SPANISH
-            "pt" -> TranslateLanguage.PORTUGUESE
-            "it" -> TranslateLanguage.ITALIAN
-            "id" -> TranslateLanguage.INDONESIAN
-            "nl" -> TranslateLanguage.DUTCH
-            "pl" -> TranslateLanguage.POLISH
-            "tr" -> TranslateLanguage.TURKISH
-            "hi" -> TranslateLanguage.HINDI
-            "sv" -> TranslateLanguage.SWEDISH
-            "cs" -> TranslateLanguage.CZECH
-            "ro" -> TranslateLanguage.ROMANIAN
-            "hu" -> TranslateLanguage.HUNGARIAN
-            "da" -> TranslateLanguage.DANISH
-            "fi" -> TranslateLanguage.FINNISH
-            "no" -> TranslateLanguage.NORWEGIAN
-            "ms" -> TranslateLanguage.MALAY
-            "ru" -> TranslateLanguage.RUSSIAN
-            "uk" -> TranslateLanguage.UKRAINIAN
-            "th" -> TranslateLanguage.THAI
-            "ar" -> TranslateLanguage.ARABIC
-            "el" -> TranslateLanguage.GREEK
-            "he" -> TranslateLanguage.HEBREW
+            "vi" -> TranslateLanguage.VIETNAMESE
             else -> TranslateLanguage.ENGLISH
         }
 
-        /** Hỏi xem mô hình dịch (ngôn ngữ trong game và tiếng Việt) đã tải về máy chưa. */
+        /** Tiếng Anh là model tích hợp ML Kit, không được tạo TranslateRemoteModel("en"). */
         fun isDownloaded(lang: String, cb: (Boolean) -> Unit) {
-            val m = RemoteModelManager.getInstance()
-            m.isModelDownloaded(TranslateRemoteModel.Builder(mlCode(lang)).build())
-                .addOnSuccessListener { a ->
-                    m.isModelDownloaded(TranslateRemoteModel.Builder(TranslateLanguage.VIETNAMESE).build())
-                        .addOnSuccessListener { b -> cb(a && b) }
+            if (lang == "vi") { cb(true); return }
+            val manager = RemoteModelManager.getInstance()
+            manager.isModelDownloaded(TranslateRemoteModel.Builder(TranslateLanguage.VIETNAMESE).build())
+                .addOnSuccessListener { vi ->
+                    if (!vi || lang != "zh") cb(vi)
+                    else manager.isModelDownloaded(TranslateRemoteModel.Builder(TranslateLanguage.CHINESE).build())
+                        .addOnSuccessListener { zh -> cb(zh) }
                         .addOnFailureListener { cb(false) }
                 }
                 .addOnFailureListener { cb(false) }

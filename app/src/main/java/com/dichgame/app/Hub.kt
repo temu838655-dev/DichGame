@@ -10,7 +10,8 @@ import android.widget.LinearLayout
  * Dùng chung cho màn hình chính và trang Cài đặt; mỗi hàng hiện giá trị đang chọn và mở một trang con.
  */
 object Hub {
-    fun engineLabel(p: Prefs): String = when (p.engine) {
+    fun engineLabel(p: Prefs): String = if (p.aiAuto) "AI Tự động" else when (p.engine) {
+        Prefs.ENGINE_OPENAI -> "OpenAI"
         Prefs.ENGINE_CLOUD -> "CloudAPI"
         Prefs.ENGINE_GEMINI -> "Google Gemini"
         else -> "Dịch trên máy"

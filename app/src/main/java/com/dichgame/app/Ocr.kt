@@ -9,9 +9,6 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
-import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
-import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
-import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
@@ -24,8 +21,7 @@ class Blk(val text: String, val box: Rect?, val conf: Float = 1f)
 
 /**
  * Đọc chữ từ ảnh chụp màn hình.
- * Chữ Latin, Nhật, Hàn, Trung, Hindi: đọc ngay trên máy bằng ML Kit.
- * Chữ Nga, Ukraina, Thái, Ả Rập, Hy Lạp, Do Thái: ML Kit không có mô hình, nên gửi ảnh cho Google Gemini đọc (cần khóa Gemini).
+ * Chữ Latin (Anh, Việt) và Trung: OCR ML Kit đóng gói trực tiếp trong APK.
  * Kết quả luôn được trả về trên luồng chính.
  */
 class Ocr(private val p: Prefs, private val lang: String) {
@@ -35,10 +31,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
         if (Prefs.isCloudOcr(lang)) null
         else TextRecognition.getClient(
             when (lang) {
-                "ja" -> JapaneseTextRecognizerOptions.Builder().build()
-                "ko" -> KoreanTextRecognizerOptions.Builder().build()
                 "zh" -> ChineseTextRecognizerOptions.Builder().build()
-                "hi" -> DevanagariTextRecognizerOptions.Builder().build()
                 else -> TextRecognizerOptions.DEFAULT_OPTIONS
             }
         )

@@ -55,7 +55,7 @@ class TranslateActivity : Activity() {
             }
             if (p.aiAuto) {
                 group("AI TỰ ĐỘNG", 14) {
-                    addView(Ui.tv(a, "Tự nhận biết ngôn ngữ từ chữ OCR khi đủ bằng chứng. Ban đầu dùng cấu hình nguồn hiện tại; tên game chỉ tự nhận diện khi tựa đầy đủ xuất hiện rõ ít nhất hai lượt quét.", 13f, Ui.SUB))
+                    addView(Ui.tv(a, "Chọn tiếng Anh hoặc tiếng Trung theo chữ của game. Tên game chỉ tự nhận diện khi tựa đầy đủ xuất hiện rõ ít nhất hai lượt quét.", 13f, Ui.SUB))
                     addView(Ui.switchRow(a, "Ghi nhớ bản dịch AI", "Lưu câu AI đã kiểm chứng riêng cho từng game; tránh dịch lại.", p.learnTranslations) {
                         p.learnTranslations = it
                     })
@@ -64,17 +64,15 @@ class TranslateActivity : Activity() {
                     })
                 }
             }
-            if (!p.narrate && !p.aiAuto) {
+            if (!p.narrate) {
                 group("NGÔN NGỮ TRONG GAME", 14) {
                     val src = Prefs.LANGS.filter { it.first != "vi" }
                     addView(Ui.dropRow(a, "Ngôn ngữ chữ trong game", { Prefs.langLabel(p.lang) }, { src.map { Prefs.langLabel(it.first) } }) {
                         p.lang = src[it].first
                         render()
                     })
-                    if (p.lang != "vi") {
-                        divide()
-                        addView(packRow())
-                    }
+                    divide()
+                    addView(packRow())
                 }
             }
             if (p.aiAuto) {
@@ -114,32 +112,36 @@ class TranslateActivity : Activity() {
         }
     }
 
-    /** Hàng "Gói ngôn ngữ X → Việt" với nút tải trước mô hình dịch trên máy, để lần đầu chơi khỏi chờ. */
+    /** Trạng thái hai bộ dịch offline; app tự tải ngay khi mở lần đầu. */
     private fun packRow(): View {
-        val row = Ui.hbox(this)
-        row.gravity = Gravity.CENTER_VERTICAL
-        row.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 2))
-        row.addView(Ui.tv(this, "Gói ${Prefs.langName(p.lang).removePrefix("Tiếng ")} → Việt", 15f, Ui.TEXT, true), Ui.lp(0, WRAP_CONTENT, 1f))
-        val b = Ui.button(this, "Đang kiểm tra...") {}
-        b.textSize = 13f
-        row.addView(b)
-        var busy = false
-        fun state(done: Boolean) { busy = false; b.text = if (done) "Đã tải ✓" else "Tải về"; b.isEnabled = !done }
-        TextTranslator.isDownloaded(p.lang) { state(it) }
-        b.setOnClickListener {
-            if (busy || !b.isEnabled || b.text == "Đang kiểm tra...") return@setOnClickListener
-            busy = true
-            b.text = "Đang tải..."
-            val t = TextTranslator(this, p, p.lang)
-            t.prepare { ok ->
-                if (ok) state(true) else {
-                    state(false)
-                    Toast.makeText(this, "Không tải được. Kiểm tra mạng rồi thử lại.", Toast.LENGTH_SHORT).show()
+        val box = Ui.vbox(this)
+        val en = Ui.tv(this, "Tiếng Anh → Việt · Đang kiểm tra…", 14f, Ui.TEXT)
+        val zh = Ui.tv(this, "Tiếng Trung → Việt · Đang kiểm tra…", 14f, Ui.TEXT)
+        val status = Ui.tv(this, "", 12.5f, Ui.SUB)
+        val retry = Ui.button(this, "Tải lại gói còn thiếu") {}
+        box.addView(en, Ui.lpm(this, 6, 2))
+        box.addView(zh, Ui.lpm(this, 6, 2))
+        box.addView(status, Ui.lpm(this, 6, 2))
+        box.addView(retry, Ui.lpm(this, 6, 2))
+        fun refresh() {
+            TextTranslator.isDownloaded("en") { ok -> en.text = "Tiếng Anh → Việt · " + if (ok) "Sẵn sàng ✓" else "Chưa tải đủ" }
+            TextTranslator.isDownloaded("zh") { ok -> zh.text = "Tiếng Trung → Việt · " + if (ok) "Sẵn sàng ✓" else "Chưa tải đủ" }
+        }
+        fun load(force: Boolean) {
+            retry.isEnabled = false
+            status.text = "Đang chuẩn bị bộ dịch offline (lần đầu cần Internet)…"
+            OfflineLanguagePacks.ensure(force) { ok ->
+                if (!isFinishing && !isDestroyed) {
+                    refresh()
+                    status.text = if (ok) "Đã sẵn sàng · dịch offline không cần tải lại." else "Chưa tải đủ. Kiểm tra mạng rồi thử lại."
+                    retry.isEnabled = !ok
                 }
-                t.close()
             }
         }
-        return row
+        retry.setOnClickListener { load(true) }
+        refresh()
+        load(false)
+        return box
     }
 
     private fun modeSegment(): View =

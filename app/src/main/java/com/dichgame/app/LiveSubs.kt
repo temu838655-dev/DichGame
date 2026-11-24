@@ -512,7 +512,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         Log.i(TAG, "doc: " + utts.joinToString(" | ") { (it.speaker?.let { n -> "$n: " } ?: "") + it.text })
         if (Prefs(act).autoLang && !narrate) {
             for (u in utts) {
-                if (!u.nameLike) langTrack?.observe(LangDetect.guess(u.text))?.let { switchLang(it) }
+                if (!u.nameLike) langTrack?.observe(LangDetect.guess(u.text)?.takeIf { Prefs.isSupportedSource(it.lang) })?.let { switchLang(it) }
             }
         }
         val fresh = ArrayList<Line>()
@@ -660,7 +660,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     /** Game đổi sang ngôn ngữ Latin khác: nạp bộ dịch mới ở nền, xong mới thay. */
     private fun switchLang(newLang: String) {
-        val ok = newLang != lang && newLang != "vi" && newLang != pendingLang &&
+        val ok = Prefs.isSupportedSource(newLang) && newLang != lang && newLang != pendingLang &&
             LangDetect.scriptOfLang(newLang) == 'L' && LangDetect.scriptOfLang(lang) == 'L'
         if (!ok) { langTrack?.current = lang; return }
         pendingLang = newLang

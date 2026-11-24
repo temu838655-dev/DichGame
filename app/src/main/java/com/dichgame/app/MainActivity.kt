@@ -68,6 +68,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         render()
+        OfflineLanguagePacks.ensure()
         com.dichgame.update.Updater.onResume()
         com.dichgame.update.Updater.check(false)
         CrashLog.showIfAny(this)
