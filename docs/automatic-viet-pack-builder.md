@@ -29,3 +29,17 @@ Công cụ ghép theo ID, lọc trùng, loại các câu có nhiều bản dịc
 Kiểm tra lại nguồn, chất lượng dịch, biến định dạng, tên game và số lượng trước khi phân phối. Đưa CSV lên URL HTTPS đã khai báo, xác minh SHA-256 rồi mới đưa manifest lên. Trên app chọn đúng game, nhập URL manifest. Khi cập nhật, tăng version, giữ file CSV theo đường dẫn riêng từng version và chỉ thay manifest sau khi upload CSV thành công. Giữ kho cũ để phục hồi. Không cần đổi APK hoặc khóa ký nếu bản 1251 đã hỗ trợ manifest.
 
 Công cụ này không trích xuất file nhị phân game, không dịch câu còn thiếu, không xác minh chất lượng ngôn ngữ, không upload lên Cloudflare và không gửi dữ liệu người chơi. Không phải mọi câu xuất ra đều được app tra cứu (ví dụ câu quá ngắn). Không chứa dữ liệu Việt hóa của bên thứ ba.
+
+## Dịch hàng loạt theo từng game
+
+Mỗi game và phiên bản nguồn dùng thư mục riêng, ví dụ `data/gta-vi/en/v1/` và `data/gta-v/en/v1/`. Không dùng lại thư mục kết quả giữa hai game. Tên game phải khớp chính xác với job và hồ sơ trong app.
+
+```sh
+python3 tools/prepare_translation_batches.py data/gta-vi/en/v1/source.csv data/gta-vi/en/v1/prepared --authorized
+python3 tools/translate_batches.py data/gta-vi/en/v1/prepared data/gta-vi/en/v1/translated --endpoint https://YOUR-API/v1/chat/completions --model YOUR-MODEL --game "GTA VI" --max-batches 10 --authorized
+python3 tools/collect_translation_batches.py data/gta-vi/en/v1/prepared data/gta-vi/en/v1/translated data/gta-vi/en/v1/vi.csv --game "GTA VI"
+```
+
+Đặt khóa API qua biến môi trường DICHGAME_API_KEY, không ghi vào Git. CSV đầu vào hỗ trợ id,source hoặc id,source,context. Chỉ gộp câu trùng cả nội dung và ngữ cảnh. Nếu không có context, câu giống nhau được gộp như trước. Job lưu hash từng batch và id-map; thay đổi dữ liệu hoặc game phải tạo job mới. Job cũ thiếu hash id-map không được tự động nâng cấp: giữ nguyên thư mục để kiểm tra và phục hồi có chủ đích. Bước xuất CSV yêu cầu job manifest và game chính xác, không ghi đè file đã có.
+
+Lưu ý: kho pack schema 1 chưa lưu ngữ cảnh, nên các bản dịch khác nhau của cùng câu vẫn cần được rà soát hoặc loại khỏi pack chung. Không tự động chọn theo tần suất. Các thư mục trên là quy ước vận hành, không phải cơ chế tự động tạo kho Cloudflare.
