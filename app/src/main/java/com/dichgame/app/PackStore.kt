@@ -1,6 +1,7 @@
 package com.dichgame.app
 
 import android.content.Context
+import android.util.AtomicFile
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -47,20 +48,21 @@ object PackStore {
 
     private fun linesFile(ctx: Context, profile: String) = File(File(ctx.filesDir, "lines"), slug(profile) + ".tsv")
 
+    @Synchronized
     fun readLines(ctx: Context, profile: String): List<Pair<String, String>> {
         val f = linesFile(ctx, profile)
-        if (!f.exists()) return emptyList()
         return try {
-            f.readLines(Charsets.UTF_8).mapNotNull { l ->
+            AtomicFile(f).openRead().bufferedReader(Charsets.UTF_8).useLines { lines -> lines.mapNotNull { l ->
                 val t = l.indexOf('\t')
                 if (t <= 0) null else l.substring(0, t) to l.substring(t + 1)
-            }
+            }.toList() }
         } catch (_: Exception) { emptyList() }
     }
 
     fun lineCount(ctx: Context, profile: String): Int = readLines(ctx, profile).size
 
     /** Thêm câu thoại vào hồ sơ (trùng câu gốc thì lấy bản mới). Trả về số câu sau khi gộp. */
+    @Synchronized
     fun addLines(ctx: Context, profile: String, add: List<Pair<String, String>>): Int {
         val map = LinkedHashMap<String, Pair<String, String>>()
         for (e in readLines(ctx, profile) + add) {
@@ -70,11 +72,28 @@ object PackStore {
         val list = map.values.toList().takeLast(PackText.MAX_LINES)
         val f = linesFile(ctx, profile)
         f.parentFile?.mkdirs()
-        f.writeText(list.joinToString("\n") { it.first + "\t" + it.second }, Charsets.UTF_8)
+        val atomic = AtomicFile(f)
+        val output = atomic.startWrite()
+        try {
+            val writer = output.bufferedWriter(Charsets.UTF_8)
+            for ((original, vi) in list) {
+                writer.write(original); writer.write("\t"); writer.write(vi); writer.newLine()
+            }
+            writer.flush()
+            atomic.finishWrite(output)
+        } catch (e: Exception) {
+            atomic.failWrite(output)
+            throw e
+        }
+        mem = null; memKey = ""
         return list.size
     }
 
-    fun deleteLines(ctx: Context, profile: String) { try { linesFile(ctx, profile).delete() } catch (_: Exception) {} }
+    @Synchronized
+    fun deleteLines(ctx: Context, profile: String) {
+        AtomicFile(linesFile(ctx, profile)).delete()
+        mem = null; memKey = ""
+    }
 
     private var memKey = ""
     private var mem: TransMemory? = null
