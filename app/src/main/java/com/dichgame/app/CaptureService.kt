@@ -552,8 +552,11 @@ class CaptureService : Service() {
      * sẽ làm tăng áp lực bộ nhớ khi game chạy liên tục.
      */
     private fun cropAndRecycle(full: Bitmap, x: Int, y: Int, width: Int, height: Int): Bitmap {
+        // createBitmap may return the original object for an unchanged full-screen crop.
+        // Always return a separate bitmap before releasing the caller's original.
         return try {
-            Bitmap.createBitmap(full, x, y, width, height)
+            val cropped = Bitmap.createBitmap(full, x, y, width, height)
+            if (cropped === full) checkNotNull(full.copy(Bitmap.Config.ARGB_8888, false)) else cropped
         } finally {
             if (!full.isRecycled) runCatching { full.recycle() }
         }
@@ -1205,7 +1208,9 @@ class CaptureService : Service() {
             overlay?.visibility = View.VISIBLE
             return
         }
-        val skip = listOfNotNull(rectOf(frame), rectOf(region))
+        // Explicit full-screen mode includes the subtitle area, too. The locked
+        // subtitle frame has no visible pixels and must not exclude game text.
+        val skip = listOfNotNull(rectOf(region))
         val keep = runCatching { bmp.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull()
         reader.read(bmp, { m -> keep?.recycle(); ocrFail(m) }) { r ->
             val items = try { menuItems(r, keep, skip) } finally { keep?.recycle() }
@@ -1362,13 +1367,18 @@ class CaptureService : Service() {
                 }
             }
         )
-        if (changed) { clearMenuOverlay(); menuUntil = 0L; relayoutFrame() }
+        if (changed) {
+            clearMenuOverlay(); menuUntil = 0L; autoCand = ""; autoDone = ""; autoStable = 0
+            relayoutFrame()
+        }
     }
 
     private fun capture() {
-        if (busy || !ready || editing || System.currentTimeMillis() < menuUntil) return
-        val fr = frame ?: return
+        if (!ready || editing) return
+        // Detect rotation even while translated menu text is held on screen.
         ensureSize()
+        if (busy || System.currentTimeMillis() < menuUntil) return
+        val fr = frame ?: return
         val img = captureBuffer.reader?.acquireLatestImage() ?: return
         val crop = try {
             val p = img.planes[0]
