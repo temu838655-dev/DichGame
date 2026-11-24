@@ -167,7 +167,7 @@ jobs:
           for apk in dist/*.apk; do
             "$signer" verify --print-certs "$apk" > "$RUNNER_TEMP/apk-cert.txt"
             cat "$RUNNER_TEMP/apk-cert.txt"
-            actual=$(awk -F ': ' '/^Signer .*certificate SHA-256 digest: / { print tolower($NF) }' "$RUNNER_TEMP/apk-cert.txt" | tr -d ':' | sort -u)
+            actual=$(awk -F ': ' '/^(V[0-9.]+ )?Signer([ :]).*certificate SHA-256 digest: / { print tolower($NF) }' "$RUNNER_TEMP/apk-cert.txt" | tr -d ':' | sort -u)
             if [[ "$actual" != "$SIGNER_SHA256" ]]; then
               echo "::error file=$apk::Chứng chỉ APK không trùng chứng chỉ đã cấu hình."
               exit 1
