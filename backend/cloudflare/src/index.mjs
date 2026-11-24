@@ -1,3 +1,4 @@
+import {adminHtml} from "./admin.mjs";
 // Self-hosted private beta. Only administrator-approved rows can be returned to apps.
 export const normalize = value => value.trim().replace(/\s+/gu, " ").toLowerCase();
 const bounded = (value, max, min = 1) => typeof value === "string" && value.trim().length >= min &&
@@ -47,6 +48,10 @@ export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname, method = request.method;
     if (path === "/v1/health" && method === "GET") return reply({ok:true,version:1});
+    if (path === "/admin" && method === "GET") {
+      const nonce=Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,"0")).join("");
+      return new Response(adminHtml.replaceAll("__NONCE__",nonce),{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer","Content-Security-Policy":"default-src 'none'; script-src 'nonce-"+nonce+"'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"}});
+    }
     const admin = path.startsWith("/v1/admin/");
     if (!await authorized(request,admin?env.ADMIN_TOKEN:env.CLIENT_TOKEN)) return reply({error:"unauthorized"},401);
     try {
@@ -65,6 +70,10 @@ export default {
           .bind(...key,body.original.trim(),body.vi.trim()).run();
         return reply({status:"pending_review"},202);
       }
+      if (path === "/v1/status" && method === "GET") {
+        const row=await env.DB.prepare("SELECT COUNT(*) AS count FROM catalog").first();
+        return reply({ok:true,version:2,games:row?.count??0});
+      }
       if (path === "/v1/catalog" && method === "GET") {
         const {results}=await env.DB.prepare("SELECT title,genre FROM catalog ORDER BY title LIMIT 1000").all();
         return reply({games:results});
@@ -78,6 +87,10 @@ export default {
           .bind(normalize(body.game),body.lang,after).all();
         const page=results.slice(0,100);
         return reply({lines:page.map(({original,vi})=>({original,vi})),next:results.length>100?page.at(-1).source_key:null});
+      }
+      if (path === "/v1/admin/stats" && method === "GET") {
+        const row=await env.DB.prepare("SELECT (SELECT COUNT(*) FROM catalog) AS catalog,(SELECT COUNT(*) FROM translations) AS translations,(SELECT COUNT(*) FROM packs) AS packs,(SELECT COUNT(*) FROM submissions) AS submissions").first();
+        return reply(row);
       }
       if (path === "/v1/admin/pending" && method === "GET") {
         const {results}=await env.DB.prepare("SELECT * FROM submissions ORDER BY id LIMIT 100").all();
@@ -101,6 +114,13 @@ export default {
         await env.DB.prepare("INSERT INTO catalog(game_key,title,genre) VALUES(?,?,?) ON CONFLICT(game_key) DO UPDATE SET title=excluded.title,genre=excluded.genre,updated_at=unixepoch()")
           .bind(normalize(body.game),body.game.trim(),(body.genre??"").trim()).run();
         return reply({ok:true});
+      }
+      if(path==="/v1/admin/pack-batch" && method==="POST") {
+        const body=await jsonBody(request);
+        if(!bounded(body.game,180)||!["en","zh"].includes(body.lang)||!Array.isArray(body.lines)||body.lines.length<1||body.lines.length>30||body.lines.some(x=>!x||!bounded(x.original,500)||!bounded(x.vi,1400))) return reply({error:"invalid_pack"},400);
+        const sql="INSERT INTO packs(game_key,lang,source_key,original,vi) VALUES(?,?,?,?,?) ON CONFLICT(game_key,lang,source_key) DO UPDATE SET original=excluded.original,vi=excluded.vi,updated_at=unixepoch()";
+        await env.DB.batch(body.lines.map(x=>env.DB.prepare(sql).bind(normalize(body.game),body.lang,normalize(x.original),x.original.trim(),x.vi.trim())));
+        return reply({ok:true,count:body.lines.length});
       }
       if(path==="/v1/admin/pack" && method==="POST") {
         const body=await jsonBody(request);

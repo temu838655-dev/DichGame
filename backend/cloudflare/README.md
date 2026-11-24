@@ -34,8 +34,11 @@ Do not give anyone your Cloudflare login, AI keys or admin token.
 Workers/D1 free tier has limits; monitor requests and storage in Cloudflare.
 Set a spending policy before switching to a paid plan.
 
+## Admin dashboard
+Open the deployed Worker origin followed by `/admin`. Use the owner-only `ADMIN_TOKEN` (not the client token). It stays in memory until logout or tab close. Review submissions, see counts, add games and import authorized TSV packs. If the owner does not know the current token, set a new `ADMIN_TOKEN` secret in the Cloudflare Worker settings. Do not publish credentials.
+
 ## API
-All routes except GET /v1/health require Authorization: Bearer TOKEN.
+All API routes except GET /v1/health require Authorization: Bearer TOKEN.
 Use client token for lookup, catalog, pack and contribution. Use admin token
 for /v1/admin/* only. TLS required by app. No raw API keys for AI, screenshots,
 audio, profile names or PSN data are uploaded. Source line, speaker, game,
@@ -45,7 +48,10 @@ These are guardrails, not a guarantee against abuse or provider quotas.
 
 - POST /v1/lookup {game,lang,speaker,kind,original}: only approved exact match.
 - POST /v1/contribute same fields plus vi: pending review; cannot overwrite approved rows.
+- GET /v1/status: authenticated D1 health check and game count.
 - GET /v1/catalog: approved game names and genres.
+- GET /v1/admin/stats: counts of game catalog, approved translations, packs and pending submissions.
+- POST /v1/admin/pack-batch {game,lang,lines:[{original,vi}]}: atomic publish of at most 30 validated lines per request.
 - POST /v1/pack {game,lang,after}: paged reviewed lines.
 - GET /v1/admin/pending: pending rows (up to 100).
 - POST /v1/admin/review {id,action:"approve"|"reject"}: approve or discard a candidate.

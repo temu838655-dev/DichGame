@@ -82,7 +82,7 @@ object CommunityCloud {
             !LearnedTranslationRules.canRemember(text,vi) || p.trStyle != 0 || p.customPrompt.isNotBlank() ||
             p.glossary.isNotBlank() || p.cast.isNotBlank()) return
         try { pool.execute {
-            if (config(p) != cfg || !p.communityContribute) return@execute
+            if (config(p) != cfg || !p.communityContribute || game != PackStore.gameName(p) || p.trStyle != 0 || p.customPrompt.isNotBlank() || p.glossary.isNotBlank() || p.cast.isNotBlank()) return@execute
             runCatching { request(cfg,"/v1/contribute",line(game,lang,speaker,ui,text).put("vi",vi),2500) }
         } } catch (_: java.util.concurrent.RejectedExecutionException) {}
     }
@@ -90,7 +90,7 @@ object CommunityCloud {
         val cfg = config(p)
         if (cfg == null) { done(false); return }
         try { pool.execute {
-            val ok = runCatching { request(cfg,"/v1/catalog",timeout=4000) != null }.getOrDefault(false)
+            val ok = runCatching { request(cfg,"/v1/status",timeout=4000)?.optBoolean("ok") == true }.getOrDefault(false)
             main.post { done(ok) }
         } } catch (_: java.util.concurrent.RejectedExecutionException) { done(false) }
     }
@@ -142,7 +142,7 @@ object CommunityCloud {
                         if(original.length in 1..500 && vi.length in 1..1400) pairs.add(original to vi)
                     }
                     if(json.isNull("next")) {
-                        if(config(p)!=cfg || profile!=p.profile || game!=PackStore.gameName(p)) return@runCatching -1
+                        if(config(p)!=cfg || profile!=p.profile || lang!=p.lang || game!=PackStore.gameName(p)) return@runCatching -1
                         // Preserve locally imported or corrected rows; only add missing sources.
                         val existing=PackStore.readLines(ctx,profile).map { Canon.key(it.first) }.toHashSet()
                         val add=pairs.filter { Canon.key(it.first) !in existing }

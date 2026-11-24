@@ -16,3 +16,7 @@ test("anonymous and wrong-role calls rejected before D1",async()=>{
   }
 });
 test("health endpoint",async()=>assert.equal((await worker.fetch(new Request("https://test.invalid/v1/health"),env)).status,200));
+
+test("admin page does not expose credentials and has restrictive CSP",async()=>{const r=await worker.fetch(new Request("https://test.invalid/admin"),env);assert.equal(r.status,200);assert.match(r.headers.get("content-security-policy"),/frame-ancestors 'none'/);const body=await r.text();assert.ok(!body.includes(admin)&&!body.includes(token));assert.match(body,/Bản dịch chờ duyệt/);});
+test("client cannot access bulk publish or admin stats",async()=>{for(const [path,method] of [["stats","GET"],["pack-batch","POST"]]){const r=await worker.fetch(new Request("https://test.invalid/v1/admin/"+path,{method,headers:{Authorization:"Bearer "+token}}),env);assert.equal(r.status,401)}});
+test("malformed batch is rejected without database writes",async()=>{const r=await worker.fetch(new Request("https://test.invalid/v1/admin/pack-batch",{method:"POST",headers:{Authorization:"Bearer "+admin},body:JSON.stringify({game:"Test",lang:"en",lines:[{original:"x",vi:""}]})}),env);assert.equal(r.status,400)});
