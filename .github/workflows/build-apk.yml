@@ -102,6 +102,19 @@ jobs:
             sleep $((attempt * 15))
           done
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Đóng gói LG receiver vào APK
+        run: |
+          npm install -g @webos-tools/cli
+          bash webos/package-dev.sh
+          mkdir -p app/src/main/assets/tv
+          packages=(webos/dist/*.ipk)
+          test "${#packages[@]}" -eq 1
+          test -s "${packages[0]}"
+          cp "${packages[0]}" app/src/main/assets/tv/dichgame-lg.ipk
+
       - name: Chạy unit test (gói Việt hoá, nhận dạng âm thanh, hợp nhất phụ đề)
         run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
 
