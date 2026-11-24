@@ -13,7 +13,7 @@ def verify(directory, game):
     manifest = json.loads((root / "pack.dichgame.json").read_text(encoding="utf-8"))
     if not game.strip() or manifest.get("game") != game or type(manifest.get("schema")) is not int or manifest.get("schema") != 1:
         raise ValueError("Game or schema mismatch")
-    if type(manifest.get("version")) is not int or manifest["version"] < 1:
+    if type(manifest.get("version")) is not int or not 1 <= manifest["version"] <= 2_147_483_647:
         raise ValueError("Invalid version")
     url = urlsplit(manifest["url"])
     if url.scheme != "https" or not url.hostname or url.username or url.password or url.fragment:
