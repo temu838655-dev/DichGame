@@ -176,6 +176,6 @@ class DgApp : Application() {
         super.onCreate()
         CrashLog.install(this)
         // Cập nhật ngay trong app (số bản dựng và tên file APK trong bản phát hành của app điện thoại)
-        if (!BuildConfig.PLAY_BUILD) com.dichgame.update.Updater.init(this, BuildConfig.BUILD_NO, "DichGame.apk")
+        com.dichgame.update.Updater.init(this, BuildConfig.BUILD_NO, "DichGame.apk")
     }
 }

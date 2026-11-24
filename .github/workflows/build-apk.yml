@@ -33,9 +33,6 @@ jobs:
         with:
           fetch-depth: 40   # đủ để lấy lời nhắn các commit của lần đẩy này làm ghi chú bản phát hành
 
-      - name: Tính số bản dựng
-        run: echo "BUILD_NO=$((1000000 + BUILD_NO))" >> "$GITHUB_ENV"
-
       - name: Chuẩn bị khóa ký
         env:
           PUBLISH: ${{ ((github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'workflow_dispatch' && inputs.publish)) }}

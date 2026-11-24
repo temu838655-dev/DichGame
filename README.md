@@ -53,7 +53,7 @@ Trong lúc chạy, thông báo có 3 nút: **Chỉnh/Khóa khung**, **Dịch men
 | `DichGame.apk` | Cài lên điện thoại Android (chip arm64, tức hầu hết điện thoại từ Android 8 trở lên). Đây là bản chính, có cả Remote Play trong app |
 | `DichGame-TV.apk` | Cài lên Android TV |
 
-Mỗi lần phát hành chỉ có hai file trên. Workflow tự xóa các bản `build-N` cũ, chỉ giữ 2 bản mới nhất. Tên hai file (`DichGame.apk`, `DichGame-TV.apk`) và tag `build-N` là thứ app dùng để tự tìm bản mới, đừng đổi. Cần bản debug hay bản cho chip 32-bit thì build tay bằng `gradle :app:assembleDebug` hoặc `:app:assembleRelease` (file nằm trong `app/build/outputs/apk/`).
+Mỗi lần phát hành chỉ có hai file trên. Workflow không tự xóa các bản `build-N` cũ. Tên hai file (`DichGame.apk`, `DichGame-TV.apk`) và tag `build-N` là thứ app dùng để tự tìm bản mới, đừng đổi. Cần bản debug hay bản cho chip 32-bit thì build tay bằng `gradle :app:assembleDebug` hoặc `:app:assembleRelease` (file nằm trong `app/build/outputs/apk/`).
 
 Phát hành bản có số phiên bản: `git tag v2.0 && git push origin v2.0`.
 Mỗi bản dựng trên nhánh `main` có số thứ tự (`build-N`), số này được ghi vào app (versionCode = 20 + N) để app biết có bản mới hơn khi bấm **Kiểm tra bản mới**. Cài đè lên bản cũ được vì cùng khóa ký.

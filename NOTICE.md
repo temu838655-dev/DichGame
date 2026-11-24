@@ -4,5 +4,6 @@ Huyy Đâyy cấp phép theo GNU Affero General Public License phiên bản 3 (A
 
 Các thành phần của bên thứ ba giữ giấy phép, ngoại lệ và thông báo bản quyền riêng. Chiaki-ng và phần sửa đổi tương ứng giữ giấy phép AGPL-3.0-only cùng ngoại lệ OpenSSL của upstream. Quyền đối với nhãn hiệu, nội dung game và tài liệu do bên thứ ba sở hữu thuộc về các chủ sở hữu tương ứng.
 
-- [Mã nguồn tương ứng của bản phát hành](docs/play-source.md)
+- [Mã nguồn các APK phát hành](https://github.com/temu838655-dev/DichGame/releases)
+- [Hồ sơ mã nguồn của các AAB đã chuẩn bị trước đây (lưu trữ lịch sử)](https://github.com/temu838655-dev/DichGame/blob/ef1fb9d52b5f3569a2d3ea65603afed8726a1578/docs/play-source.md)
 - Liên hệ nhà phát triển Huyy Đâyy qua temu838655@gmail.com.

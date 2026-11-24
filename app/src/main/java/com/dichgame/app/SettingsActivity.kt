@@ -549,12 +549,8 @@ class SettingsActivity : Activity() {
             val ver = try { packageManager.getPackageInfo(packageName, 0).versionName.orEmpty() } catch (_: Exception) { "?" }
             group("PHIÊN BẢN", 16, 4) {
                 addView(Ui.tv(a, "Dịch game $ver" + (if (BuildConfig.BUILD_NO > 0) " (bản dựng ${BuildConfig.BUILD_NO})" else ""), 16f, Ui.TEXT, true))
-                if (BuildConfig.PLAY_BUILD) {
-                    addView(Ui.tv(a, "Bản này được cập nhật qua Google Play.", 13.5f, Ui.SUB), Ui.lpm(a, 6, 0))
-                } else {
-                    addView(Ui.tv(a, "Có bản mới thì app tự báo khi mở, và cập nhật ngay trong app, không cần ra trình duyệt.", 13.5f, Ui.SUB), Ui.lpm(a, 6, 0))
-                    row(Ui.button(a, "Kiểm tra bản mới") { UpdateUi.show(a, check = true) }, 12, 6)
-                }
+                addView(Ui.tv(a, "Có bản mới thì app tự báo khi mở, và cập nhật ngay trong app, không cần ra trình duyệt.", 13.5f, Ui.SUB), Ui.lpm(a, 6, 0))
+                row(Ui.button(a, "Kiểm tra bản mới") { UpdateUi.show(a, check = true) }, 12, 6)
             }
             group("HỖ TRỢ", 0) {
                 addView(Ui.navRow(a, null, "Báo lỗi / yêu cầu game", "Mở trang tạo báo cáo trên GitHub, đã điền sẵn thông tin máy") { report() })
@@ -565,12 +561,6 @@ class SettingsActivity : Activity() {
                     openUrl("https://github.com/temu838655-dev/DichGame/blob/7b216999e976c7bd760704c5f94ad9824b869975/docs/privacy-policy.md")
                 })
                 divide(16)
-                if (BuildConfig.PLAY_BUILD) {
-                    addView(Ui.navRow(a, null, "Mã nguồn bản Google Play", "Mã nguồn và hướng dẫn dựng bản phát hành") {
-                        openUrl("https://github.com/temu838655-dev/DichGame/blob/fix/android-capture-release/docs/play-source.md")
-                    })
-                    divide(16)
-                }
                 addView(Ui.navRow(a, null, "Giấy phép và ghi công", "Chiaki, sherpa-onnx, Piper và các thư viện khác") {
                     startActivity(Intent(a, LicensesActivity::class.java))
                 })
