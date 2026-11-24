@@ -32,8 +32,13 @@ object TvOut {
 
     /** Bật máy chủ trang web phụ đề nếu chưa chạy. Trả về cổng, hoặc null nếu không mở được. */
     @Synchronized
-    fun startWeb(): Int? {
-        val w = web?.takeIf { it.running } ?: WebSubServer(WEB_PORT).also { web = it }
+    fun startWeb(context: Context? = null): Int? {
+        val prefs = context?.applicationContext?.getSharedPreferences("dg", Context.MODE_PRIVATE)
+        val w = web?.takeIf { it.running } ?: WebSubServer(WEB_PORT).also { server ->
+            if (prefs != null) server.pairing = WebReceiverPairing(saved = prefs.getStringSet("web_receiver_tokens", emptySet()).orEmpty(), persist = { prefs.edit().putStringSet("web_receiver_tokens", it).apply() })
+            web = server
+        }
+        if (prefs != null) w.legacyEnabled = prefs.getBoolean("web_legacy", false)
         return try { w.start() } catch (_: Exception) { null }
     }
 
@@ -48,7 +53,7 @@ object TvOut {
         val t = if (kind == "clear") "" else text
         val p = ctx.applicationContext.getSharedPreferences("dg", Context.MODE_PRIVATE)
         if (p.getBoolean("websub", false)) {
-            if (web?.running != true) startWeb()
+            if (web?.running != true) startWeb(ctx)
             web?.push(t)
         }
         val ip = p.getString("lgip", "").orEmpty()

@@ -11,6 +11,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: node --check samsung/receiver.js
+          node --check samsung/pairing.js
+          node --check webos/pairing.js
       - run: bash -n samsung/package-dev.sh
       - run: |
           python3 - <<'PY'

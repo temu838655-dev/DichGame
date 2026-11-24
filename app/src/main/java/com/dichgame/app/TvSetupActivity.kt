@@ -43,7 +43,7 @@ class TvSetupActivity : Activity() {
 
     private fun render() {
         val a = this
-        if (p.webSub) TvOut.startWeb()
+        if (p.webSub) TvOut.startWeb(this)
         screen("Phụ đề trên TV") {
             put(Ui.tv(a, "Bản dịch hiện ngay trên màn hình TV, phía trên hình game. Giọng đọc cũng phát ra loa TV được (Android TV).", 14f, Ui.SUB), 0, 4)
 
@@ -225,11 +225,11 @@ class TvSetupActivity : Activity() {
                         val ips = PsFinder.localIps(applicationContext).filter { LgDeveloperKey.isPrivateIpv4(it) }
                         val phoneIp = ips.firstOrNull { it.substringBeforeLast('.') == address.substringBeforeLast('.') } ?: ips.singleOrNull()
                         p.webSub = true
-                        val started = TvOut.startWeb() != null
+                        val started = TvOut.startWeb(applicationContext) != null
                         LgDeveloperInstaller.launch(connected, if (started) phoneIp else null)
                         runOnUiThread {
                             result.setTextColor(Ui.OK)
-                            result.text = if (started) "TV đã xác nhận cài và mở app. Nếu chưa tự nối, nhập IP điện thoại: ${phoneIp ?: "xem mục trang web phụ đề"}:${TvOut.WEB_PORT}." else "Đã cài và mở app; hãy bật lại trang web phụ đề."
+                            result.text = if (started) "TV đã xác nhận cài và mở app. Ghép mã 8 số ở mục bên dưới. Nếu chưa tự nối, nhập IP điện thoại: ${phoneIp ?: "xem mục trang web phụ đề"}:${TvOut.WEB_PORT}." else "Đã cài và mở app; hãy bật lại trang web phụ đề."
                         }
                     } catch (e: Exception) {
                         runOnUiThread {
@@ -366,10 +366,10 @@ class TvSetupActivity : Activity() {
     private fun webCard(c: LinearLayout) {
         val ips = try { PsFinder.localIps(this) } catch (_: Throwable) { emptyList() }
         val urls = ips.map { "http://$it:${TvOut.WEB_PORT}" }
-        c.addView(Ui.switchRow(this, "Bật trang web phụ đề",
-            "Mở địa chỉ bên dưới bằng trình duyệt của TV, iPhone, máy tính bảng hoặc máy tính trong cùng Wi-Fi để xem chữ dịch cỡ lớn, cập nhật liền. Chỉ chạy trong mạng nhà, không lưu gì.", p.webSub) { on ->
+        c.addView(Ui.switchRow(this, "Bật máy chủ phụ đề TV",
+            "App TV ghép bằng mã 8 số. Bật riêng chế độ trình duyệt nếu cần. Chỉ dùng trên mạng Wi-Fi tin cậy.", p.webSub) { on ->
             p.webSub = on
-            if (on && TvOut.startWeb() == null) {
+            if (on && TvOut.startWeb(this) == null) {
                 Toast.makeText(this, "Không mở được cổng ${TvOut.WEB_PORT}. Thử tắt rồi bật lại.", Toast.LENGTH_LONG).show()
                 p.webSub = false
             }
@@ -378,6 +378,20 @@ class TvSetupActivity : Activity() {
         })
         if (p.webSub) {
             c.divide()
+            val pairingCode = Ui.field(this, "Mã 8 số trên app TV", "")
+            pairingCode.inputType = InputType.TYPE_CLASS_NUMBER
+            pairingCode.filters = arrayOf(android.text.InputFilter.LengthFilter(8))
+            c.addView(pairingCode, Ui.lpm(this, 8, 8))
+            c.addView(Ui.button(this, "Ghép app LG / Samsung", true) {
+                val ok = TvOut.web?.approveReceiver(pairingCode.text.toString().trim()) == true
+                Toast.makeText(this, if (ok) "Đã ghép TV" else "Mã sai, hết hạn hoặc đã đạt giới hạn TV", Toast.LENGTH_LONG).show()
+                if (ok) pairingCode.text.clear()
+            })
+            c.addView(Ui.button(this, "Bỏ ghép tất cả app TV") { TvOut.web?.revokeReceivers(); Toast.makeText(this, "Đã bỏ ghép", Toast.LENGTH_SHORT).show() }, Ui.lpm(this, 8, 8))
+            c.addView(Ui.switchRow(this, "Cho phép trình duyệt không cần mã", "Chỉ bật khi cần; mọi thiết bị cùng mạng có thể đọc phụ đề.", p.sp.getBoolean("web_legacy", false)) { enabled ->
+                p.sp.edit().putBoolean("web_legacy", enabled).apply()
+                TvOut.web?.legacyEnabled = enabled
+            }, Ui.lpm(this, 8, 8))
             if (urls.isEmpty()) {
                 c.addView(Ui.tv(this, "Chưa thấy địa chỉ Wi-Fi của điện thoại. Hãy kết nối Wi-Fi rồi mở lại trang này.", 13f, Ui.DANGER), Ui.lpm(this, 10, 0))
             } else for (u in urls) {

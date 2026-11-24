@@ -15,6 +15,10 @@ import org.json.JSONObject
  * trình duyệt TV đời cũ). Chỉ chạy khi người dùng bật, chỉ trong mạng nội bộ, không lưu và không gửi nội dung đi đâu.
  */
 class WebSubServer(private val port: Int = 8780) {
+    internal var pairing = WebReceiverPairing()
+    @Volatile var legacyEnabled = false
+    fun approveReceiver(code: String): Boolean = pairing.approve(code)
+    fun revokeReceivers() = pairing.revokeAll()
     private var server: ServerSocket? = null
     private val lock = Object()
     private var seq = 0L
@@ -82,8 +86,24 @@ class WebSubServer(private val port: Int = 8780) {
             val target = parts.getOrElse(1) { "/" }
             val path = target.substringBefore('?')
             val query = target.substringAfter('?', "")
+            fun param(name: String): String = query.split('&').firstOrNull { it.startsWith("$name=") }?.substringAfter('=').orEmpty()
             when (path) {
-                "/poll" -> {
+                "/receiver/register" -> {
+                    val request = pairing.register()
+                    if (request == null) reply(c, 429, "text/plain", "Busy", true)
+                    else reply(c, 200, "application/json", JSONObject().put("id", request.id).put("code", request.code).toString(), true)
+                }
+                "/receiver/wait" -> {
+                    val request = pairing.request(param("id"))
+                    if (request == null) reply(c, 404, "text/plain", "Expired", true)
+                    else reply(c, 200, "application/json", JSONObject().put("token", request.token ?: "").toString(), true)
+                }
+                "/receiver/poll", "/poll" -> {
+                    val receiver = path == "/receiver/poll"
+                    if ((receiver && !pairing.valid(param("token"))) || (!receiver && !legacyEnabled)) {
+                        reply(c, 403, "text/plain", "Pair receiver first", receiver)
+                        return
+                    }
                     val since = query.split('&').firstOrNull { it.startsWith("since=") }?.substringAfter('=')?.let {
                         try { URLDecoder.decode(it, "UTF-8").toLongOrNull() } catch (_: Exception) { null }
                     } ?: -1L
@@ -97,9 +117,10 @@ class WebSubServer(private val port: Int = 8780) {
                         }
                         body = JSONObject().put("seq", seq).put("text", text).toString()
                     }
-                    reply(c, 200, "application/json; charset=utf-8", body, cors = origin == "null")
+                    if ((receiver && !pairing.valid(param("token"))) || (!receiver && !legacyEnabled)) reply(c, 403, "text/plain", "Pair receiver first", receiver)
+                    else reply(c, 200, "application/json; charset=utf-8", body, cors = receiver)
                 }
-                "/", "/index.html" -> reply(c, 200, "text/html; charset=utf-8", PAGE)
+                "/", "/index.html" -> if (legacyEnabled) reply(c, 200, "text/html; charset=utf-8", PAGE) else reply(c, 403, "text/plain", "Enable browser mode on phone")
                 else -> reply(c, 404, "text/plain; charset=utf-8", "404")
             }
         } catch (_: Exception) {
@@ -110,7 +131,7 @@ class WebSubServer(private val port: Int = 8780) {
 
     private fun reply(c: Socket, code: Int, type: String, body: String, cors: Boolean = false) {
         val b = body.toByteArray(Charsets.UTF_8)
-        val head = "HTTP/1.1 $code ${if (code == 200) "OK" else "Not Found"}\r\nContent-Type: $type\r\nContent-Length: ${b.size}\r\n" +
+        val head = "HTTP/1.1 $code ${when (code) { 200 -> "OK"; 403 -> "Forbidden"; 429 -> "Too Many Requests"; else -> "Not Found" }}\r\nContent-Type: $type\r\nContent-Length: ${b.size}\r\n" +
             "Cache-Control: no-store\r\n" + (if (cors) "Access-Control-Allow-Origin: *\r\n" else "") + "Connection: close\r\n\r\n"
         val o = c.getOutputStream()
         o.write(head.toByteArray(Charsets.ISO_8859_1))
