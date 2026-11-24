@@ -286,6 +286,8 @@ class SettingsActivity : Activity() {
                 row(Ui.switchRow(a, "Hiện câu thoại trước",
                     "Hiện câu vừa dịch bằng chữ nhỏ phía trên phụ đề hiện tại (trên điện thoại).", p.showPrev) { p.showPrev = it }, 12, 12)
                 divide()
+                row(Ui.switchRow(a, "Giữ câu đủ lâu để đọc", "Câu mới hiện ngay; tối đa một câu cũ ở phía trên rồi tự ẩn. Câu cuối giữ 2–8 giây khi chữ gốc biến mất.", p.holdReadable) { p.holdReadable = it }, 12, 12)
+                divide()
                 row(Ui.seekRow(a, "Cỡ chữ phụ đề", { v -> "$v%" }, 50, 200, p.subScale) { p.subScale = it }, 12, 6)
                 divide()
                 addView(Ui.dropRow(a, "Kiểu chữ", { Prefs.STYLES[p.style] }, { Prefs.STYLES }) { p.style = it })
@@ -330,7 +332,9 @@ class SettingsActivity : Activity() {
         adv.addView(Ui.segmented(a, rates.map { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString().replace(".", ",") }, rateSel) {
             p.scanMs = (1000.0 / rates[it]).toInt(); render()
         }, Ui.lpm(a, 6, 0))
-        adv.addView(note("Đọc nhiều lần đỡ sót câu thoại nhưng máy nóng và hao pin hơn. Mặc định 2,5 lần mỗi giây (400 ms)."), Ui.lpm(a, 6, 0))
+        adv.addView(note("Đọc nhiều lần đỡ sót câu thoại nhưng máy nóng và hao pin hơn. Mặc định 3 lần mỗi giây (333 ms)."), Ui.lpm(a, 6, 0))
+
+        adv.addView(Ui.switchRow(a, "Giữ câu hiện nhanh (Beta)", "Chấp nhận câu ngắn có hai lần đọc giống nhau trong 0,5 giây, chữ đủ rõ. Tắt nếu dịch nhầm.", p.keepQuickLines) { p.keepQuickLines = it }, Ui.lpm(a, 12, 0))
 
         adv.addView(Ui.tv(a, "Chế độ hiệu năng", 15f, Ui.TEXT, true), Ui.lpm(a, 14, 0))
         adv.addView(Ui.segmented(a, listOf("Tiết kiệm pin", "Cân bằng", "Chất lượng"), p.perf) { p.perf = it; render() }, Ui.lpm(a, 6, 0))
@@ -340,7 +344,7 @@ class SettingsActivity : Activity() {
         adv.addView(Ui.switchRow(a, "Bỏ qua khi hình đứng yên",
             "Hình trong khung y hệt lần đọc trước thì không đọc lại; vẫn cứ vài lần đọc một lần để không sót thay đổi nhỏ.", p.skipStatic) { p.skipStatic = it }, Ui.lpm(a, 12, 0))
         adv.addView(Ui.switchRow(a, "Tự nhận ra game đổi ngôn ngữ",
-            "Chữ trong game đổi sang ngôn ngữ Latin khác (ví dụ Anh sang Pháp) thì tự chuyển bộ dịch. Chuyển giữa chữ Nhật, Hàn, Trung, Nga... vẫn cần chọn tay.", p.autoLang) { p.autoLang = it }, Ui.lpm(a, 12, 0))
+            "App hỗ trợ Anh và Trung. Khi đổi giữa hai ngôn ngữ, chọn lại ngôn ngữ game để đổi bộ OCR.", p.autoLang) { p.autoLang = it }, Ui.lpm(a, 12, 0))
         adv.addView(Ui.switchRow(a, "Dịch menu tự động", "Đứng yên ở menu là tự dịch, tốn pin hơn.", p.autoMenu) { p.autoMenu = it }, Ui.lpm(a, 12, 0))
         adv.addView(Ui.seekRow(a, "Tần suất quét (chỉnh tinh)",
             { v -> "${v * 100} ms" }, 1, 30, (p.scanMs / 100).coerceIn(1, 30)) { p.scanMs = it * 100 }, Ui.lpm(a, 14, 0))

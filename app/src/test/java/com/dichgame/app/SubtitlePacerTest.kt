@@ -12,7 +12,7 @@ class SubtitlePacerTest {
 
     @Test fun holdScalesWithTextAndSpeech() {
         val p = SubtitlePacer()
-        assertEquals(1_400L, p.holdFor("Đi."))
+        assertEquals(2_000L, p.holdFor("Đi."))
         assertTrue(p.holdFor("Chúng ta cần rời khỏi nơi này trước khi lính canh tìm thấy chúng ta tối nay") > 3_000)
         assertEquals(8_000L, p.holdFor("x".repeat(500)))
         // nhân vật nói chậm 4 giây một câu ngắn: giữ ít nhất bằng thời gian nói
@@ -80,6 +80,31 @@ class SubtitlePacerTest {
         assertEquals(4_000L, p.hideAt())
         p.cleared()
         assertTrue(p.mayHide(0))
+    }
+
+    @Test fun newLineShowsImmediatelyAndPreviousExpiresIndependently() {
+        val p = SubtitlePacer()
+        p.submit(item("old", hold = 3000), 1000, immediate = true)
+        assertEquals("new", p.submit(item("new"), 1200, immediate = true)?.text)
+        assertEquals("old", p.previous(1200)?.text)
+        assertEquals(4000L, p.previousExpiry())
+        assertFalse(p.expirePrevious(3999))
+        assertTrue(p.expirePrevious(4000))
+        assertNull(p.previous(4000))
+        assertEquals("new", p.showing?.text)
+        p.submit(item("new corrected"), 4100, replace = true, immediate = true)
+        assertNull(p.previous(4100))
+        p.submit(item("next"), 4200, immediate = true, retainPrevious = false)
+        assertNull(p.previous(4200))
+    }
+
+    @Test fun betaRequiresTwoClearMatchingReads() {
+        assertTrue(SubtitlePacer.quickConfirmed(true, 2, 333, 3, .9f, false))
+        assertFalse(SubtitlePacer.quickConfirmed(false, 2, 333, 3, .9f, false))
+        assertFalse(SubtitlePacer.quickConfirmed(true, 1, 333, 3, .9f, false))
+        assertFalse(SubtitlePacer.quickConfirmed(true, 2, 501, 3, .9f, false))
+        assertFalse(SubtitlePacer.quickConfirmed(true, 2, 333, 3, .4f, false))
+        assertFalse(SubtitlePacer.quickConfirmed(true, 2, 333, 3, .9f, true))
     }
 
     @Test fun speechRateEstimate() {

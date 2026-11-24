@@ -408,6 +408,12 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("showorig", false)
         set(v) = sp.edit().putBoolean("showorig", v).apply()
     /** Hiện câu vừa dịch trước đó bằng chữ nhỏ phía trên phụ đề hiện tại. */
+    var holdReadable: Boolean
+        get() = sp.getBoolean("hold_readable", true)
+        set(v) = sp.edit().putBoolean("hold_readable", v).apply()
+    var keepQuickLines: Boolean
+        get() = sp.getBoolean("keep_quick_lines", false)
+        set(v) = sp.edit().putBoolean("keep_quick_lines", v).apply()
     var showPrev: Boolean
         get() = sp.getBoolean("showprev", false)
         set(v) = sp.edit().putBoolean("showprev", v).apply()

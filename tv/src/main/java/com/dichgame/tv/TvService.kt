@@ -212,9 +212,10 @@ class TvService : Service() {
                 val text = j.optString("text", "")
                 val size = j.optInt("size", 30).coerceIn(14, 80)
                 val sp = j.optBoolean("speak", false)
+                val speechText = j.optString("speakText", text)
                 val fg = j.optInt("fg", Color.WHITE)
                 val bg = j.optInt("bg", 0xB3000000.toInt())
-                handler.post { show(kind, text, size, sp, fg, bg) }
+                handler.post { show(kind, text, size, sp, fg, bg, speechText) }
                 status = 200; out = "ok"
             }
         }
@@ -280,7 +281,7 @@ class TvService : Service() {
         handler.postDelayed(hide, ms)
     }
 
-    private fun show(kind: String, text: String, size: Int, speakIt: Boolean, fg: Int = Color.WHITE, bg: Int = 0xB3000000.toInt()) {
+    private fun show(kind: String, text: String, size: Int, speakIt: Boolean, fg: Int = Color.WHITE, bg: Int = 0xB3000000.toInt(), speechText: String = text) {
         if (!Settings.canDrawOverlays(this)) return
         if (subView == null) { subView = mk(false); regView = mk(true) }
         when (kind) {
@@ -288,7 +289,7 @@ class TvService : Service() {
             "clear" -> { put(subView!!, "", size, hideSub, 0, fg, bg); put(regView!!, "", size, hideReg, 0, fg, bg) }
             else -> put(subView!!, text, size, hideSub, 12000, fg, bg)
         }
-        if (speakIt && text.isNotEmpty()) tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "tv")
+        if (speakIt && speechText.isNotEmpty()) tts?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "tv")
     }
 
     override fun onDestroy() {

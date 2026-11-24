@@ -1088,6 +1088,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             addView(Ui.dropRow(a, "Nền phụ đề", { bgLabels[pr.subtitleBgChoice] }, { bgLabels }) { pr.subtitleBgChoice = it; live?.restyle() })
             addView(Ui.dropRow(a, "Màu tên nhân vật", { if (pr.subtitleColoredNames) "Theo nhân vật" else "Cùng màu chữ" }, { listOf("Theo nhân vật", "Cùng màu chữ") }) { pr.subtitleColoredNames = it == 0; live?.restyle() })
             addView(Ui.dropRow(a, "Hiện câu gốc", { if (pr.showOrig) "Song ngữ" else "Chỉ tiếng Việt" }, { listOf("Chỉ tiếng Việt", "Song ngữ") }) { pr.showOrig = it == 1; live?.restyle() })
+            addView(Ui.switchRow(a, "Giữ câu đủ lâu để đọc", "Câu mới hiện ngay, câu cũ tự ẩn.", pr.holdReadable) { pr.holdReadable = it; live?.restyle() })
             addView(Ui.button(a, "Xong", true) { dlg.dismiss() }, Ui.lpm(a, 8, 0))
         }
     }
@@ -1109,6 +1110,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 box.addView(Ui.tv(a, "Cách đọc chữ trên hình", 15f, Ui.TEXT, true), Ui.lpm(a, 14, 0))
                 box.addView(Ui.segmented(a, listOf("Kỹ", "Nhanh"), if (pr.slow) 0 else 1) { pr.slow = it == 0; fill() }, Ui.lpm(a, 6, 0))
                 box.addView(Ui.tv(a, "Kỹ (mặc định): chờ chữ ổn định, ưu tiên đúng nghĩa và ngữ cảnh (áp dụng từ lần bật dịch sau). Nhanh: dịch ngay khi thấy chữ.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 0))
+                box.addView(Ui.switchRow(a, "Giữ câu hiện nhanh (Beta)", "Hai lần đọc giống nhau trong nửa giây, chữ đủ rõ.", pr.keepQuickLines) { pr.keepQuickLines = it }, Ui.lpm(a, 10, 0))
                 box.addView(Ui.button(a, "Xong", true) { dlg.dismiss() }, Ui.lpm(a, 14, 0))
             }
             fill()
