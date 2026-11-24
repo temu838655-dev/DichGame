@@ -95,6 +95,15 @@ object UiText {
         return s
     }
 
+    /** Check original formatting markers even for imported translations. */
+    fun samePlaceholders(source: String, translated: String): Boolean =
+        protect(source).tokens.groupingBy { it }.eachCount() ==
+            protect(translated).tokens.groupingBy { it }.eachCount()
+
+    fun safeTranslation(source: String, translated: String, uncertain: Boolean, lang: String): Boolean =
+        !uncertain && translated.isNotBlank() && key(source) != key(translated) &&
+            samePlaceholders(source, translated) && TranslationGuard.check(source, translated, sourceLang = lang).ok
+
     private fun String.count(sub: String): Int {
         var n = 0
         var i = indexOf(sub)

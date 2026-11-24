@@ -186,6 +186,7 @@ class UiTranslate(
     private var gameScope = ""
     private fun scope(p: Prefs) = listOf(p.profile, PackStore.gameName(p), p.lang).joinToString("\u0000")
     private var lastNoticeAt = 0L
+    private var pumping = false
 
     /** [via]/[at]: bản dịch đang hiện do đâu và từ lúc nào; bản dịch máy (AI đang lỗi) được dịch lại bằng AI khi AI dùng được ([upgrading]: đang chờ bản mới). */
     private class Entry(var vi: String? = null, var unsure: Boolean = false, var failed: Boolean = false, var via: String = "", var at: Long = 0L, var upgrading: Boolean = false)
@@ -253,8 +254,9 @@ class UiTranslate(
             tr.onFallback = { m -> notice(m) }
             val ctx = act.applicationContext
             Thread { try { PackStore.memory(ctx, pr).warm() } catch (_: Throwable) {} }.start()
+            val preparationGeneration = gen
             tr.prepare { ok ->
-                if (!running) return@prepare
+                if (!running || preparationGeneration != gen) return@prepare
                 if (ok) { ready = true; onceStart = SystemClock.uptimeMillis() }
                 else if (once) finishOnce("Không tải được mô hình dịch. Kiểm tra mạng rồi thử lại.")
                 else notice("Không tải được mô hình dịch. Kiểm tra mạng rồi tắt bật dịch giao diện lại.")
@@ -462,7 +464,11 @@ class UiTranslate(
                 val sub = RectF(ex.left * bw, ex.top * bh, ex.right * bw, ex.bottom * bh)
                 if (overlapFrac(box, sub) > 0.5f) continue
             }
-            val style = keep?.let { NativeTextStyle.sample(it, b) } ?: continue
+            val style = keep?.let { NativeTextStyle.sample(it, b) }
+            if (style == null) {
+                if (missed.size < 600) missed[src] = "nền phức tạp, giữ chữ gốc để không che hỏng hình"
+                continue
+            }
             val key = UiText.key(src)
             val corners = b.corners?.mapIndexed { i, v -> if (i % 2 == 0) v * kx + dx else v * ky + dy }?.toFloatArray()
             out.add(Item(src, key, RectF(box.left * kx + dx, box.top * ky + dy, box.right * kx + dx, box.bottom * ky + dy), style.first, style.second, corners, b.lineCount))
@@ -522,11 +528,15 @@ class UiTranslate(
 
     private fun pump() {
         val t = tt ?: return
-        while (inflight < MAX_INFLIGHT && queue.isNotEmpty()) {
-            val (src, key) = queue.pollFirst() ?: break
-            val e = cache[key] ?: continue
-            translateOne(t, src, e)
-        }
+        if (pumping || !running || holdUntil > 0L) return
+        pumping = true
+        try {
+            while (inflight < MAX_INFLIGHT && queue.isNotEmpty()) {
+                val (src, key) = queue.pollFirst() ?: break
+                val e = cache[key] ?: continue
+                translateOne(t, src, e)
+            }
+        } finally { pumping = false }
     }
 
     private fun translateOne(t: TextTranslator, src: String, e: Entry) {
@@ -537,17 +547,20 @@ class UiTranslate(
             if (g != gen) return@translateFull   // đã tắt (hoặc tắt rồi bật lại) trong lúc đang dịch
             inflight--
             if (!running) return@translateFull
-            if (e.upgrading) {
-                e.upgrading = false
-                if (tr.via == "may") { e.at = SystemClock.uptimeMillis(); pump(); return@translateFull }   // AI vẫn lỗi: giữ bản cũ, thử lại sau
-            }
+            val upgrading = e.upgrading
+            e.upgrading = false
             e.at = SystemClock.uptimeMillis()
             val restored = UiText.restore(tr.text, prot)
+            val valid = restored != null && UiText.safeTranslation(src, restored, tr.uncertain, lang)
+            if (upgrading && e.vi != null && !e.unsure && (!valid || tr.via == "may")) {
+                pump(); return@translateFull
+            }
             if (BuildConfig.DEBUG) Log.i(TAG, "dich: ${src.take(60)} => ${restored ?: "(mat ma giu cho)"} [${tr.via}]")
             val same = UiText.key(tr.text) == UiText.key(prot.text)
             when {
                 restored == null -> { e.failed = true; missed[src] = "mất mã giữ chỗ khi dịch, giữ nguyên chữ gốc" }
                 same -> { e.failed = true; missed[src] = "chưa dịch được (bản dịch giống chữ gốc)" }
+                !valid -> { e.failed = true; e.unsure = true; missed[src] = "bản dịch không đạt kiểm tra: $restored" }
                 else -> {
                     e.vi = restored
                     e.failed = false
@@ -567,7 +580,7 @@ class UiTranslate(
         for (it in items) {
             val e = cache[it.key] ?: continue
             val vi = e.vi ?: continue
-            if (!e.unsure) list.add(UiOverlay.Draw(it.box, vi, it.bg, it.fg, false, it.corners, it.lines))
+            if (!e.unsure && !e.failed) list.add(UiOverlay.Draw(it.box, vi, it.bg, it.fg, false, it.corners, it.lines))
         }
         overlay.set(list)
     }

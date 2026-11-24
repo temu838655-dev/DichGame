@@ -147,7 +147,9 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         val packHit = PackStore.memory(ctx, p).lookupEx(text)
         // Bản Việt hóa khớp đúng luôn đứng đầu. Với kết quả khớp mờ,
         // ưu tiên bộ nhớ AI khớp chính xác của chính game để tránh câu tương tự bị lẫn.
-        if (packHit != null && !packHit.fuzzy) {
+        if (packHit != null && !packHit.fuzzy &&
+            (lang == "vi" || TranslationGuard.check(text, packHit.vi, sourceLang = lang).level != TranslationGuard.Level.REJECT) &&
+            (!ui || UiText.samePlaceholders(text, packHit.vi))) {
             st.inc("dich_goi")
             emit(Tr(packHit.vi, null, false, "goi")); return
         }

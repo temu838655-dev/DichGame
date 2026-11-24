@@ -500,7 +500,7 @@ class CaptureService : Service() {
             } else sendTv("region", texts.joinToString("\n"))
             handler.postDelayed({
                 if (generation == menuGeneration) {
-                    clearMenuOverlay(); menuUntil = 0L; autoShown = false; show("")
+                    clearMenuOverlay(); menuUntil = 0L; autoShown = false; autoDone = ""; show("")
                 }
             }, 12000)
         }
@@ -515,7 +515,7 @@ class CaptureService : Service() {
                     if (finished || !current()) return@translateFull
                     pending--
                     val restored = UiText.restore(tr.text, protected)
-                    if (!tr.uncertain && restored != null && UiText.key(restored) != UiText.key(item.source)) {
+                    if (restored != null && UiText.safeTranslation(item.source, restored, tr.uncertain, lang)) {
                         translated[i] = restored
                         draw()
                     }
