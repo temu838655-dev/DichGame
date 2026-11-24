@@ -14,11 +14,11 @@ import org.json.JSONObject
  * máy tính hay iPhone trong cùng Wi-Fi là thấy phụ đề dịch hiện chữ lớn, cập nhật theo thời gian thực (long-poll, chạy được cả
  * trình duyệt TV đời cũ). Chỉ chạy khi người dùng bật, chỉ trong mạng nội bộ, không lưu và không gửi nội dung đi đâu.
  */
-class WebSubServer(private val port: Int = 8780) {
-    internal var pairing = WebReceiverPairing()
+class WebSubServer(private val port: Int = 8780, private val clock: () -> Long = { System.nanoTime() / 1000000L }) {
+    internal var pairing = WebReceiverPairing(now = clock)
     @Volatile var legacyEnabled = false
     fun approveReceiver(code: String): Boolean = pairing.approve(code)
-    fun revokeReceivers() = pairing.revokeAll()
+    fun revokeReceivers() { pairing.revokeAll(); synchronized(lock) { seq++; lock.notifyAll() } }
     private var server: ServerSocket? = null
     private val lock = Object()
     private var seq = 0L
@@ -63,7 +63,7 @@ class WebSubServer(private val port: Int = 8780) {
         synchronized(lock) {
             val oldText = text
             val oldRegion = region
-            val now = android.os.SystemClock.elapsedRealtime()
+            val now = clock()
             when (kind) {
                 "region" -> { region = t; regionUntil = now + 15000 }
                 "clear" -> { text = ""; region = ""; textUntil = 0; regionUntil = 0 }
@@ -93,7 +93,7 @@ class WebSubServer(private val port: Int = 8780) {
     }
 
     private fun expireLocked() {
-        val now = android.os.SystemClock.elapsedRealtime()
+        val now = clock()
         var changed = false
         if (text.isNotEmpty() && now >= textUntil) { text = ""; changed = true }
         if (region.isNotEmpty() && now >= regionUntil) { region = ""; changed = true }
@@ -146,10 +146,10 @@ class WebSubServer(private val port: Int = 8780) {
                     } ?: -1L
                     val body: String
                     synchronized(lock) {
-                        val end = System.currentTimeMillis() + 20_000
+                        val end = System.nanoTime() / 1000000L + 20_000
                         expireLocked()
-                        while (seq == since && !stopped) {
-                            val left = end - System.currentTimeMillis()
+                        while (seq == since && !stopped && (if (receiver) pairing.valid(param("token")) else legacyEnabled)) {
+                            val left = end - System.nanoTime() / 1000000L
                             if (left <= 0) break
                             lock.wait(minOf(left, 500L))
                             expireLocked()

@@ -218,6 +218,7 @@ class TvLinkTest {
 
     @Test fun webSubServesPageAndLongPollsNewText() {
         val s = WebSubServer(0)
+        s.legacyEnabled = true
         val port = s.start()
         try {
             val (c1, page) = get(port, "/")
@@ -246,5 +247,47 @@ class TvLinkTest {
             assertEquals(before, JSONObject(get(port, "/poll?since=-1").second).getLong("seq"))
         } finally { s.stop() }
         assertFalse(s.running)
+    }
+
+    @Test fun receiverRequiresApprovalAndRevocation() {
+        val s = WebSubServer(0)
+        val port = s.start()
+        try {
+            assertEquals(403, get(port, "/").first)
+            assertEquals(403, get(port, "/poll?since=-1").first)
+            assertEquals(403, get(port, "/receiver/poll?since=-1").first)
+            val register = JSONObject(get(port, "/receiver/register").second)
+            val id = register.getString("id")
+            val code = register.getString("code")
+            assertEquals(8, code.length)
+            assertEquals("", JSONObject(get(port, "/receiver/wait?id=$id").second).getString("token"))
+            assertTrue(s.approveReceiver(code))
+            val token = JSONObject(get(port, "/receiver/wait?id=$id").second).getString("token")
+            assertEquals(64, token.length)
+            s.push("Xin chào")
+            val (status, frame) = get(port, "/receiver/poll?since=-1&token=$token")
+            assertEquals(200, status)
+            assertEquals("Xin chào", JSONObject(frame).getString("text"))
+            s.revokeReceivers()
+            assertEquals(403, get(port, "/receiver/poll?since=-1&token=$token").first)
+        } finally { s.stop() }
+    }
+
+    @Test fun staleSubtitleAndMenuExpireSeparately() {
+        var now = 1000L
+        val s = WebSubServer(0) { now }
+        s.legacyEnabled = true
+        val port = s.start()
+        try {
+            s.push("Lời thoại")
+            s.push("Menu", "region")
+            now += 12001
+            var frame = JSONObject(get(port, "/poll?since=-1").second)
+            assertEquals("", frame.getString("text"))
+            assertEquals("Menu", frame.getString("region"))
+            now += 3000
+            frame = JSONObject(get(port, "/poll?since=-1").second)
+            assertEquals("", frame.getString("region"))
+        } finally { s.stop() }
     }
 }
