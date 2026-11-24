@@ -37,6 +37,12 @@ class TranslationGuardTest {
         assertEquals(Level.REJECT, lv("I will find you.", "  "))
     }
 
+    @Test fun genuineApologiesAreNotAiRefusals() {
+        assertEquals(Level.OK, lv("I'm sorry, I lost your sword.", "Tôi xin lỗi, tôi đã làm mất kiếm của bạn."))
+        assertEquals(Level.OK, lv("Sorry, I can't help you.", "Xin lỗi, tôi không thể giúp bạn."))
+        assertEquals(Level.REJECT, lv("I will find you.", "Xin lỗi, tôi không thể dịch câu này."))
+    }
+
     @Test fun untranslatedEchoIsRejected() {
         assertEquals(Level.REJECT, lv("We need to leave before they find us.", "We need to leave before they find us."))
         assertEquals(Level.REJECT, lv("今日は戦うぞ、みんな準備はいいか", "今日は戦うぞ、みんな準備はいいか"))
