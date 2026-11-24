@@ -47,6 +47,16 @@ struct ContentView: View {
     @State private var samsungConfirm = false
     @State private var samsungBusy = false
     @State private var samsungStatus = ""
+    @State private var samsungDUID = ""
+    @State private var samsungIdentity = "DichGame"
+    @State private var samsungAutoConfirm = false
+    @State private var samsungAccountConfirm = false
+    @State private var samsungAccount: SamsungCertificateAuthority.Account?
+    @State private var samsungLogin: SamsungAccountLogin?
+    @State private var samsungPage: SamsungLoginPage?
+    @State private var samsungTargetIP = ""
+    @State private var samsungTargetDUID = ""
+    @State private var samsungTargetName = ""
     @AppStorage("dichgame.lg.ip") private var lgIP = ""
     @State private var lgPass = ""
     @State private var lgBusy = false
@@ -433,14 +443,39 @@ struct ContentView: View {
     }
 
     private var samsungInstallPanel: some View {
-        panel(title: "Cài app Samsung từ iPhone", subtitle: "Developer Mode · WGT đã ký · thử nghiệm", icon: "arrow.down.tv") {
-            Text("Bật máy chủ phụ đề để xem IP iPhone. Trên Samsung vào Apps, nhập 12345, bật Developer Mode, đặt Host PC IP là IP iPhone và khởi động lại TV. Cần WGT đã ký phù hợp với TV.")
+        panel(title: "Cài app Samsung từ iPhone", subtitle: "Developer Mode · tự cấp chứng chỉ · thử nghiệm", icon: "arrow.down.tv") {
+            Text("Bật máy chủ phụ đề để xem IP iPhone. Trên Samsung vào Apps, nhập 12345, bật Developer Mode, đặt Host PC IP là IP iPhone và khởi động lại TV. Có thể đăng nhập Samsung để xin cấp chứng chỉ và tự ký WGT, hoặc chọn WGT đã ký.")
                 .font(.system(size: 12)).foregroundStyle(Palette.muted)
             TextField("IP TV Samsung", text: $samsungIP).keyboardType(.decimalPad).inputStyle()
+            TextField("DUID chứng chỉ TV",text:$samsungDUID).autocorrectionDisabled().textInputAutocapitalization(.never).inputStyle()
+            Button("Đọc DUID từ TV") { readSamsungDUID() }
+                .disabled(samsungBusy || !TVLink.privateIPv4(samsungIP.trimmingCharacters(in:.whitespacesAndNewlines)))
+            TextField("Tên tác giả chứng chỉ",text:$samsungIdentity).inputStyle()
+            Button("Đăng nhập Samsung · tự ký & cài") {
+                samsungTargetIP = samsungIP.trimmingCharacters(in:.whitespacesAndNewlines)
+                samsungTargetDUID = samsungDUID.trimmingCharacters(in:.whitespacesAndNewlines)
+                samsungTargetName = samsungIdentity.trimmingCharacters(in:.whitespacesAndNewlines)
+                samsungAutoConfirm = true
+            }.disabled(samsungBusy || !TVLink.privateIPv4(samsungIP.trimmingCharacters(in:.whitespacesAndNewlines)) || !SamsungCertificateCrypto.validDUID(samsungDUID.trimmingCharacters(in:.whitespacesAndNewlines)) || samsungIdentity.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
             Button("Chọn WGT đã ký") { samsungPicker = true }
                 .disabled(samsungBusy || !TVLink.privateIPv4(samsungIP.trimmingCharacters(in: .whitespacesAndNewlines)))
             Text(samsungStatus).font(.system(size: 12)).foregroundStyle(Palette.muted)
         }.tint(Palette.gold)
+        .sheet(item:$samsungPage,onDismiss:{ if samsungAccount == nil {samsungLogin?.cancel()} }) { page in
+            SamsungLoginBrowser(url:page.url)
+        }
+        .confirmationDialog("Cấp chứng chỉ & cài Samsung?",isPresented:$samsungAutoConfirm,titleVisibility:.visible) {
+            Button("Tiếp tục") { beginSamsungProvision() }
+            Button("Hủy",role:.cancel) {}
+        } message: {Text("TV: \(samsungTargetIP)\nDUID: \(samsungTargetDUID)\nKhóa riêng lưu trong Keychain.")}
+        .confirmationDialog("Xác nhận tài khoản Samsung",isPresented:$samsungAccountConfirm,titleVisibility:.visible) {
+            Button("Cấp chứng chỉ & cài") {
+                let account = samsungAccount
+                samsungAccount = nil
+                signAndInstallSamsung(account:account)
+            }
+            Button("Hủy",role:.cancel) {samsungAccount = nil;samsungBusy = false}
+        } message: {Text("Dùng tài khoản \(samsungAccount?.email.isEmpty == false ? samsungAccount!.email : samsungAccount?.userID ?? "") cho TV đã chọn.")}
         .fileImporter(isPresented: $samsungPicker, allowedContentTypes: [.data]) { result in
             switch result {
             case .success(let file): samsungFile = file; samsungConfirm = true
@@ -452,6 +487,68 @@ struct ContentView: View {
             Button("Cài") { installSamsung() }
         } message: {
             Text("Cài WGT đã chọn lên Samsung tại \(samsungIP).")
+        }
+    }
+
+    private func readSamsungDUID() {
+        let ip = samsungIP.trimmingCharacters(in:.whitespacesAndNewlines)
+        guard !samsungBusy,TVLink.privateIPv4(ip) else {return}
+        samsungBusy = true;samsungStatus = "Đang đọc DUID..."
+        DispatchQueue.global(qos:.userInitiated).async {
+            let result = Result {try SamsungInstaller.duid(ip:ip)}
+            DispatchQueue.main.async {
+                samsungBusy = false
+                switch result {
+                case .success(let value):samsungDUID = value;samsungStatus = "Đã đọc DUID; kiểm tra đúng TV."
+                case .failure(let error):samsungStatus = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func beginSamsungProvision() {
+        guard !samsungBusy,TVLink.privateIPv4(samsungTargetIP),SamsungCertificateCrypto.validDUID(samsungTargetDUID) else {return}
+        samsungBusy = true
+        if SamsungCertificateAuthority.hasCertificates(samsungTargetDUID) {signAndInstallSamsung(account:nil)}
+        else {openSamsungLogin()}
+    }
+
+    private func openSamsungLogin() {
+        samsungStatus = "Đăng nhập trực tiếp tại Samsung..."
+        let flow = SamsungAccountLogin { result in
+            samsungLogin = nil
+            switch result {
+            case .success(let account):
+                samsungAccount = account;samsungPage = nil
+                samsungAccountConfirm = true
+            case .failure(let error):
+                samsungPage = nil;samsungBusy = false;samsungStatus = error.localizedDescription
+            }
+        }
+        samsungLogin = flow
+        flow.start { url in samsungPage = SamsungLoginPage(url:url) }
+    }
+
+    private func signAndInstallSamsung(account: SamsungCertificateAuthority.Account?) {
+        let ip = samsungTargetIP,duid = samsungTargetDUID,name = samsungTargetName
+        let progress: (String)->Void = { value in DispatchQueue.main.async {samsungStatus = value} }
+        Task {
+            do {
+                let wgt = try await SamsungCertificateAuthority.sign(duid:duid,identity:name,account:account,progress:progress)
+                DispatchQueue.global(qos:.userInitiated).async {
+                    let result = Result {try SamsungInstaller.install(ip:ip,bytes:wgt,progress:progress)}
+                    DispatchQueue.main.async {
+                        samsungBusy = false
+                        switch result {
+                        case .success(let message):samsungStatus = message;webTV.start()
+                        case .failure(let error):samsungStatus = error.localizedDescription
+                        }
+                    }
+                }
+            } catch {
+                if account == nil {openSamsungLogin()}
+                else {samsungBusy = false;samsungStatus = error.localizedDescription}
+            }
         }
     }
 

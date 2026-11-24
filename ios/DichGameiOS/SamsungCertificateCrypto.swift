@@ -18,7 +18,7 @@ enum SamsungCertificateCrypto {
         }
         h.append(bytes); return h
     }
-    private static func seq(_ parts: Data...) -> Data { der(48,parts.reduce(Data(),+)) }
+    private static func seq(_ parts: Data...) -> Data { der(48,parts.reduce(Data()) { $0 + $1 }) }
     private static func oid(_ b: UInt8...) -> Data { der(6,Data(b)) }
     private static func sign(_ key: SecKey,_ data: Data,_ algorithm: SecKeyAlgorithm) throws -> Data {
         var error: Unmanaged<CFError>?
