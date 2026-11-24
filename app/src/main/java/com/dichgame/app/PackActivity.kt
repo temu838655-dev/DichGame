@@ -445,19 +445,19 @@ class PackActivity : Activity() {
     }
 
     private fun linkDialog() {
-        val et = Ui.field(this, "https://… (file .txt .csv .json .po, GitHub dạng /blob/ cũng được)", "")
+        val et = Ui.field(this, "https://… (file .zip .mo .txt .csv .json .po trực tiếp)", "")
         val box = Ui.vbox(this)
         val pad = Ui.dp(this, 20)
         box.setPadding(pad, pad / 2, pad, 0)
         box.addView(et)
         AlertDialog.Builder(this, R.style.DgDialog)
-            .setTitle("Nhập gói từ link").setView(box)
+            .setTitle("Nhập gói từ link").setMessage("Chỉ dùng link file được phép tải và chia sẻ. Chọn đúng hồ sơ game trước khi nhập.").setView(box)
             .setPositiveButton("Tải và nhập") { _, _ ->
                 val u = et.text.toString().trim()
                 if (u.isEmpty()) return@setPositiveButton
                 Toast.makeText(this, "Đang tải gói…", Toast.LENGTH_SHORT).show()
                 Thread {
-                    val msg = try { PackStore.importText(this, p, PackStore.fetch(u), u.substringBefore('?').substringAfterLast('/')) } catch (e: Exception) { "Không tải được gói: " + (e.message ?: e.javaClass.simpleName) }
+                    val msg = try { PackStore.importLink(this, p, u) } catch (e: Exception) { "Không tải được gói: " + (e.message ?: e.javaClass.simpleName) }
                     runOnUiThread { done(msg) }
                 }.start()
             }

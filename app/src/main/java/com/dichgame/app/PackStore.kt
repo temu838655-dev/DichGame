@@ -239,6 +239,43 @@ object PackStore {
         } finally { c.disconnect() }
     }
 
+    /** Download a user-authorized direct pack link, including ZIP and MO, with a bounded temporary file. */
+    fun importLink(ctx: Context, p: Prefs, link: String): String {
+        val profile = p.profile
+        var u = link.trim()
+        val github = Regex("^https://github[.]com/([^/]+/[^/]+)/blob/(.+)$").find(u)
+        if (github != null) u = "https://raw.githubusercontent.com/${github.groupValues[1]}/${github.groupValues[2]}"
+        val url = URL(u)
+        require(url.protocol == "https" && url.userInfo == null) { "Chỉ nhận link HTTPS trực tiếp." }
+        val tmp = File.createTempFile("remote-pack", ".tmp", ctx.cacheDir)
+        try {
+            val c = url.openConnection() as HttpURLConnection
+            try {
+                c.instanceFollowRedirects = false
+                c.connectTimeout = 10000
+                c.readTimeout = 20000
+                c.setRequestProperty("User-Agent", "DichGame")
+                if (c.responseCode != 200) throw java.io.IOException("Link không trả về file trực tiếp (HTTP ${c.responseCode}).")
+                if (c.contentType.orEmpty().contains("text/html", true)) throw java.io.IOException("Đây là trang web, không phải file lời thoại.")
+                c.inputStream.use { input ->
+                    tmp.outputStream().use { output ->
+                        val buf = ByteArray(65536)
+                        var total = 0L
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            total += n
+                            if (total > 80_000_000L) throw java.io.IOException("Gói vượt quá 80 MB.")
+                            output.write(buf, 0, n)
+                        }
+                    }
+                }
+            } finally { c.disconnect() }
+            if (p.profile != profile) throw java.io.IOException("Hồ sơ game đã thay đổi. Hãy chọn lại game.")
+            return importFile(ctx, p, url.path.substringAfterLast('/'), tmp)
+        } finally { tmp.delete() }
+    }
+
     private fun java.io.InputStream.readNBytesCapped(max: Int): ByteArray {
         val out = java.io.ByteArrayOutputStream()
         val buf = ByteArray(1 shl 14)
