@@ -99,6 +99,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     private var stable = 0
     private var last = ""
     private var prevVi = ""
+    private var displayedPrevious = ""
     private var lastFine: IntArray? = null
     private var lastSig: IntArray? = null
     private var skipRun = 0
@@ -140,7 +141,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         (box.parent as? ViewGroup)?.removeView(box)
         (view.parent as? ViewGroup)?.removeView(view)
         parent.addView(box, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        parent.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+        parent.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
             Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { setMargins(dp(6), 0, dp(6), dp(4)) })
         styleView()
     }
@@ -161,6 +162,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     private fun styleView() {
         val pr = Prefs(act)
         view.setTextColor(fg())
+        view.setShadowLayer(4f, 0f, 0f, if (fg() == Color.BLACK) Color.WHITE else Color.BLACK)
         view.setBackgroundColor(bg())
         view.textSize = (pr.fontSize * pr.subScale / 100f).coerceIn(10f, 40f)
     }
@@ -695,7 +697,8 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             sb.setSpan(RelativeSizeSpan(size), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             sb.setSpan(ForegroundColorSpan(color), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        if (pr.showPrev) add(prevVi, 0.7f, (fg and 0x00FFFFFF) or 0x99000000.toInt())
+        if (!refreshOnly) displayedPrevious = prevVi
+        if (pr.showPrev) add(displayedPrevious, 0.7f, (fg and 0x00FFFFFF) or 0x99000000.toInt())
         for ((i, c) in cards.withIndex()) {
             val d = c.tr.delivery
             if (i == cards.lastIndex && pr.emoTr && pr.emoLabel && d != null && d.label.isNotEmpty()) add("● " + d.label, 0.62f, d.mood.color)

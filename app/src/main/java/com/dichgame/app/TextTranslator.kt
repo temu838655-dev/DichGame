@@ -212,7 +212,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 if (v.level != TranslationGuard.Level.REJECT) {
                     val d = if (emo) parsed.delivery ?: Emo.detect(text, fixed, pace) else null
                     chosen = Tr(fixed, d, v.level == TranslationGuard.Level.SUSPECT, "ai")
-                    if (v.level == TranslationGuard.Level.OK || attempt == 1) { st.inc("dich_ai"); break }
+                    if (v.level == TranslationGuard.Level.OK || attempt == 1) break
                     // Kết quả còn nghi ngờ: giữ làm dự phòng và yêu cầu dịch lại một lần.
                     strict = v.reasons.joinToString("; ").ifBlank { "câu dịch còn nghi ngờ" }
                     continue
@@ -222,7 +222,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 if (attempt == 1) st.inc("may_loai")
             }
             val res = chosen
-            if (res?.uncertain == true) st.inc("dich_ai")
+            if (res != null) st.inc("dich_ai")
             main.post {
                 if (closed) return@post
                 if (res != null) finish(res) else translateLocal(text, names, pace, ::finish)
@@ -234,7 +234,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
 
     private fun translateLocal(text: String, names: List<Pair<String, String>>, pace: Pace?, done: (Tr) -> Unit) {
         val l = local
-        if (l == null) { done(Tr(text, null, false, "may")); return }
+        if (l == null) { done(Tr(text, null, true, "may")); return }
         val terms = PackStore.terms(p)
         val prot = terms.protect(text)
         fun ok(r: String) {

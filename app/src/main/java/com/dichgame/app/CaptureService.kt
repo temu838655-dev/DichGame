@@ -678,7 +678,7 @@ class CaptureService : Service() {
             LangDetect.scriptOfLang(newLang) == 'L' && LangDetect.scriptOfLang(lang) == 'L'
         if (!ok) { langTrack?.current = lang; return }
         pendingLang = newLang
-        val t2 = TextTranslator(this, Prefs(this), newLang)
+        val t2 = TextTranslator(this, Prefs(this), newLang).apply { onFallback = { m -> android.util.Log.w("DG_TRANSLATE", m) } }
         t2.prepare { done ->
             pendingLang = null
             if (!running || !done) {

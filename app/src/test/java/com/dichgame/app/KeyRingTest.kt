@@ -122,6 +122,28 @@ class KeyRingTest {
         assertFalse(KeyRing.allBad(emptyList(), 0))
     }
 
+    @Test fun rotatesAfterQuotaAndInvalidKeyWithinSameRequest() {
+        val tried = mutableListOf<String>()
+        val value = Ai.withGeminiKeys(keys, m) { key ->
+            tried.add(key)
+            when (key) {
+                "A" -> throw quota(60_000)
+                "B" -> throw AiException(403, "invalid", badKey = true)
+                else -> "ok"
+            }
+        }
+        assertEquals("ok", value)
+        assertEquals(keys, tried)
+        assertEquals("C", KeyRing.pick(keys, m))
+    }
+
+    @Test fun parsesPastedMultipleKeysAndDailyQuotaVariants() {
+        assertEquals(keys, Prefs.parseGeminiKeys(listOf("A, B; C", "B\nA")))
+        assertTrue(KeyRing.isDailyQuota("generate_requests_per_day"))
+        assertTrue(KeyRing.isBadKey(403, "API_KEY_HTTP_REFERRER_BLOCKED"))
+        assertFalse(KeyRing.isBadKey(403, "model unavailable"))
+    }
+
     @Test fun humanWait() {
         assertEquals("21 giây", AiRetry.humanWait(21_000))
         assertEquals("5 phút", AiRetry.humanWait(5 * 60_000L))

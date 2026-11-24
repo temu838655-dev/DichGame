@@ -95,8 +95,10 @@ object Ai {
      * [scope] là model (hạn mức tính theo model). Mọi khóa đều không dùng được thì ném [AiException] 429 kèm số mili giây phải chờ
      * (hoặc lỗi sai khóa nếu mọi khóa đều sai).
      */
-    fun <T> withGeminiKey(p: Prefs, scope: String, call: (String) -> T): T {
-        val keys = p.geminiKeys()
+    fun <T> withGeminiKey(p: Prefs, scope: String, call: (String) -> T): T =
+        withGeminiKeys(p.geminiKeys(), scope, call)
+
+    internal fun <T> withGeminiKeys(keys: List<String>, scope: String, call: (String) -> T): T {
         if (keys.isEmpty()) throw AiException(401, "Chưa có khóa Gemini", badKey = true)
         var last: AiException? = null
         val remaining = keys.toMutableList()

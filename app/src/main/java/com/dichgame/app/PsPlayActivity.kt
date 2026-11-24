@@ -61,10 +61,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         const val EXTRA_TRANSLATE = "translate"   // bật dịch phụ đề ngay khi vào chơi
         /** Xoay ngang: thanh công cụ tự thu lại sau chừng này mili giây không chạm. */
         private const val TOOLS_IDLE_MS = 5000L
-        /** Xoay dọc: lâu hơn một chút, và tính lại mỗi lần chạm tay cầm ảo (thanh thu lại thì tay cầm dời lên nên không thu khi đang chơi). */
+        /** Xoay dọc: cũng 5 giây, tính lại mỗi lần chạm tay cầm ảo để thanh không thu giữa chừng. */
         private const val TOOLS_IDLE_PORTRAIT_MS = 5000L
-        /** Sau một thao tác (bật dịch, đóng bảng cài đặt…) thanh công cụ thu lại sau chừng này mili giây. */
-        private const val TOOLS_ACTION_MS = 5000L
     }
 
     private var console: PsConsole? = null
@@ -129,7 +127,6 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         // xoay dọc: đang giữ nút hoặc cần gạt trên tay cầm ảo thì chưa thu (thu thì tay cầm dời chỗ dưới ngón tay)
         if (playRoot?.land == false && padHeld()) armIdle() else setTools(false)
     }
-    private val actionRun = Runnable { if (!isFinishing && !isDestroyed && hasWindowFocus()) setTools(false) }
     private var zoomLevel = 0
     // Chỉ bản debug: dựng giao diện mà không kết nối máy thật (để chụp ảnh kiểm tra giao diện trên máy giả lập).
     private var demo = false
@@ -247,8 +244,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     at(9000) { st("sau-5s") }
                     at(14000) { handleView?.performClick() }
                     at(15000) { st("mo-lai") }
-                    at(21000) { pillOnce?.box?.performClick() }
-                    at(21500) { android.util.Log.i("DG_PLAY", "mot-lan chay=${uiTr?.running} once=${uiTr?.once}") }
+                    at(17000) { pillOnce?.box?.performClick() }
+                    at(17500) { android.util.Log.i("DG_PLAY", "mot-lan chay=${uiTr?.running} once=${uiTr?.once}") }
+                    at(19500) { st("dang-5s") }
                     at(23500) { st("sau-bam") }
                     at(24000) { homeCell?.performClick() }
                 }
@@ -259,10 +257,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                         "toolsp-$tag open=$toolsOpen bar=${barView?.visibility == View.VISIBLE} land=${playRoot?.land == true} connected=$connected")
                     fun at(ms: Long, f: () -> Unit) { ui.postDelayed({ if (!isFinishing && !isDestroyed) f() }, ms) }
                     at(2500) { st("dau") }
-                    at(13000) { st("sau-8s") }
+                    at(9000) { st("sau-5s") }
                     at(14000) { gripView?.performClick() }
                     at(15000) { st("mo-lai") }
-                    at(25000) { st("sau-8s-lan-2") }
+                    at(21000) { st("sau-5s-lan-2") }
                 }
                 "adjust2" -> {
                     // Chỉnh khung: kéo quá to → bấm Đặt lại → bấm Xong (bấm đúng các nút thật), ghi nhật ký từng bước
@@ -371,8 +369,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         if (hasFocus) armIdle()
         if (!hasFocus) {
             ui.removeCallbacks(idleRun)
-            ui.removeCallbacks(actionRun)
-            // Dialog, màn hình hệ thống hoặc app khác có thể lấy focus mà không
+                // Dialog, màn hình hệ thống hoặc app khác có thể lấy focus mà không
             // gửi đủ ACTION_UP cho các ngón đang giữ trên tay cầm ảo.
             resetPhysicalControllerState()
             pad?.releaseAll()
@@ -1022,7 +1019,6 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private fun setTools(open: Boolean) {
         toolsOpen = open
         ui.removeCallbacks(idleRun)
-        ui.removeCallbacks(actionRun)
         applyToolsVisibility()
         armIdle()
         if (demo) android.util.Log.i("DG_PLAY", "tools open=$open land=${playRoot?.land == true}")
@@ -1031,7 +1027,6 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     /** Xoay ngang và thanh đang mở: tính lại giờ tự thu lại (gọi mỗi lần người chơi chạm vào thanh). */
     private fun armIdle() {
         ui.removeCallbacks(idleRun)
-        ui.removeCallbacks(actionRun)
         if (toolsOpen && hasWindowFocus()) ui.postDelayed(idleRun, if (playRoot?.land == true) TOOLS_IDLE_MS else TOOLS_IDLE_PORTRAIT_MS)
     }
 
@@ -1043,11 +1038,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     /** Vừa làm xong một thao tác (bật dịch, chỉnh xong, đóng bảng…): thanh tự thu lại để không vướng khi chơi. */
-    private fun afterAction(ms: Long = TOOLS_ACTION_MS) {
-        ui.removeCallbacks(idleRun)
-        ui.removeCallbacks(actionRun)
-        if (toolsOpen && hasWindowFocus()) ui.postDelayed(actionRun, ms.coerceAtLeast(TOOLS_ACTION_MS))
-    }
+    private fun afterAction() = armIdle()
 
     /** Bấm nút PS trên tay cầm (mở trung tâm điều khiển của máy chơi game): nhấn khoảng 150 ms rồi nhả. */
     private fun tapPs() {
