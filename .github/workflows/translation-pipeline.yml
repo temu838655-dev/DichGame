@@ -1,0 +1,26 @@
+name: Translation pipeline tests
+on:
+  push:
+    paths:
+      - 'tools/**'
+      - '.github/workflows/translation-pipeline.yml'
+  pull_request:
+    paths:
+      - 'tools/**'
+      - '.github/workflows/translation-pipeline.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pack builder self tests
+        run: python tools/build_viet_pack.py --self-test
+      - name: Batch pipeline tests
+        run: python -m unittest discover -s tools -p 'test_translation_pipeline.py' -v
