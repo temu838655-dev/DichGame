@@ -80,11 +80,11 @@ object PackStore {
     @Synchronized
     fun addLines(ctx: Context, profile: String, add: List<Pair<String, String>>): Int {
         val f = linesFile(ctx, profile)
-        val map = LinkedHashMap<Triple<String, String, String>, Pair<String, String>>()
+        val map = LinkedHashMap<String, Pair<String, String>>()
         // Read and write the same captured target; if reading fails do not overwrite it.
         for (e in readFile(f) + add) {
             val k = Canon.key(e.first)
-            val identity = Triple(k, digitSig(e.first), SubtitleMeaning.signature(e.first))
+            val identity = Canon.literal(e.first)
             if (Canon.usable(k) && e.second.isNotBlank()) map[identity] = e.first.replace('\t', ' ').replace('\n', ' ') to e.second.replace('\t', ' ').replace('\n', ' ')
         }
         val list = map.values.toList().takeLast(PackText.MAX_LINES)

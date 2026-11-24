@@ -72,6 +72,29 @@ class TransMemoryFuzzyTest {
         assertTrue(h!!.fuzzy)
     }
 
+    @Test fun foldedCollisionsNeverOverrideLiteralTranslations() {
+        val m = TransMemory(listOf("Modern" to "Hiện đại", "Modem" to "Bộ điều giải"))
+        assertEquals("Hiện đại", m.lookupEx("Modern")!!.vi)
+        assertEquals("Bộ điều giải", m.lookupEx("Modem")!!.vi)
+        assertTrue(!m.lookupEx("Modern")!!.fuzzy)
+        assertNull(m.lookupEx("M0dern"))
+        assertEquals(2, m.size)
+    }
+
+    @Test fun OCRFoldedHitIsNotExact() {
+        val m = TransMemory(listOf("YOU DIED" to "BẠN ĐÃ CHẾT"))
+        val h = m.lookupEx("you d1ed")
+        assertNotNull(h)
+        assertTrue(h!!.fuzzy)
+    }
+
+    @Test fun separateNumbersAreNotConcatenated() {
+        assertEquals("1|23", digitSig("take 1 then 23"))
+        assertEquals("12|3", digitSig("take 12 then 3"))
+        val m = TransMemory(listOf("Take 1 then 23 potions from the old wooden chest." to "Lấy 1 rồi 23 bình thuốc."))
+        assertNull(m.lookupEx("Take 12 then 3 potions from the old wooden chest."))
+    }
+
     @Test fun largeMemoryBuildsAndSearchesFast() {
         val rnd = java.util.Random(7)
         val letters = "abcdefghijklmnoprstuvwy"
