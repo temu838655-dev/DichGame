@@ -164,16 +164,18 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             if (!stillCurrent()) return
             // Chỉ tự lưu bản Gemini/CloudAPI chắc chắn đạt TranslationGuard.OK.
             // Không ghi bản dịch máy dự phòng hoặc bản dịch AI bị nghi ngờ.
-            val saved = p.learnTranslations && t.via == "ai" && !t.uncertain &&
+            val saved = p.learnTranslations && (t.via == "ai" || t.via == "cloud_memory") && !t.uncertain &&
                 LearnedTranslationRules.canRemember(text, t.text)
             if (saved) LearnedTranslations.remember(ctx, profile, game, source, speaker, ui, text, t.text)
+            if (t.via == "ai" && !t.uncertain) CommunityCloud.contribute(p,game,source,speaker,ui,text,t.text)
             if (t.uncertain) st.inc("dich_nghi")
             // Câu đã lưu lâu dài không giữ thêm trong cache: khi người dùng xóa bộ nhớ
             // sẽ không bị trả lại bản cũ từ cache trong cùng phiên chơi.
             else if (!saved && (t.via != "may" || !aiOn)) cache[key] = t
             emit(t)
         }
-        if (!aiOn) { translateLocal(source, text, names, pace, ::finish); return }
+        val useCommunity = CommunityCloud.config(p) != null && p.trStyle == 0 && p.customPrompt.isBlank() && p.glossary.isBlank() && p.cast.isBlank()
+        if (!aiOn && !useCommunity) { translateLocal(source, text, names, pace, ::finish); return }
         val emo = p.emoTr && !ui
         val settled = java.util.concurrent.atomic.AtomicBoolean(false)
         fun fallback() {
@@ -184,9 +186,20 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         main.postDelayed(deadline, if (p.slow) 12_000L else 7_000L)
         try { aiWorkers.execute {
             var chosen: Tr? = null
+            if (!settled.get() && !closed && useCommunity) {
+                val shared = CommunityCloud.lookup(p,game,source,speaker,ui,text)
+                if (shared != null) {
+                    val fixed = terms.fixOutput(TranslationGuard.clean(shared,text))
+                    if (TranslationGuard.check(text,fixed,names).level == TranslationGuard.Level.OK) {
+                        chosen = Tr(fixed,if(emo) Emo.detect(text,fixed,pace) else null,false,"cloud_memory")
+                    }
+                }
+            }
             var strict: String? = null
             val cool = Ai.coolingMs(p)
-            if (cool > 0) {
+            if (chosen != null || !aiOn || settled.get() || closed) {
+                // Shared result or offline-only mode: no AI request.
+            } else if (cool > 0) {
                 // vừa hết lượt: dịch máy ngay cho câu này, khỏi chờ AI vô ích; hết thời gian nghỉ sẽ thử AI lại
                 st.inc(AiRetry.statKey(AiRetry.Kind.QUOTA))
                 warn(AiRetry.explain(AiRetry.Kind.QUOTA, 429, cool))
@@ -218,7 +231,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 if (attempt == 1) st.inc("may_loai")
             }
             val res = chosen
-            if (res != null) st.inc("dich_ai")
+            if (res?.via == "ai") st.inc("dich_ai")
+            if (res?.via == "cloud_memory") st.inc("dich_cloud_memory")
             main.post {
                 main.removeCallbacks(deadline)
                 if (closed || settled.get()) return@post

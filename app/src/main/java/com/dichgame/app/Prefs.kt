@@ -93,6 +93,19 @@ class Prefs(ctx: Context) {
         get() = normalizeSource(sp.getString("langc", null) ?: arrayOf("en", "ja", "ko", "zh")[sp.getInt("lang", 0).coerceIn(0, 3)])
         set(v) = sp.edit().putString("langc", normalizeSource(v)).apply()
 
+    var communityEnabled: Boolean
+        get() = sp.getBoolean("community_enabled", false)
+        set(v) = sp.edit().putBoolean("community_enabled",v).apply()
+    var communityContribute: Boolean
+        get() = sp.getBoolean("community_contribute",false)
+        set(v) = sp.edit().putBoolean("community_contribute",v).apply()
+    var communityUrl: String
+        get() = sp.getString("community_url","").orEmpty()
+        set(v) = sp.edit().putString("community_url",v.trim()).apply()
+    var communityToken: String
+        get() = ApiSecrets.read(app,"community_token")
+        set(v) { ApiSecrets.write(app,mapOf("community_token" to v.trim())) }
+
     var engine: String
         get() = sp.getString("engine", null) ?: if (geminiKeys().isNotEmpty()) ENGINE_GEMINI else ENGINE_LOCAL
         set(v) = sp.edit().putString("engine", v).apply()

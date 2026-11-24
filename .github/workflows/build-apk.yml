@@ -102,6 +102,9 @@ jobs:
             sleep $((attempt * 15))
           done
 
+      - name: Kiểm tra backend Cloudflare
+        run: node --test backend/cloudflare/test.mjs
+
       - name: Kiểm tra schema SQLite và giao dịch dữ liệu
         run: python3 ci/test_database_schema.py
 

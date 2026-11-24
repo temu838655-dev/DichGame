@@ -75,6 +75,7 @@ class TranslateActivity : Activity() {
                     addView(packRow())
                 }
             }
+            if (!p.narrate) group("KHO DỮ LIỆU TRỰC TUYẾN") { addView(communityBlock()) }
             if (p.aiAuto) {
                 group("GEMINI VÀ KHÓA DỰ PHÒNG") {
                     geminiBlock(this)
@@ -110,6 +111,44 @@ class TranslateActivity : Activity() {
                 }
             }
         }
+    }
+
+    private fun communityBlock(): View {
+        val box=Ui.vbox(this)
+        val a=this
+        box.addView(Ui.tv(a,"Máy chủ riêng (Cloudflare D1). Mặc định tắt. Khi bật, tên game, ngôn ngữ, tên nhân vật và câu gốc được gửi để tra bản dịch. Không gửi ảnh, âm thanh, API key AI hay mã PSN.",13f,Ui.SUB))
+        val url=Ui.field(a,"https://...workers.dev",p.communityUrl)
+        val token=Ui.field(a,"Mã truy cập kho dữ liệu",p.communityToken,true)
+        box.addView(url,Ui.lpm(a,6,0)); box.addView(token,Ui.lpm(a,6,0))
+        box.addView(Ui.button(a,"Lưu máy chủ") {
+            val u=url.text.toString().trim(); val key=token.text.toString().trim()
+            if(!CommunityCloud.validUrl(u)||key.length !in 24..500) {
+                Toast.makeText(a,"Cần URL HTTPS gốc và mã truy cập hợp lệ.",Toast.LENGTH_LONG).show()
+            } else {
+                p.communityEnabled=false; p.communityContribute=false
+                p.communityUrl=u; p.communityToken=key; render()
+            }
+        },Ui.lpm(a,6,0))
+        box.addView(Ui.switchRow(a,"Tra cứu bản dịch dùng chung","Ưu tiên dữ liệu đã duyệt; lỗi mạng thì dùng cách dịch hiện tại.",p.communityEnabled) {
+            if(it && (!CommunityCloud.validUrl(p.communityUrl)||p.communityToken.length !in 24..500)) {
+                Toast.makeText(a,"Lưu thông tin máy chủ trước.",Toast.LENGTH_SHORT).show(); render()
+            } else { p.communityEnabled=it; if(!it) p.communityContribute=false; render() }
+        })
+        if(p.communityEnabled) {
+            box.addView(Ui.switchRow(a,"Đóng góp bản dịch AI","Gửi câu gốc và bản dịch đã qua kiểm tra để quản trị viên duyệt. Không gửi từ điển riêng hoặc prompt riêng. Chỉ bật nếu có quyền chia sẻ.",p.communityContribute) { enabled ->
+                if(!enabled) p.communityContribute=false else android.app.AlertDialog.Builder(a).setTitle("Cho phép gửi lời thoại?")
+                    .setMessage("Chỉ đóng góp lời thoại game mà bạn được phép chia sẻ. Không gửi hội thoại cá nhân. Có thể tắt bất cứ lúc nào; dữ liệu đã gửi cần quản trị viên xóa.")
+                    .setNegativeButton("Không") { _,_->render() }.setPositiveButton("Đồng ý") { _,_->p.communityContribute=true;render() }.setOnCancelListener { render() }.show()
+            })
+            val status=Ui.tv(a,"",12.5f,Ui.SUB);box.addView(status)
+            box.addView(Ui.button(a,"Kiểm tra kết nối") { CommunityCloud.test(p) { ok->status.text=if(ok) "Kết nối thành công" else "Không kết nối được. Kiểm tra URL và mã." } },Ui.lpm(a,6,0))
+            box.addView(Ui.button(a,"Cập nhật danh mục game") { CommunityCloud.refreshCatalog(a,p) { n->status.text=if(n>=0) "Đã tải $n game." else "Chưa cập nhật được." } },Ui.lpm(a,6,0))
+            box.addView(Ui.button(a,"Tải gói Việt hóa game đang chọn") { 
+                val game=PackStore.gameName(p)
+                CommunityCloud.downloadPack(a,p,game,p.profile,p.lang) { n->status.text=if(n>=0) "Đã thêm $n câu vào hồ sơ, giữ nguyên bản sửa tay." else "Không tải được gói." }
+            },Ui.lpm(a,6,0))
+        }
+        return box
     }
 
     /** Trạng thái hai bộ dịch offline; app tự tải ngay khi mở lần đầu. */

@@ -1,0 +1,125 @@
+// Self-hosted private beta. Only administrator-approved rows can be returned to apps.
+export const normalize = value => value.trim().replace(/\s+/gu, " ").toLowerCase();
+const bounded = (value, max, min = 1) => typeof value === "string" && value.trim().length >= min &&
+  value.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(value);
+export function parseLine(body) {
+  if (!body || !bounded(body.game, 180) || !["en","zh"].includes(body.lang) ||
+      !["dialogue","menu"].includes(body.kind) || !bounded(body.speaker ?? "", 120, 0) ||
+      !bounded(body.original, 500, 12)) throw new Error("invalid_line");
+  return [normalize(body.game), body.lang, normalize(body.speaker ?? ""), body.kind, normalize(body.original)];
+}
+const reply = (body, status = 200) => new Response(JSON.stringify(body), {
+  status, headers: {"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}
+});
+async function jsonBody(request) {
+  const reader = request.body?.getReader();
+  if (!reader) throw new Error("invalid_body");
+  const parts = []; let size = 0;
+  try {
+    for (;;) {
+      const {done,value} = await reader.read(); if (done) break;
+      size += value.length; if (size > 16384) throw new Error("body_too_large");
+      parts.push(value);
+    }
+  } finally { await reader.cancel().catch(()=>{}); }
+  const bytes = new Uint8Array(size); let offset = 0;
+  for (const p of parts) {bytes.set(p,offset); offset += p.length;}
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+async function authorized(request, secret) {
+  if (typeof secret !== "string" || secret.length < 24) return false;
+  const provided = request.headers.get("Authorization") ?? "";
+  if (provided.length > 512) return false;
+  const enc = new TextEncoder();
+  const [a,b] = await Promise.all([crypto.subtle.digest("SHA-256",enc.encode(provided)),crypto.subtle.digest("SHA-256",enc.encode("Bearer "+secret))]);
+  const aa = new Uint8Array(a), bb = new Uint8Array(b); let diff = 0;
+  for (let i=0;i<aa.length;i++) diff |= aa[i]^bb[i];
+  return diff === 0;
+}
+async function budget(env, operation, limit) {
+  const day = new Date().toISOString().slice(0,10);
+  const row = await env.DB.prepare("INSERT INTO daily_usage(day,operation,count) VALUES(?,?,1) ON CONFLICT(day,operation) DO UPDATE SET count=count+1 WHERE count<? RETURNING count")
+    .bind(day,operation,limit).first();
+  return row !== null;
+}
+const lookupSQL = "SELECT vi FROM translations WHERE game_key=? AND lang=? AND speaker_key=? AND kind=? AND source_key=?";
+export default {
+  async fetch(request, env) {
+    const path = new URL(request.url).pathname, method = request.method;
+    if (path === "/v1/health" && method === "GET") return reply({ok:true,version:1});
+    const admin = path.startsWith("/v1/admin/");
+    if (!await authorized(request,admin?env.ADMIN_TOKEN:env.CLIENT_TOKEN)) return reply({error:"unauthorized"},401);
+    try {
+      if (!admin && !await budget(env,"read",20000)) return reply({error:"daily_limit"},429);
+      if (path === "/v1/lookup" && method === "POST") {
+        const body=await jsonBody(request), key=parseLine(body);
+        const row=await env.DB.prepare(lookupSQL).bind(...key).first();
+        return reply({vi:row?.vi ?? null});
+      }
+      if (path === "/v1/contribute" && method === "POST") {
+        const body=await jsonBody(request), key=parseLine(body);
+        if (!bounded(body.vi,1400,3) || normalize(body.vi)===key[4]) return reply({error:"invalid_translation"},400);
+        if (!await budget(env,"contribute",1000)) return reply({error:"daily_limit"},429);
+        if (await env.DB.prepare(lookupSQL).bind(...key).first()) return reply({status:"already_approved"});
+        await env.DB.prepare("INSERT OR IGNORE INTO submissions(game_key,lang,speaker_key,kind,source_key,original,vi) VALUES(?,?,?,?,?,?,?)")
+          .bind(...key,body.original.trim(),body.vi.trim()).run();
+        return reply({status:"pending_review"},202);
+      }
+      if (path === "/v1/catalog" && method === "GET") {
+        const {results}=await env.DB.prepare("SELECT title,genre FROM catalog ORDER BY title LIMIT 1000").all();
+        return reply({games:results});
+      }
+      if (path === "/v1/pack" && method === "POST") {
+        const body=await jsonBody(request);
+        if (!bounded(body.game,180) || !["en","zh"].includes(body.lang)) return reply({error:"invalid_game"},400);
+        const after=typeof body.after==="string"?body.after:"";
+        if (!bounded(after,500,0)) return reply({error:"invalid_cursor"},400);
+        const {results}=await env.DB.prepare("SELECT source_key,original,vi FROM packs WHERE game_key=? AND lang=? AND source_key>? ORDER BY source_key LIMIT 101")
+          .bind(normalize(body.game),body.lang,after).all();
+        const page=results.slice(0,100);
+        return reply({lines:page.map(({original,vi})=>({original,vi})),next:results.length>100?page.at(-1).source_key:null});
+      }
+      if (path === "/v1/admin/pending" && method === "GET") {
+        const {results}=await env.DB.prepare("SELECT * FROM submissions ORDER BY id LIMIT 100").all();
+        return reply({submissions:results});
+      }
+      if (path === "/v1/admin/review" && method === "POST") {
+        const body=await jsonBody(request);
+        if (!Number.isSafeInteger(body.id)||body.id<1||!["approve","reject"].includes(body.action)) return reply({error:"invalid_review"},400);
+        if(body.action==="approve") {
+          // First approved result wins; a later candidate cannot overwrite it.
+          await env.DB.batch([
+            env.DB.prepare("INSERT OR IGNORE INTO translations(game_key,lang,speaker_key,kind,source_key,original,vi) SELECT game_key,lang,speaker_key,kind,source_key,original,vi FROM submissions WHERE id=?").bind(body.id),
+            env.DB.prepare("DELETE FROM submissions WHERE id=?").bind(body.id)
+          ]);
+        } else await env.DB.prepare("DELETE FROM submissions WHERE id=?").bind(body.id).run();
+        return reply({ok:true});
+      }
+      if(path==="/v1/admin/catalog" && method==="POST") {
+        const body=await jsonBody(request);
+        if(!bounded(body.game,180)||!bounded(body.genre??"",180,0)) return reply({error:"invalid_game"},400);
+        await env.DB.prepare("INSERT INTO catalog(game_key,title,genre) VALUES(?,?,?) ON CONFLICT(game_key) DO UPDATE SET title=excluded.title,genre=excluded.genre,updated_at=unixepoch()")
+          .bind(normalize(body.game),body.game.trim(),(body.genre??"").trim()).run();
+        return reply({ok:true});
+      }
+      if(path==="/v1/admin/pack" && method==="POST") {
+        const body=await jsonBody(request);
+        if(!bounded(body.game,180)||!["en","zh"].includes(body.lang)||!bounded(body.original,500)||!bounded(body.vi,1400)) return reply({error:"invalid_pack"},400);
+        await env.DB.prepare("INSERT INTO packs(game_key,lang,source_key,original,vi) VALUES(?,?,?,?,?) ON CONFLICT(game_key,lang,source_key) DO UPDATE SET original=excluded.original,vi=excluded.vi,updated_at=unixepoch()")
+          .bind(normalize(body.game),body.lang,normalize(body.original),body.original.trim(),body.vi.trim()).run();
+        return reply({ok:true});
+      }
+      if(path==="/v1/admin/delete" && method==="POST") {
+        const body=await jsonBody(request);
+        if(!bounded(body.game,180)) return reply({error:"invalid_game"},400);
+        const key=normalize(body.game);
+        await env.DB.batch(["translations","submissions","packs","catalog"].map(table=>env.DB.prepare("DELETE FROM "+table+" WHERE game_key=?").bind(key)));
+        return reply({ok:true});
+      }
+      return reply({error:"not_found"},404);
+    } catch(error) {
+      if(error instanceof SyntaxError || ["invalid_line","invalid_body","body_too_large"].includes(error?.message)) return reply({error:"invalid_request"},400);
+      return reply({error:"service_unavailable"},503);
+    }
+  }
+};

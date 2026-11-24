@@ -112,7 +112,7 @@ class KhoGameActivity : Activity() {
     private fun fill() {
         grid.removeAllViews()
         val q = query.lowercase()
-        val catalog = runCatching { GameDatabase.get(this).catalog() }.getOrDefault(Catalog.GAMES)
+        val catalog = (runCatching { GameDatabase.get(this).catalog() }.getOrDefault(Catalog.GAMES) + CommunityCloud.cachedCatalog(this,p)).distinctBy { it.first.lowercase() }
         val known = catalog.map { it.first }.toSet()
         val base = if (tab == 0) p.played else catalog.map { it.first }
         val pool = base.filter { n ->
