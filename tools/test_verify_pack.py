@@ -38,3 +38,20 @@ class VerifyPackTest(unittest.TestCase):
             (root / "pack.csv").write_bytes(b"corrupted")
             with self.assertRaises(ValueError):
                 verify(root, "GTA VI")
+
+    def test_android_incompatible_rows(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self.make_pack(root)
+            for data in [
+                b"source,vi,game\nHello,Chao,GTA VI\nhello,Xin chao,GTA VI\n",
+                b'source,vi,game\nHello,"Xin\nchao",GTA VI\n',
+                b"source,vi,game\nHello,Chao\x00,GTA VI\n",
+            ]:
+                (root / "pack.csv").write_bytes(data)
+                p = root / "pack.dichgame.json"
+                m = json.loads(p.read_text())
+                m.update(bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+                p.write_text(json.dumps(m))
+                with self.subTest(data=data), self.assertRaises(ValueError):
+                    verify(root, "GTA VI")
