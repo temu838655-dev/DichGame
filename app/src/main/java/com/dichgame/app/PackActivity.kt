@@ -207,6 +207,7 @@ class PackActivity : Activity() {
                     "Câu có biến số như {tên} hay %s bị bỏ qua vì app không biết điền. Bản vá dạng nhị phân (.exe, .pak, .locres, .xdelta…) sửa thẳng file game thì app không đọc được: " +
                     "hãy cài bản vá đó vào game như bình thường, app vẫn dịch những chỗ còn lại.", 12f, Ui.SUB), Ui.lpm(this@PackActivity, 10, 0))
             i.addView(Ui.button(this@PackActivity, "📤  Lưu gói của mình ra file") { saveFile() }, Ui.lpm(this@PackActivity, 8, 0))
+            i.addView(Ui.button(this@PackActivity, "📤  Xuất câu thoại CSV (gốc, Việt, game)") { saveFile(true) }, Ui.lpm(this@PackActivity, 8, 0))
             put(i, 0, 12)
 
             val t = Ui.card(this@PackActivity)
@@ -451,12 +452,16 @@ class PackActivity : Activity() {
         return PackText.decode(out.toByteArray())
     }
 
-    private fun saveFile() {
+    private fun saveFile(csv: Boolean = false) {
+        if (csv && PackStore.gameName(p).isBlank()) {
+            Toast.makeText(this, "Hãy chọn game trước khi xuất CSV.", Toast.LENGTH_LONG).show()
+            return
+        }
         fileScope = scope()
         val n = PackStore.gameName(p).ifEmpty { p.profile }.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), "-").trim('-')
         @Suppress("DEPRECATION")
-        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/plain")
-            .putExtra(Intent.EXTRA_TITLE, "goi-viet-hoa-$n.txt"), 32)
+        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(if (csv) "text/csv" else "text/plain")
+            .putExtra(Intent.EXTRA_TITLE, "goi-viet-hoa-$n." + if (csv) "csv" else "txt"), if (csv) 35 else 32)
     }
 
     private fun linkDialog() {
@@ -490,7 +495,7 @@ class PackActivity : Activity() {
         val uri = data?.data ?: return
         if (res != RESULT_OK) return
         val expected = fileScope
-        if (req in 31..34 && (expected == null || expected != scope())) {
+        if (req in 31..35 && (expected == null || expected != scope())) {
             origText = null
             done("Game đã thay đổi. Hãy chọn lại file cho đúng game.")
             return
@@ -527,13 +532,20 @@ class PackActivity : Activity() {
                 val msg = try { val translated = readText(uri); requireScope(expected); PackStore.importJoined(this, p, origName, o, nm, translated) } catch (e: Exception) { "Không đọc được file Việt hoá: " + (e.message ?: e.javaClass.simpleName) }
                 runOnUiThread { origText = null; done(msg) }
             }.start()
-        } else if (req == 32) {
-            try {
-                contentResolver.openOutputStream(uri)?.use { it.write(PackStore.exportText(this, p).toByteArray(Charsets.UTF_8)) }
-                Toast.makeText(this, "Đã lưu gói.", Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
-                Toast.makeText(this, "Không lưu được: " + (e.message ?: ""), Toast.LENGTH_LONG).show()
-            }
+        } else if (req == 32 || req == 35) {
+            Thread {
+                val msg = try {
+                    requireScope(expected)
+                    val content = if (req == 35) PackStore.exportCsv(this, p) else PackStore.exportText(this, p)
+                    requireScope(expected)
+                    val stream = contentResolver.openOutputStream(uri, "wt") ?: throw java.io.IOException("Không mở được file.")
+                    stream.use { it.write(content.toByteArray(Charsets.UTF_8)) }
+                    "Đã lưu gói."
+                } catch (e: Exception) {
+                    "Không lưu được: " + (e.message ?: "")
+                }
+                runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_LONG).show() }
+            }.start()
         }
     }
 

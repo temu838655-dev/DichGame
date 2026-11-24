@@ -533,6 +533,36 @@ object PackText {
         return cells
     }
 
+    /** CSV riêng của DichGame có tên game để ngăn nhập chéo giữa các trò chơi. */
+    fun formatScopedCsv(game: String, lines: List<Pair<String, String>>): String {
+        require(game.isNotBlank()) { "Hãy chọn game trước khi xuất CSV." }
+        fun cell(s: String): String = "\"" + s.replace('\r', ' ').replace('\n', ' ').replace("\"", "\"\"") + "\""
+        return buildString {
+            append("source,vi,game\r\n")
+            for ((original, vi) in lines) {
+                append(cell(original)).append(',').append(cell(vi)).append(',').append(cell(game)).append("\r\n")
+            }
+        }
+    }
+
+    fun parseScopedCsv(raw: String): Pack? {
+        val rows = raw.removePrefix("\uFEFF").lineSequence().filter { it.isNotBlank() }.iterator()
+        if (!rows.hasNext()) return null
+        val header = csvRow(rows.next(), ',').map { it.trim().lowercase(Locale.ROOT) }
+        if (header != listOf("source", "vi", "game")) return null
+        val pairs = ArrayList<Pair<String, String>>()
+        var game = ""
+        while (rows.hasNext()) {
+            val cells = csvRow(rows.next(), ',')
+            require(cells.size == 3 && cells[2].isNotBlank()) { "CSV DichGame thiếu tên game hoặc sai cấu trúc." }
+            if (game.isEmpty()) game = cells[2].trim()
+            require(GamePackMatch.selected(game, cells[2])) { "CSV chứa nhiều game. Hãy tách riêng từng game." }
+            require(pairs.size < MAX_LINES) { "CSV vượt quá giới hạn số câu." }
+            pairs.add(cells[0] to cells[1])
+        }
+        return Pack(game, emptyList(), emptyList(), pairs)
+    }
+
     /** Bảng TSV hoặc CSV: cột câu gốc, cột câu Việt (tự nhận qua dòng tiêu đề nếu có, không thì hai cột đầu). */
     private fun fromTable(raw: String): List<Pair<String, String>>? {
         val rows = raw.lines().filter { it.isNotBlank() && !it.trimStart().startsWith("#") }
