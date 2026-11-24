@@ -1,0 +1,2 @@
+# Samsung TV receiver prototype
+Target Tizen 3.0+ (2017+), model compatibility unverified. Uses public TVWindow API and HDMI source enumeration. UP opens source menu. Keep console on before launch and disable HDMI-CEC auto-switch if it exits the receiver. Requires signed WGT with Samsung developer certificates for target TV. No mobile installer, 8-digit pairing, or certificate automation yet. Polling uses current Android WebSubServer; cross-origin access must be enabled and tested before integration. Do not distribute unsigned builds as installable.
