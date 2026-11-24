@@ -127,6 +127,10 @@ class Prefs(ctx: Context) {
         set(v) = sp.edit().putString("gmodel", v.trim()).apply()
 
     /** CloudAPI: dịch vụ AI đám mây theo chuẩn OpenAI (/chat/completions), cần địa chỉ, khóa và tên model. */
+    var autoCloudFallback: Boolean
+        get() = sp.getBoolean("auto_cloud_fallback", false)
+        set(v) = sp.edit().putBoolean("auto_cloud_fallback", v).apply()
+
     var cloudUrl: String
         get() = sp.getString("curl", "").orEmpty()
         set(v) = sp.edit().putString("curl", v.trim()).apply()
