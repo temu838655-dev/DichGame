@@ -135,10 +135,22 @@ class SubtitleFusionTest {
         assertEquals(listOf(Kind.DROP), kinds(f.onOcr("We need to leave before", null, 1_400)))
     }
 
-    @Test fun growingLineOfAnotherSpeakerIsNotReplaced() {
+    @Test fun growingLineOfAnotherSpeakerIsShownSeparately() {
         val f = SubtitleFusion()
         f.onOcr("We need to leave before", "Anna", 1_000)
-        assertEquals(listOf(Kind.DROP), kinds(f.onOcr("We need to leave before they find us.", "Ben", 1_400)))
+        assertEquals(listOf(Kind.SHOW), kinds(f.onOcr("We need to leave before they find us.", "Ben", 1_400)))
+    }
+
+    @Test fun identicalDialogueFromDifferentSpeakersIsNotDropped() {
+        val f = SubtitleFusion()
+        f.onOcr("Stay close to me.", "Anna", 1000)
+        assertEquals(listOf(Kind.SHOW), kinds(f.onOcr("Stay close to me.", "Ben", 1400)))
+    }
+
+    @Test fun smallExactExtensionIsNotMistakenForDuplicate() {
+        val f = SubtitleFusion()
+        f.onOcr("We need to leave before sunrise", "Anna", 1000)
+        assertEquals(listOf(Kind.REPLACE), kinds(f.onOcr("We need to leave before sunrise today", "Anna", 1400)))
     }
 
     @Test fun lineThatVanishedAndComesBackIsShownAgain() {
