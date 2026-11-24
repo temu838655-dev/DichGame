@@ -98,13 +98,15 @@ object KeyRing {
     /** Phản hồi lỗi 429 nói hạn mức theo ngày (GenerateRequestsPerDay...). */
     fun isDailyQuota(body: String): Boolean = listOf("perday", "per day", "per_day", "daily quota", "requests/day").any { body.contains(it, ignoreCase = true) }
 
+    fun isBillingLimit(body: String): Boolean = listOf("insufficient_quota", "credit_balance_exhausted", "organization_spend_limit_exceeded", "project_spend_limit_exceeded", "organization_usage_limit_exceeded", "billing_hard_limit_reached").any { body.contains(it, ignoreCase = true) }
+
     /** Lỗi cho biết chính khóa này không dùng được (sai, hết hạn, bị thu hồi). 403 khác (ví dụ model chưa mở cho khóa) thì không tính. */
     fun isBadKey(code: Int, body: String): Boolean {
         if (code == 401) return true
         if (code != 400 && code != 403) return false
         val b = body.lowercase()
         return b.contains("api_key_invalid") || b.contains("api key not valid") || b.contains("api key expired") ||
-            b.contains("api key was reported as leaked") || b.contains("reported as leaked") || b.contains("api key is invalid") || b.contains("api_key_service_blocked") || b.contains("api_key_http_referrer_blocked") || b.contains("api_key_ip_address_blocked")
+            b.contains("api key was reported as leaked") || b.contains("reported as leaked") || b.contains("api key is invalid") || b.contains("invalid_api_key") || b.contains("incorrect api key") || b.contains("invalid api key") || b.contains("api key revoked") || b.contains("api_key_service_blocked") || b.contains("api_key_http_referrer_blocked") || b.contains("api_key_ip_address_blocked")
     }
 
     /** Mốc 0 giờ sáng kế tiếp theo giờ Thái Bình Dương (Gemini hồi hạn mức theo ngày vào lúc đó), thêm một phút cho chắc. */
@@ -129,7 +131,10 @@ object KeyRing {
      */
     fun report(key: String, scope: String, e: AiException, now: Long = System.currentTimeMillis()): Boolean = when {
         e.badKey -> { blockBad(key, now); true }
-        e.code == 429 -> { blockQuota(key, scope, quotaBlockMs(e.retryAfterMs, e.perDay, now), now); true }
+        e.code == 429 -> {
+            val delay = if (e.billingLimit) maxOf(60 * 60_000L, e.retryAfterMs) else quotaBlockMs(e.retryAfterMs, e.perDay, now)
+            blockQuota(key, scope, delay, now); true
+        }
         else -> false
     }
 }

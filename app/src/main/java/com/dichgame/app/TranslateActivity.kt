@@ -87,7 +87,9 @@ class TranslateActivity : Activity() {
                 group("BỘ DỊCH", 0) {
                 addView(engineRow("Dịch trên máy", null, "Miễn phí, chạy offline, kém chính xác hơn AI", Prefs.ENGINE_LOCAL))
                 divide(16)
-                addView(engineRow("CloudAPI", "AI", "AI đám mây theo chuẩn OpenAI, cần địa chỉ và khóa", Prefs.ENGINE_CLOUD))
+                addView(engineRow("OpenAI", "AI", "AI của ChatGPT, dùng API key, trả phí theo lượt", Prefs.ENGINE_OPENAI))
+                divide(16)
+                addView(engineRow("CloudAPI", "AI", "Máy chủ tương thích OpenAI, tự đổi khóa dự phòng", Prefs.ENGINE_CLOUD))
                 divide(16)
                 addView(engineRow("Google Gemini", "AI", "Miễn phí nhưng nhanh hết lượt, cần khóa", Prefs.ENGINE_GEMINI))
                 }
@@ -96,12 +98,16 @@ class TranslateActivity : Activity() {
                     group("KHÓA GOOGLE GEMINI") { geminiBlock(this) }
                     group("TÙY CHỌN AI") { addView(ctxRow()) }
                 }
+                Prefs.ENGINE_OPENAI -> {
+                    group("KHÓA OPENAI") { providerBlock(this, true) }
+                    group("TÙY CHỌN AI") { addView(ctxRow()) }
+                }
                 Prefs.ENGINE_CLOUD -> {
                     group("CLOUDAPI") { cloudBlock(this) }
                     group("TÙY CHỌN AI") { addView(ctxRow()) }
                 }
                 else -> put(Ui.tv(a,
-                    "Đang dùng bộ dịch trên máy: chạy offline sau lần tải mô hình đầu tiên. Chọn CloudAPI hoặc Google Gemini để dịch hay hơn, giữ đúng tên và xưng hô.",
+                    "Đang dùng bộ dịch trên máy: chạy offline sau lần tải mô hình đầu tiên. Chọn OpenAI, CloudAPI hoặc Google Gemini để dịch hay hơn, giữ đúng tên và xưng hô.",
                     13f, Ui.SUB).apply { setPadding(Ui.dp(a, 10), 0, Ui.dp(a, 10), 0) }, 12, 0)
                 }
             }
@@ -214,20 +220,60 @@ class TranslateActivity : Activity() {
         c.addView(status, Ui.lpm(a, 4, 0))
     }
 
-    private fun cloudBlock(c: LinearLayout) {
+    private fun cloudBlock(c: LinearLayout) = providerBlock(c, false)
+
+    private fun providerBlock(c: LinearLayout, open: Boolean) {
         val a = this
-        val url = Ui.field(a, "Địa chỉ CloudAPI (vd https://api.example.com/v1)", p.cloudUrl)
-        val key = Ui.field(a, "Khóa API CloudAPI", p.cloudKey, true)
-        val model = Ui.field(a, "Model", p.cloudModel)
-        watch(url) { p.cloudUrl = it }
-        watch(key) { p.cloudKey = it }
-        watch(model) { p.cloudModel = it }
-        c.addView(url, Ui.lpm(a, 0, 8))
-        c.addView(key, Ui.lpm(a, 0, 8))
-        c.addView(model, Ui.lpm(a, 0, 8))
+        val provider = if (open) "OpenAI" else "CloudAPI"
+        fun keys() = if (open) p.openAiKeys() else p.cloudKeys()
+        fun save(list: List<String>) { if (open) p.setOpenAiKeys(list) else p.setCloudKeys(list) }
+        val scope = if (open) Ai.openAiScope(p) else Ai.cloudScope(p)
+        if (!open) {
+            val url = Ui.field(a, "Địa chỉ CloudAPI (vd https://api.example.com/v1)", p.cloudUrl)
+            watch(url) { p.cloudUrl = it }
+            c.addView(url, Ui.lpm(a, 0, 8))
+        }
+        val list = keys()
+        if (list.isEmpty()) c.addView(Ui.tv(a, "Chưa có khóa $provider.", 13f, Ui.SUB))
+        list.forEachIndexed { index, key ->
+            val row = Ui.hbox(a)
+            row.setPadding(0, Ui.dp(a, 8), 0, Ui.dp(a, 8))
+            val col = Ui.vbox(a)
+            col.addView(Ui.tv(a, "Khóa ${index + 1}", 15f, Ui.TEXT, true))
+            col.addView(Ui.tv(a, mask(key), 12.5f, Ui.SUB))
+            row.addView(col, Ui.lp(0, WRAP_CONTENT, 1f))
+            val st = KeyRing.status(key, scope)
+            val (label, color) = when (st.state) {
+                KeyRing.State.BAD -> "KHÓA SAI" to Ui.DANGER
+                KeyRing.State.QUOTA -> "TẠM NGHỈ · ${AiRetry.humanWait(st.leftMs)}" to Ui.DANGER
+                KeyRing.State.OK -> if (st.active) "ĐANG DÙNG" to Ui.OK else "SẴN SÀNG" to Ui.GOLD
+            }
+            row.addView(Ui.badge(a, label, color))
+            row.addView(Ui.tv(a, "✕", 18f, Ui.DANGER, true).apply {
+                setPadding(Ui.dp(a, 14), Ui.dp(a, 6), Ui.dp(a, 4), Ui.dp(a, 6))
+                setOnClickListener { save(keys().filter { it != key }); render() }
+            })
+            c.addView(row); c.divide()
+        }
+        val add = Ui.field(a, "Dán khóa $provider", "", true)
+        c.addView(add, Ui.lpm(a, 10, 8))
+        c.addView(Ui.button(a, "＋  Thêm khóa") {
+            val value = add.text.toString().trim()
+            if (value.isBlank()) { Toast.makeText(a, "Hãy dán khóa vào ô trên.", Toast.LENGTH_SHORT).show(); return@button }
+            save(keys() + value); render()
+        }, Ui.lpm(a, 0, 4))
+        c.addView(Ui.tv(a, "Tự đổi khóa khi khóa bị từ chối hoặc hết lượt; tạm nghỉ theo hạn mức. Các khóa chung dự án/tài khoản không làm tăng hạn mức.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 4))
+        if (open) c.addView(Ui.button(a, "Quản lý khóa OpenAI") {
+            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://platform.openai.com/api-keys"))) }
+            catch (_: Exception) { Toast.makeText(a, "Không mở được trình duyệt.", Toast.LENGTH_SHORT).show() }
+        }, Ui.lpm(a, 8, 4))
+        val model = Ui.field(a, "Model", if (open) p.openAiModel else p.cloudModel)
+        watch(model) { if (open) p.openAiModel = it else p.cloudModel = it }
+        c.addView(model, Ui.lpm(a, 8, 8))
         val status = Ui.tv(a, "", 13f, Ui.SUB)
         c.addView(Ui.button(a, "Kiểm tra kết nối", true) { runTest(status) }, Ui.lpm(a, 4, 6))
         c.addView(status, Ui.lpm(a, 4, 0))
+        c.addView(Ui.button(a, "Làm mới trạng thái khóa") { render() }, Ui.lpm(a, 8, 0))
     }
 
     private fun runTest(status: TextView) {

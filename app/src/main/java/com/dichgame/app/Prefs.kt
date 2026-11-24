@@ -14,6 +14,7 @@ class Prefs(ctx: Context) {
         fun parseGeminiKeys(raw: List<String>): List<String> = raw.flatMap { it.split(Regex("[,;\\s]+")) }.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         const val ENGINE_LOCAL = "local"
         const val ENGINE_CLOUD = "cloud"
+        const val ENGINE_OPENAI = "openai"
         const val ENGINE_GEMINI = "gemini"
         const val MODE_TRANSLATE = "translate"
         const val MODE_VIETSUB = "vietsub"
@@ -134,6 +135,23 @@ class Prefs(ctx: Context) {
     var cloudKey: String
         get() = sp.getString("ckey", "").orEmpty()
         set(v) = sp.edit().putString("ckey", v.trim()).apply()
+    fun cloudKeys(): List<String> = parseGeminiKeys(listOf(cloudKey, sp.getString("cloud_keys_extra", "").orEmpty()))
+    fun setCloudKeys(list: List<String>) {
+        val before = cloudKeys().toSet()
+        val keys = parseGeminiKeys(list)
+        sp.edit().putString("ckey", keys.firstOrNull().orEmpty()).putString("cloud_keys_extra", keys.drop(1).joinToString("\n")).apply()
+        for (key in keys) if (key !in before) KeyRing.forget(key)
+    }
+    fun openAiKeys(): List<String> = parseGeminiKeys(listOf(sp.getString("openai_keys", "").orEmpty()))
+    fun setOpenAiKeys(list: List<String>) {
+        val before = openAiKeys().toSet()
+        val keys = parseGeminiKeys(list)
+        sp.edit().putString("openai_keys", keys.joinToString("\n")).apply()
+        for (key in keys) if (key !in before) KeyRing.forget(key)
+    }
+    var openAiModel: String
+        get() = sp.getString("openai_model", "gpt-4.1-mini").orEmpty().ifBlank { "gpt-4.1-mini" }
+        set(v) = sp.edit().putString("openai_model", v.trim()).apply()
     var cloudModel: String
         get() = sp.getString("cmodel", "gemini-3.1-flash-lite").orEmpty()
         set(v) = sp.edit().putString("cmodel", v.trim()).apply()
