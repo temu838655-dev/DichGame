@@ -9,7 +9,9 @@ import java.util.UUID
 internal object LgPackageTransfer {
     fun upload(context: Context, session: Session): String {
         check(session.isConnected) { "Chưa kết nối TV" }
-        val remote = "/tmp/dichgame-" + UUID.randomUUID().toString() + ".ipk"
+        val prepared = LgDeveloperCommand.execute(session, "/usr/bin/test -d /media/developer/temp || /bin/mkdir -p /media/developer/temp", 10000)
+        check(prepared.exitCode == 0) { "Không tạo được thư mục cài đặt trên TV" }
+        val remote = "/media/developer/temp/dichgame-" + UUID.randomUUID().toString() + ".ipk"
         val channel = session.openChannel("sftp") as ChannelSftp
         try {
             channel.connect(10000)
@@ -27,7 +29,7 @@ internal object LgPackageTransfer {
     }
 
     fun remove(session: Session, remote: String) {
-        require(remote.matches(Regex("/tmp/dichgame-[0-9a-f-]{36}\\.ipk")))
+        require(remote.matches(Regex("/media/developer/temp/dichgame-[0-9a-f-]{36}\\.ipk")))
         val channel = session.openChannel("sftp") as ChannelSftp
         try {
             channel.connect(10000)
