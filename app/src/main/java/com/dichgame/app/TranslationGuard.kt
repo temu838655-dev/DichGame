@@ -47,12 +47,15 @@ object TranslationGuard {
      * [names]: các tên (nguồn → cách viết tiếng Việt) bắt buộc giữ; mỗi tên có mặt trong câu gốc thì bản dịch phải có tên đó
      * (hoặc cách viết đã quy ước). Trả REJECT nếu chắc chắn hỏng, SUSPECT nếu nghi ngờ, OK nếu qua các phép đo.
      */
-    fun check(src: String, out: String, names: List<Pair<String, String>> = emptyList()): Verdict {
+    fun check(src: String, out: String, names: List<Pair<String, String>> = emptyList(), sourceLang: String = "en"): Verdict {
         val reasons = ArrayList<String>()
         var reject = false
         val t = out.trim()
         if (t.isEmpty()) return Verdict(Level.REJECT, t, listOf("bản dịch rỗng"))
         val low = t.lowercase(Locale.ROOT)
+        if (sourceLang == "en" && SubtitleMeaning.reversesCommand(src, t)) {
+            return Verdict(Level.REJECT, t, listOf("bản dịch đảo nghĩa mệnh lệnh khẳng định/phủ định"))
+        }
         if (REFUSAL.any { low.contains(it) }) { reject = true; reasons.add("AI viết lời giải thích hoặc từ chối") }
         if (t.contains("```")) { reject = true; reasons.add("còn định dạng markdown") }
 

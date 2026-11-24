@@ -16,6 +16,14 @@ class TranslationGuardTest {
         assertEquals(Level.OK, lv("I have 3 swords and 12 arrows.", "Tôi có 3 thanh kiếm và 12 mũi tên."))
     }
 
+    @Test fun reversedImperativesAreRejectedInEitherDirection() {
+        assertEquals(Level.REJECT, lv("Do not open the gate.", "Hãy mở cổng."))
+        assertEquals(Level.REJECT, lv("Open the gate.", "Đừng mở cổng."))
+        assertEquals(Level.OK, lv("Don’t open the gate.", "Không được mở cổng."))
+        assertEquals(Level.OK, lv("Don't move!", "Đứng yên!"))
+        assertEquals(Level.OK, lv("Don't open it until dawn.", "Hãy mở nó khi trời sáng."))
+    }
+
     @Test fun cleanStripsWrappers() {
         assertEquals("Đứng yên!", TranslationGuard.clean("Bản dịch: \"Đứng yên!\"", "Don't move!"))
         assertEquals("Đứng yên!", TranslationGuard.clean("```\nĐứng yên!\n```", "Don't move!"))

@@ -582,7 +582,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             val line = w.lines[i]
             if (t == null) {
                 // Đọc Vietsub: không chạy bất kỳ bộ dịch nào, chỉ đọc câu thực sự là tiếng Việt.
-                if (!narrate || (!line.nameLike && VietsubGuard.isVietnamese(line.text))) {
+                if (narrate && !line.nameLike && VietsubGuard.isVietnamese(line.text)) {
                     out.add(Card(line.speaker, line.text, TextTranslator.Tr(line.text, null, false, "vietsub"), false))
                 }
                 next(i + 1)
@@ -728,14 +728,14 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         view.text = sb
         view.visibility = if (pr.listenOnly) View.GONE else View.VISIBLE
         val vi = cards.joinToString(" ") { it.tr.text }
-        val tvSpeaks = speak && tvSpeakOn() && !tvVoiceOn()
-        val tvText = if (tvSpeaks || cards.none { it.speaker != null }) vi
-        else cards.joinToString("\n") { (it.speaker?.let { n -> "$n: " } ?: "") + it.tr.text }
+        val scene = cards.filterNot { it.tr.uncertain }.map { VoiceLine(it.tr.text, it.speaker, it.tr.delivery) }
+        val tvSpeaks = speak && tvSpeakOn() && !tvVoiceOn() && scene.size == cards.size
+        val tvText = if (tvSpeaks || cards.none { it.speaker != null }) cards.joinToString(" ") { it.tr.caption }
+        else cards.joinToString("\n") { (it.speaker?.let { n -> "$n: " } ?: "") + it.tr.caption }
         sendTv("sub", tvText, tvSpeaks)
-        val d = cards.lastOrNull()?.tr?.delivery
-        val speakerName = cards.lastOrNull()?.speaker
-        val scene = cards.map { VoiceLine(it.tr.text, it.speaker, it.tr.delivery) }
-        if (speak && tvVoiceOn()) tvVoice(vi, d, speakerName, scene)
+        if (speak && tvVoiceOn() && scene.isNotEmpty()) {
+            tvVoice(scene.joinToString(" ") { it.text }, scene.last().delivery, scene.last().speaker, scene)
+        }
         if (speak && ready && !tvSpeakOn()) speaker?.speakScene(scene)
         prevVi = vi
     }

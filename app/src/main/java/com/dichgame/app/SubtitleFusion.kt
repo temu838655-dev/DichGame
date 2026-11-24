@@ -172,6 +172,7 @@ class SubtitleFusion(
     internal fun relation(a: String, b: String): Rel {
         val ka = OcrGuard.key(a); val kb = OcrGuard.key(b)
         if (ka.isEmpty() || kb.isEmpty()) return Rel.NONE
+        if (SubtitleMeaning.signature(a) != SubtitleMeaning.signature(b)) return Rel.NONE
         if (ka == kb) return Rel.SAME
         val cjk = unspaced(a) || unspaced(b)
         val minLen = if (cjk) 3 else 8

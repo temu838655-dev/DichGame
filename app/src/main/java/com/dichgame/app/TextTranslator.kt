@@ -94,7 +94,9 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      * Kết quả một lần dịch. [uncertain]: bản dịch đã qua kiểm tra nhưng còn nghi ngờ (mất số, đổi tên, dài ngắn bất thường)
      * hoặc dịch dự phòng cũng không đạt; giao diện đánh dấu "(?)" thay vì khẳng định. [via]: goi (gói Việt hoá), cache, ai, may.
      */
-    class Tr(val text: String, val delivery: Delivery?, val uncertain: Boolean, val via: String)
+    class Tr(val text: String, val delivery: Delivery?, val uncertain: Boolean, val via: String) {
+        val caption get() = if (uncertain) "$text (?)" else text
+    }
 
     /** Các câu đã dịch xong và đạt kiểm tra: gặp lại (khung hình lặp, nhân vật nói lại) thì dùng ngay, không gọi AI lần nữa. */
     private val cache = object : LinkedHashMap<String, Tr>(64, 0.75f, true) {
@@ -152,7 +154,9 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         // Gói Việt hóa do người dùng nhập có ưu tiên cao nhất; tiếp theo là bản dịch đã
         // lưu lâu dài trên máy. Khớp đúng nguồn + ngôn ngữ + người nói, không khớp mờ.
         if (p.learnTranslations) {
-            LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text)?.let { saved ->
+            LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text)?.takeIf {
+                it.manual || TranslationGuard.check(text, it.vi, sourceLang = lang).ok
+            }?.let { saved ->
                 st.inc("dich_nho")
                 val cast = PackStore.cast(p)
                 val pace = if (ui) null else
@@ -208,7 +212,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 if (raw.isNullOrEmpty()) break
                 val parsed = if (emo) Emo.parse(raw) else Emo.Parsed(raw, null)
                 val fixed = terms.fixOutput(TranslationGuard.clean(parsed.text, text))
-                val v = TranslationGuard.check(text, fixed, names)
+                val v = TranslationGuard.check(text, fixed, names, lang)
                 if (v.level != TranslationGuard.Level.REJECT) {
                     val d = if (emo) parsed.delivery ?: Emo.detect(text, fixed, pace) else null
                     chosen = Tr(fixed, d, v.level == TranslationGuard.Level.SUSPECT, "ai")
@@ -237,7 +241,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         fun ok(r: String) {
             SessionStats.live.inc("dich_may")
             // dịch trên máy vốn kém hơn AI nên chỉ coi là "chưa chắc" khi hỏng rõ ràng (rỗng, chưa dịch, còn chữ gốc)
-            val bad = TranslationGuard.check(text, r, names).level == TranslationGuard.Level.REJECT
+            val bad = !TranslationGuard.check(text, r, names, lang).ok
             done(Tr(r, deliveryOf(text, r, pace), bad, "may"))
         }
         l.translate(prot.text)

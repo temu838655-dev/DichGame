@@ -44,19 +44,21 @@ object Canon {
     fun usable(key: String): Boolean = key.length >= 3 || (key.length >= 2 && key.any { isCjk(it) })
 }
 
+private data class LineKey(val letters: String, val numbers: String, val cues: String) {
+    companion object {
+        fun of(source: String) = LineKey(Canon.key(source), digitSig(source), SubtitleMeaning.signature(source))
+    }
+}
+
 /** Bộ nhớ câu thoại: "câu gốc -> câu Việt hoá chuẩn". Mục thêm sau đè mục thêm trước. */
 class TransMemory(pairs: Iterable<Pair<String, String>>) {
-    private val map = HashMap<String, String>()
-    /** Các chữ số trong câu gốc (chỉ câu có số): khớp gần đúng không được bỏ qua chỗ khác nhau về số ("Take 5" khác "Take 6"). */
-    private val digits = HashMap<String, String>()
+    private val map = HashMap<LineKey, String>()
 
     init {
         for ((s, v) in pairs) {
-            val k = Canon.key(s)
-            if (Canon.usable(k) && v.isNotBlank()) {
+            val k = LineKey.of(s)
+            if (Canon.usable(k.letters) && v.isNotBlank()) {
                 map[k] = v.trim()
-                val d = digitSig(s)
-                if (d.isEmpty()) digits.remove(k) else digits[k] = d
             }
         }
     }
@@ -64,7 +66,7 @@ class TransMemory(pairs: Iterable<Pair<String, String>>) {
     /** Kết quả tra: [fuzzy] = khớp gần đúng (chữ đọc từ màn hình hơi lệch so với câu trong gói), không phải khớp đúng khoá. */
     class Hit(val vi: String, val fuzzy: Boolean)
 
-    private val fuzzyIndex: FuzzyIndex by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { FuzzyIndex(map, digits) }
+    private val fuzzyIndex: FuzzyIndex by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { FuzzyIndex(map) }
 
     /** Dựng sẵn chỉ mục khớp gần đúng (gọi ở luồng nền khi bắt đầu dịch) để lần tra đầu tiên không bị khựng. */
     fun warm() { if (map.size > 1) fuzzyIndex }
@@ -78,7 +80,7 @@ class TransMemory(pairs: Iterable<Pair<String, String>>) {
     }
 
     private fun part(text: String): String? {
-        map[Canon.key(text)]?.let { return matchCase(text, it) }
+        map[LineKey.of(text)]?.let { return matchCase(text, it) }
         // nhiều thông báo dính liền không dấu câu ("YOU DIED Press any button"): cắt theo từ
         val words = text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
         if (words.size < 2 || words.size > 16) return null
@@ -90,7 +92,7 @@ class TransMemory(pairs: Iterable<Pair<String, String>>) {
             var j = minOf(words.size, i + 8)
             while (j > i && res == null) {
                 val chunk = words.subList(i, j).joinToString(" ")
-                val v = map[Canon.key(chunk)]
+                val v = map[LineKey.of(chunk)]
                 if (v != null) cover(j)?.let { res = listOf(matchCase(chunk, v)) + it }
                 j--
             }
@@ -109,9 +111,9 @@ class TransMemory(pairs: Iterable<Pair<String, String>>) {
     fun lookupEx(text: String): Hit? {
         if (map.isEmpty() || text.isBlank()) return null
         exact(text)?.let { return Hit(it, false) }
-        val q = Canon.key(text)
-        if (q.length < FuzzyIndex.minLen(q)) return null
-        return fuzzyIndex.find(q, digitSig(text))?.let { Hit(it, true) }
+        val q = LineKey.of(text)
+        if (q.letters.length < FuzzyIndex.minLen(q.letters)) return null
+        return fuzzyIndex.find(q)?.let { Hit(it, true) }
     }
 
     private fun exact(text: String): String? {
@@ -149,22 +151,20 @@ internal fun digitSig(s: String): String {
  * "bỏ phiếu" cho các câu trong gói, rồi chỉ so kỹ (khoảng cách chỉnh sửa) vài câu nhiều phiếu nhất.
  * Nhận khi giống từ 92% (câu dưới 40 ký tự) hoặc 88% (câu dài hơn), cùng các chữ số, và không có câu thứ hai khác nghĩa giống ngang ngửa.
  */
-private class FuzzyIndex(map: Map<String, String>, digits: Map<String, String>) {
-    private val keys: Array<String>
+private class FuzzyIndex(map: Map<LineKey, String>) {
+    private val keys: Array<LineKey>
     private val vals: Array<String>
-    private val dig: Array<String>
     private val post: LongArray
 
     init {
-        val ks = ArrayList<String>()
+        val ks = ArrayList<LineKey>()
         val vs = ArrayList<String>()
-        val ds = ArrayList<String>()
-        for ((k, v) in map) if (k.length >= minLen(k)) { ks.add(k); vs.add(v); ds.add(digits[k] ?: "") }
-        keys = ks.toTypedArray(); vals = vs.toTypedArray(); dig = ds.toTypedArray()
+        for ((k, v) in map) if (k.letters.length >= minLen(k.letters)) { ks.add(k); vs.add(v) }
+        keys = ks.toTypedArray(); vals = vs.toTypedArray()
         var buf = LongArray(1 shl 16)
         var n = 0
         for (id in keys.indices) {
-            forGrams(keys[id]) { h ->
+            forGrams(keys[id].letters) { h ->
                 if (n == buf.size) buf = buf.copyOf(n * 2)
                 buf[n++] = ((h.toLong() and 0xFFFFFFFFL) shl 32) or id.toLong()
             }
@@ -182,7 +182,8 @@ private class FuzzyIndex(map: Map<String, String>, digits: Map<String, String>) 
         return lo
     }
 
-    fun find(q: String, qDigits: String): String? {
+    fun find(query: LineKey): String? {
+        val q = query.letters
         if (keys.isEmpty()) return null
         val votes = HashMap<Int, Int>()
         val seen = HashSet<Int>()
@@ -204,15 +205,16 @@ private class FuzzyIndex(map: Map<String, String>, digits: Map<String, String>) 
         }
         if (selected == 0) return null
         val need = maxOf(2, selected / 4)
-        val top = votes.entries.filter { it.value >= need }.sortedByDescending { it.value }.take(TOP)
+        val top = votes.entries.filter { (id, count) ->
+            count >= need && keys[id].numbers == query.numbers && keys[id].cues == query.cues
+        }.sortedByDescending { it.value }.take(TOP)
         var bestId = -1
         var best = 0f
         var second = 0f
         var secondVi: String? = null
         for ((id, _) in top) {
-            val k = keys[id]
+            val k = keys[id].letters
             if (kotlin.math.abs(k.length - q.length) * 4 > maxOf(k.length, q.length)) continue
-            if (dig[id] != qDigits) continue
             val sim = similarity(q, k)
             val th = if (k.length < 40) 0.92f else 0.88f
             if (sim < th) continue

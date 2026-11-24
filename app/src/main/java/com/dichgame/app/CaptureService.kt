@@ -483,7 +483,7 @@ class CaptureService : Service() {
                 var left = blocks.size
                 blocks.forEachIndexed { i, b ->
                     translateText(b) { vi ->
-                        parts[i] = vi
+                        parts[i] = vi.caption
                         if (--left == 0) {
                             val j = parts.joinToString("\n\n")
                             overlay?.apply { text = j; visibility = View.VISIBLE }
@@ -572,7 +572,7 @@ class CaptureService : Service() {
             if (i >= w.lines.size) { done(out); return }
             val line = w.lines[i]
             if (t == null) {
-                out.add(Card(line.speaker, line.text, TextTranslator.Tr(line.text, null, false, "may"), false))
+                out.add(Card(line.speaker, line.text, TextTranslator.Tr(line.text, null, true, "may"), true))
                 next(i + 1)
             } else {
                 t.translateFull(line.text, line.speaker) { tr ->
@@ -924,19 +924,19 @@ class CaptureService : Service() {
             val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
             if (text.length < minLen) { show("Không thấy chữ trong khung."); finishBusy(); return@read }
             translateText(text) { vi ->
-                show(vi)
+                show(vi.caption, readAloud = !vi.uncertain)
                 hideRegionFrame()
-                sendTv("region", vi, speak && tvSpeakOn() && !tvVoiceOn())
-                if (speak && tvVoiceOn()) tvVoice(vi)
+                sendTv("region", vi.caption, !vi.uncertain && speak && tvSpeakOn() && !tvVoiceOn())
+                if (!vi.uncertain && speak && tvVoiceOn()) tvVoice(vi.text)
                 finishBusy()
             }
         }
     }
 
     /** Dịch bằng AI nếu đã bật (CloudAPI / Gemini, có nhớ vài câu trước), lỗi thì quay về dịch trên máy. */
-    private fun translateText(text: String, done: (String) -> Unit) {
+    private fun translateText(text: String, done: (TextTranslator.Tr) -> Unit) {
         val t = tt
-        if (t == null) done(text) else t.translate(text, done)
+        if (t == null) done(TextTranslator.Tr(text, null, true, "may")) else t.translateFull(text, null, done)
     }
 
     private fun tvSpeakOn(): Boolean {
@@ -1038,15 +1038,15 @@ class CaptureService : Service() {
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
         overlay?.apply { text = sb; visibility = if (pr.listenOnly) View.GONE else View.VISIBLE }
         val vi = cards.joinToString(" ") { it.tr.text }
-        val tvSpeaks = speak && tvSpeakOn() && !tvVoiceOn()
+        val scene = cards.filterNot { it.tr.uncertain }.map { VoiceLine(it.tr.text, it.speaker, it.tr.delivery) }
+        val tvSpeaks = speak && tvSpeakOn() && !tvVoiceOn() && scene.size == cards.size
         // TV tự đọc thì chỉ gửi lời dịch; không đọc thì gửi kèm tên người nói
-        val tvText = if (tvSpeaks || cards.none { it.speaker != null }) vi
-        else cards.joinToString("\n") { (it.speaker?.let { n -> "$n: " } ?: "") + it.tr.text }
+        val tvText = if (tvSpeaks || cards.none { it.speaker != null }) cards.joinToString(" ") { it.tr.caption }
+        else cards.joinToString("\n") { (it.speaker?.let { n -> "$n: " } ?: "") + it.tr.caption }
         sendTv("sub", tvText, tvSpeaks)
-        val d = cards.lastOrNull()?.tr?.delivery
-        val speakerName = cards.lastOrNull()?.speaker
-        val scene = cards.map { VoiceLine(it.tr.text, it.speaker, it.tr.delivery) }
-        if (speak && tvVoiceOn()) tvVoice(vi, d, speakerName, scene)
+        if (speak && tvVoiceOn() && scene.isNotEmpty()) {
+            tvVoice(scene.joinToString(" ") { it.text }, scene.last().delivery, scene.last().speaker, scene)
+        }
         if (speak && ready && !editing && !tvSpeakOn()) speaker?.speakScene(scene)
         prevVi = vi; prevOrig = cards.joinToString(" ") { it.orig }; autoShown = false
     }
@@ -1105,15 +1105,16 @@ class CaptureService : Service() {
                 finishBusy()
                 return@read
             }
-            val parts = arrayOfNulls<String>(blocks.size)
+            val parts = arrayOfNulls<TextTranslator.Tr>(blocks.size)
             var left = blocks.size
             blocks.forEachIndexed { i, b ->
                 translateText(b) { vi ->
                     parts[i] = vi
                     if (--left == 0) {
                         menuUntil = System.currentTimeMillis() + 15000
-                        val translated = parts.joinToString("\n\n")
-                        show(translated)
+                        val lines = parts.filterNotNull()
+                        val translated = lines.joinToString("\n\n") { it.caption }
+                        show(translated, readAloud = lines.none { it.uncertain })
                         sendTv("region", translated)
                         finishBusy()
                         handler.postDelayed({
@@ -1237,12 +1238,12 @@ class CaptureService : Service() {
         if (tlp.gravity != g) { tlp.gravity = g; wm.updateViewLayout(o, tlp) }
     }
 
-    private fun show(t: String) {
+    private fun show(t: String, readAloud: Boolean = true) {
         // mọi thông báo hay lệnh xoá đều thay thế dòng phụ đề đang hiện: bộ giữ nhịp phải biết là đã hết
         pacer.cleared(); handler.removeCallbacks(hideCheck)
         if (t.isEmpty()) sendTv("clear", "")
         overlay?.apply { text = t; visibility = if (t.isEmpty()) View.GONE else View.VISIBLE }
-        if (t.isNotEmpty() && speak && ready && !editing && !tvSpeakOn()) speaker?.speak(t)
+        if (readAloud && t.isNotEmpty() && speak && ready && !editing && !tvSpeakOn()) speaker?.speak(t)
     }
 
     /** Theo kích thước thật của màn hình (xoay ngang/dọc), tạo lại bộ đệm ảnh khi đổi. */
