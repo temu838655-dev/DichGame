@@ -237,8 +237,8 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
                 Thread { try { PackStore.memory(act.applicationContext, warmPrefs).warm() } catch (_: Throwable) {} }.start()
                 langTrack = LangSwitchTracker(lang)
                 notice("Đang tải mô hình dịch (lần đầu cần mạng)...")
-                tr.prepare { ok ->
-                    if (!running) return@prepare
+                tr.prepareForPlayback { ok ->
+                    if (!running || tt !== tr) return@prepareForPlayback
                     if (ok) { ready = true; notice(""); Log.i(TAG, "san sang") }
                     else notice("Không tải được mô hình dịch. Kiểm tra mạng rồi tắt/bật dịch lại.")
                 }

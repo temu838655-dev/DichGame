@@ -255,8 +255,8 @@ class UiTranslate(
             val ctx = act.applicationContext
             Thread { try { PackStore.memory(ctx, pr).warm() } catch (_: Throwable) {} }.start()
             val preparationGeneration = gen
-            tr.prepare { ok ->
-                if (!running || preparationGeneration != gen) return@prepare
+            tr.prepareForPlayback { ok ->
+                if (!running || preparationGeneration != gen) return@prepareForPlayback
                 if (ok) { ready = true; onceStart = SystemClock.uptimeMillis() }
                 else if (once) finishOnce("Không tải được mô hình dịch. Kiểm tra mạng rồi thử lại.")
                 else notice("Không tải được mô hình dịch. Kiểm tra mạng rồi tắt bật dịch giao diện lại.")

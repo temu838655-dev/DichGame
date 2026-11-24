@@ -95,6 +95,34 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     }
 
     /**
+     * Cho phép chơi ngay nếu đã có kho Việt hóa, bộ nhớ đã học hoặc AI.
+     * Mô hình ML Kit vẫn tải ở nền; không khóa OCR chỉ vì tải mô hình lỗi.
+     */
+    fun prepareForPlayback(onDone: (Boolean) -> Unit) {
+        if (local == null) { if (!closed) onDone(true); return }
+        val profile = p.profile
+        val game = PackStore.gameName(p)
+        try {
+            aiExecutor.execute {
+                val usable = runCatching {
+                    Ai.enabled(p) || PackStore.memory(ctx, p).size > 0 ||
+                        (p.learnTranslations && game.isNotBlank() && LearnedTranslations.count(ctx, profile, game) > 0)
+                }.getOrDefault(false)
+                main.post {
+                    if (closed) return@post
+                    val early = usable && profile == p.profile && game == PackStore.gameName(p)
+                    if (early) onDone(true)
+                    try {
+                        prepare { ok -> if (!closed && !early) onDone(ok) }
+                    } catch (_: Exception) { if (!closed && !early) onDone(false) }
+                }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            if (!closed) onDone(false)
+        }
+    }
+
+    /**
      * Kết quả một lần dịch. [uncertain]: bản dịch đã qua kiểm tra nhưng còn nghi ngờ (mất số, đổi tên, dài ngắn bất thường)
      * hoặc dịch dự phòng cũng không đạt; giao diện đánh dấu "(?)" thay vì khẳng định. [via]: goi (gói Việt hoá), cache, ai, may.
      */

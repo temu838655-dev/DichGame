@@ -285,7 +285,8 @@ class CaptureService : Service() {
         Thread { try { PackStore.memory(applicationContext, warmPrefs).warm() } catch (_: Throwable) {} }.start()
         langTrack = LangSwitchTracker(lang)
         if (narrate) ready = true else show("Đang tải mô hình dịch (lần đầu, cần mạng)...")
-        if (!narrate) tr.prepare { ok ->
+        if (!narrate) tr.prepareForPlayback { ok ->
+            if (!running || tt !== tr) return@prepareForPlayback
             if (ok) { ready = true; if (!editing) show(""); pump() }
             else show("Không tải được mô hình dịch. Kiểm tra mạng rồi bấm Dừng và chạy lại.")
         }
