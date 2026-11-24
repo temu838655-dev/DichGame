@@ -34,6 +34,16 @@ class AiRetryTest {
         assertEquals(AiRetry.Kind.OTHER, AiRetry.kindOf(IllegalStateException("lạ")))
     }
 
+    @Test fun fallbackOnlyForProviderFailures() {
+        assertTrue(AiRetry.canFallback(ex(429)))
+        assertTrue(AiRetry.canFallback(ex(503)))
+        assertTrue(AiRetry.canFallback(ex(401)))
+        assertTrue(AiRetry.canFallback(SocketTimeoutException("timeout")))
+        assertFalse(AiRetry.canFallback(ex(AiRetry.CODE_BLOCKED)))
+        assertFalse(AiRetry.canFallback(ex(0)))
+        assertFalse(AiRetry.canFallback(InterruptedException()))
+    }
+
     @Test fun everyKindHasItsOwnStatKey() {
         val keys = AiRetry.Kind.values().map { AiRetry.statKey(it) }
         assertEquals(keys.size, keys.toSet().size)
