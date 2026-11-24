@@ -75,7 +75,8 @@ class WebSubServer(private val port: Int = 8780) {
             val rd = BufferedReader(InputStreamReader(c.getInputStream(), Charsets.ISO_8859_1))
             val line = boundedLine(rd) ?: return
             var headers = 0
-            while (true) { val h = boundedLine(rd) ?: return; if (h.isEmpty()) break; if (++headers > 64) return }
+            var origin = ""
+            while (true) { val h = boundedLine(rd) ?: return; if (h.isEmpty()) break; if (++headers > 64) return; if (h.substringBefore(':').equals("Origin", true)) origin = h.substringAfter(':').trim() }
             val parts = line.split(' ')
             if (parts.firstOrNull() != "GET") { reply(c, 404, "text/plain; charset=utf-8", "404"); return }
             val target = parts.getOrElse(1) { "/" }
@@ -96,7 +97,7 @@ class WebSubServer(private val port: Int = 8780) {
                         }
                         body = JSONObject().put("seq", seq).put("text", text).toString()
                     }
-                    reply(c, 200, "application/json; charset=utf-8", body, cors = true)
+                    reply(c, 200, "application/json; charset=utf-8", body, cors = origin == "null")
                 }
                 "/", "/index.html" -> reply(c, 200, "text/html; charset=utf-8", PAGE)
                 else -> reply(c, 404, "text/plain; charset=utf-8", "404")
