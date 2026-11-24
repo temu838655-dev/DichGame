@@ -79,14 +79,21 @@ object PackStore {
     /** Thêm câu thoại vào hồ sơ (trùng câu gốc thì lấy bản mới). Trả về số câu sau khi gộp. */
     @Synchronized
     fun addLines(ctx: Context, profile: String, add: List<Pair<String, String>>): Int {
-        val f = linesFile(ctx, profile)
+        return addLinesTo(linesFile(ctx, profile), add, false)
+    }
+
+    @Synchronized
+    private fun addLinesTo(f: File, add: List<Pair<String, String>>, preserveExisting: Boolean): Int {
         val map = LinkedHashMap<String, Pair<String, String>>()
         // Read and write the same captured target; if reading fails do not overwrite it.
-        for (e in readFile(f) + add) {
+        val existing = readFile(f)
+        for (e in (if (preserveExisting) add + existing else existing + add)) {
             val k = Canon.key(e.first)
             val identity = Canon.literal(e.first)
             if (Canon.usable(k) && e.second.isNotBlank()) map[identity] = e.first.replace('\t', ' ').replace('\n', ' ') to e.second.replace('\t', ' ').replace('\n', ' ')
         }
+        if (preserveExisting && map.size > PackText.MAX_LINES)
+            throw java.io.IOException("Kho vượt giới hạn câu; không thay đổi dữ liệu đang lưu.")
         val list = map.values.toList().takeLast(PackText.MAX_LINES)
         f.parentFile?.mkdirs()
         val atomic = AtomicFile(f)
@@ -299,6 +306,18 @@ object PackStore {
         if (github != null) u = "https://raw.githubusercontent.com/${github.groupValues[1]}/${github.groupValues[2]}"
         val url = URL(u)
         require(url.protocol == "https" && url.userInfo == null) { "Chỉ nhận link HTTPS trực tiếp." }
+        if (url.path.endsWith(".dichgame.json", true)) {
+            require(game.isNotBlank()) { "Hãy chọn đúng game trước khi tải gói Cloud." }
+            val target = linesFile(ctx, profile)
+            val manifest = RemotePack.parse(fetchBounded(url, 64_000).toString(Charsets.UTF_8), game)
+            val data = fetchBounded(manifest.url, manifest.bytes)
+            val pack = RemotePack.verify(manifest, data)
+            if (p.profile != profile || gameName(p) != game) throw java.io.IOException("Game hoặc hồ sơ đã thay đổi. Hãy chọn lại game.")
+            val filtered = LocFormat.filter(pack.lines, "cloud")
+            require(filtered.pairs.isNotEmpty()) { "Không có câu Việt hóa hợp lệ." }
+            val total = addLinesTo(target, filtered.pairs, true)
+            return "Đã lưu gói Cloud ${manifest.game} phiên bản ${manifest.version} vào bộ nhớ offline ($total câu trong kho). Bản dịch đang có được giữ nguyên."
+        }
         val tmp = File.createTempFile("remote-pack", ".tmp", ctx.cacheDir)
         try {
             val c = url.openConnection() as HttpURLConnection
@@ -328,6 +347,20 @@ object PackStore {
         } finally { tmp.delete() }
     }
 
+    private fun fetchBounded(url: URL, limit: Int): ByteArray {
+        val c = url.openConnection() as HttpURLConnection
+        try {
+            c.instanceFollowRedirects = false
+            c.connectTimeout = 10000
+            c.readTimeout = 20000
+            c.setRequestProperty("User-Agent", "DichGame")
+            c.setRequestProperty("Accept-Encoding", "identity")
+            if (c.responseCode != 200) throw java.io.IOException("Cloud trả HTTP ${c.responseCode}.")
+            if (c.contentLengthLong > limit) throw java.io.IOException("File lớn hơn kích thước cho phép.")
+            return c.inputStream.use { it.readNBytesCapped(limit) }
+        } finally { c.disconnect() }
+    }
+
     private fun java.io.InputStream.readNBytesCapped(max: Int): ByteArray {
         val out = java.io.ByteArrayOutputStream()
         val buf = ByteArray(1 shl 14)
@@ -335,7 +368,7 @@ object PackStore {
             val n = read(buf)
             if (n < 0) break
             out.write(buf, 0, n)
-            if (out.size() > max) throw java.io.IOException("File quá lớn (tối đa 4 MB).")
+            if (out.size() > max) throw java.io.IOException("File vượt giới hạn $max byte.")
         }
         return out.toByteArray()
     }
