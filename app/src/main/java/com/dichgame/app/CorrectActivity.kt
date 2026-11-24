@@ -14,6 +14,8 @@ class CorrectActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         val p = Prefs(this)
+        val profile = p.profile
+        val game = PackStore.gameName(p)
         val list = RecentLines.snapshot().take(15)
         screen("Sửa bản dịch") {
             put(Ui.tv(this@CorrectActivity,
@@ -34,11 +36,15 @@ class CorrectActivity : Activity() {
                 c.addView(f)
                 if (e.unsure) c.addView(Ui.tv(this@CorrectActivity, "Bản dịch này app còn nghi ngờ (?).", 12f, Ui.SUB), Ui.lpm(this@CorrectActivity, 4, 0))
                 c.addView(Ui.button(this@CorrectActivity, "Lưu bản sửa") {
+                    if (profile != p.profile || game != PackStore.gameName(p)) {
+                        Toast.makeText(this@CorrectActivity, "Game đã thay đổi. Hãy mở lại màn hình sửa bản dịch.", Toast.LENGTH_LONG).show()
+                        return@button
+                    }
                     val t = f.text.toString().trim()
                     if (t.isEmpty() || t == e.vi) {
                         Toast.makeText(this@CorrectActivity, "Chưa có gì thay đổi.", Toast.LENGTH_SHORT).show()
                     } else {
-                        PackStore.addLines(this@CorrectActivity, p.profile, listOf(e.orig to t))
+                        PackStore.addLines(this@CorrectActivity, profile, listOf(e.orig to t))
                         Toast.makeText(this@CorrectActivity, "Đã lưu. Lần sau gặp câu này sẽ dùng bản bạn sửa.", Toast.LENGTH_SHORT).show()
                     }
                 }, Ui.lpm(this@CorrectActivity, 8, 0, WRAP_CONTENT))
