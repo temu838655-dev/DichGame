@@ -57,10 +57,17 @@ object Ai {
 
     private fun glossaryLine(terms: TermMap?, p: Prefs, text: String): String {
         val list = terms?.relevant(text, 30)
-            ?: p.glossary.lines().map { it.trim() }.filter { it.contains("=") }.take(40).map { it.substringBefore('=').trim() to it.substringAfter('=').trim() }
+            ?: relevantGlossary(p.glossary, text)
         if (list.isEmpty()) return ""
         return " Bắt buộc dùng đúng các thuật ngữ sau (gốc = tiếng Việt): " + list.joinToString("; ") { it.first + " = " + it.second } + "."
     }
+
+    /** Only include glossary entries actually present in the current source. */
+    internal fun relevantGlossary(glossary: String, text: String): List<Pair<String, String>> =
+        glossary.lineSequence().map { it.trim() }.filter { it.contains("=") }
+            .map { it.substringBefore('=').trim() to it.substringAfter('=').trim() }
+            .filter { (source, target) -> source.isNotEmpty() && target.isNotEmpty() && text.contains(source, ignoreCase = true) }
+            .distinct().take(40).toList()
 
     fun cloudEndpoint(base: String): String {
         val b = base.trim().trimEnd('/')
