@@ -1,6 +1,10 @@
 /* Tizen 3-compatible prototype. HDMI remains inside the application. */
 (function(){
 var panel=document.getElementById('panel'), status=document.getElementById('status'), sources=document.getElementById('sources'), host=document.getElementById('host'), text=document.getElementById('text'), generation=0, menuOpen=true;
+var sub=document.getElementById('sub');
+function style(){var size=document.getElementById('size').value,pos=document.getElementById('position').value,col=document.getElementById('color').value,bg=document.getElementById('background').value;sub.style.fontSize=size+'px';sub.style.top=pos==='top'?'7%':'auto';sub.style.bottom=pos==='bottom'?'7%':'auto';text.style.color=col;text.style.backgroundColor='rgba(0,0,0,'+bg+')';}
+['size','position','color','background'].forEach(function(id){var el=document.getElementById(id);try{var saved=localStorage.getItem('style-'+id);if(saved){el.value=saved;if(!el.value)el.selectedIndex=0;}}catch(e){}el.onchange=function(){style();try{localStorage.setItem('style-'+id,el.value);}catch(e){}};});style();
+document.getElementById('hide').onclick=function(){menuOpen=false;panel.style.display='none';};
 function fail(e){status.textContent=(e&&e.message)||String(e);panel.style.display='block';}
 function select(s){try{tizen.tvwindow.setSource(s,function(){tizen.tvwindow.show(function(){panel.style.display='block'; status.textContent='HDMI đã mở. Nhập địa chỉ điện thoại rồi kết nối.';},fail,['0%','0%','100%','100%'],'MAIN','BEHIND');},fail,'MAIN');}catch(e){fail(e);}}
 function list(){try{tizen.systeminfo.getPropertyValue('VIDEOSOURCE',function(v){sources.innerHTML='';v.connected.filter(function(s){return s.type==='HDMI';}).forEach(function(s){var b=document.createElement('button');b.textContent='HDMI '+s.number;b.onclick=function(){select(s);};sources.appendChild(b);});if(!sources.children.length)status.textContent='Chưa thấy HDMI đang kết nối.';},fail);}catch(e){fail(e);}}
