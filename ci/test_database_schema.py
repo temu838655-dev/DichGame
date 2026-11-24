@@ -59,6 +59,19 @@ class DatabaseTests(unittest.TestCase):
             self.db.execute("INSERT INTO migration VALUES(?,?)",("learned","A"))
         self.assertEqual(self.db.execute("SELECT count(*) FROM migration").fetchone()[0],1)
 
+    def test_cloud_pack_game_language_origin_and_exact_numbers(self):
+        q = "INSERT INTO cloud_pack(origin,game_key,lang,source_key,original,vi) VALUES(?,?,?,?,?,?)"
+        for origin,game,lang,src,vi in [
+            ("server","gta vi","en","take 5","đi 5"),("server","gta v","en","take 5","lấy 5"),
+            ("server","gta vi","zh","take 5","trung"),("other","gta vi","en","take 5","khác"),
+            ("server","gta vi","en","take 6","đi 6")]:
+            self.db.execute(q,(origin,game,lang,src,src,vi))
+        sql="SELECT vi FROM cloud_pack WHERE origin=? AND game_key=? AND lang=? AND source_key=?"
+        self.assertEqual(self.db.execute(sql,("server","gta vi","en","take 5")).fetchone(),("đi 5",))
+        self.assertIsNone(self.db.execute(sql,("server","gta vi","en","take s")).fetchone())
+        self.assertEqual(self.db.execute("SELECT count(*) FROM cloud_pack WHERE origin=? AND game_key=? AND lang=?",("server","gta vi","en")).fetchone()[0],2)
+        self.assertTrue(any("INDEX" in r[3].upper() for r in self.db.execute("EXPLAIN QUERY PLAN "+sql,("server","gta vi","en","take 5"))))
+
     def test_indexed_exact_lookup(self):
         plan = self.db.execute("EXPLAIN QUERY PLAN SELECT vi FROM learned WHERE profile=? AND lookup_key=?",("A","key")).fetchall()
         self.assertTrue(any("INDEX" in row[3].upper() for row in plan))

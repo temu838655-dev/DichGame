@@ -159,11 +159,13 @@ object CommunityCloud {
                     if(config(p)!=cfg || profile!=p.profile || lang!=p.lang || game!=PackStore.gameName(p)) return@runCatching -1
                     val body=JSONObject().put("game",game).put("lang",lang).put("after",after)
                     val json=request(cfg,"/v1/pack",body,4000) ?: return@runCatching -1
+                    if(json.optString("game")!=LearnedTranslationRules.normalize(game) || json.optString("lang")!=lang) return@runCatching -1
                     val a=json.optJSONArray("lines") ?: return@runCatching -1
                     val pairs=ArrayList<Pair<String,String>>(a.length())
                     for(i in 0 until a.length()) {
                         val row=a.getJSONObject(i); val original=row.optString("original"); val vi=row.optString("vi")
-                        if(original.length in 1..500 && vi.length in 1..1400) pairs.add(original to vi)
+                        if(original.length !in 1..500 || vi.length !in 1..1400 || row.optString("source_key")!=LearnedTranslationRules.normalize(original)) return@runCatching -1
+                        pairs.add(original to vi)
                     }
                     val next=if(json.isNull("next")) null else json.optString("next")
                     if(next!=null && (next.isBlank() || next==after)) return@runCatching -1

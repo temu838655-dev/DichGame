@@ -82,6 +82,21 @@ internal class GameDatabase private constructor(private val app: Context) :
     fun cloudPackCount(origin: String, game: String, lang: String): Int =
         DatabaseUtils.longForQuery(readableDatabase,"SELECT COUNT(*) FROM cloud_pack WHERE origin=? AND game_key=? AND lang=?",arrayOf(origin,cloudKey(game),lang)).toInt()
 
+    /** Stream the selected game's offline rows, with no network or full in-memory copy. */
+    fun exportCloudPack(origin: String, game: String, lang: String, out: java.io.Writer): Int {
+        require(game.isNotBlank() && lang in listOf("en","zh"))
+        fun cell(value: String): String = buildString { append('"'); for(c in value) { if(c=='"') append('"'); append(c) }; append('"') }
+        out.write(lang+",vi\r\n")
+        var count=0
+        readableDatabase.rawQuery("SELECT original,vi FROM cloud_pack WHERE origin=? AND game_key=? AND lang=? ORDER BY source_key",arrayOf(origin,cloudKey(game),lang)).use { c ->
+            while(c.moveToNext()) {
+                out.write(cell(c.getString(0)));out.write(",");out.write(cell(c.getString(1)));out.write("\r\n")
+                count++
+            }
+        }
+        return count
+    }
+
     /** Strict indexed lookup, without OCR character folding or loading the whole game into RAM. */
     fun cloudPackLookup(origin: String, game: String, lang: String, original: String): String? {
         val key = cloudKey(original)

@@ -86,7 +86,7 @@ export default {
         const {results}=await env.DB.prepare("SELECT source_key,original,vi FROM packs WHERE game_key=? AND lang=? AND source_key>? ORDER BY source_key LIMIT 101")
           .bind(normalize(body.game),body.lang,after).all();
         const page=results.slice(0,100);
-        return reply({lines:page.map(({original,vi})=>({original,vi})),next:results.length>100?page.at(-1).source_key:null});
+        return reply({game:normalize(body.game),lang:body.lang,lines:page.map(({source_key,original,vi})=>({source_key,original,vi})),next:results.length>100?page.at(-1).source_key:null});
       }
       if (path === "/v1/admin/stats" && method === "GET") {
         const row=await env.DB.prepare("SELECT (SELECT COUNT(*) FROM catalog) AS catalog,(SELECT COUNT(*) FROM translations) AS translations,(SELECT COUNT(*) FROM packs) AS packs,(SELECT COUNT(*) FROM submissions) AS submissions").first();

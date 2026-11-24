@@ -112,7 +112,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         val profile = p.profile
         val game = PackStore.gameName(p)
         val gameDescription = p.game
-        val context = profile + "\u0000" + gameDescription
+        val context = profile + "\u0000" + game + "\u0000" + gameDescription + "\u0000" + lang
         if (activeGameContext != context) {
             activeGameContext = context
             history.clear()
@@ -120,7 +120,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         }
         // Một câu dịch đang chờ Gemini khi người chơi đổi game sẽ bị loại,
         // không hiện phụ đề cũ và không lưu vào bộ nhớ của game mới.
-        fun stillCurrent(): Boolean = !closed && profile == p.profile && gameDescription == p.game
+        fun stillCurrent(): Boolean = !closed && profile == p.profile && gameDescription == p.game && game == PackStore.gameName(p)
         fun emit(result: Tr) { if (stillCurrent()) done(result) }
         val key = context + "\u0000" + source + "|" + p.engine + "|" + p.aiAuto + "|" + p.slow + "|" + p.trStyle + "|" + p.customPrompt + "|" + p.ctxCount + "\u0000" +
             (if (ui) "ui|" else "") + (speaker?.lowercase() ?: "") + "|" + OcrGuard.key(text)

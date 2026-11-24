@@ -72,3 +72,5 @@ previously sent data. Local SQLite remains independent and usable offline.
 
 ## Offline pack sync on Android
 Reviewed packs are downloaded into a separate indexed SQLite cache by server origin, game and language. Opening the app or selecting a game refreshes a configured pack. Every completed page and cursor are saved atomically; network failures never erase downloaded rows. Manual imports and learned corrections keep precedence. Pack contents are not embedded in the public Git repository. Use the private authenticated endpoint or manually import your authorized TSV for a first install without Internet.
+
+The pack API echoes its normalized game, language and each exact source key. New Android clients verify these before writing a page. In Gói Việt hóa, export the saved offline game pack to an EN–VI or ZH–VI UTF-8 CSV (quoted fields, game-specific filename) without accessing the server. Only the selected server/game/language is exported; private manual/learned rows are kept separate.
