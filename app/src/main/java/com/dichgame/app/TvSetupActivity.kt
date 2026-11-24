@@ -68,6 +68,7 @@ class TvSetupActivity : Activity() {
                 }
                 1 -> {
                     group("CÁCH DÙNG") { stepsLg(this) }
+                    group("CÀI APP LG TỪ ĐIỆN THOẠI (THỬ NGHIỆM)") { developerLg(this) }
                     group("KẾT NỐI TV LG (THỬ NGHIỆM)") { connectLg(this) }
                     group("XEM PHỤ ĐỀ BẰNG TRÌNH DUYỆT (THỬ NGHIỆM)") { webCard(this) }
                 }
@@ -87,7 +88,7 @@ class TvSetupActivity : Activity() {
 
     private fun brandInfo(): String = when (brand) {
         0 -> "TV Sony, TCL, Xiaomi... chạy Android TV hoặc Google TV, Android 8 trở lên. Cài app ngay trên TV bằng remote, không cần máy tính."
-        1 -> "TV LG webOS: Dịch game ghép với TV qua LG Connect Apps rồi gửi phụ đề thành thông báo chữ của TV, nằm đè lên cả hình HDMI của máy chơi game. (thử nghiệm, chưa thử trên TV LG thật; app webOS đang thử nghiệm, chưa có bộ cài từ điện thoại)"
+        1 -> "TV LG webOS: Dịch game ghép với TV qua LG Connect Apps rồi gửi phụ đề thành thông báo chữ của TV, nằm đè lên cả hình HDMI của máy chơi game. (thử nghiệm, chưa thử trên TV LG thật; trình cài webOS từ Android đang thử nghiệm)"
         else -> "TV Samsung (Tizen): Samsung không cho app ngoài hiện chữ đè lên hình HDMI, và app Tizen phải ký bằng chứng chỉ Samsung nên chưa có app cài lên TV. Dùng chiếu màn hình hoặc trang web phụ đề. (thử nghiệm)"
     }
 
@@ -184,6 +185,82 @@ class TvSetupActivity : Activity() {
             c.addView(Ui.switchRow(this, "Gửi phụ đề lên TV LG khi đang dịch", "Tắt nếu chỉ muốn thử ghép.", p.lgSubs) { p.lgSubs = it }, Ui.lpm(this, 12, 12))
             c.addView(Ui.button(this, "Bỏ ghép TV LG") { p.clearLg(); TvOut.resetLg(); render() })
         }
+    }
+
+    private var installingLg = false
+
+    private fun developerLg(c: LinearLayout) {
+        c.addView(Ui.tv(this, "Bật Dev Mode Status và Key Server trong ứng dụng Developer Mode trên TV. Nhập IP và passphrase 6 ký tự. Không cần máy tính.", 14f, Ui.TEXT))
+        val ip = Ui.field(this, "IP TV LG", p.sp.getString("lg_dev_ip", p.lgIp).orEmpty())
+        val pass = Ui.field(this, "Passphrase 6 ký tự", "")
+        pass.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        pass.filters = arrayOf(android.text.InputFilter.LengthFilter(6))
+        val result = Ui.tv(this, "Chưa cài đặt.", 14f, Ui.SUB)
+        c.addView(ip, Ui.lpm(this, 8, 8))
+        c.addView(pass, Ui.lpm(this, 0, 8))
+        c.addView(result, Ui.lpm(this, 0, 8))
+        c.addView(Ui.button(this, "Cài đặt & mở ứng dụng", true) {
+            val address = ip.text.toString().trim()
+            val secret = pass.text.toString().toByteArray(Charsets.UTF_8)
+            if (!LgDeveloperKey.isPrivateIpv4(address) || secret.size != 6 || installingLg) {
+                secret.fill(0)
+                result.text = "Kiểm tra IP nội bộ, passphrase 6 ký tự hoặc chờ lượt cài hiện tại."
+            } else {
+                installingLg = true
+                pass.text.clear()
+                result.text = "Đang kết nối Developer Mode..."
+                Thread {
+                    var session: com.jcraft.jsch.Session? = null
+                    var installed = false
+                    try {
+                        val connected = LgDeveloperSsh.connect(address, secret) { fingerprint ->
+                            approveLgFingerprint(address, fingerprint)
+                        }
+                        session = connected
+                        runOnUiThread { result.text = "Đang truyền và cài IPK..." }
+                        LgDeveloperInstaller.install(applicationContext, connected)
+                        installed = true
+                        p.sp.edit().putString("lg_dev_ip", address).apply()
+                        runOnUiThread { result.text = "Đã cài. Đang mở ứng dụng..." }
+                        LgDeveloperInstaller.launch(connected)
+                        runOnUiThread {
+                            p.webSub = true
+                            val started = TvOut.startWeb() != null
+                            result.setTextColor(Ui.OK)
+                            result.text = if (started) "TV đã xác nhận cài và mở app. Nhập IP điện thoại trên TV (xem mục trang web phụ đề)." else "Đã cài và mở app; hãy bật lại trang web phụ đề."
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            result.setTextColor(Ui.DANGER)
+                            result.text = (if (installed) "Đã cài nhưng chưa mở được: " else "Chưa cài được: ") + (e.message ?: "Lỗi kết nối")
+                        }
+                    } finally {
+                        secret.fill(0)
+                        session?.disconnect()
+                        runOnUiThread { installingLg = false }
+                    }
+                }.start()
+            }
+        }, Ui.lpm(this, 0, 8))
+    }
+
+    private fun approveLgFingerprint(ip: String, fingerprint: String): Boolean {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val approved = java.util.concurrent.atomic.AtomicBoolean(false)
+        runOnUiThread {
+            if (isFinishing || isDestroyed) {
+                latch.countDown()
+            } else {
+                AlertDialog.Builder(this, R.style.DgDialog)
+                    .setTitle("Xác nhận khóa TV LG")
+                    .setMessage("IP: $ip\n$fingerprint\nChỉ chấp nhận nếu đây là TV của bạn.")
+                    .setPositiveButton("Tin cậy") { _, _ -> approved.set(true); latch.countDown() }
+                    .setNegativeButton("Hủy") { _, _ -> latch.countDown() }
+                    .setOnCancelListener { latch.countDown() }
+                    .show()
+            }
+        }
+        return latch.await(90, java.util.concurrent.TimeUnit.SECONDS) && approved.get()
     }
 
     private fun openLgReceiver() {
