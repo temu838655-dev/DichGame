@@ -344,7 +344,7 @@ class SettingsActivity : Activity() {
         adv.addView(Ui.switchRow(a, "Bỏ qua khi hình đứng yên",
             "Hình trong khung y hệt lần đọc trước thì không đọc lại; vẫn cứ vài lần đọc một lần để không sót thay đổi nhỏ.", p.skipStatic) { p.skipStatic = it }, Ui.lpm(a, 12, 0))
         adv.addView(Ui.switchRow(a, "Tự nhận ra game đổi ngôn ngữ",
-            "App hỗ trợ Anh và Trung. Khi đổi giữa hai ngôn ngữ, chọn lại ngôn ngữ game để đổi bộ OCR.", p.autoLang) { p.autoLang = it }, Ui.lpm(a, 12, 0))
+            "Tự thử bộ OCR Anh/Trung khi chữ khó đọc hoặc sau vài lượt quét; chọn bộ dịch theo câu. Tắt để chỉ dùng ngôn ngữ đã chọn.", p.autoLang) { p.autoLang = it }, Ui.lpm(a, 12, 0))
         adv.addView(Ui.switchRow(a, "Dịch menu tự động", "Đứng yên ở menu là tự dịch, tốn pin hơn.", p.autoMenu) { p.autoMenu = it }, Ui.lpm(a, 12, 0))
         adv.addView(Ui.seekRow(a, "Tần suất quét (chỉnh tinh)",
             { v -> "${v * 100} ms" }, 1, 30, (p.scanMs / 100).coerceIn(1, 30)) { p.scanMs = it * 100 }, Ui.lpm(a, 14, 0))

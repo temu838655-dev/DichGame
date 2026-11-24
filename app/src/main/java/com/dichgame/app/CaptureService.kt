@@ -731,7 +731,7 @@ class CaptureService : Service() {
         if (!running) { finishBusy(); return }
         if (syncGameContext()) { finishBusy(); return }
         val now = System.currentTimeMillis()
-        val cjk = Prefs.isCjk(lang)
+        val cjk = if (Prefs(this).autoLang && !narrate) SourceLanguage.choose(r.joinToString(" ") { it.text }, lang) == "zh" else Prefs.isCjk(lang)
         val lines = ArrayList<OcrLine>()
         for (b in r) {
             val t = OcrGuard.clean(b.text)
@@ -792,11 +792,6 @@ class CaptureService : Service() {
             showCards(cards, Src.OCR)
             finishBusy()
             return
-        }
-        if (Prefs(this).autoLang) {
-            for (u in utts) {
-                if (!u.nameLike) langTrack?.observe(LangDetect.guess(u.text)?.takeIf { Prefs.isSupportedSource(it.lang) })?.let { switchLang(it) }
-            }
         }
         val fresh = ArrayList<Line>()
         for (u in utts) applyOuts(fusion.onOcr(u.text, u.speaker, now), u.nameLike, fresh, 0L, scanAt)

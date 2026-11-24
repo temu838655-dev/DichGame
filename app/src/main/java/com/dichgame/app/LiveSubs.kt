@@ -471,7 +471,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (!running) { busy = false; return }
         if (syncGameContext()) { busy = false; return }
         val now = System.currentTimeMillis()
-        val cjk = Prefs.isCjk(lang)
+        val cjk = if (Prefs(act).autoLang && !narrate) SourceLanguage.choose(r.joinToString(" ") { it.text }, lang) == "zh" else Prefs.isCjk(lang)
         val lines = ArrayList<OcrLine>()
         for (b in r) {
             val t = OcrGuard.clean(b.text)
@@ -515,11 +515,6 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         for (u in utts) if (!u.nameLike && !u.speaker.isNullOrBlank()) prefs.rememberSpeaker(u.speaker!!)
         stats.inc("ocr_cau", utts.size.toLong())
         Log.i(TAG, "doc: " + utts.joinToString(" | ") { (it.speaker?.let { n -> "$n: " } ?: "") + it.text })
-        if (Prefs(act).autoLang && !narrate) {
-            for (u in utts) {
-                if (!u.nameLike) langTrack?.observe(LangDetect.guess(u.text)?.takeIf { Prefs.isSupportedSource(it.lang) })?.let { switchLang(it) }
-            }
-        }
         val fresh = ArrayList<Line>()
         for (u in utts) applyOuts(fusion.onOcr(u.text, u.speaker, now), u.nameLike, fresh, 0L, scanAt)
         enqueue(fresh, 0L, scanAt, false)

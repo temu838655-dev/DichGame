@@ -26,14 +26,20 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     /** Nếu đặt, mỗi lần dịch AI lỗi và phải dùng dịch trên máy thì gọi hàm này (thay vì hiện thông báo một lần). */
     var onFallback: ((String) -> Unit)? = null
 
-    private val local: Translator? = if (lang == "vi") null else Translation.getClient(
-        TranslatorOptions.Builder()
-            .setSourceLanguage(mlCode(lang))
-            .setTargetLanguage(TranslateLanguage.VIETNAMESE)
-            .build()
-    )
+    private val locals = mutableMapOf<String, Translator>()
+    private fun localFor(source: String): Translator? {
+        if (source == "vi" || closed) return null
+        return locals.getOrPut(source) {
+            Translation.getClient(TranslatorOptions.Builder()
+                .setSourceLanguage(mlCode(source)).setTargetLanguage(TranslateLanguage.VIETNAMESE).build())
+        }
+    }
+    private fun sourceFor(text: String): String =
+        if (p.autoLang && !p.narrate && Prefs.isSupportedSource(lang)) SourceLanguage.choose(text, lang) else lang
 
     companion object {
+        private val aiWorkers = java.util.concurrent.ThreadPoolExecutor(3, 3, 30L, java.util.concurrent.TimeUnit.SECONDS,
+            java.util.concurrent.ArrayBlockingQueue<Runnable>(12))
         /** Mã ngôn ngữ của ML Kit cho ngôn ngữ trong game. */
         fun mlCode(lang: String): String = when (lang) {
             "zh" -> TranslateLanguage.CHINESE
@@ -56,12 +62,16 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         }
     }
 
-    private fun srcName() = Prefs.srcNameOf(lang)
-
     /** Tải mô hình dịch trên máy (lần đầu cần mạng). */
     fun prepare(onDone: (Boolean) -> Unit) {
-        val l = local
+        val l = localFor(lang)
         if (l == null) { onDone(true); return }
+        if (Ai.enabled(p)) {
+            // Cloud AI can start immediately; prepare offline fallback asynchronously.
+            l.downloadModelIfNeeded()
+            onDone(true)
+            return
+        }
         l.downloadModelIfNeeded()
             .addOnSuccessListener { onDone(true) }
             .addOnFailureListener { onDone(false) }
@@ -97,6 +107,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      * không có người nói hay cảm xúc. Gói Việt hoá, bộ nhớ đệm, thuật ngữ và kiểm tra bản dịch vẫn áp dụng như cũ.
      */
     fun translateFull(text: String, speaker: String?, ui: Boolean, done: (Tr) -> Unit) {
+        val source = sourceFor(text)
         val st = SessionStats.live
         val profile = p.profile
         val game = PackStore.gameName(p)
@@ -111,7 +122,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         // không hiện phụ đề cũ và không lưu vào bộ nhớ của game mới.
         fun stillCurrent(): Boolean = !closed && profile == p.profile && gameDescription == p.game
         fun emit(result: Tr) { if (stillCurrent()) done(result) }
-        val key = context + "\u0000" + p.engine + "|" + p.aiAuto + "|" + p.slow + "|" + p.trStyle + "|" + p.customPrompt + "|" + p.ctxCount + "\u0000" +
+        val key = context + "\u0000" + source + "|" + p.engine + "|" + p.aiAuto + "|" + p.slow + "|" + p.trStyle + "|" + p.customPrompt + "|" + p.ctxCount + "\u0000" +
             (if (ui) "ui|" else "") + (speaker?.lowercase() ?: "") + "|" + OcrGuard.key(text)
         val hist = if (ui) emptyList() else history.takeLast(p.ctxCount)
         if (!ui) {
@@ -129,7 +140,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         // Gói Việt hóa do người dùng nhập có ưu tiên cao nhất; tiếp theo là bản dịch đã
         // lưu lâu dài trên máy. Khớp đúng nguồn + ngôn ngữ + người nói, không khớp mờ.
         if (p.learnTranslations) {
-            LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text)?.let { saved ->
+            LearnedTranslations.lookup(ctx, profile, game, source, speaker, ui, text)?.let { saved ->
                 st.inc("dich_nho")
                 val cast = PackStore.cast(p)
                 val pace = if (ui) null else
@@ -155,16 +166,23 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             // Không ghi bản dịch máy dự phòng hoặc bản dịch AI bị nghi ngờ.
             val saved = p.learnTranslations && t.via == "ai" && !t.uncertain &&
                 LearnedTranslationRules.canRemember(text, t.text)
-            if (saved) LearnedTranslations.remember(ctx, profile, game, lang, speaker, ui, text, t.text)
+            if (saved) LearnedTranslations.remember(ctx, profile, game, source, speaker, ui, text, t.text)
             if (t.uncertain) st.inc("dich_nghi")
             // Câu đã lưu lâu dài không giữ thêm trong cache: khi người dùng xóa bộ nhớ
             // sẽ không bị trả lại bản cũ từ cache trong cùng phiên chơi.
             else if (!saved && (t.via != "may" || !aiOn)) cache[key] = t
             emit(t)
         }
-        if (!aiOn) { translateLocal(text, names, pace, ::finish); return }
+        if (!aiOn) { translateLocal(source, text, names, pace, ::finish); return }
         val emo = p.emoTr && !ui
-        Thread {
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        fun fallback() {
+            if (!settled.compareAndSet(false, true) || !stillCurrent()) return
+            translateLocal(source, text, names, pace, ::finish)
+        }
+        val deadline = Runnable { if (!settled.get()) { st.inc("dich_treo"); fallback() } }
+        main.postDelayed(deadline, if (p.slow) 12_000L else 7_000L)
+        try { aiWorkers.execute {
             var chosen: Tr? = null
             var strict: String? = null
             val cool = Ai.coolingMs(p)
@@ -173,7 +191,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 st.inc(AiRetry.statKey(AiRetry.Kind.QUOTA))
                 warn(AiRetry.explain(AiRetry.Kind.QUOTA, 429, cool))
             } else for (attempt in 0..1) {
-                val prompt = Ai.prompt(p, srcName(), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui)
+                if (settled.get() || closed) break
+                val prompt = Ai.prompt(p, Prefs.srcNameOf(source), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui)
                 var raw: String? = null
                 try {
                     raw = Ai.translateRetry(p, prompt)
@@ -201,16 +220,19 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             val res = chosen
             if (res != null) st.inc("dich_ai")
             main.post {
-                if (closed) return@post
-                if (res != null) finish(res) else translateLocal(text, names, pace, ::finish)
+                main.removeCallbacks(deadline)
+                if (closed || settled.get()) return@post
+                if (res != null && settled.compareAndSet(false, true)) finish(res) else fallback()
             }
-        }.start()
+        } } catch (_: java.util.concurrent.RejectedExecutionException) {
+            main.removeCallbacks(deadline); fallback()
+        }
     }
 
     private fun deliveryOf(text: String, vi: String, pace: Pace?): Delivery? = if (p.emoTr) Emo.detect(text, vi, pace) else null
 
-    private fun translateLocal(text: String, names: List<Pair<String, String>>, pace: Pace?, done: (Tr) -> Unit) {
-        val l = local
+    private fun translateLocal(source: String, text: String, names: List<Pair<String, String>>, pace: Pace?, done: (Tr) -> Unit) {
+        val l = localFor(source)
         if (l == null) { done(Tr(text, null, true, "may")); return }
         val terms = PackStore.terms(p)
         val prot = terms.protect(text)
@@ -248,6 +270,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
 
     fun close() {
         closed = true
-        try { local?.close() } catch (_: Exception) {}
+        for (l in locals.values) runCatching { l.close() }
+        locals.clear()
     }
 }

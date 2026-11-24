@@ -12,6 +12,15 @@ class LanguagePacksTest {
         assertEquals(333, Prefs.DEFAULT_SCAN_MS)
     }
 
+    @Test fun detectsBothSourceScriptsWithoutForcingShortNames() {
+        assertEquals("zh", SourceLanguage.choose("我們現在去哪裡？", "en"))
+        assertEquals("zh", SourceLanguage.choose("我们现在去哪里？", "en"))
+        assertEquals("en", SourceLanguage.choose("I think we should go now", "zh"))
+        assertEquals("zh", SourceLanguage.choose("Jason", "zh"))
+        assertEquals("en", SourceLanguage.choose("今日は戦うぞ", "en"))
+        assertTrue(SourceLanguage.ocrScore("我們現在去哪裡", .9f, "zh") > SourceLanguage.ocrScore("我們現在去哪裡", .9f, "en"))
+    }
+
     @Test fun supportedSourcesAreOnlyEnglishAndChinese() {
         assertEquals(listOf("en", "zh"), Prefs.LANGS.map { it.first }.filter { it != "vi" })
         assertTrue(Prefs.isSupportedSource("en"))
