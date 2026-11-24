@@ -465,13 +465,13 @@ class PackActivity : Activity() {
     }
 
     private fun linkDialog() {
-        val et = Ui.field(this, "https://… (file .zip .mo .txt .csv .json .po trực tiếp)", "")
+        val et = Ui.field(this, "https://… (file trực tiếp hoặc .dichgame.json)", "")
         val box = Ui.vbox(this)
         val pad = Ui.dp(this, 20)
         box.setPadding(pad, pad / 2, pad, 0)
         box.addView(et)
         AlertDialog.Builder(this, R.style.DgDialog)
-            .setTitle("Nhập gói từ link").setMessage("Chỉ dùng link file được phép tải và chia sẻ. Chọn đúng hồ sơ game trước khi nhập.").setView(box)
+            .setTitle("Nhập gói từ link").setMessage("Chỉ dùng link file được phép tải và chia sẻ. Chọn đúng game. Gói Cloud .dichgame.json được kiểm tra tên game và SHA-256, lưu offline và giữ bản dịch đang có.").setView(box)
             .setPositiveButton("Tải và nhập") { _, _ ->
                 val u = et.text.toString().trim()
                 if (u.isEmpty()) return@setPositiveButton
