@@ -36,6 +36,15 @@ class TransMemoryFuzzyTest {
         assertEquals("Nhà vua đã chết ba trăm năm rồi.", h!!.vi)
     }
 
+    @Test fun doesNotReuseOppositeCommands() {
+        val source = "Open the gate when you hear the signal from the tower."
+        val negative = "Do not open the gate when you hear the signal from the tower."
+        assertNull(TransMemory(listOf(source to "Hãy mở cổng")).lookupEx(negative))
+        assertNull(TransMemory(listOf(negative to "Đừng mở cổng")).lookupEx(source))
+        assertNull(TransMemory(listOf(source to "Hãy mở cổng")).lookupEx("Don’t " + source.lowercase()))
+        assertNull(mem.lookupEx("Open the middle door to continue."))
+    }
+
     @Test fun differentNumbersAreNeverConfused() {
         assertEquals("Lấy 5 bình thuốc rồi gặp ta ở cây cầu cũ.", mem.lookupEx("Take 5 potions and meet me at the old bridge.")!!.vi)
         assertEquals("Lấy 6 bình thuốc rồi gặp ta ở cây cầu cũ.", mem.lookupEx("Take 6 potions and meet me at the old bridge.")!!.vi)

@@ -9,6 +9,7 @@ import java.util.Locale
  */
 internal object GameTranscriptDeduplicator {
     fun isPartialOverlap(candidate: String, reference: String): Boolean {
+        if (SubtitleMeaning.signature(candidate) != SubtitleMeaning.signature(reference)) return false
         val normalizedCandidate = normalize(candidate)
         val normalizedReference = normalize(reference)
         if (normalizedCandidate.isEmpty() || normalizedReference.isEmpty() ||

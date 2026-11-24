@@ -29,6 +29,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     private val main = Handler(Looper.getMainLooper())
     private val exec = Executors.newSingleThreadExecutor()
     private val seq = AtomicInteger(0)
+    @Volatile private var disposed = false
     private val lock = Any()
     private var track: AudioTrack? = null
     private val cache = object : LruCache<String, Pcm>(6 * 1024 * 1024) {
@@ -54,7 +55,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     init {
         prepare()
         tts = TextToSpeech(ctx.applicationContext) { status ->
-            if (status == TextToSpeech.SUCCESS) {
+            if (!disposed && status == TextToSpeech.SUCCESS) {
                 tts?.setLanguage(Locale("vi", "VN"))
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {}
@@ -99,16 +100,21 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     fun release() { try { offline.close() } catch (_: Throwable) {} }
 
     fun speak(text: String, queue: Boolean = false, d: Delivery? = null, speakerName: String? = null) {
-        if (text.isBlank()) return
+        if (disposed || text.isBlank()) return
         when {
             offlineOn() -> speakOffline(text, d)
             p.aiVoiceOn -> speakAi(text, d, speakerName)
-            else -> speakSystem(text, queue, d)
+            else -> {
+                seq.incrementAndGet()
+                stopTrack()
+                speakSystem(text, queue, d)
+            }
         }
     }
 
     /** Đọc nhiều câu trong một khung thoại bằng đúng giọng của từng nhân vật. */
     fun speakScene(lines: List<VoiceLine>) {
+        if (disposed) return
         val items = lines.filter { it.text.isNotBlank() }
         if (items.isEmpty()) return
         val all = items.joinToString(" ") { it.text }
@@ -123,11 +129,12 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         stopTrack()
         try { tts?.stop() } catch (_: Exception) {}
         exec.execute {
+            if (disposed || my != seq.get()) return@execute
             try {
                 val pcm = synthScenePcm(items)
-                if (my == seq.get()) play(pcm, (p.rate10 / 10f).coerceIn(0.5f, 2.5f))
+                play(pcm, (p.rate10 / 10f).coerceIn(0.5f, 2.5f), my)
             } catch (e: Exception) {
-                if (my == seq.get()) main.post { fallback(all, last.delivery, e) }
+                if (my == seq.get()) main.post { if (!disposed && my == seq.get()) fallback(all, last.delivery, e) }
             }
         }
     }
@@ -160,7 +167,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     /** TV nhận một đoạn PCM duy nhất, nhưng từng lời thoại vẫn được tạo bằng giọng riêng. */
     fun synthForTvScene(lines: List<VoiceLine>, cb: (Pcm?, Float) -> Unit) {
         val items = lines.filter { it.text.isNotBlank() }
-        if (items.isEmpty()) { cb(null, 1f); return }
+        if (disposed || items.isEmpty()) { cb(null, 1f); return }
         val last = items.last()
         val multipleVoices = p.aiVoiceOn && p.characterVoices &&
             items.map { p.aiVoiceFor(it.speaker, it.text) }.distinct().size > 1
@@ -210,14 +217,15 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         val backlog = p.autoFast && System.currentTimeMillis() < aiPlayUntil
         val speed = ((p.rate10 / 10f) * (if (backlog) 1.35f else 1f)).coerceIn(0.5f, 2.5f)
         exec.execute {
+            if (disposed || my != seq.get()) return@execute
             val cached: Pcm? = cache.get(key)
             val pcm: Pcm = cached ?: try {
                 AiSpeech.synth(p, text, style, voiceName).also { cache.put(key, it) }
             } catch (e: Exception) {
-                if (my == seq.get()) main.post { fallback(text, d, e) }
+                if (my == seq.get()) main.post { if (!disposed && my == seq.get()) fallback(text, d, e) }
                 return@execute
             }
-            if (my == seq.get()) play(pcm, speed)
+            play(pcm, speed, my)
         }
     }
 
@@ -243,10 +251,10 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
             val pcm: Pcm = cached ?: try {
                 offline.synth(id, text, speed).also { if (it.data.isNotEmpty()) cache.put(key, it) }
             } catch (e: Throwable) {
-                if (my == seq.get()) main.post { fallback(text, d, e) }
+                if (my == seq.get()) main.post { if (!disposed && my == seq.get()) fallback(text, d, e) }
                 return@execute
             }
-            if (my == seq.get()) play(pcm, 1f)
+            play(pcm, 1f, my)
         }
     }
 
@@ -261,7 +269,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
      * Câu cũ chưa kịp làm mà đã có câu mới thì bị bỏ (không gọi [cb]).
      */
     fun synthForTv(text: String, d: Delivery? = null, speakerName: String? = null, cb: (Pcm?, Float) -> Unit) {
-        if (text.isBlank()) return
+        if (disposed || text.isBlank()) return
         val my = tvSeq.incrementAndGet()
         val useOffline = offlineOn()
         val id = p.offlineVoice
@@ -275,14 +283,14 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                     val pcm: Pcm? = cache.get(key) ?: try {
                         offline.synth(id, text, speed).also { if (it.data.isNotEmpty()) cache.put(key, it) }
                     } catch (_: Throwable) { null }
-                    cb(pcm, 1f) // tốc độ đã nằm trong âm thanh
+                    if (!disposed && my == tvSeq.get()) cb(pcm, 1f) // tốc độ đã nằm trong âm thanh
                 } else {
                     val voiceName = p.aiVoiceFor(speakerName, text)
                     val key = voiceName + "|" + p.ttsModel + "|" + style + "|" + text
                     val pcm: Pcm? = cache.get(key) ?: try {
                         AiSpeech.synth(p, text, style, voiceName).also { cache.put(key, it) }
                     } catch (_: Exception) { null }
-                    cb(pcm, speed)
+                    if (!disposed && my == tvSeq.get()) cb(pcm, speed)
                 }
             }
         } catch (_: Exception) { cb(null, 1f) }
@@ -301,9 +309,11 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         speakSystem(text, false, d)
     }
 
-    private fun play(pcm: Pcm, speed: Float) {
+    private fun play(pcm: Pcm, speed: Float, generation: Int) {
         if (pcm.data.isEmpty()) return
         synchronized(lock) {
+            if (disposed || generation != seq.get()) return
+            var candidate: AudioTrack? = null
             try {
                 val ch = if (pcm.channels == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
                 val t = AudioTrack.Builder()
@@ -323,15 +333,19 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                     .setTransferMode(AudioTrack.MODE_STATIC)
                     .setBufferSizeInBytes(pcm.data.size.coerceAtLeast(4096))
                     .build()
-                t.write(pcm.data, 0, pcm.data.size)
+                candidate = t
+                if (t.write(pcm.data, 0, pcm.data.size) != pcm.data.size) throw IllegalStateException("PCM write failed")
                 try { t.playbackParams = PlaybackParams().setSpeed(speed) } catch (_: Exception) {}
                 releaseLocked()
-                track = t
                 t.play()
+                track = t
+                candidate = null
                 played++
                 val bytesPerSec = (pcm.rate * 2 * (if (pcm.channels == 2) 2 else 1)).coerceAtLeast(1)
                 aiPlayUntil = System.currentTimeMillis() + (pcm.data.size * 1000L / bytesPerSec / speed).toLong()
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                try { candidate?.release() } catch (_: Exception) {}
+            }
         }
     }
 
@@ -345,11 +359,16 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     fun stop() {
         seq.incrementAndGet()
+        tvSeq.incrementAndGet()
+        queued.set(0)
+        aiPlayUntil = 0L
         stopTrack()
         try { tts?.stop() } catch (_: Exception) {}
     }
 
     fun shutdown() {
+        disposed = true
+        tvSeq.incrementAndGet()
         seq.incrementAndGet()
         stopTrack()
         exec.shutdownNow()

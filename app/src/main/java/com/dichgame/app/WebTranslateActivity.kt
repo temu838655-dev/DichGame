@@ -708,11 +708,12 @@ class WebTranslateActivity : Activity() {
         val my = ++seq
         val t0 = System.currentTimeMillis()
         try {
-            t.translateEx(text) { vi, d ->
+            t.translateFull(text, null) { tr ->
+                val vi = tr.text
                 Log.i(TAG, "vi: $vi (${System.currentTimeMillis() - t0} ms)")
                 if (my == seq && running) {
-                    setPanel(vi, if (p.showOrig) text else "")
-                    if (p.speak) speaker?.speak(vi, false, d)
+                    setPanel(tr.caption, if (p.showOrig) text else "")
+                    if (p.speak && !tr.uncertain) speaker?.speak(vi, false, tr.delivery)
                 }
             }
         } catch (e: Throwable) {

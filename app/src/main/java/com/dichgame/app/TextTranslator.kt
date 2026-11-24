@@ -94,7 +94,9 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      * Kết quả một lần dịch. [uncertain]: bản dịch đã qua kiểm tra nhưng còn nghi ngờ (mất số, đổi tên, dài ngắn bất thường)
      * hoặc dịch dự phòng cũng không đạt; giao diện đánh dấu "(?)" thay vì khẳng định. [via]: goi (gói Việt hoá), cache, ai, may.
      */
-    class Tr(val text: String, val delivery: Delivery?, val uncertain: Boolean, val via: String)
+    class Tr(val text: String, val delivery: Delivery?, val uncertain: Boolean, val via: String) {
+        val caption get() = if (uncertain) "$text (?)" else text
+    }
 
     /** Các câu đã dịch xong và đạt kiểm tra: gặp lại (khung hình lặp, nhân vật nói lại) thì dùng ngay, không gọi AI lần nữa. */
     private val cache = object : LinkedHashMap<String, Tr>(64, 0.75f, true) {
@@ -124,7 +126,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         val profile = p.profile
         val game = PackStore.gameName(p)
         val gameDescription = p.game
-        val context = profile + "\u0000" + gameDescription
+        val context = profile + "\u0000" + game + "\u0000" + gameDescription
         if (activeGameContext != context) {
             activeGameContext = context
             history.clear()
@@ -132,10 +134,10 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         }
         // Một câu dịch đang chờ Gemini khi người chơi đổi game sẽ bị loại,
         // không hiện phụ đề cũ và không lưu vào bộ nhớ của game mới.
-        fun stillCurrent(): Boolean = !closed && profile == p.profile && gameDescription == p.game
+        fun stillCurrent(): Boolean = !closed && profile == p.profile && gameDescription == p.game && game == PackStore.gameName(p)
         fun emit(result: Tr) { if (stillCurrent()) done(result) }
         val key = context + "\u0000" +
-            (if (ui) "ui|" else "") + (speaker?.lowercase() ?: "") + "|" + OcrGuard.key(text)
+            (if (ui) "ui|" else "") + (speaker?.lowercase(java.util.Locale.ROOT) ?: "") + "|" + text.trim()
         val hist = if (ui) emptyList() else history.takeLast(p.ctxCount)
         if (!ui) {
             history.add(if (speaker != null) "$speaker: $text" else text)
@@ -152,7 +154,9 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         // Gói Việt hóa do người dùng nhập có ưu tiên cao nhất; tiếp theo là bản dịch đã
         // lưu lâu dài trên máy. Khớp đúng nguồn + ngôn ngữ + người nói, không khớp mờ.
         if (p.learnTranslations) {
-            LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text)?.let { saved ->
+            LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text)?.takeIf {
+                it.manual || TranslationGuard.check(text, it.vi, sourceLang = lang).ok
+            }?.let { saved ->
                 st.inc("dich_nho")
                 val cast = PackStore.cast(p)
                 val pace = if (ui) null else
@@ -161,10 +165,6 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 emit(Tr(saved.vi, delivery, false, "nho"))
                 return
             }
-        }
-        if (packHit != null) {
-            st.inc("dich_goi"); st.inc("dich_goi_gan")
-            emit(Tr(packHit.vi, null, false, "goi")); return
         }
         cache[key]?.let { st.inc("dich_cache"); emit(it); return }
         val terms = PackStore.terms(p)
@@ -185,7 +185,20 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             else if (!saved && (t.via != "may" || !aiOn)) cache[key] = t
             emit(t)
         }
-        if (!aiOn) { translateLocal(text, names, pace, ::finish); return }
+        fun fallbackLocal() {
+            if (!stillCurrent()) return
+            translateLocal(text, names, pace) { localResult ->
+                // Khớp mờ chỉ là gợi ý khi cả AI và dịch máy không cho kết quả chắc chắn.
+                // Không tự đọc hoặc tự lưu một câu suy đoán từ gói Việt hóa.
+                if (localResult.uncertain && packHit != null && packHit.fuzzy &&
+                    TranslationGuard.check(text, packHit.vi, names, lang).ok) {
+                    st.inc("dich_goi_gan")
+                    finish(Tr(packHit.vi, null, true, "goi"))
+                } else finish(localResult)
+            }
+        }
+        if (lang == "vi") { emit(Tr(text, null, false, "may")); return }
+        if (!aiOn) { fallbackLocal(); return }
         val emo = p.emoTr && !ui
         Thread {
             var chosen: Tr? = null
@@ -208,10 +221,10 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 if (raw.isNullOrEmpty()) break
                 val parsed = if (emo) Emo.parse(raw) else Emo.Parsed(raw, null)
                 val fixed = terms.fixOutput(TranslationGuard.clean(parsed.text, text))
-                val v = TranslationGuard.check(text, fixed, names)
-                if (v.level != TranslationGuard.Level.REJECT) {
+                val v = TranslationGuard.check(text, fixed, names, lang)
+                if (v.ok) {
                     val d = if (emo) parsed.delivery ?: Emo.detect(text, fixed, pace) else null
-                    chosen = Tr(fixed, d, v.level == TranslationGuard.Level.SUSPECT, "ai")
+                    chosen = Tr(fixed, d, false, "ai")
                     st.inc("dich_ai")
                     break
                 }
@@ -221,8 +234,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             }
             val res = chosen
             main.post {
-                if (closed) return@post
-                if (res != null) finish(res) else translateLocal(text, names, pace, ::finish)
+                if (!stillCurrent()) return@post
+                if (res != null) finish(res) else fallbackLocal()
             }
         }.start()
     }
@@ -231,14 +244,17 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
 
     private fun translateLocal(text: String, names: List<Pair<String, String>>, pace: Pace?, done: (Tr) -> Unit) {
         val l = local
-        if (l == null) { done(Tr(text, null, false, "may")); return }
+        if (l == null) { done(Tr(text, null, lang != "vi", "may")); return }
         val terms = PackStore.terms(p)
         val prot = terms.protect(text)
         fun ok(r: String) {
             SessionStats.live.inc("dich_may")
-            // dịch trên máy vốn kém hơn AI nên chỉ coi là "chưa chắc" khi hỏng rõ ràng (rỗng, chưa dịch, còn chữ gốc)
-            val bad = TranslationGuard.check(text, r, names).level == TranslationGuard.Level.REJECT
-            done(Tr(r, deliveryOf(text, r, pace), bad, "may"))
+            val verdict = TranslationGuard.check(text, r, names, lang)
+            if (verdict.level == TranslationGuard.Level.REJECT) {
+                done(Tr(text, null, true, "may"))
+            } else {
+                done(Tr(r, if (verdict.ok) deliveryOf(text, r, pace) else null, !verdict.ok, "may"))
+            }
         }
         l.translate(prot.text)
             .addOnSuccessListener { out ->

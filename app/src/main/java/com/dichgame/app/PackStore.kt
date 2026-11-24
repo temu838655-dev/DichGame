@@ -1,6 +1,7 @@
 package com.dichgame.app
 
 import android.content.Context
+import android.util.AtomicFile
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -45,36 +46,78 @@ object PackStore {
     private fun slug(profile: String): String =
         profile.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), "_").trim('_').take(40) + "_" + Integer.toHexString(profile.hashCode())
 
-    private fun linesFile(ctx: Context, profile: String) = File(File(ctx.filesDir, "lines"), slug(profile) + ".tsv")
+    private fun legacyLinesFile(ctx: Context, profile: String) = File(File(ctx.filesDir, "lines"), slug(profile) + ".tsv")
+    private fun scopedDir(ctx: Context, profile: String) = File(File(ctx.filesDir, "lines-v2"), slug(profile))
 
-    fun readLines(ctx: Context, profile: String): List<Pair<String, String>> {
-        val f = linesFile(ctx, profile)
-        if (!f.exists()) return emptyList()
-        return try {
-            f.readLines(Charsets.UTF_8).mapNotNull { l ->
+    private fun linesFile(ctx: Context, profile: String): File {
+        val prefs = Prefs(ctx)
+        val game = GamePackMatch.title(prefs.gameOf(profile), profile,
+            prefs.selectedGameTitleOf(profile), Prefs.DEFAULT_PROFILE)
+        // Keep existing named-profile data; never copy it into a different game.
+        val scopedGame = GamePackMatch.storageGame(profile, game)
+        if (scopedGame.isEmpty()) return legacyLinesFile(ctx, profile)
+        val digest = GamePackMatch.storageHash(scopedGame)
+        return File(scopedDir(ctx, profile), digest + ".tsv")
+    }
+
+    private fun readFile(f: File): List<Pair<String, String>> {
+        if (!f.exists() && !File(f.path + ".bak").exists()) return emptyList()
+        return AtomicFile(f).openRead().bufferedReader(Charsets.UTF_8).useLines { lines ->
+            lines.mapNotNull { l ->
                 val t = l.indexOf('\t')
                 if (t <= 0) null else l.substring(0, t) to l.substring(t + 1)
-            }
-        } catch (_: Exception) { emptyList() }
+            }.toList()
+        }
     }
+
+    @Synchronized
+    fun readLines(ctx: Context, profile: String): List<Pair<String, String>> =
+        try { readFile(linesFile(ctx, profile)) } catch (_: Exception) { emptyList() }
 
     fun lineCount(ctx: Context, profile: String): Int = readLines(ctx, profile).size
 
     /** Thêm câu thoại vào hồ sơ (trùng câu gốc thì lấy bản mới). Trả về số câu sau khi gộp. */
+    @Synchronized
     fun addLines(ctx: Context, profile: String, add: List<Pair<String, String>>): Int {
-        val map = LinkedHashMap<String, Pair<String, String>>()
-        for (e in readLines(ctx, profile) + add) {
+        val f = linesFile(ctx, profile)
+        val map = LinkedHashMap<Triple<String, String, String>, Pair<String, String>>()
+        // Read and write the same captured target; if reading fails do not overwrite it.
+        for (e in readFile(f) + add) {
             val k = Canon.key(e.first)
-            if (Canon.usable(k) && e.second.isNotBlank()) map[k] = e.first.replace('\t', ' ').replace('\n', ' ') to e.second.replace('\t', ' ').replace('\n', ' ')
+            val identity = Triple(k, digitSig(e.first), SubtitleMeaning.signature(e.first))
+            if (Canon.usable(k) && e.second.isNotBlank()) map[identity] = e.first.replace('\t', ' ').replace('\n', ' ') to e.second.replace('\t', ' ').replace('\n', ' ')
         }
         val list = map.values.toList().takeLast(PackText.MAX_LINES)
-        val f = linesFile(ctx, profile)
         f.parentFile?.mkdirs()
-        f.writeText(list.joinToString("\n") { it.first + "\t" + it.second }, Charsets.UTF_8)
+        val atomic = AtomicFile(f)
+        val output = atomic.startWrite()
+        try {
+            val writer = output.bufferedWriter(Charsets.UTF_8)
+            for ((original, vi) in list) {
+                writer.write(original); writer.write("\t"); writer.write(vi); writer.newLine()
+            }
+            writer.flush()
+            atomic.finishWrite(output)
+        } catch (e: Exception) {
+            atomic.failWrite(output)
+            throw e
+        }
+        mem = null; memKey = ""
         return list.size
     }
 
-    fun deleteLines(ctx: Context, profile: String) { try { linesFile(ctx, profile).delete() } catch (_: Exception) {} }
+    @Synchronized
+    fun deleteLines(ctx: Context, profile: String) {
+        AtomicFile(linesFile(ctx, profile)).delete()
+        mem = null; memKey = ""
+    }
+
+    @Synchronized
+    fun deleteProfileLines(ctx: Context, profile: String) {
+        AtomicFile(legacyLinesFile(ctx, profile)).delete()
+        scopedDir(ctx, profile).deleteRecursively()
+        mem = null; memKey = ""
+    }
 
     private var memKey = ""
     private var mem: TransMemory? = null
@@ -87,7 +130,8 @@ object PackStore {
         val key = p.profile + "\u0000" + name + "\u0000" + (p.packOn || p.aiAuto) + "\u0000" + f.lastModified() + "\u0000" + f.length()
         mem?.let { if (key == memKey) return it }
         val built = if (p.packOn || p.aiAuto) VietHoa.linesFor(name) else emptyList()
-        return TransMemory(built + readLines(ctx, p.profile)).also { mem = it; memKey = key }
+        val imported = try { readFile(f) } catch (_: Exception) { emptyList() }
+        return TransMemory(built + imported).also { mem = it; memKey = key }
     }
 
     /** Số mục có sẵn cho game: (thuật ngữ, nhân vật, câu thoại). */
@@ -109,6 +153,10 @@ object PackStore {
             if (t != null) return "File này là file chữ một ngôn ngữ của game (${t.size} mục), chưa có cặp \"gốc = Việt hoá\" để nhập. " +
                 "Nếu có cả file gốc và file đã Việt hoá, dùng \"Ghép 2 file\" và chọn lần lượt hai file."
             return "File không có gì để nhập. Cần các mục [thuật ngữ], [nhân vật] hoặc [câu thoại], hoặc dùng \"Ghép 2 file\" với file gốc và file Việt hoá."
+        }
+        val currentGame = gameName(p)
+        if (pack.name.isNotBlank() && (currentGame.isBlank() || !GamePackMatch.selected(currentGame, pack.name))) {
+            return "Gói dành cho ${pack.name}, nhưng game đang chọn là ${currentGame.ifBlank { "chưa chọn" }}. Hãy chọn đúng game trong Kho game trước khi nhập."
         }
         val before = p.glossary.lines().count { it.contains('=') }
         p.glossary = VietHoa.merge(p.glossary, pack.terms)
@@ -242,6 +290,7 @@ object PackStore {
     /** Download a user-authorized direct pack link, including ZIP and MO, with a bounded temporary file. */
     fun importLink(ctx: Context, p: Prefs, link: String): String {
         val profile = p.profile
+        val game = gameName(p)
         var u = link.trim()
         val github = Regex("^https://github[.]com/([^/]+/[^/]+)/blob/(.+)$").find(u)
         if (github != null) u = "https://raw.githubusercontent.com/${github.groupValues[1]}/${github.groupValues[2]}"
@@ -271,7 +320,7 @@ object PackStore {
                     }
                 }
             } finally { c.disconnect() }
-            if (p.profile != profile) throw java.io.IOException("Hồ sơ game đã thay đổi. Hãy chọn lại game.")
+            if (p.profile != profile || gameName(p) != game) throw java.io.IOException("Game hoặc hồ sơ đã thay đổi. Hãy chọn lại game.")
             return importFile(ctx, p, url.path.substringAfterLast('/'), tmp)
         } finally { tmp.delete() }
     }

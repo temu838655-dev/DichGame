@@ -19,7 +19,6 @@ import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.text.InputFilter
 import android.text.InputType
 import android.view.Gravity
 import android.view.InputDevice
@@ -1412,24 +1411,32 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     override fun onBackPressed() = leave()
 
     private fun askPin(incorrect: Boolean) {
+        val requestingSession = session ?: return
         val et = EditText(this).apply {
-            hint = "Mã đăng nhập Remote Play"
-            inputType = InputType.TYPE_CLASS_NUMBER
-            filters = arrayOf<InputFilter>(InputFilter.LengthFilter(8))
+            hint = "Mã đăng nhập 4 chữ số"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
         }
         val box = Ui.vbox(this)
         box.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), 0)
         box.addView(et)
-        AlertDialog.Builder(this, R.style.DgDialog)
+        val dialog = AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle(if (incorrect) "Mã chưa đúng" else "Nhập mã đăng nhập")
             .setView(box)
             .setCancelable(false)
             .setNegativeButton("Hủy") { _, _ -> finish() }
-            .setPositiveButton("Gửi") { _, _ ->
-                val v = et.text.toString()
-                if (!isValidPairingPin(v)) { Toast.makeText(this, "Mã đăng nhập phải gồm đúng 8 chữ số (0–9).", Toast.LENGTH_LONG).show(); askPin(incorrect) }
-                else session?.setLoginPin(v)
-            }.show()
+            .setPositiveButton("Gửi", null)
+            .show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val pin = et.text.toString()
+            if (session !== requestingSession) {
+                dialog.dismiss()
+            } else if (isValidLoginPin(pin)) {
+                requestingSession.setLoginPin(pin)
+                dialog.dismiss()
+            } else {
+                et.error = "Mã đăng nhập phải gồm đúng 4 chữ số (0–9)."
+            }
+        }
     }
 
     // ---------------- Hình và điều khiển ----------------
