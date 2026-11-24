@@ -9,9 +9,6 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
-import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
-import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
-import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
@@ -24,8 +21,7 @@ class Blk(val text: String, val box: Rect?, val conf: Float = 1f)
 
 /**
  * Đọc chữ từ ảnh chụp màn hình.
- * Chữ Latin, Nhật, Hàn, Trung, Hindi: đọc ngay trên máy bằng ML Kit.
- * Chữ Nga, Ukraina, Thái, Ả Rập, Hy Lạp, Do Thái: ML Kit không có mô hình, nên gửi ảnh cho Google Gemini đọc (cần khóa Gemini).
+ * Chữ Latin (Anh, Việt) và Trung: OCR ML Kit đóng gói trực tiếp trong APK.
  * Kết quả luôn được trả về trên luồng chính.
  */
 class Ocr(private val p: Prefs, private val lang: String) {
@@ -35,13 +31,18 @@ class Ocr(private val p: Prefs, private val lang: String) {
         if (Prefs.isCloudOcr(lang)) null
         else TextRecognition.getClient(
             when (lang) {
-                "ja" -> JapaneseTextRecognizerOptions.Builder().build()
-                "ko" -> KoreanTextRecognizerOptions.Builder().build()
                 "zh" -> ChineseTextRecognizerOptions.Builder().build()
-                "hi" -> DevanagariTextRecognizerOptions.Builder().build()
                 else -> TextRecognizerOptions.DEFAULT_OPTIONS
             }
         )
+
+    private val adaptive = p.autoLang && !p.narrate && Prefs.isSupportedSource(lang)
+    private var preferred = lang
+    private var frame = 0
+    private var alternate: TextRecognizer? = null
+    private fun recognizer(code: String): TextRecognizer = TextRecognition.getClient(
+        if (code == "zh") ChineseTextRecognizerOptions.Builder().build() else TextRecognizerOptions.DEFAULT_OPTIONS
+    )
 
     /** true nếu mỗi lần đọc phải gửi ảnh lên Gemini (chậm hơn và tốn lượt dùng). */
     val isCloud: Boolean get() = local == null
@@ -58,19 +59,35 @@ class Ocr(private val p: Prefs, private val lang: String) {
     fun read(bmp: Bitmap, fail: (String) -> Unit, ok: (List<Blk>) -> Unit) {
         val l = local
         if (l != null) {
-            try {
-                l.process(InputImage.fromBitmap(bmp, 0))
-                    .addOnSuccessListener { r ->
-                        recycleInput(bmp)
-                        ok(r.textBlocks.map { Blk(it.text, it.boundingBox, confOf(it)) })
-                    }
-                    .addOnFailureListener {
-                        recycleInput(bmp)
-                        fail("")
-                    }
-            } catch (e: Exception) {
+            val firstCode = if (adaptive) preferred else lang
+            val secondCode = if (firstCode == "zh") "en" else "zh"
+            fun engine(code: String): TextRecognizer = if (code == lang) l else alternate ?: recognizer(code).also { alternate = it }
+            fun score(blocks: List<Blk>, code: String): Float = blocks.sumOf {
+                SourceLanguage.ocrScore(it.text, it.conf, code).toDouble()
+            }.toFloat()
+            fun readWith(code: String, result: (List<Blk>?) -> Unit) {
+                try {
+                    engine(code).process(InputImage.fromBitmap(bmp, 0))
+                        .addOnSuccessListener { r -> result(r.textBlocks.map { Blk(it.text, it.boundingBox, confOf(it)) }) }
+                        .addOnFailureListener { result(null) }
+                } catch (_: Exception) { result(null) }
+            }
+            fun finish(blocks: List<Blk>?) {
                 recycleInput(bmp)
-                fail("")
+                if (blocks == null) fail("") else ok(blocks)
+            }
+            readWith(firstCode) { first ->
+                val firstScore = score(first.orEmpty(), firstCode)
+                // Try the alternate model periodically or on weak OCR; only one bitmap is owned until both reads finish.
+                frame++
+                if (!adaptive || (frame % 5 != 0 && firstScore >= 3f)) finish(first)
+                else readWith(secondCode) { second ->
+                    val otherScore = score(second.orEmpty(), secondCode)
+                    if (second != null && otherScore > maxOf(firstScore * 1.25f, 2.5f)) {
+                        preferred = secondCode
+                        finish(second)
+                    } else finish(first ?: second)
+                }
             }
             return
         }
@@ -100,6 +117,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
 
     fun close() {
         local?.close()
+        alternate?.close(); alternate = null
         if (isCloud) io.shutdown()
     }
 

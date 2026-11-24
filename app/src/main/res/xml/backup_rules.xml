@@ -2,6 +2,12 @@
 <full-backup-content>
     <!-- Remote Play secrets are encrypted with a device-bound Android Keystore key. -->
     <exclude domain="sharedpref" path="ps.xml" />
+        <exclude domain="sharedpref" path="dg_api_secrets.xml" />
+        <!-- Legacy settings can still contain credentials until first migration. -->
+        <exclude domain="sharedpref" path="dg.xml" />
+        <exclude domain="database" path="dichgame.db" />
+        <exclude domain="database" path="dichgame.db-wal" />
+        <exclude domain="database" path="dichgame.db-shm" />
     <!-- Legacy preferences may still contain unencrypted pairing keys before migration. -->
     <exclude domain="sharedpref" path="ps_remote_play.xml" />
     <!-- Bản dịch AI được lưu nội bộ, không sao lưu nguyên văn lời thoại lên cloud. -->

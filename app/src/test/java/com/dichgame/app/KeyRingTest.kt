@@ -122,6 +122,51 @@ class KeyRingTest {
         assertFalse(KeyRing.allBad(emptyList(), 0))
     }
 
+    @Test fun rotatesAfterQuotaAndInvalidKeyWithinSameRequest() {
+        val tried = mutableListOf<String>()
+        val value = Ai.withGeminiKeys(keys, m) { key ->
+            tried.add(key)
+            when (key) {
+                "A" -> throw quota(60_000)
+                "B" -> throw AiException(403, "invalid", badKey = true)
+                else -> "ok"
+            }
+        }
+        assertEquals("ok", value)
+        assertEquals(keys, tried)
+        assertEquals("C", KeyRing.pick(keys, m))
+    }
+
+    @Test fun parsesPastedMultipleKeysAndDailyQuotaVariants() {
+        assertEquals(keys, Prefs.parseGeminiKeys(listOf("A, B; C", "B\nA")))
+        assertTrue(KeyRing.isDailyQuota("generate_requests_per_day"))
+        assertTrue(KeyRing.isBadKey(403, "API_KEY_HTTP_REFERRER_BLOCKED"))
+        assertFalse(KeyRing.isBadKey(403, "model unavailable"))
+    }
+
+    @Test fun openAiAndCloudRotationUseIndependentScopes() {
+        val tried = mutableListOf<String>()
+        val scope = "openai:gpt-4.1-mini"
+        val value = Ai.withProviderKeys(keys, scope, "OpenAI") { key ->
+            tried.add(key)
+            if (key == "A") throw quota(60_000)
+            if (key == "B") throw AiException(401, "invalid", badKey = true)
+            "ok"
+        }
+        assertEquals("ok", value)
+        assertEquals(keys, tried)
+        assertEquals("C", KeyRing.pick(keys, scope))
+        assertEquals("A", KeyRing.pick(keys, "cloud:example|model"))
+    }
+
+    @Test fun billingErrorsDoNotImmediatelyRetry() {
+        assertTrue(KeyRing.isBillingLimit("insufficient_quota"))
+        assertTrue(KeyRing.isBillingLimit("credit_balance_exhausted"))
+        assertFalse(KeyRing.isBillingLimit("rate_limit_exceeded"))
+        KeyRing.report("A", "openai:model", AiException(429, "billing", billingLimit = true), now = 0)
+        assertEquals(3_599_000L, KeyRing.waitMs(listOf("A"), "openai:model", 1000))
+    }
+
     @Test fun humanWait() {
         assertEquals("21 giây", AiRetry.humanWait(21_000))
         assertEquals("5 phút", AiRetry.humanWait(5 * 60_000L))

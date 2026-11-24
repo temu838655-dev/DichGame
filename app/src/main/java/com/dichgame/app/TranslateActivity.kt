@@ -55,7 +55,7 @@ class TranslateActivity : Activity() {
             }
             if (p.aiAuto) {
                 group("AI TỰ ĐỘNG", 14) {
-                    addView(Ui.tv(a, "Tự nhận biết ngôn ngữ từ chữ OCR khi đủ bằng chứng. Ban đầu dùng cấu hình nguồn hiện tại; tên game chỉ tự nhận diện khi tựa đầy đủ xuất hiện rõ ít nhất hai lượt quét.", 13f, Ui.SUB))
+                    addView(Ui.tv(a, "Chọn tiếng Anh hoặc tiếng Trung theo chữ của game. Tên game chỉ tự nhận diện khi tựa đầy đủ xuất hiện rõ ít nhất hai lượt quét.", 13f, Ui.SUB))
                     addView(Ui.switchRow(a, "Ghi nhớ bản dịch AI", "Lưu câu AI đã kiểm chứng riêng cho từng game; tránh dịch lại.", p.learnTranslations) {
                         p.learnTranslations = it
                     })
@@ -64,19 +64,18 @@ class TranslateActivity : Activity() {
                     })
                 }
             }
-            if (!p.narrate && !p.aiAuto) {
+            if (!p.narrate) {
                 group("NGÔN NGỮ TRONG GAME", 14) {
                     val src = Prefs.LANGS.filter { it.first != "vi" }
                     addView(Ui.dropRow(a, "Ngôn ngữ chữ trong game", { Prefs.langLabel(p.lang) }, { src.map { Prefs.langLabel(it.first) } }) {
                         p.lang = src[it].first
                         render()
                     })
-                    if (p.lang != "vi") {
-                        divide()
-                        addView(packRow())
-                    }
+                    divide()
+                    addView(packRow())
                 }
             }
+            if (!p.narrate) group("KHO DỮ LIỆU TRỰC TUYẾN") { addView(communityBlock()) }
             if (p.aiAuto) {
                 group("GEMINI VÀ KHÓA DỰ PHÒNG") {
                     geminiBlock(this)
@@ -87,7 +86,9 @@ class TranslateActivity : Activity() {
                 group("BỘ DỊCH", 0) {
                 addView(engineRow("Dịch trên máy", null, "Miễn phí, chạy offline, kém chính xác hơn AI", Prefs.ENGINE_LOCAL))
                 divide(16)
-                addView(engineRow("CloudAPI", "AI", "AI đám mây theo chuẩn OpenAI, cần địa chỉ và khóa", Prefs.ENGINE_CLOUD))
+                addView(engineRow("OpenAI", "AI", "AI của ChatGPT, dùng API key, trả phí theo lượt", Prefs.ENGINE_OPENAI))
+                divide(16)
+                addView(engineRow("CloudAPI", "AI", "Máy chủ tương thích OpenAI, tự đổi khóa dự phòng", Prefs.ENGINE_CLOUD))
                 divide(16)
                 addView(engineRow("Google Gemini", "AI", "Miễn phí nhưng nhanh hết lượt, cần khóa", Prefs.ENGINE_GEMINI))
                 }
@@ -96,44 +97,91 @@ class TranslateActivity : Activity() {
                     group("KHÓA GOOGLE GEMINI") { geminiBlock(this) }
                     group("TÙY CHỌN AI") { addView(ctxRow()) }
                 }
+                Prefs.ENGINE_OPENAI -> {
+                    group("KHÓA OPENAI") { providerBlock(this, true) }
+                    group("TÙY CHỌN AI") { addView(ctxRow()) }
+                }
                 Prefs.ENGINE_CLOUD -> {
                     group("CLOUDAPI") { cloudBlock(this) }
                     group("TÙY CHỌN AI") { addView(ctxRow()) }
                 }
                 else -> put(Ui.tv(a,
-                    "Đang dùng bộ dịch trên máy: chạy offline sau lần tải mô hình đầu tiên. Chọn CloudAPI hoặc Google Gemini để dịch hay hơn, giữ đúng tên và xưng hô.",
+                    "Đang dùng bộ dịch trên máy: chạy offline sau lần tải mô hình đầu tiên. Chọn OpenAI, CloudAPI hoặc Google Gemini để dịch hay hơn, giữ đúng tên và xưng hô.",
                     13f, Ui.SUB).apply { setPadding(Ui.dp(a, 10), 0, Ui.dp(a, 10), 0) }, 12, 0)
                 }
             }
         }
     }
 
-    /** Hàng "Gói ngôn ngữ X → Việt" với nút tải trước mô hình dịch trên máy, để lần đầu chơi khỏi chờ. */
+    private fun communityBlock(): View {
+        val box=Ui.vbox(this)
+        val a=this
+        box.addView(Ui.tv(a,"Máy chủ riêng (Cloudflare D1). Mặc định tắt. Khi bật, tên game, ngôn ngữ, tên nhân vật và câu gốc được gửi để tra bản dịch. Không gửi ảnh, âm thanh, API key AI hay mã PSN.",13f,Ui.SUB))
+        val url=Ui.field(a,"https://...workers.dev",p.communityUrl)
+        val token=Ui.field(a,"Mã truy cập kho dữ liệu",p.communityToken,true)
+        box.addView(url,Ui.lpm(a,6,0)); box.addView(token,Ui.lpm(a,6,0))
+        box.addView(Ui.button(a,"Lưu máy chủ") {
+            val u=url.text.toString().trim(); val key=token.text.toString().trim()
+            if(!CommunityCloud.validUrl(u)||key.length !in 24..500) {
+                Toast.makeText(a,"Cần URL HTTPS gốc và mã truy cập hợp lệ.",Toast.LENGTH_LONG).show()
+            } else {
+                p.communityEnabled=false; p.communityContribute=false
+                p.communityUrl=u; p.communityToken=key; render()
+            }
+        },Ui.lpm(a,6,0))
+        box.addView(Ui.switchRow(a,"Tra cứu bản dịch dùng chung","Ưu tiên dữ liệu đã duyệt; lỗi mạng thì dùng cách dịch hiện tại.",p.communityEnabled) {
+            if(it && (!CommunityCloud.validUrl(p.communityUrl)||p.communityToken.length !in 24..500)) {
+                Toast.makeText(a,"Lưu thông tin máy chủ trước.",Toast.LENGTH_SHORT).show(); render()
+            } else { p.communityEnabled=it; if(!it) p.communityContribute=false else CommunityCloud.syncCurrent(applicationContext,p); render() }
+        })
+        if(p.communityEnabled) {
+            box.addView(Ui.switchRow(a,"Đóng góp bản dịch AI","Gửi câu gốc và bản dịch đã qua kiểm tra để quản trị viên duyệt. Không gửi từ điển riêng hoặc prompt riêng. Chỉ bật nếu có quyền chia sẻ.",p.communityContribute) { enabled ->
+                if(!enabled) p.communityContribute=false else android.app.AlertDialog.Builder(a).setTitle("Cho phép gửi lời thoại?")
+                    .setMessage("Chỉ đóng góp lời thoại game mà bạn được phép chia sẻ. Không gửi hội thoại cá nhân. Có thể tắt bất cứ lúc nào; dữ liệu đã gửi cần quản trị viên xóa.")
+                    .setNegativeButton("Không") { _,_->render() }.setPositiveButton("Đồng ý") { _,_->p.communityContribute=true;render() }.setOnCancelListener { render() }.show()
+            })
+            val count=CommunityCloud.offlineCount(a,p,PackStore.gameName(p),p.lang)
+            val status=Ui.tv(a,"Đã lưu offline: $count câu. Tự tải bổ sung khi mở app hoặc chọn game.",12.5f,Ui.SUB);box.addView(status)
+            box.addView(Ui.button(a,"Kiểm tra kết nối") { CommunityCloud.test(p) { ok->status.text=if(ok) "Kết nối thành công" else "Không kết nối được. Kiểm tra URL và mã." } },Ui.lpm(a,6,0))
+            box.addView(Ui.button(a,"Cập nhật danh mục game") { CommunityCloud.refreshCatalog(a,p) { n->status.text=if(n>=0) "Đã tải $n game." else "Chưa cập nhật được." } },Ui.lpm(a,6,0))
+            box.addView(Ui.button(a,"Tải gói Việt hóa game đang chọn") { 
+                val game=PackStore.gameName(p)
+                CommunityCloud.downloadPack(a,p,game,p.profile,p.lang) { n->status.text=when { n>=0 -> "Đã lưu offline $n câu, giữ nguyên bản sửa tay."; n == -2 -> "Gói đang được đồng bộ."; else -> "Chưa tải xong. Dữ liệu offline cũ vẫn dùng được." } }
+            },Ui.lpm(a,6,0))
+        }
+        return box
+    }
+
+    /** Trạng thái hai bộ dịch offline; app tự tải ngay khi mở lần đầu. */
     private fun packRow(): View {
-        val row = Ui.hbox(this)
-        row.gravity = Gravity.CENTER_VERTICAL
-        row.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 2))
-        row.addView(Ui.tv(this, "Gói ${Prefs.langName(p.lang).removePrefix("Tiếng ")} → Việt", 15f, Ui.TEXT, true), Ui.lp(0, WRAP_CONTENT, 1f))
-        val b = Ui.button(this, "Đang kiểm tra...") {}
-        b.textSize = 13f
-        row.addView(b)
-        var busy = false
-        fun state(done: Boolean) { busy = false; b.text = if (done) "Đã tải ✓" else "Tải về"; b.isEnabled = !done }
-        TextTranslator.isDownloaded(p.lang) { state(it) }
-        b.setOnClickListener {
-            if (busy || !b.isEnabled || b.text == "Đang kiểm tra...") return@setOnClickListener
-            busy = true
-            b.text = "Đang tải..."
-            val t = TextTranslator(this, p, p.lang)
-            t.prepare { ok ->
-                if (ok) state(true) else {
-                    state(false)
-                    Toast.makeText(this, "Không tải được. Kiểm tra mạng rồi thử lại.", Toast.LENGTH_SHORT).show()
+        val box = Ui.vbox(this)
+        val en = Ui.tv(this, "Tiếng Anh → Việt · Đang kiểm tra…", 14f, Ui.TEXT)
+        val zh = Ui.tv(this, "Tiếng Trung → Việt · Đang kiểm tra…", 14f, Ui.TEXT)
+        val status = Ui.tv(this, "", 12.5f, Ui.SUB)
+        val retry = Ui.button(this, "Tải lại gói còn thiếu") {}
+        box.addView(en, Ui.lpm(this, 6, 2))
+        box.addView(zh, Ui.lpm(this, 6, 2))
+        box.addView(status, Ui.lpm(this, 6, 2))
+        box.addView(retry, Ui.lpm(this, 6, 2))
+        fun refresh() {
+            TextTranslator.isDownloaded("en") { ok -> en.text = "Tiếng Anh → Việt · " + if (ok) "Sẵn sàng ✓" else "Chưa tải đủ" }
+            TextTranslator.isDownloaded("zh") { ok -> zh.text = "Tiếng Trung → Việt · " + if (ok) "Sẵn sàng ✓" else "Chưa tải đủ" }
+        }
+        fun load(force: Boolean) {
+            retry.isEnabled = false
+            status.text = "Đang chuẩn bị bộ dịch offline (lần đầu cần Internet)…"
+            OfflineLanguagePacks.ensure(force) { ok ->
+                if (!isFinishing && !isDestroyed) {
+                    refresh()
+                    status.text = if (ok) "Đã sẵn sàng · dịch offline không cần tải lại." else "Chưa tải đủ. Kiểm tra mạng rồi thử lại."
+                    retry.isEnabled = !ok
                 }
-                t.close()
             }
         }
-        return row
+        retry.setOnClickListener { load(true) }
+        refresh()
+        load(false)
+        return box
     }
 
     private fun modeSegment(): View =
@@ -214,20 +262,60 @@ class TranslateActivity : Activity() {
         c.addView(status, Ui.lpm(a, 4, 0))
     }
 
-    private fun cloudBlock(c: LinearLayout) {
+    private fun cloudBlock(c: LinearLayout) = providerBlock(c, false)
+
+    private fun providerBlock(c: LinearLayout, open: Boolean) {
         val a = this
-        val url = Ui.field(a, "Địa chỉ CloudAPI (vd https://api.example.com/v1)", p.cloudUrl)
-        val key = Ui.field(a, "Khóa API CloudAPI", p.cloudKey, true)
-        val model = Ui.field(a, "Model", p.cloudModel)
-        watch(url) { p.cloudUrl = it }
-        watch(key) { p.cloudKey = it }
-        watch(model) { p.cloudModel = it }
-        c.addView(url, Ui.lpm(a, 0, 8))
-        c.addView(key, Ui.lpm(a, 0, 8))
-        c.addView(model, Ui.lpm(a, 0, 8))
+        val provider = if (open) "OpenAI" else "CloudAPI"
+        fun keys() = if (open) p.openAiKeys() else p.cloudKeys()
+        fun save(list: List<String>) { if (open) p.setOpenAiKeys(list) else p.setCloudKeys(list) }
+        val scope = if (open) Ai.openAiScope(p) else Ai.cloudScope(p)
+        if (!open) {
+            val url = Ui.field(a, "Địa chỉ CloudAPI (vd https://api.example.com/v1)", p.cloudUrl)
+            watch(url) { p.cloudUrl = it }
+            c.addView(url, Ui.lpm(a, 0, 8))
+        }
+        val list = keys()
+        if (list.isEmpty()) c.addView(Ui.tv(a, "Chưa có khóa $provider.", 13f, Ui.SUB))
+        list.forEachIndexed { index, key ->
+            val row = Ui.hbox(a)
+            row.setPadding(0, Ui.dp(a, 8), 0, Ui.dp(a, 8))
+            val col = Ui.vbox(a)
+            col.addView(Ui.tv(a, "Khóa ${index + 1}", 15f, Ui.TEXT, true))
+            col.addView(Ui.tv(a, mask(key), 12.5f, Ui.SUB))
+            row.addView(col, Ui.lp(0, WRAP_CONTENT, 1f))
+            val st = KeyRing.status(key, scope)
+            val (label, color) = when (st.state) {
+                KeyRing.State.BAD -> "KHÓA SAI" to Ui.DANGER
+                KeyRing.State.QUOTA -> "TẠM NGHỈ · ${AiRetry.humanWait(st.leftMs)}" to Ui.DANGER
+                KeyRing.State.OK -> if (st.active) "ĐANG DÙNG" to Ui.OK else "SẴN SÀNG" to Ui.GOLD
+            }
+            row.addView(Ui.badge(a, label, color))
+            row.addView(Ui.tv(a, "✕", 18f, Ui.DANGER, true).apply {
+                setPadding(Ui.dp(a, 14), Ui.dp(a, 6), Ui.dp(a, 4), Ui.dp(a, 6))
+                setOnClickListener { save(keys().filter { it != key }); render() }
+            })
+            c.addView(row); c.divide()
+        }
+        val add = Ui.field(a, "Dán khóa $provider", "", true)
+        c.addView(add, Ui.lpm(a, 10, 8))
+        c.addView(Ui.button(a, "＋  Thêm khóa") {
+            val value = add.text.toString().trim()
+            if (value.isBlank()) { Toast.makeText(a, "Hãy dán khóa vào ô trên.", Toast.LENGTH_SHORT).show(); return@button }
+            save(keys() + value); render()
+        }, Ui.lpm(a, 0, 4))
+        c.addView(Ui.tv(a, "Tự đổi khóa khi khóa bị từ chối hoặc hết lượt; tạm nghỉ theo hạn mức. Các khóa chung dự án/tài khoản không làm tăng hạn mức.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 4))
+        if (open) c.addView(Ui.button(a, "Quản lý khóa OpenAI") {
+            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://platform.openai.com/api-keys"))) }
+            catch (_: Exception) { Toast.makeText(a, "Không mở được trình duyệt.", Toast.LENGTH_SHORT).show() }
+        }, Ui.lpm(a, 8, 4))
+        val model = Ui.field(a, "Model", if (open) p.openAiModel else p.cloudModel)
+        watch(model) { if (open) p.openAiModel = it else p.cloudModel = it }
+        c.addView(model, Ui.lpm(a, 8, 8))
         val status = Ui.tv(a, "", 13f, Ui.SUB)
         c.addView(Ui.button(a, "Kiểm tra kết nối", true) { runTest(status) }, Ui.lpm(a, 4, 6))
         c.addView(status, Ui.lpm(a, 4, 0))
+        c.addView(Ui.button(a, "Làm mới trạng thái khóa") { render() }, Ui.lpm(a, 8, 0))
     }
 
     private fun runTest(status: TextView) {

@@ -75,6 +75,14 @@ Lưu ý: đổi khóa thì phải gỡ app cũ rồi cài lại.
 5. Điện thoại và TV phải cùng Wi-Fi. Cổng 8765 (TCP) và 8766 (UDP, để tìm TV).
 6. Khi bấm Bắt đầu chọn **Chơi trên TV** thì phụ đề (và giọng đọc, nếu bật "Đọc qua loa TV") được đẩy lên TV.
 
+## Cơ sở dữ liệu offline (Android)
+
+App dùng SQLite (`dichgame.db`, WAL) qua SQLiteOpenHelper, không yêu cầu server hay tài khoản. Các bảng `learned`, `pack_line`, `game_profile` và `game_catalog` lưu bản dịch AI, câu Việt hóa đã nhập, thuật ngữ/thẻ nhân vật và danh mục game. Khóa duy nhất và index theo hồ sơ/game giúp truy vấn chính xác; bản sửa tay không bị AI ghi đè. File JSON/TSV và trường thuật ngữ/nhân vật cũ được chuyển một lần theo hồ sơ trong transaction, chỉ xóa nguồn sau khi commit thành công. Database không được đưa lên Android cloud backup; API key vẫn nằm trong Android Keystore riêng. Cấu hình nhỏ vẫn dùng SharedPreferences. Chưa có đồng bộ cloud.
+
+## Kho dữ liệu dùng chung (tùy chọn)
+
+Backend Cloudflare Workers + D1 nằm ở `backend/cloudflare/`. Chưa có máy chủ mặc định: chủ dự án phải triển khai và cấu hình URL HTTPS cùng mã truy cập trong Cách dịch. App ưu tiên dữ liệu đã duyệt, vẫn dịch AI/offline khi lỗi mạng. Chia sẻ câu AI mặc định tắt, không gửi ảnh/âm thanh/API key AI/PSN. Xem [hướng dẫn triển khai](backend/cloudflare/README.md).
+
 ## Luồng dịch thông minh
 
 Mỗi lượt quét chữ đi qua các bước (mã trong `app/src/main/java/com/dichgame/app/`, phần logic không phụ thuộc Android nên có unit test):

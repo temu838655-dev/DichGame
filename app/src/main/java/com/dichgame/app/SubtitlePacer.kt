@@ -10,7 +10,7 @@ import kotlin.math.min
  */
 class SubtitlePacer(
     private val readCps: Float = 17f,
-    private val minHoldMs: Long = 1_400L,
+    private val minHoldMs: Long = 2_000L,
     private val maxHoldMs: Long = 8_000L,
     private val maxQueue: Int = 2,
     /** Cách gộp phần dữ liệu đính kèm của hai dòng khi hàng chờ đầy (nếu không đặt thì lấy của dòng sau). */
@@ -22,6 +22,15 @@ class SubtitlePacer(
 
     private var current: Item? = null
     private var shownAt = 0L
+    private var previous: Item? = null
+    private var previousUntil = 0L
+    fun previous(now: Long): Item? = previous?.takeIf { now < previousUntil }
+    fun previousExpiry(): Long = if (previous != null) previousUntil else 0L
+    fun expirePrevious(now: Long): Boolean {
+        if (previous == null || now < previousUntil) return false
+        previous = null; previousUntil = 0L; return true
+    }
+    fun clearPrevious() { previous = null; previousUntil = 0L }
     private val queue = ArrayList<Queued>()
 
     /** Dòng đang hiện (nếu có). */
@@ -50,8 +59,18 @@ class SubtitlePacer(
      * Gửi một dòng mới. Trả về dòng cần hiện ngay, hoặc null nếu dòng đó được xếp hàng chờ.
      * [replace] = true khi dòng này sửa lại dòng đang hiện (cùng một câu, bản đầy đủ hơn): thay ngay, không xếp hàng.
      */
-    fun submit(item: Item, now: Long, replace: Boolean = false): Item? {
+    fun submit(item: Item, now: Long, replace: Boolean = false, immediate: Boolean = false, retainPrevious: Boolean = true): Item? {
         val cur = current
+        if (immediate) {
+            queue.clear()
+            if (!retainPrevious) clearPrevious()
+            else if (!replace && cur != null) {
+                clearPrevious()
+                val until = shownAt + cur.holdMs
+                if (now < until) { previous = cur; previousUntil = until }
+            } else expirePrevious(now)
+            return start(item, now)
+        }
         if (cur == null || replace) return start(item, now)
         if (queue.isEmpty() && now >= shownAt + preemptAfter(cur)) return start(item, now)
         // chưa tới lúc thay: xếp hàng. Hàng đầy thì gộp hai dòng cũ nhất thành một thẻ hai dòng, không bỏ dòng nào
@@ -95,7 +114,13 @@ class SubtitlePacer(
     fun hideAt(): Long = current?.let { shownAt + it.holdMs } ?: 0L
 
     /** Đã ẩn dòng đang hiện (hoặc dừng dịch). */
-    fun cleared() { current = null; queue.clear() }
+    fun cleared() { current = null; queue.clear(); clearPrevious() }
+
+    companion object {
+        /** Hai lần đọc trùng nhau, chữ đủ rõ và không chỉ là tên; không chấp nhận một lần đọc. */
+        fun quickConfirmed(enabled: Boolean, matches: Int, elapsedMs: Long, letters: Int, confidence: Float, nameOnly: Boolean): Boolean =
+            enabled && matches >= 2 && elapsedMs in 1..500 && letters >= 2 && confidence >= 0.8f && !nameOnly
+    }
 
     /** Ước lượng tốc độ nói (ký tự mỗi giây) từ một câu nghe được; dùng để biết nhân vật nói nhanh hay chậm. */
     class SpeechRate(private val alpha: Float = 0.3f) {

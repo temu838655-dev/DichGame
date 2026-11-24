@@ -11,26 +11,22 @@ class Prefs(ctx: Context) {
     val sp: SharedPreferences = app.getSharedPreferences("dg", Context.MODE_PRIVATE)
 
     companion object {
+        fun parseGeminiKeys(raw: List<String>): List<String> = raw.flatMap { it.split(Regex("[,;\\s]+")) }.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        const val DEFAULT_READ_CAREFULLY = true
+        const val DEFAULT_CONTEXT_COUNT = 6
+        const val DEFAULT_SCAN_MS = 333
         const val ENGINE_LOCAL = "local"
         const val ENGINE_CLOUD = "cloud"
+        const val ENGINE_OPENAI = "openai"
         const val ENGINE_GEMINI = "gemini"
         const val MODE_TRANSLATE = "translate"
         const val MODE_VIETSUB = "vietsub"
         const val DEFAULT_PROFILE = "Mặc định"
-        /** Ngôn ngữ chữ trong game đọc được bằng OCR trên máy (chữ Latin, Hindi, Nhật, Hàn, Trung). "vi" chỉ dùng cho chế độ Thuyết minh. */
-        val LANGS = listOf(
-            "en" to "Tiếng Anh", "ja" to "Tiếng Nhật", "ko" to "Tiếng Hàn", "zh" to "Tiếng Trung",
-            "fr" to "Tiếng Pháp", "de" to "Tiếng Đức", "es" to "Tiếng Tây Ban Nha", "pt" to "Tiếng Bồ Đào Nha",
-            "it" to "Tiếng Ý", "id" to "Tiếng Indonesia", "nl" to "Tiếng Hà Lan", "pl" to "Tiếng Ba Lan",
-            "tr" to "Tiếng Thổ Nhĩ Kỳ", "hi" to "Tiếng Hindi",
-            "sv" to "Tiếng Thụy Điển", "cs" to "Tiếng Séc", "ro" to "Tiếng Romania", "hu" to "Tiếng Hungary",
-            "da" to "Tiếng Đan Mạch", "fi" to "Tiếng Phần Lan", "no" to "Tiếng Na Uy", "ms" to "Tiếng Mã Lai",
-            "ru" to "Tiếng Nga", "uk" to "Tiếng Ukraina", "th" to "Tiếng Thái", "ar" to "Tiếng Ả Rập",
-            "el" to "Tiếng Hy Lạp", "he" to "Tiếng Do Thái", "vi" to "Tiếng Việt"
-        )
-        /** Chữ mà bộ đọc chữ trên máy không có: app nhờ Google Gemini đọc ảnh (cần khóa Gemini, ảnh chụp được gửi cho Google). */
-        val CLOUD_OCR = setOf("ru", "uk", "th", "ar", "el", "he")
-        fun isCloudOcr(code: String) = code in CLOUD_OCR
+        /** Chỉ cung cấp hai ngôn ngữ nguồn: Anh và Trung; Việt dùng cho thuyết minh/đích. */
+        val LANGS = listOf("en" to "Tiếng Anh", "zh" to "Tiếng Trung", "vi" to "Tiếng Việt")
+        fun isSupportedSource(code: String?) = code == "en" || code == "zh"
+        fun normalizeSource(code: String?): String = if (code == "zh") "zh" else "en"
+        fun isCloudOcr(code: String) = false // cả hai nguồn đều có OCR đóng gói
         /** Tên hiển thị trong danh sách chọn ngôn ngữ. */
         fun langLabel(code: String) = langName(code) + if (isCloudOcr(code)) " (đọc bằng Gemini)" else ""
         /** Chữ Nhật, Hàn, Trung không có dấu cách giữa các từ. */
@@ -92,33 +88,45 @@ class Prefs(ctx: Context) {
             editor.apply()
         }
 
-    /** Ngôn ngữ trong game: en, ja, ko, zh. Khi thuyết minh thì nguồn luôn là tiếng Việt. */
+    /** Ngôn ngữ game: Anh hoặc Trung. Cấu hình cũ không còn hỗ trợ quay về Anh. */
     var lang: String
-        get() = sp.getString("langc", null) ?: arrayOf("en", "ja", "ko", "zh")[sp.getInt("lang", 0).coerceIn(0, 3)]
-        set(v) = sp.edit().putString("langc", v).apply()
+        get() = normalizeSource(sp.getString("langc", null) ?: arrayOf("en", "ja", "ko", "zh")[sp.getInt("lang", 0).coerceIn(0, 3)])
+        set(v) = sp.edit().putString("langc", normalizeSource(v)).apply()
+
+    var communityEnabled: Boolean
+        get() = sp.getBoolean("community_enabled", false)
+        set(v) = sp.edit().putBoolean("community_enabled",v).apply()
+    var communityContribute: Boolean
+        get() = sp.getBoolean("community_contribute",false)
+        set(v) = sp.edit().putBoolean("community_contribute",v).apply()
+    var communityUrl: String
+        get() = sp.getString("community_url","https://dichgame-community.temu838655.workers.dev").orEmpty()
+        set(v) = sp.edit().putString("community_url",v.trim()).apply()
+    var communityToken: String
+        get() = ApiSecrets.read(app,"community_token")
+        set(v) { ApiSecrets.write(app,mapOf("community_token" to v.trim())) }
 
     var engine: String
-        get() = sp.getString("engine", null) ?: if (sp.getString("key", "").isNullOrEmpty()) ENGINE_LOCAL else ENGINE_GEMINI
+        get() = sp.getString("engine", null) ?: if (geminiKeys().isNotEmpty()) ENGINE_GEMINI else ENGINE_LOCAL
         set(v) = sp.edit().putString("engine", v).apply()
 
     var geminiKey: String
-        get() = sp.getString("key", "").orEmpty()
-        set(v) = sp.edit().putString("key", v.trim()).apply()
+        get() = ApiSecrets.read(app, "key")
+        set(v) { ApiSecrets.write(app, mapOf("key" to v.trim())) }
     /** Khóa dự phòng (mỗi dòng một khóa). Khóa chính ở [geminiKey]. */
     var geminiSpare: String
-        get() = sp.getString("keys2", "").orEmpty()
-        set(v) = sp.edit().putString("keys2", v).apply()
+        get() = ApiSecrets.read(app, "keys2")
+        set(v) { ApiSecrets.write(app, mapOf("keys2" to v)) }
 
     /** Tất cả khóa Gemini theo thứ tự: khóa chính rồi các khóa dự phòng. */
     fun geminiKeys(): List<String> =
-        (listOf(geminiKey) + geminiSpare.lines()).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        parseGeminiKeys(listOf(geminiKey, geminiSpare))
 
     /** Lưu danh sách khóa. Khóa mới thêm (kể cả khóa vừa bị gỡ rồi thêm lại) được dùng thử ngay, không mang theo tình trạng cũ. */
     fun setGeminiKeys(list: List<String>) {
         val before = geminiKeys().toSet()
-        val k = list.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        geminiKey = k.firstOrNull().orEmpty()
-        geminiSpare = k.drop(1).joinToString("\n")
+        val k = parseGeminiKeys(list)
+        if (!ApiSecrets.write(app, mapOf("key" to k.firstOrNull().orEmpty(), "keys2" to k.drop(1).joinToString("\n")))) return
         for (n in k) if (n !in before) KeyRing.forget(n)
     }
 
@@ -131,8 +139,25 @@ class Prefs(ctx: Context) {
         get() = sp.getString("curl", "").orEmpty()
         set(v) = sp.edit().putString("curl", v.trim()).apply()
     var cloudKey: String
-        get() = sp.getString("ckey", "").orEmpty()
-        set(v) = sp.edit().putString("ckey", v.trim()).apply()
+        get() = ApiSecrets.read(app, "ckey")
+        set(v) { ApiSecrets.write(app, mapOf("ckey" to v.trim())) }
+    fun cloudKeys(): List<String> = parseGeminiKeys(listOf(cloudKey, ApiSecrets.read(app, "cloud_keys_extra")))
+    fun setCloudKeys(list: List<String>) {
+        val before = cloudKeys().toSet()
+        val keys = parseGeminiKeys(list)
+        if (!ApiSecrets.write(app, mapOf("ckey" to keys.firstOrNull().orEmpty(), "cloud_keys_extra" to keys.drop(1).joinToString("\n")))) return
+        for (key in keys) if (key !in before) KeyRing.forget(key)
+    }
+    fun openAiKeys(): List<String> = parseGeminiKeys(listOf(ApiSecrets.read(app, "openai_keys")))
+    fun setOpenAiKeys(list: List<String>) {
+        val before = openAiKeys().toSet()
+        val keys = parseGeminiKeys(list)
+        if (!ApiSecrets.write(app, mapOf("openai_keys" to keys.joinToString("\n")))) return
+        for (key in keys) if (key !in before) KeyRing.forget(key)
+    }
+    var openAiModel: String
+        get() = sp.getString("openai_model", "gpt-4.1-mini").orEmpty().ifBlank { "gpt-4.1-mini" }
+        set(v) = sp.edit().putString("openai_model", v.trim()).apply()
     var cloudModel: String
         get() = sp.getString("cmodel", "gemini-3.1-flash-lite").orEmpty()
         set(v) = sp.edit().putString("cmodel", v.trim()).apply()
@@ -140,16 +165,16 @@ class Prefs(ctx: Context) {
     /** Số câu trước đưa cho AI để hiểu mạch truyện. */
     /** Từ điển riêng của hồ sơ hiện tại, mỗi dòng "gốc = tiếng Việt". Dùng cho cả dịch AI lẫn dịch trên máy. */
     var glossary: String
-        get() = sp.getString("gloss_$profile", "").orEmpty()
-        set(v) = sp.edit().putString("gloss_$profile", v).apply()
+        get() = runCatching { GameDatabase.get(app).profileText(profile,"glossary") }.getOrElse { sp.getString("gloss_$profile","").orEmpty() }
+        set(v) { GameDatabase.get(app).setProfileText(profile,"glossary",v) }
 
     var ctxCount: Int
-        get() = sp.getInt("ctxn", 3).coerceIn(0, 10)
+        get() = sp.getInt("ctxn", DEFAULT_CONTEXT_COUNT).coerceIn(0, 10)
         set(v) = sp.edit().putInt("ctxn", v.coerceIn(0, 10)).apply()
 
     /** Phong cách dịch AI (chỉ số trong TR_STYLES). */
     var trStyle: Int
-        get() = sp.getInt("trstyle", 1).coerceIn(0, TR_STYLES.size - 1)
+        get() = sp.getInt("trstyle", 0).coerceIn(0, TR_STYLES.size - 1)
         set(v) = sp.edit().putInt("trstyle", v).apply()
 
     /** Chỉ dẫn dịch đang dùng: phong cách đã chọn, hoặc prompt riêng. */
@@ -174,8 +199,8 @@ class Prefs(ctx: Context) {
 
     /** Thẻ nhân vật của hồ sơ hiện tại, mỗi dòng "Tên = mô tả giọng, xưng hô; nhịp: chậm". */
     var cast: String
-        get() = sp.getString("cast_$profile", "").orEmpty()
-        set(v) = sp.edit().putString("cast_$profile", v).apply()
+        get() = runCatching { GameDatabase.get(app).profileText(profile,"cast_text") }.getOrElse { sp.getString("cast_$profile","").orEmpty() }
+        set(v) { GameDatabase.get(app).setProfileText(profile,"cast_text",v) }
 
     /** Dịch theo cảm xúc và nhịp nhân vật (AI trả thẻ cảm xúc, app dùng để đổi giọng đọc). */
     var emoTr: Boolean
@@ -188,7 +213,7 @@ class Prefs(ctx: Context) {
 
     /** Khoảng cách giữa hai lần quét khung phụ đề, mili giây. Nhỏ hơn đỡ sót câu, lớn hơn đỡ nóng máy. */
     var scanMs: Int
-        get() = sp.getInt("scanms", 400).coerceIn(100, 3000)
+        get() = sp.getInt("scanms", DEFAULT_SCAN_MS).coerceIn(100, 3000)
         set(v) = sp.edit().putInt("scanms", v.coerceIn(100, 3000)).apply()
 
     /** Hai lựa chọn giọng: "system" (cơ bản) và "ai" (Gemini); tự đọc cơ bản nếu AI lỗi. */
@@ -395,6 +420,12 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("showorig", false)
         set(v) = sp.edit().putBoolean("showorig", v).apply()
     /** Hiện câu vừa dịch trước đó bằng chữ nhỏ phía trên phụ đề hiện tại. */
+    var holdReadable: Boolean
+        get() = sp.getBoolean("hold_readable", true)
+        set(v) = sp.edit().putBoolean("hold_readable", v).apply()
+    var keepQuickLines: Boolean
+        get() = sp.getBoolean("keep_quick_lines", false)
+        set(v) = sp.edit().putBoolean("keep_quick_lines", v).apply()
     var showPrev: Boolean
         get() = sp.getBoolean("showprev", false)
         set(v) = sp.edit().putBoolean("showprev", v).apply()
@@ -425,6 +456,32 @@ class Prefs(ctx: Context) {
     var style: Int
         get() = sp.getInt("style", 0).coerceIn(0, 3)
         set(v) = sp.edit().putInt("style", v).apply()
+
+    // Các lựa chọn độc lập, 0 giữ nguyên kiểu phụ đề cũ của người dùng.
+    var subtitleFgChoice: Int
+        get() = sp.getInt("subtitle_fg_choice", 0).coerceIn(0, 5)
+        set(v) = sp.edit().putInt("subtitle_fg_choice", v.coerceIn(0, 5)).apply()
+    var subtitleBgChoice: Int
+        get() = sp.getInt("subtitle_bg_choice", 0).coerceIn(0, 4)
+        set(v) = sp.edit().putInt("subtitle_bg_choice", v.coerceIn(0, 4)).apply()
+    var subtitleColoredNames: Boolean
+        get() = sp.getBoolean("subtitle_colored_names", true)
+        set(v) = sp.edit().putBoolean("subtitle_colored_names", v).apply()
+    fun subtitleFg(): Int = when (subtitleFgChoice) {
+        1 -> 0xFFFFF4DF.toInt(); 2 -> 0xFFFFFFFF.toInt(); 3 -> 0xFFFFEB3B.toInt();
+        4 -> 0xFF9FFFE0.toInt(); 5 -> 0xFF000000.toInt()
+        else -> when (style) { 1 -> 0xFFFFEB3B.toInt(); 2 -> 0xFF000000.toInt(); else -> 0xFFFFF4DF.toInt() }
+    }
+    fun subtitleBg(): Int = when (subtitleBgChoice) {
+        1 -> 0; 2 -> 0x66000000; 3 -> 0xD9000000.toInt(); 4 -> 0xE6FFFFFF.toInt()
+        else -> when (style) { 2 -> 0xE6FFFFFF.toInt(); 3 -> 0; else -> 0xB3000000.toInt() }
+    }
+    fun subtitleNameColor(name: String): Int = if (!subtitleColoredNames) subtitleFg() else when (name.trim().lowercase(java.util.Locale.ROOT)) {
+        "stranger" -> 0xFF64D9EE.toInt()
+        "cop" -> 0xFFE481FF.toInt()
+        "jason" -> 0xFFE5F56B.toInt()
+        else -> SpeakerColor.of(name)
+    }
 
     /** "phone" hoặc "tv": nơi chơi game. */
     var playOn: String
@@ -510,6 +567,7 @@ class Prefs(ctx: Context) {
             .remove("packon_$name").remove("game_title_$name").apply()
         PackStore.deleteLines(app, name)
         LearnedTranslations.clearProfile(app, name)
+        GameDatabase.get(app).clearProfileText(name)
     }
 
     var fontSize: Int
@@ -519,7 +577,7 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("automenu", false)
         set(v) = sp.edit().putBoolean("automenu", v).apply()
     var slow: Boolean
-        get() = sp.getBoolean("slow", false)
+        get() = sp.getBoolean("slow", DEFAULT_READ_CAREFULLY)
         set(v) = sp.edit().putBoolean("slow", v).apply()
     var speak: Boolean
         get() = sp.getBoolean("speak", true)

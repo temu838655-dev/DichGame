@@ -61,10 +61,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         const val EXTRA_TRANSLATE = "translate"   // bật dịch phụ đề ngay khi vào chơi
         /** Xoay ngang: thanh công cụ tự thu lại sau chừng này mili giây không chạm. */
         private const val TOOLS_IDLE_MS = 5000L
-        /** Xoay dọc: lâu hơn một chút, và tính lại mỗi lần chạm tay cầm ảo (thanh thu lại thì tay cầm dời lên nên không thu khi đang chơi). */
-        private const val TOOLS_IDLE_PORTRAIT_MS = 8000L
-        /** Sau một thao tác (bật dịch, đóng bảng cài đặt…) thanh công cụ thu lại sau chừng này mili giây. */
-        private const val TOOLS_ACTION_MS = 1300L
+        /** Xoay dọc: cũng 5 giây, tính lại mỗi lần chạm tay cầm ảo để thanh không thu giữa chừng. */
+        private const val TOOLS_IDLE_PORTRAIT_MS = 5000L
     }
 
     private var console: PsConsole? = null
@@ -125,11 +123,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     // khi đó nó phủ lên hình). Thu lại rồi thì còn một chấm nhỏ ở giữa mép trên để mở lại.
     private var toolsOpen = true
     private val idleRun = Runnable {
-        if (isFinishing || isDestroyed) return@Runnable
+        if (isFinishing || isDestroyed || !hasWindowFocus()) return@Runnable
         // xoay dọc: đang giữ nút hoặc cần gạt trên tay cầm ảo thì chưa thu (thu thì tay cầm dời chỗ dưới ngón tay)
         if (playRoot?.land == false && padHeld()) armIdle() else setTools(false)
     }
-    private val actionRun = Runnable { if (!isFinishing && !isDestroyed) setTools(false) }
     private var zoomLevel = 0
     // Chỉ bản debug: dựng giao diện mà không kết nối máy thật (để chụp ảnh kiểm tra giao diện trên máy giả lập).
     private var demo = false
@@ -247,8 +244,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     at(9000) { st("sau-5s") }
                     at(14000) { handleView?.performClick() }
                     at(15000) { st("mo-lai") }
-                    at(21000) { pillOnce?.box?.performClick() }
-                    at(21500) { android.util.Log.i("DG_PLAY", "mot-lan chay=${uiTr?.running} once=${uiTr?.once}") }
+                    at(17000) { pillOnce?.box?.performClick() }
+                    at(17500) { android.util.Log.i("DG_PLAY", "mot-lan chay=${uiTr?.running} once=${uiTr?.once}") }
+                    at(19500) { st("dang-5s") }
                     at(23500) { st("sau-bam") }
                     at(24000) { homeCell?.performClick() }
                 }
@@ -259,10 +257,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                         "toolsp-$tag open=$toolsOpen bar=${barView?.visibility == View.VISIBLE} land=${playRoot?.land == true} connected=$connected")
                     fun at(ms: Long, f: () -> Unit) { ui.postDelayed({ if (!isFinishing && !isDestroyed) f() }, ms) }
                     at(2500) { st("dau") }
-                    at(13000) { st("sau-8s") }
+                    at(9000) { st("sau-5s") }
                     at(14000) { gripView?.performClick() }
                     at(15000) { st("mo-lai") }
-                    at(25000) { st("sau-8s-lan-2") }
+                    at(21000) { st("sau-5s-lan-2") }
                 }
                 "adjust2" -> {
                     // Chỉnh khung: kéo quá to → bấm Đặt lại → bấm Xong (bấm đúng các nút thật), ghi nhật ký từng bước
@@ -368,8 +366,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) armIdle()
         if (!hasFocus) {
-            // Dialog, màn hình hệ thống hoặc app khác có thể lấy focus mà không
+            ui.removeCallbacks(idleRun)
+                // Dialog, màn hình hệ thống hoặc app khác có thể lấy focus mà không
             // gửi đủ ACTION_UP cho các ngón đang giữ trên tay cầm ảo.
             resetPhysicalControllerState()
             pad?.releaseAll()
@@ -734,7 +734,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 outlineProvider = ViewOutlineProvider.BACKGROUND
             }
         }
-        barView?.background = Ui.glass(this, if (land) 22 else 24, strong = true, edge = PlayTheme.EDGE)
+        barView?.background = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            intArrayOf(0xE52B2B33.toInt(), 0xE5090B12.toInt(), 0xD824182D.toInt())
+        ).apply { cornerRadius = dpi(26).toFloat(); setStroke(dpi(1), 0xA0FFFFFF.toInt()) }
         (barView as? LinearLayout)?.let { orderTools(it, land) }
         pillLabel?.maxWidth = dpi(if (land) 150 else 220)
         chipHolder?.visibility = View.GONE   // trạng thái kết nối nay là chấm màu trên ảnh tròn của ô game
@@ -830,7 +833,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 refreshPill()
                 if (!demo) reconnect()
             }
-            afterAction(300)
+            afterAction()
         }
     }
 
@@ -852,6 +855,16 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
+    private fun toolCellBackground(active: Boolean): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            if (active) intArrayOf(0xFF735026.toInt(), 0xFF2A180D.toInt())
+            else intArrayOf(0x502B2D35, 0x6010141D)
+        ).apply {
+            cornerRadius = dpi(20).toFloat()
+            setStroke(dpi(1), if (active) 0xFFFFBD66.toInt() else 0x30FFFFFF)
+        }
+
     private fun toolbar(): LinearLayout {
         val bar = Ui.hbox(this)
         bar.setPadding(dpi(4), dpi(2), dpi(4), dpi(2))
@@ -862,9 +875,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 isClickable = true
                 isFocusable = true
                 contentDescription = desc
-                if (solid) background = android.graphics.drawable.GradientDrawable(
-                    android.graphics.drawable.GradientDrawable.Orientation.TL_BR, intArrayOf(PlayTheme.ORANGE, PlayTheme.ORANGE_HOT)
-                ).apply { cornerRadius = dpi(18).toFloat() }
+                background = toolCellBackground(solid)
                 setOnClickListener {
                     onClick()
                     if (collapse) afterAction() else armIdle()
@@ -872,7 +883,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 addView(ic, FrameLayout.LayoutParams(dpi(24), dpi(24), Gravity.CENTER))
             }
             toolCells[id] = cell
-            toolLp[id] = Ui.lp(0, dpi(46), 1f).apply { if (solid) { leftMargin = dpi(2); rightMargin = dpi(2) } }
+            toolLp[id] = Ui.lp(0, dpi(40), 1f).apply { leftMargin = dpi(1); rightMargin = dpi(1) }
             return cell to ic
         }
         tool("rotate", ToolIcon.Kind.ROTATE, "Xoay ngang hoặc dọc", collapse = false) {
@@ -885,7 +896,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         scanIcon = tool("crop", ToolIcon.Kind.CROP, "Khung chọn vùng phụ đề") { toggleAdjust() }.second
         subsIcon = tool("subs", ToolIcon.Kind.SUBS, "Bật hoặc tắt dịch phụ đề") { toggleTranslate() }.second
         speakIcon = tool("speak", ToolIcon.Kind.SPEAKER_ON, "Đọc to bản dịch") { toggleSpeak() }.second
-        tool("font", ToolIcon.Kind.TEXT_SIZE, "Cỡ chữ phụ đề") { showFontDialog() }
+        tool("font", ToolIcon.Kind.TEXT_SIZE, "Cỡ chữ, màu chữ và nền phụ đề") { showFontDialog() }
         tool("speed", ToolIcon.Kind.DIAL, "Tốc độ quét phụ đề") { showScanDialog() }
         zoomIcon = tool("zoom", ToolIcon.Kind.ZOOM, "Phóng hình: vừa khung, ×1,25, ×1,5", collapse = false) { cycleZoom() }.second
         tool("gear", ToolIcon.Kind.GEAR, "Cài đặt: Dịch hoặc Thuyết minh, giọng đọc, phóng hình, chất lượng hình") { showSettings() }
@@ -946,11 +957,11 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         p.box.background = when {
             on -> Ui.bg(this, Color.parseColor("#F5FFFFFF"), 22)
             menu -> android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(PlayTheme.ORANGE, PlayTheme.ORANGE_HOT)
-            ).apply { cornerRadius = dpi(22).toFloat() }
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xFFFFE0A3.toInt(), 0xFFE49A48.toInt(), 0xFFFFD49A.toInt())
+            ).apply { cornerRadius = dpi(22).toFloat(); setStroke(dpi(1), 0xFFFFE9C9.toInt()) }
             else -> Ui.glass(this, 22, strong = true, edge = Color.parseColor("#66FFFFFF"))
         }
-        val c = if (on) Color.parseColor("#17120D") else Color.WHITE
+        val c = if (on || menu) Color.parseColor("#17120D") else Color.WHITE
         p.icon.set(p.kind, c)
         p.next?.set(ToolIcon.Kind.NEXT, c)
         p.label.setTextColor(c)
@@ -965,7 +976,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         fun mark(ic: ToolIcon?, kind: ToolIcon.Kind, on: Boolean, offColor: Int = PlayTheme.ICON) {
             ic ?: return
             ic.set(kind, if (on) PlayTheme.ORANGE else offColor)
-            (ic.parent as? View)?.background = if (on) Ui.bg(this, Color.parseColor("#33FF8A24"), 16) else null
+            (ic.parent as? View)?.background = toolCellBackground(on)
         }
         mark(scanIcon, ToolIcon.Kind.CROP, adjusting)
         mark(subsIcon, ToolIcon.Kind.SUBS, running)
@@ -1008,7 +1019,6 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private fun setTools(open: Boolean) {
         toolsOpen = open
         ui.removeCallbacks(idleRun)
-        ui.removeCallbacks(actionRun)
         applyToolsVisibility()
         armIdle()
         if (demo) android.util.Log.i("DG_PLAY", "tools open=$open land=${playRoot?.land == true}")
@@ -1017,7 +1027,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     /** Xoay ngang và thanh đang mở: tính lại giờ tự thu lại (gọi mỗi lần người chơi chạm vào thanh). */
     private fun armIdle() {
         ui.removeCallbacks(idleRun)
-        if (toolsOpen) ui.postDelayed(idleRun, if (playRoot?.land == true) TOOLS_IDLE_MS else TOOLS_IDLE_PORTRAIT_MS)
+        if (toolsOpen && hasWindowFocus()) ui.postDelayed(idleRun, if (playRoot?.land == true) TOOLS_IDLE_MS else TOOLS_IDLE_PORTRAIT_MS)
     }
 
     /** Tay cầm ảo đang có nút nhấn hoặc cần gạt lệch. */
@@ -1028,11 +1038,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     /** Vừa làm xong một thao tác (bật dịch, chỉnh xong, đóng bảng…): thanh tự thu lại để không vướng khi chơi. */
-    private fun afterAction(ms: Long = TOOLS_ACTION_MS) {
-        ui.removeCallbacks(idleRun)
-        ui.removeCallbacks(actionRun)
-        if (toolsOpen) ui.postDelayed(actionRun, ms)
-    }
+    private fun afterAction() = armIdle()
 
     /** Bấm nút PS trên tay cầm (mở trung tâm điều khiển của máy chơi game): nhấn khoảng 150 ms rồi nhả. */
     private fun tapPs() {
@@ -1073,9 +1079,16 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         val a = this
         val pr = Prefs(a)
         Ui.sheet(a) { dlg ->
-            dlg.setOnDismissListener { afterAction(300) }
-            addView(Ui.tv(a, "Cỡ chữ phụ đề", 18f, Ui.TEXT, true))
+            dlg.setOnDismissListener { afterAction() }
+            addView(Ui.tv(a, "Giao diện phụ đề", 18f, Ui.TEXT, true))
             addView(Ui.seekRow(a, "Cỡ chữ", { v -> "$v%" }, 50, 200, pr.subScale) { pr.subScale = it; live?.restyle() }, Ui.lpm(a, 10, 8))
+            val fgLabels = listOf("Theo kiểu cũ", "Trắng ngà", "Trắng", "Vàng", "Xanh ngọc", "Đen")
+            val bgLabels = listOf("Theo kiểu cũ", "Trong suốt", "Đen mờ", "Đen điện ảnh", "Trắng mờ")
+            addView(Ui.dropRow(a, "Màu chữ", { fgLabels[pr.subtitleFgChoice] }, { fgLabels }) { pr.subtitleFgChoice = it; live?.restyle() })
+            addView(Ui.dropRow(a, "Nền phụ đề", { bgLabels[pr.subtitleBgChoice] }, { bgLabels }) { pr.subtitleBgChoice = it; live?.restyle() })
+            addView(Ui.dropRow(a, "Màu tên nhân vật", { if (pr.subtitleColoredNames) "Theo nhân vật" else "Cùng màu chữ" }, { listOf("Theo nhân vật", "Cùng màu chữ") }) { pr.subtitleColoredNames = it == 0; live?.restyle() })
+            addView(Ui.dropRow(a, "Hiện câu gốc", { if (pr.showOrig) "Song ngữ" else "Chỉ tiếng Việt" }, { listOf("Chỉ tiếng Việt", "Song ngữ") }) { pr.showOrig = it == 1; live?.restyle() })
+            addView(Ui.switchRow(a, "Giữ câu đủ lâu để đọc", "Câu mới hiện ngay, câu cũ tự ẩn.", pr.holdReadable) { pr.holdReadable = it; live?.restyle() })
             addView(Ui.button(a, "Xong", true) { dlg.dismiss() }, Ui.lpm(a, 8, 0))
         }
     }
@@ -1084,7 +1097,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         val a = this
         val pr = Prefs(a)
         Ui.sheet(a) { dlg ->
-            dlg.setOnDismissListener { afterAction(300) }
+            dlg.setOnDismissListener { afterAction() }
             val box = this
             fun fill() {
                 box.removeAllViews()
@@ -1096,7 +1109,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 box.addView(Ui.tv(a, "Quét nhiều đỡ sót câu ngắn nhưng máy nóng và hao pin hơn.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 0))
                 box.addView(Ui.tv(a, "Cách đọc chữ trên hình", 15f, Ui.TEXT, true), Ui.lpm(a, 14, 0))
                 box.addView(Ui.segmented(a, listOf("Kỹ", "Nhanh"), if (pr.slow) 0 else 1) { pr.slow = it == 0; fill() }, Ui.lpm(a, 6, 0))
-                box.addView(Ui.tv(a, "Kỹ: chờ chữ hiện đủ rồi mới dịch (áp dụng từ lần bật dịch sau). Nhanh: dịch ngay khi thấy chữ.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 0))
+                box.addView(Ui.tv(a, "Kỹ (mặc định): chờ chữ ổn định, ưu tiên đúng nghĩa và ngữ cảnh (áp dụng từ lần bật dịch sau). Nhanh: dịch ngay khi thấy chữ.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 0))
+                box.addView(Ui.switchRow(a, "Giữ câu hiện nhanh (Beta)", "Hai lần đọc giống nhau trong nửa giây, chữ đủ rõ.", pr.keepQuickLines) { pr.keepQuickLines = it }, Ui.lpm(a, 10, 0))
                 box.addView(Ui.button(a, "Xong", true) { dlg.dismiss() }, Ui.lpm(a, 14, 0))
             }
             fill()
@@ -1148,7 +1162,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     "• Hình giật: dùng Wi-Fi 5 GHz hoặc dây LAN cho máy chơi game, hạ chất lượng hình ở ⚙."
             )
             .setPositiveButton("Đã hiểu", null)
-            .setOnDismissListener { afterAction(300) }
+            .setOnDismissListener { afterAction() }
             .show()
     }
 
@@ -1949,7 +1963,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             }
             drawMode()
             drawVoice()
-            dlg.setOnDismissListener { runCatching { tester?.shutdown() }; tester = null; afterAction(300) }
+            dlg.setOnDismissListener { runCatching { tester?.shutdown() }; tester = null; afterAction() }
         }
     }
 

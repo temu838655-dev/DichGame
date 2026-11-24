@@ -25,11 +25,22 @@ class PackActivity : Activity() {
     }
 
     /** Bước 1 của "Ghép 2 file": file chữ gốc đã chọn, chờ file Việt hoá. */
+    private data class ExportTarget(val origin: String,val game: String,val lang: String)
+    private var exportTarget: ExportTarget? = null
+    override fun onSaveInstanceState(out: Bundle) {
+        super.onSaveInstanceState(out)
+        exportTarget?.let { out.putString("csv_origin",it.origin);out.putString("csv_game",it.game);out.putString("csv_lang",it.lang) }
+    }
+
     private var origName = ""
     private var origText: String? = null
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        val origin=b?.getString("csv_origin")
+        val game=b?.getString("csv_game")
+        val lang=b?.getString("csv_lang")
+        if(origin!=null && game!=null && lang!=null) exportTarget=ExportTarget(origin,game,lang)
         render()
         // mở từ Kho game ("Nhập file Việt hoá của game này"): hỏi luôn cách nhập
         if (b == null && intent.getBooleanExtra("import", false)) importMenu()
@@ -54,6 +65,22 @@ class PackActivity : Activity() {
                 13f, Ui.SUB), Ui.lpm(this@PackActivity, 6, 10))
             a.addView(Ui.switchRow(this@PackActivity, "Dùng gói có sẵn", "Tắt thì chỉ dùng từ điển và thẻ nhân vật do bạn tự nhập.", p.packOn) { p.packOn = it })
             put(a, 0, 12)
+
+            val local = Ui.card(this@PackActivity)
+            local.addView(Ui.section(this@PackActivity,"💾","Kho Việt hóa offline theo game"))
+            val enCount=CommunityCloud.offlineCount(this@PackActivity,p,name,"en")
+            val zhCount=CommunityCloud.offlineCount(this@PackActivity,p,name,"zh")
+            local.addView(Ui.tv(this@PackActivity,"Game: "+name.ifBlank { "Chưa chọn" }+"\nAnh → Việt: $enCount câu · Trung → Việt: $zhCount câu\nDữ liệu đã tải nằm trong SQLite; không cần mạng để dùng hoặc xuất file.",13f,Ui.TEXT))
+            if(name.isNotBlank() && name!=Prefs.DEFAULT_PROFILE) {
+                if(enCount>0) local.addView(Ui.button(this@PackActivity,"Xuất CSV EN–VI ($enCount câu)") { exportCsv(name,"en") },Ui.lpm(this@PackActivity,8,0))
+                if(zhCount>0) local.addView(Ui.button(this@PackActivity,"Xuất CSV ZH–VI ($zhCount câu)") { exportCsv(name,"zh") },Ui.lpm(this@PackActivity,8,0))
+                if(p.communityEnabled) local.addView(Ui.button(this@PackActivity,"Đồng bộ gói của game này") {
+                    CommunityCloud.downloadPack(this@PackActivity,p,name,p.profile,p.lang) { n ->
+                        if(!isFinishing && !isDestroyed) done(when { n>=0 -> "Đã lưu $n câu offline."; n == -2 -> "Gói đang đồng bộ."; else -> "Chưa tải xong. Dữ liệu cũ vẫn còn." })
+                    }
+                },Ui.lpm(this@PackActivity,8,0))
+            }
+            put(local,0,12)
 
             // Cảm xúc
             val e = Ui.card(this@PackActivity)
@@ -437,6 +464,15 @@ class PackActivity : Activity() {
         return PackText.decode(out.toByteArray())
     }
 
+    private fun exportCsv(game: String,lang: String) {
+        if(game.isBlank() || game!=PackStore.gameName(p)) return
+        exportTarget=ExportTarget(p.communityUrl.trim().trimEnd('/'),game,lang)
+        val slug=game.lowercase(java.util.Locale.ROOT).map { if(it.isLetterOrDigit()) it else '-' }.joinToString("").trim('-').take(100)
+        @Suppress("DEPRECATION")
+        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/csv")
+            .putExtra(Intent.EXTRA_TITLE,"$slug-$lang-vi.csv"),35)
+    }
+
     private fun saveFile() {
         val n = PackStore.gameName(p).ifEmpty { p.profile }.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), "-").trim('-')
         @Suppress("DEPRECATION")
@@ -472,6 +508,21 @@ class PackActivity : Activity() {
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         super.onActivityResult(req, res, data)
+        if(req==35) {
+            val target=exportTarget;exportTarget=null
+            val uri=data?.data
+            if(res!=RESULT_OK || uri==null || target==null) return
+            Thread {
+                val msg=try {
+                    val count=contentResolver.openOutputStream(uri,"wt")?.bufferedWriter(Charsets.UTF_8)?.use { writer ->
+                        GameDatabase.get(applicationContext).exportCloudPack(target.origin,target.game,target.lang,writer)
+                    } ?: throw java.io.IOException("Không mở được file.")
+                    "Đã xuất $count câu của "+target.game+" ("+target.lang+"–vi)."
+                } catch(e:Exception) { "Không xuất được CSV: "+(e.message?:"") }
+                runOnUiThread { if(!isFinishing && !isDestroyed) done(msg) }
+            }.start()
+            return
+        }
         val uri = data?.data ?: return
         if (res != RESULT_OK) return
         if (req == 31) {

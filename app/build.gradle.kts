@@ -135,10 +135,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("com.google.mlkit:translate:17.0.3")
-    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
-    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
-    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
     // Giọng đọc offline: sherpa-onnx (file .aar tải tự động ở trên) + giải nén gói giọng .tar.bz2
     implementation(files(sherpaAar).builtBy(downloadSherpa))
     implementation("org.apache.commons:commons-compress:1.26.2")

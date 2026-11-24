@@ -163,6 +163,7 @@ grep -q "tools-dau open=true top=true handle=false land=true" "$OUT/tools.txt" |
 grep -q "tools-sau-5s open=false top=false handle=true land=true" "$OUT/tools.txt" || echo "Thanh công cụ: để yên 5 giây không tự thu lại hoặc không hiện chấm mở lại" >> "$OUT/tools-fail.txt"
 grep -q "tools-mo-lai open=true top=true handle=false land=true" "$OUT/tools.txt" || echo "Thanh công cụ: chạm chấm không mở lại được" >> "$OUT/tools-fail.txt"
 grep -q "mot-lan chay=true once=true" "$OUT/tools.txt" || echo "Dịch hết chữ: bấm nút không bật chế độ dịch một lần" >> "$OUT/tools-fail.txt"
+grep -q "tools-dang-5s open=true" "$OUT/tools.txt" || echo "Thanh công cụ: tự thu quá sớm sau khi bấm" >> "$OUT/tools-fail.txt"
 grep -q "tools-sau-bam open=false" "$OUT/tools.txt" || echo "Thanh công cụ: bấm Dịch hết chữ xong thanh không tự thu lại" >> "$OUT/tools-fail.txt"
 grep -q "ps-tap session=false" "$OUT/tools.txt" || echo "Nút PS: bấm không có phản hồi" >> "$OUT/tools-fail.txt"
 grep -q "mot-lan da-tu-tat" "$OUT/tools.txt" || echo "Dịch hết chữ: chế độ một lần không tự tắt sau khi xong hoặc khi không thấy chữ" >> "$OUT/tools-fail.txt"
@@ -175,14 +176,14 @@ adb logcat -c
 adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo toolsp >/dev/null 2>&1
 waitlog2() { for i in $(seq 1 $2); do adb logcat -d -s DG_PLAY:I > "$OUT/toolsp.txt" 2>&1; grep -q "$1" "$OUT/toolsp.txt" && return 0; sleep 0.5; done; return 1; }
 waitlog2 "toolsp-dau" 40; shot toolsp-open
-waitlog2 "toolsp-sau-8s " 60; shot toolsp-collapsed
+waitlog2 "toolsp-sau-5s " 60; shot toolsp-collapsed
 waitlog2 "toolsp-mo-lai" 40; shot toolsp-reopened
-waitlog2 "toolsp-sau-8s-lan-2" 60
+waitlog2 "toolsp-sau-5s-lan-2" 60
 cat "$OUT/toolsp.txt"
 grep -q "toolsp-dau open=true bar=true land=false connected=false" "$OUT/toolsp.txt" || echo "Thanh công cụ (dọc): lúc đầu không mở" >> "$OUT/toolsp-fail.txt"
-grep -q "toolsp-sau-8s open=false bar=false land=false" "$OUT/toolsp.txt" || echo "Thanh công cụ (dọc): để yên 8 giây không tự thu lại (khi chưa kết nối)" >> "$OUT/toolsp-fail.txt"
+grep -q "toolsp-sau-5s open=false bar=false land=false" "$OUT/toolsp.txt" || echo "Thanh công cụ (dọc): để yên 5 giây không tự thu lại (khi chưa kết nối)" >> "$OUT/toolsp-fail.txt"
 grep -q "toolsp-mo-lai open=true bar=true" "$OUT/toolsp.txt" || echo "Thanh công cụ (dọc): bấm thanh kéo không mở lại được" >> "$OUT/toolsp-fail.txt"
-grep -q "toolsp-sau-8s-lan-2 open=false bar=false" "$OUT/toolsp.txt" || echo "Thanh công cụ (dọc): mở lại rồi để yên không tự thu lại lần nữa" >> "$OUT/toolsp-fail.txt"
+grep -q "toolsp-sau-5s-lan-2 open=false bar=false" "$OUT/toolsp.txt" || echo "Thanh công cụ (dọc): mở lại rồi để yên không tự thu lại lần nữa" >> "$OUT/toolsp-fail.txt"
 adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/toolsp-fail.txt"
 [ -s "$OUT/toolsp-fail.txt" ] || rm -f "$OUT/toolsp-fail.txt"
 adb shell am force-stop "$PKG"

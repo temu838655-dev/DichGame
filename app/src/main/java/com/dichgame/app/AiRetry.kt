@@ -70,7 +70,7 @@ object AiRetry {
                 return call()
             } catch (e: Exception) {
                 val kind = kindOf(e)
-                if (kind == Kind.BLOCKED || kind == Kind.BAD) throw e
+                if (kind == Kind.BLOCKED || kind == Kind.BAD || (e as? AiException)?.billingLimit == true) throw e
                 if (attempt >= plan.maxAttempts) throw e
                 var wait = plan.backoffMs * attempt
                 if (kind == Kind.QUOTA) {
@@ -134,7 +134,7 @@ object AiRetry {
     /** Câu báo cho người dùng khi một câu phải dịch bằng dịch máy vì AI lỗi. [coolMs]: còn bao lâu nữa mới thử lại AI. */
     fun explain(kind: Kind, code: Int, coolMs: Long): String = when (kind) {
         Kind.QUOTA ->
-            "Gemini báo hết lượt dùng (hạn mức tính theo dự án Google, các khóa cùng dự án dùng chung)." +
+            "AI báo hết lượt dùng (các khóa có thể dùng chung hạn mức của dự án hoặc tài khoản)." +
                 if (coolMs > 0) " Tạm dịch bằng dịch máy khoảng ${humanWait(coolMs)} rồi thử lại AI." else " Câu này tạm dịch bằng dịch máy."
         Kind.NETWORK -> "Không gọi được AI sau vài lần thử (mạng chậm hoặc máy chủ AI quá tải). Câu này tạm dịch bằng dịch máy."
         Kind.BLOCKED -> "AI từ chối câu này (bộ lọc nội dung). Câu này dịch bằng dịch máy."

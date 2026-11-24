@@ -26,65 +26,52 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     /** Nếu đặt, mỗi lần dịch AI lỗi và phải dùng dịch trên máy thì gọi hàm này (thay vì hiện thông báo một lần). */
     var onFallback: ((String) -> Unit)? = null
 
-    private val local: Translator? = if (lang == "vi") null else Translation.getClient(
-        TranslatorOptions.Builder()
-            .setSourceLanguage(mlCode(lang))
-            .setTargetLanguage(TranslateLanguage.VIETNAMESE)
-            .build()
-    )
+    private val locals = mutableMapOf<String, Translator>()
+    private fun localFor(source: String): Translator? {
+        if (source == "vi" || closed) return null
+        return locals.getOrPut(source) {
+            Translation.getClient(TranslatorOptions.Builder()
+                .setSourceLanguage(mlCode(source)).setTargetLanguage(TranslateLanguage.VIETNAMESE).build())
+        }
+    }
+    private fun sourceFor(text: String): String =
+        if (p.autoLang && !p.narrate && Prefs.isSupportedSource(lang)) SourceLanguage.choose(text, lang) else lang
 
     companion object {
+        private val aiWorkers = java.util.concurrent.ThreadPoolExecutor(3, 3, 30L, java.util.concurrent.TimeUnit.SECONDS,
+            java.util.concurrent.ArrayBlockingQueue<Runnable>(12))
         /** Mã ngôn ngữ của ML Kit cho ngôn ngữ trong game. */
         fun mlCode(lang: String): String = when (lang) {
-            "ja" -> TranslateLanguage.JAPANESE
-            "ko" -> TranslateLanguage.KOREAN
             "zh" -> TranslateLanguage.CHINESE
-            "fr" -> TranslateLanguage.FRENCH
-            "de" -> TranslateLanguage.GERMAN
-            "es" -> TranslateLanguage.SPANISH
-            "pt" -> TranslateLanguage.PORTUGUESE
-            "it" -> TranslateLanguage.ITALIAN
-            "id" -> TranslateLanguage.INDONESIAN
-            "nl" -> TranslateLanguage.DUTCH
-            "pl" -> TranslateLanguage.POLISH
-            "tr" -> TranslateLanguage.TURKISH
-            "hi" -> TranslateLanguage.HINDI
-            "sv" -> TranslateLanguage.SWEDISH
-            "cs" -> TranslateLanguage.CZECH
-            "ro" -> TranslateLanguage.ROMANIAN
-            "hu" -> TranslateLanguage.HUNGARIAN
-            "da" -> TranslateLanguage.DANISH
-            "fi" -> TranslateLanguage.FINNISH
-            "no" -> TranslateLanguage.NORWEGIAN
-            "ms" -> TranslateLanguage.MALAY
-            "ru" -> TranslateLanguage.RUSSIAN
-            "uk" -> TranslateLanguage.UKRAINIAN
-            "th" -> TranslateLanguage.THAI
-            "ar" -> TranslateLanguage.ARABIC
-            "el" -> TranslateLanguage.GREEK
-            "he" -> TranslateLanguage.HEBREW
+            "vi" -> TranslateLanguage.VIETNAMESE
             else -> TranslateLanguage.ENGLISH
         }
 
-        /** Hỏi xem mô hình dịch (ngôn ngữ trong game và tiếng Việt) đã tải về máy chưa. */
+        /** Tiếng Anh là model tích hợp ML Kit, không được tạo TranslateRemoteModel("en"). */
         fun isDownloaded(lang: String, cb: (Boolean) -> Unit) {
-            val m = RemoteModelManager.getInstance()
-            m.isModelDownloaded(TranslateRemoteModel.Builder(mlCode(lang)).build())
-                .addOnSuccessListener { a ->
-                    m.isModelDownloaded(TranslateRemoteModel.Builder(TranslateLanguage.VIETNAMESE).build())
-                        .addOnSuccessListener { b -> cb(a && b) }
+            if (lang == "vi") { cb(true); return }
+            val manager = RemoteModelManager.getInstance()
+            manager.isModelDownloaded(TranslateRemoteModel.Builder(TranslateLanguage.VIETNAMESE).build())
+                .addOnSuccessListener { vi ->
+                    if (!vi || lang != "zh") cb(vi)
+                    else manager.isModelDownloaded(TranslateRemoteModel.Builder(TranslateLanguage.CHINESE).build())
+                        .addOnSuccessListener { zh -> cb(zh) }
                         .addOnFailureListener { cb(false) }
                 }
                 .addOnFailureListener { cb(false) }
         }
     }
 
-    private fun srcName() = Prefs.srcNameOf(lang)
-
     /** Tải mô hình dịch trên máy (lần đầu cần mạng). */
     fun prepare(onDone: (Boolean) -> Unit) {
-        val l = local
+        val l = localFor(lang)
         if (l == null) { onDone(true); return }
+        if (Ai.enabled(p)) {
+            // Cloud AI can start immediately; prepare offline fallback asynchronously.
+            l.downloadModelIfNeeded()
+            onDone(true)
+            return
+        }
         l.downloadModelIfNeeded()
             .addOnSuccessListener { onDone(true) }
             .addOnFailureListener { onDone(false) }
@@ -120,11 +107,12 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      * không có người nói hay cảm xúc. Gói Việt hoá, bộ nhớ đệm, thuật ngữ và kiểm tra bản dịch vẫn áp dụng như cũ.
      */
     fun translateFull(text: String, speaker: String?, ui: Boolean, done: (Tr) -> Unit) {
+        val source = sourceFor(text)
         val st = SessionStats.live
         val profile = p.profile
         val game = PackStore.gameName(p)
         val gameDescription = p.game
-        val context = profile + "\u0000" + gameDescription
+        val context = profile + "\u0000" + game + "\u0000" + gameDescription + "\u0000" + lang
         if (activeGameContext != context) {
             activeGameContext = context
             history.clear()
@@ -132,9 +120,9 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         }
         // Một câu dịch đang chờ Gemini khi người chơi đổi game sẽ bị loại,
         // không hiện phụ đề cũ và không lưu vào bộ nhớ của game mới.
-        fun stillCurrent(): Boolean = !closed && profile == p.profile && gameDescription == p.game
+        fun stillCurrent(): Boolean = !closed && profile == p.profile && gameDescription == p.game && game == PackStore.gameName(p)
         fun emit(result: Tr) { if (stillCurrent()) done(result) }
-        val key = context + "\u0000" +
+        val key = context + "\u0000" + source + "|" + p.engine + "|" + p.aiAuto + "|" + p.slow + "|" + p.trStyle + "|" + p.customPrompt + "|" + p.ctxCount + "\u0000" +
             (if (ui) "ui|" else "") + (speaker?.lowercase() ?: "") + "|" + OcrGuard.key(text)
         val hist = if (ui) emptyList() else history.takeLast(p.ctxCount)
         if (!ui) {
@@ -152,7 +140,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         // Gói Việt hóa do người dùng nhập có ưu tiên cao nhất; tiếp theo là bản dịch đã
         // lưu lâu dài trên máy. Khớp đúng nguồn + ngôn ngữ + người nói, không khớp mờ.
         if (p.learnTranslations) {
-            LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text)?.let { saved ->
+            LearnedTranslations.lookup(ctx, profile, game, source, speaker, ui, text)?.let { saved ->
                 st.inc("dich_nho")
                 val cast = PackStore.cast(p)
                 val pace = if (ui) null else
@@ -162,7 +150,12 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 return
             }
         }
-        if (packHit != null) {
+        CommunityCloud.offlineLookup(ctx,p,game,source,text)?.let { vi ->
+            st.inc("dich_goi")
+            st.inc("dich_goi_offline")
+            emit(Tr(vi, null, false, "goi")); return
+        }
+        if (packHit != null && !Ai.enabled(p) && !p.slow) {
             st.inc("dich_goi"); st.inc("dich_goi_gan")
             emit(Tr(packHit.vi, null, false, "goi")); return
         }
@@ -176,27 +169,48 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             if (!stillCurrent()) return
             // Chỉ tự lưu bản Gemini/CloudAPI chắc chắn đạt TranslationGuard.OK.
             // Không ghi bản dịch máy dự phòng hoặc bản dịch AI bị nghi ngờ.
-            val saved = p.learnTranslations && t.via == "ai" && !t.uncertain &&
+            val saved = p.learnTranslations && (t.via == "ai" || t.via == "cloud_memory") && !t.uncertain &&
                 LearnedTranslationRules.canRemember(text, t.text)
-            if (saved) LearnedTranslations.remember(ctx, profile, game, lang, speaker, ui, text, t.text)
+            if (saved) LearnedTranslations.remember(ctx, profile, game, source, speaker, ui, text, t.text)
+            if (t.via == "ai" && !t.uncertain) CommunityCloud.contribute(p,game,source,speaker,ui,text,t.text)
             if (t.uncertain) st.inc("dich_nghi")
             // Câu đã lưu lâu dài không giữ thêm trong cache: khi người dùng xóa bộ nhớ
             // sẽ không bị trả lại bản cũ từ cache trong cùng phiên chơi.
             else if (!saved && (t.via != "may" || !aiOn)) cache[key] = t
             emit(t)
         }
-        if (!aiOn) { translateLocal(text, names, pace, ::finish); return }
+        val useCommunity = CommunityCloud.config(p) != null && p.trStyle == 0 && p.customPrompt.isBlank() && p.glossary.isBlank() && p.cast.isBlank()
+        if (!aiOn && !useCommunity) { translateLocal(source, text, names, pace, ::finish); return }
         val emo = p.emoTr && !ui
-        Thread {
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        fun fallback() {
+            if (!settled.compareAndSet(false, true) || !stillCurrent()) return
+            translateLocal(source, text, names, pace, ::finish)
+        }
+        val deadline = Runnable { if (!settled.get()) { st.inc("dich_treo"); fallback() } }
+        main.postDelayed(deadline, if (p.slow) 12_000L else 7_000L)
+        try { aiWorkers.execute {
             var chosen: Tr? = null
+            if (!settled.get() && !closed && useCommunity) {
+                val shared = CommunityCloud.lookup(p,game,source,speaker,ui,text)
+                if (shared != null) {
+                    val fixed = terms.fixOutput(TranslationGuard.clean(shared,text))
+                    if (TranslationGuard.check(text,fixed,names).level == TranslationGuard.Level.OK) {
+                        chosen = Tr(fixed,if(emo) Emo.detect(text,fixed,pace) else null,false,"cloud_memory")
+                    }
+                }
+            }
             var strict: String? = null
             val cool = Ai.coolingMs(p)
-            if (cool > 0) {
+            if (chosen != null || !aiOn || settled.get() || closed) {
+                // Shared result or offline-only mode: no AI request.
+            } else if (cool > 0) {
                 // vừa hết lượt: dịch máy ngay cho câu này, khỏi chờ AI vô ích; hết thời gian nghỉ sẽ thử AI lại
                 st.inc(AiRetry.statKey(AiRetry.Kind.QUOTA))
                 warn(AiRetry.explain(AiRetry.Kind.QUOTA, 429, cool))
             } else for (attempt in 0..1) {
-                val prompt = Ai.prompt(p, srcName(), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui)
+                if (settled.get() || closed) break
+                val prompt = Ai.prompt(p, Prefs.srcNameOf(source), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui)
                 var raw: String? = null
                 try {
                     raw = Ai.translateRetry(p, prompt)
@@ -212,26 +226,33 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 if (v.level != TranslationGuard.Level.REJECT) {
                     val d = if (emo) parsed.delivery ?: Emo.detect(text, fixed, pace) else null
                     chosen = Tr(fixed, d, v.level == TranslationGuard.Level.SUSPECT, "ai")
-                    st.inc("dich_ai")
-                    break
+                    if (v.level == TranslationGuard.Level.OK || attempt == 1) break
+                    // Kết quả còn nghi ngờ: giữ làm dự phòng và yêu cầu dịch lại một lần.
+                    strict = v.reasons.joinToString("; ").ifBlank { "câu dịch còn nghi ngờ" }
+                    continue
                 }
                 st.inc("dich_loai")
                 strict = v.reasons.joinToString("; ")
                 if (attempt == 1) st.inc("may_loai")
             }
             val res = chosen
+            if (res?.via == "ai") st.inc("dich_ai")
+            if (res?.via == "cloud_memory") st.inc("dich_cloud_memory")
             main.post {
-                if (closed) return@post
-                if (res != null) finish(res) else translateLocal(text, names, pace, ::finish)
+                main.removeCallbacks(deadline)
+                if (closed || settled.get()) return@post
+                if (res != null && settled.compareAndSet(false, true)) finish(res) else fallback()
             }
-        }.start()
+        } } catch (_: java.util.concurrent.RejectedExecutionException) {
+            main.removeCallbacks(deadline); fallback()
+        }
     }
 
     private fun deliveryOf(text: String, vi: String, pace: Pace?): Delivery? = if (p.emoTr) Emo.detect(text, vi, pace) else null
 
-    private fun translateLocal(text: String, names: List<Pair<String, String>>, pace: Pace?, done: (Tr) -> Unit) {
-        val l = local
-        if (l == null) { done(Tr(text, null, false, "may")); return }
+    private fun translateLocal(source: String, text: String, names: List<Pair<String, String>>, pace: Pace?, done: (Tr) -> Unit) {
+        val l = localFor(source)
+        if (l == null) { done(Tr(text, null, true, "may")); return }
         val terms = PackStore.terms(p)
         val prot = terms.protect(text)
         fun ok(r: String) {
@@ -268,6 +289,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
 
     fun close() {
         closed = true
-        try { local?.close() } catch (_: Exception) {}
+        for (l in locals.values) runCatching { l.close() }
+        locals.clear()
     }
 }
