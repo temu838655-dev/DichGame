@@ -33,6 +33,8 @@ class UiOverlay(ctx: Context) : View(ctx) {
     private var draws: List<Draw> = emptyList()
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { isSubpixelText = true }
+    private val prepared = java.util.IdentityHashMap<Draw, Prepared?>()
+    private data class Prepared(val matrix: Matrix, val w: Float, val h: Float, val pad: Float, val layout: StaticLayout)
     private val dm = ctx.resources.displayMetrics
 
     init {
@@ -44,6 +46,7 @@ class UiOverlay(ctx: Context) : View(ctx) {
     private var logDraw = false
 
     fun set(list: List<Draw>) {
+        prepared.keys.retainAll(list.toSet())
         draws = list
         logDraw = BuildConfig.DEBUG && list.isNotEmpty()
         invalidate()
@@ -60,43 +63,56 @@ class UiOverlay(ctx: Context) : View(ctx) {
     }
 
     private fun drawOne(cv: Canvas, d: Draw) {
-        if (d.unsure || d.text.isBlank()) return
+        val p = if (prepared.containsKey(d)) prepared[d] else prepare(d).also { prepared[d] = it }
+        if (p == null) return
+        cv.save()
+        cv.concat(p.matrix)
+        cv.clipRect(0f,0f,p.w,p.h)
+        bgPaint.color = d.bg
+        cv.drawRect(0f,0f,p.w,p.h,bgPaint)
+        cv.translate(p.pad, (p.h-p.layout.height)/2f)
+        p.layout.draw(cv)
+        cv.restore()
+    }
+
+    private fun prepare(d: Draw): Prepared? {
+        if (d.unsure || d.text.isBlank()) return null
         val quad = d.corners?.takeIf { it.size == 8 && it.all { n -> n.isFinite() } }
             ?: floatArrayOf(d.rect.left,d.rect.top,d.rect.right,d.rect.top,d.rect.right,d.rect.bottom,d.rect.left,d.rect.bottom)
         fun edge(a: Int, b: Int): Float = kotlin.math.hypot(quad[a]-quad[b],quad[a+1]-quad[b+1])
         val w = (edge(0,2)+edge(6,4))/2f
         val h = (edge(0,6)+edge(2,4))/2f
-        if (w < 8f || h < 6f) return
+        if (w < 8f || h < 6f || !w.isFinite() || !h.isFinite()) return null
         val transform = Matrix()
-        if (!transform.setPolyToPoly(floatArrayOf(0f,0f,w,0f,w,h,0f,h),0,quad,0,4)) return
+        if (!transform.setPolyToPoly(floatArrayOf(0f,0f,w,0f,w,h,0f,h),0,quad,0,4)) return null
         val pad = minOf(dp(1.5f), h * 0.06f)
         val tw = (w - pad * 2).toInt().coerceAtLeast(1)
         val available = h - pad * 2
         // Fit complete Vietnamese text inside the original block. Never ellipsize or cover adjacent icons.
         val originalSize = (h / d.lines.coerceAtLeast(1) * 0.82f).coerceAtMost(sp(28f))
-        if (originalSize < 7f) return
+        if (originalSize < 7f) return null
         val minSize = minOf(originalSize, maxOf(7f, originalSize * 0.60f))
-        tp.color = d.fg
+        val paint = TextPaint(tp).apply { color = d.fg }
         var size = originalSize
-        var lay = layout(d.text, tw, size, d.lines > 1)
+        var lay = layout(d.text, tw, size, d.lines > 1, paint)
         while ((lay.height > available || lay.getLineEnd(lay.lineCount - 1) < d.text.length) && size > minSize) {
             size = maxOf(minSize, size - 0.6f)
-            lay = layout(d.text, tw, size, d.lines > 1)
+            lay = layout(d.text, tw, size, d.lines > 1, paint)
         }
-        if (lay.height > available || lay.getLineEnd(lay.lineCount - 1) < d.text.length) return
-        cv.save()
-        cv.concat(transform)
-        cv.clipRect(0f,0f,w,h)
-        bgPaint.color = d.bg
-        cv.drawRect(0f,0f,w,h,bgPaint)
-        cv.translate(pad, (h-lay.height)/2f)
-        lay.draw(cv)
-        cv.restore()
+        // A modest horizontal condensation helps longer Vietnamese labels fit
+        // without sacrificing font height or dropping any words.
+        if (lay.height > available) {
+            paint.textScaleX = 0.88f
+            lay = layout(d.text, tw, size, d.lines > 1, paint)
+        }
+        if (lay.height > available || lay.getLineEnd(lay.lineCount - 1) < d.text.length) return null
+        if ((0 until lay.lineCount).any { lay.getLineWidth(it) > tw + 1f }) return null
+        return Prepared(transform, w, h, pad, lay)
     }
 
-    private fun layout(text: String, width: Int, size: Float, multiline: Boolean): StaticLayout {
-        tp.textSize = size
-        return StaticLayout.Builder.obtain(text, 0, text.length, tp, width)
+    private fun layout(text: String, width: Int, size: Float, multiline: Boolean, paint: TextPaint): StaticLayout {
+        paint.textSize = size
+        return StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
             .setAlignment(if (multiline) Layout.Alignment.ALIGN_NORMAL else Layout.Alignment.ALIGN_CENTER)
             .setIncludePad(true)
             .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
@@ -175,7 +191,7 @@ class UiTranslate(
     private class Entry(var vi: String? = null, var unsure: Boolean = false, var failed: Boolean = false, var via: String = "", var at: Long = 0L, var upgrading: Boolean = false)
     private class Item(val src: String, val key: String, val box: RectF, val bg: Int, val fg: Int, val corners: FloatArray?, val lines: Int)
 
-    private val cache = HashMap<String, Entry>()
+    private val cache = LinkedHashMap<String, Entry>(64, 0.75f, true)
     /** Cài đặt của lượt dịch đang chạy (đặt ở start). */
     private var prefs: Prefs? = null
     private var items: List<Item> = emptyList()
@@ -450,9 +466,16 @@ class UiTranslate(
             val key = UiText.key(src)
             val corners = b.corners?.mapIndexed { i, v -> if (i % 2 == 0) v * kx + dx else v * ky + dy }?.toFloatArray()
             out.add(Item(src, key, RectF(box.left * kx + dx, box.top * ky + dy, box.right * kx + dx, box.bottom * ky + dy), style.first, style.second, corners, b.lineCount))
-            request(src, key)
         }
         items = out
+        val visible = out.mapTo(HashSet()) { it.key }
+        val stale = queue.filter { it.second !in visible }
+        queue.removeAll(stale.toSet())
+        for ((_, key) in stale) {
+            val entry = cache[key] ?: continue
+            if (entry.vi == null) cache.remove(key) else entry.upgrading = false
+        }
+        for (item in out) request(item.src, item.key)
         if (once) emptyPasses = if (out.isEmpty()) emptyPasses + 1 else 0
         refresh()
     }
@@ -476,7 +499,7 @@ class UiTranslate(
         val old = cache[key]
         if (old != null) {
             // khối này đang hiện bản dịch máy vì AI lỗi: sau ít giây (và AI không còn nghỉ) xin dịch lại bằng AI, bản cũ vẫn hiện trong lúc chờ
-            if (old.via == "may" && !old.upgrading && tt != null && prefs?.let { Ai.enabled(it) && Ai.coolingMs(it) == 0L } == true &&
+            if ((old.via == "may" || old.failed || old.unsure) && !old.upgrading && tt != null && prefs?.let { Ai.enabled(it) && Ai.coolingMs(it) == 0L } == true &&
                 SystemClock.uptimeMillis() - old.at > UPGRADE_AFTER_MS && queue.size < MAX_QUEUE) {
                 old.upgrading = true
                 queue.addLast(src to key)
@@ -486,7 +509,12 @@ class UiTranslate(
         }
         if (tt == null) return
         if (queue.size >= MAX_QUEUE) return   // quá nhiều khối một lúc: để lượt quét sau
-        if (cache.size > MAX_CACHE) { cache.clear(); queue.clear() }
+        if (cache.size >= MAX_CACHE) {
+            val visible = items.mapTo(HashSet()) { it.key }
+            val victim = cache.entries.firstOrNull { it.key !in visible && !it.value.upgrading && (it.value.vi != null || it.value.failed) }
+            if (victim == null) return
+            cache.remove(victim.key)
+        }
         cache[key] = Entry()
         queue.addLast(src to key)
         pump()
@@ -513,6 +541,7 @@ class UiTranslate(
                 e.upgrading = false
                 if (tr.via == "may") { e.at = SystemClock.uptimeMillis(); pump(); return@translateFull }   // AI vẫn lỗi: giữ bản cũ, thử lại sau
             }
+            e.at = SystemClock.uptimeMillis()
             val restored = UiText.restore(tr.text, prot)
             if (BuildConfig.DEBUG) Log.i(TAG, "dich: ${src.take(60)} => ${restored ?: "(mat ma giu cho)"} [${tr.via}]")
             val same = UiText.key(tr.text) == UiText.key(prot.text)
@@ -521,10 +550,11 @@ class UiTranslate(
                 same -> { e.failed = true; missed[src] = "chưa dịch được (bản dịch giống chữ gốc)" }
                 else -> {
                     e.vi = restored
+                    e.failed = false
                     e.via = tr.via
                     e.at = SystemClock.uptimeMillis()
                     e.unsure = tr.uncertain
-                    if (tr.uncertain) missed[src] = "nghi ngờ: $restored"
+                    if (tr.uncertain) missed[src] = "nghi ngờ: $restored" else missed.remove(src)
                 }
             }
             refresh()
