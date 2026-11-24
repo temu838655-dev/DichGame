@@ -309,6 +309,7 @@ class KhoGameActivity : Activity() {
         p.game = if (g.isEmpty()) name else "$name, $g"
         p.selectedGameTitle = name
         p.addPlayed(name)
+        CommunityCloud.syncCurrent(applicationContext,p)
     }
 
     private fun choose(name: String, go: Boolean) {

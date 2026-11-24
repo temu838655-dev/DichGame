@@ -69,3 +69,6 @@ Admin review is intentionally manual so a bad/poisoned translation cannot immedi
 spread to users. Inspect pending data before approval. Never distribute other projects'
 private data. Users can disable lookup/contribution; ask the operator to remove
 previously sent data. Local SQLite remains independent and usable offline.
+
+## Offline pack sync on Android
+Reviewed packs are downloaded into a separate indexed SQLite cache by server origin, game and language. Opening the app or selecting a game refreshes a configured pack. Every completed page and cursor are saved atomically; network failures never erase downloaded rows. Manual imports and learned corrections keep precedence. Pack contents are not embedded in the public Git repository. Use the private authenticated endpoint or manually import your authorized TSV for a first install without Internet.

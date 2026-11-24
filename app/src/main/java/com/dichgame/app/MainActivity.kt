@@ -70,6 +70,7 @@ class MainActivity : Activity() {
         super.onResume()
         render()
         OfflineLanguagePacks.ensure()
+        CommunityCloud.syncCurrent(applicationContext, Prefs(this))
         com.dichgame.update.Updater.onResume()
         com.dichgame.update.Updater.check(false)
         CrashLog.showIfAny(this)

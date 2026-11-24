@@ -150,6 +150,11 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 return
             }
         }
+        CommunityCloud.offlineLookup(ctx,p,game,source,text)?.let { vi ->
+            st.inc("dich_goi")
+            st.inc("dich_goi_offline")
+            emit(Tr(vi, null, false, "goi")); return
+        }
         if (packHit != null && !Ai.enabled(p) && !p.slow) {
             st.inc("dich_goi"); st.inc("dich_goi_gan")
             emit(Tr(packHit.vi, null, false, "goi")); return

@@ -132,7 +132,7 @@ class TranslateActivity : Activity() {
         box.addView(Ui.switchRow(a,"Tra cứu bản dịch dùng chung","Ưu tiên dữ liệu đã duyệt; lỗi mạng thì dùng cách dịch hiện tại.",p.communityEnabled) {
             if(it && (!CommunityCloud.validUrl(p.communityUrl)||p.communityToken.length !in 24..500)) {
                 Toast.makeText(a,"Lưu thông tin máy chủ trước.",Toast.LENGTH_SHORT).show(); render()
-            } else { p.communityEnabled=it; if(!it) p.communityContribute=false; render() }
+            } else { p.communityEnabled=it; if(!it) p.communityContribute=false else CommunityCloud.syncCurrent(applicationContext,p); render() }
         })
         if(p.communityEnabled) {
             box.addView(Ui.switchRow(a,"Đóng góp bản dịch AI","Gửi câu gốc và bản dịch đã qua kiểm tra để quản trị viên duyệt. Không gửi từ điển riêng hoặc prompt riêng. Chỉ bật nếu có quyền chia sẻ.",p.communityContribute) { enabled ->
@@ -140,12 +140,13 @@ class TranslateActivity : Activity() {
                     .setMessage("Chỉ đóng góp lời thoại game mà bạn được phép chia sẻ. Không gửi hội thoại cá nhân. Có thể tắt bất cứ lúc nào; dữ liệu đã gửi cần quản trị viên xóa.")
                     .setNegativeButton("Không") { _,_->render() }.setPositiveButton("Đồng ý") { _,_->p.communityContribute=true;render() }.setOnCancelListener { render() }.show()
             })
-            val status=Ui.tv(a,"",12.5f,Ui.SUB);box.addView(status)
+            val count=CommunityCloud.offlineCount(a,p,PackStore.gameName(p),p.lang)
+            val status=Ui.tv(a,"Đã lưu offline: $count câu. Tự tải bổ sung khi mở app hoặc chọn game.",12.5f,Ui.SUB);box.addView(status)
             box.addView(Ui.button(a,"Kiểm tra kết nối") { CommunityCloud.test(p) { ok->status.text=if(ok) "Kết nối thành công" else "Không kết nối được. Kiểm tra URL và mã." } },Ui.lpm(a,6,0))
             box.addView(Ui.button(a,"Cập nhật danh mục game") { CommunityCloud.refreshCatalog(a,p) { n->status.text=if(n>=0) "Đã tải $n game." else "Chưa cập nhật được." } },Ui.lpm(a,6,0))
             box.addView(Ui.button(a,"Tải gói Việt hóa game đang chọn") { 
                 val game=PackStore.gameName(p)
-                CommunityCloud.downloadPack(a,p,game,p.profile,p.lang) { n->status.text=if(n>=0) "Đã thêm $n câu vào hồ sơ, giữ nguyên bản sửa tay." else "Không tải được gói." }
+                CommunityCloud.downloadPack(a,p,game,p.profile,p.lang) { n->status.text=when { n>=0 -> "Đã lưu offline $n câu, giữ nguyên bản sửa tay."; n == -2 -> "Gói đang được đồng bộ."; else -> "Chưa tải xong. Dữ liệu offline cũ vẫn dùng được." } }
             },Ui.lpm(a,6,0))
         }
         return box

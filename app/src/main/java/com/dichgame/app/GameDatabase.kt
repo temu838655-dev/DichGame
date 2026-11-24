@@ -20,7 +20,7 @@ internal class GameDatabase private constructor(private val app: Context) :
     SQLiteOpenHelper(app, NAME, null, VERSION) {
     companion object {
         const val NAME = "dichgame.db"
-        const val VERSION = 1
+        const val VERSION = 2
         @Volatile private var instance: GameDatabase? = null
         fun get(ctx: Context): GameDatabase = instance ?: synchronized(this) {
             instance ?: GameDatabase(ctx.applicationContext).also {
@@ -57,10 +57,57 @@ internal class GameDatabase private constructor(private val app: Context) :
         db.execSQL("CREATE TABLE game_profile (profile TEXT PRIMARY KEY, glossary TEXT NOT NULL DEFAULT '', cast_text TEXT NOT NULL DEFAULT '')")
         db.execSQL("CREATE TABLE game_catalog (name TEXT PRIMARY KEY, genre TEXT NOT NULL, ordinal INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE catalog_meta (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        createCloudPackTables(db)
     }
+
+    private fun createCloudPackTables(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS cloud_pack (origin TEXT NOT NULL, game_key TEXT NOT NULL, lang TEXT NOT NULL, source_key TEXT NOT NULL, original TEXT NOT NULL, vi TEXT NOT NULL, PRIMARY KEY(origin,game_key,lang,source_key))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS cloud_pack_sync (origin TEXT NOT NULL, game_key TEXT NOT NULL, lang TEXT NOT NULL, cursor TEXT NOT NULL DEFAULT '', completed_ms INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(origin,game_key,lang))")
+    }
+
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Future versions must use explicit, non-destructive ALTER/migration steps.
+        if (oldVersion == 1 && newVersion == 2) {
+            createCloudPackTables(db)
+            return
+        }
         throw IllegalStateException("Unsupported database upgrade $oldVersion -> $newVersion")
+    }
+
+    data class CloudProgress(val cursor: String, val completedMs: Long)
+    private fun cloudKey(value: String) = LearnedTranslationRules.normalize(value)
+    fun cloudProgress(origin: String, game: String, lang: String): CloudProgress =
+        readableDatabase.rawQuery("SELECT cursor,completed_ms FROM cloud_pack_sync WHERE origin=? AND game_key=? AND lang=?",arrayOf(origin,cloudKey(game),lang)).use {
+            if(it.moveToFirst()) CloudProgress(it.getString(0),it.getLong(1)) else CloudProgress("",0L)
+        }
+    fun cloudPackCount(origin: String, game: String, lang: String): Int =
+        DatabaseUtils.longForQuery(readableDatabase,"SELECT COUNT(*) FROM cloud_pack WHERE origin=? AND game_key=? AND lang=?",arrayOf(origin,cloudKey(game),lang)).toInt()
+
+    /** Strict indexed lookup, without OCR character folding or loading the whole game into RAM. */
+    fun cloudPackLookup(origin: String, game: String, lang: String, original: String): String? {
+        val key = cloudKey(original)
+        if (key.length < 2 || game.isBlank()) return null
+        return readableDatabase.rawQuery("SELECT vi FROM cloud_pack WHERE origin=? AND game_key=? AND lang=? AND source_key=?",arrayOf(origin,cloudKey(game),lang,key)).use {
+            if(it.moveToFirst()) it.getString(0) else null
+        }
+    }
+
+    /** Save page and resume cursor together; a failed network request never removes local rows. */
+    fun saveCloudPage(origin: String, game: String, lang: String, pairs: List<Pair<String,String>>, next: String?) {
+        val gameKey=cloudKey(game)
+        transaction { db ->
+            val stmt=db.compileStatement("INSERT OR REPLACE INTO cloud_pack(origin,game_key,lang,source_key,original,vi) VALUES(?,?,?,?,?,?)")
+            try {
+                for ((original,vi) in pairs) {
+                    val key=cloudKey(original)
+                    if(key.isBlank() || vi.isBlank()) continue
+                    stmt.clearBindings()
+                    listOf(origin,gameKey,lang,key,original,vi).forEachIndexed { i,v->stmt.bindString(i+1,v) }
+                    stmt.executeInsert()
+                }
+            } finally { stmt.close() }
+            db.execSQL("INSERT OR REPLACE INTO cloud_pack_sync(origin,game_key,lang,cursor,completed_ms) VALUES(?,?,?,?,?)",
+                arrayOf(origin,gameKey,lang,next.orEmpty(),if(next==null) System.currentTimeMillis() else 0L))
+        }
     }
 
     private inline fun <T> transaction(block: (SQLiteDatabase) -> T): T {

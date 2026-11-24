@@ -124,37 +124,62 @@ object CommunityCloud {
             (0 until a.length()).map { a.getJSONObject(it).let { x->x.getString("title") to x.optString("genre") } }
         }.getOrDefault(emptyList())
     }
-    /** Import reviewed pack only on explicit user action. Bound download to 10000 lines. */
-    fun downloadPack(ctx: Context,p: Prefs,game: String,profile: String,lang: String,done:(Int)->Unit) {
+    private val syncPool = ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,ArrayBlockingQueue<Runnable>(3))
+    private val syncing = HashSet<String>()
+
+    fun offlineCount(ctx: Context,p: Prefs,game: String,lang: String): Int =
+        runCatching { GameDatabase.get(ctx).cloudPackCount(p.communityUrl.trim().trimEnd('/'),game,lang) }.getOrDefault(0)
+
+    /** Cached pack remains available even if the server is unreachable or lookup is disabled. */
+    fun offlineLookup(ctx: Context,p: Prefs,game: String,lang: String,text: String): String? =
+        runCatching { GameDatabase.get(ctx).cloudPackLookup(p.communityUrl.trim().trimEnd('/'),game,lang,text) }.getOrNull()
+
+    fun syncCurrent(ctx: Context,p: Prefs) {
+        val game=PackStore.gameName(p)
+        downloadPack(ctx.applicationContext,p,game,p.profile,p.lang,force=false) {}
+    }
+
+    /** Resumable download, committing each page to SQLite; independent from user-imported packs. */
+    fun downloadPack(ctx: Context,p: Prefs,game: String,profile: String,lang: String,force: Boolean=true,done:(Int)->Unit) {
         val cfg=config(p)
-        if(cfg==null || !Prefs.isSupportedSource(lang) || game.isBlank()) {done(-1);return}
-        try { pool.execute {
+        if(cfg==null || !Prefs.isSupportedSource(lang) || game.isBlank() || game==Prefs.DEFAULT_PROFILE) {done(-1);return}
+        val app=ctx.applicationContext
+        val key=cfg.url+"|"+LearnedTranslationRules.normalize(game)+"|"+lang
+        synchronized(syncing) {
+            if(!syncing.add(key)) { done(-2);return }
+        }
+        try { syncPool.execute {
             val result=runCatching {
-                val pairs=ArrayList<Pair<String,String>>()
-                var after=""
-                repeat(100) {
-                    if(config(p)!=cfg) return@runCatching -1
+                val db=GameDatabase.get(app)
+                val progress=db.cloudProgress(cfg.url,game,lang)
+                if(!force && progress.cursor.isEmpty() && progress.completedMs>0 &&
+                    System.currentTimeMillis()-progress.completedMs in 0..1_800_000L) return@runCatching db.cloudPackCount(cfg.url,game,lang)
+                var after=progress.cursor
+                repeat(200) {
+                    if(config(p)!=cfg || profile!=p.profile || lang!=p.lang || game!=PackStore.gameName(p)) return@runCatching -1
                     val body=JSONObject().put("game",game).put("lang",lang).put("after",after)
                     val json=request(cfg,"/v1/pack",body,4000) ?: return@runCatching -1
                     val a=json.optJSONArray("lines") ?: return@runCatching -1
+                    val pairs=ArrayList<Pair<String,String>>(a.length())
                     for(i in 0 until a.length()) {
                         val row=a.getJSONObject(i); val original=row.optString("original"); val vi=row.optString("vi")
                         if(original.length in 1..500 && vi.length in 1..1400) pairs.add(original to vi)
                     }
-                    if(json.isNull("next")) {
-                        if(config(p)!=cfg || profile!=p.profile || lang!=p.lang || game!=PackStore.gameName(p)) return@runCatching -1
-                        // Preserve locally imported or corrected rows; only add missing sources.
-                        val existing=PackStore.readLines(ctx,profile).map { Canon.key(it.first) }.toHashSet()
-                        val add=pairs.filter { Canon.key(it.first) !in existing }
-                        if(add.isNotEmpty()) PackStore.addLines(ctx,profile,add)
-                        return@runCatching add.size
-                    }
-                    val next=json.optString("next"); if(next<=after) return@runCatching -1
+                    val next=if(json.isNull("next")) null else json.optString("next")
+                    if(next!=null && (next.isBlank() || next==after)) return@runCatching -1
+                    if(config(p)!=cfg) return@runCatching -1
+                    db.saveCloudPage(cfg.url,game,lang,pairs,next)
+                    if(next==null) return@runCatching db.cloudPackCount(cfg.url,game,lang)
                     after=next
                 }
-                -1
+                // Budgeted work per run; next launch resumes from the saved cursor.
+                db.cloudPackCount(cfg.url,game,lang)
             }.getOrDefault(-1)
+            synchronized(syncing) { syncing.remove(key) }
             main.post {done(result)}
-        } } catch (_: java.util.concurrent.RejectedExecutionException) {done(-1)}
+        } } catch (_: java.util.concurrent.RejectedExecutionException) {
+            synchronized(syncing) { syncing.remove(key) }
+            done(-1)
+        }
     }
 }
