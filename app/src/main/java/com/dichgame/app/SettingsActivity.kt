@@ -103,9 +103,11 @@ class SettingsActivity : Activity() {
                 } else {
                     addView(Ui.switchRow(a, "Đọc to bản dịch", "Tắt nếu chỉ muốn xem chữ.", p.speak) { p.speak = it })
                 }
-                row(Ui.segmented(a, listOf("Giọng cơ bản", "Giọng AI"),
-                    if (p.voiceEngine == "ai") 1 else 0) { i ->
-                    p.voiceEngine = if (i == 1) "ai" else "system"
+                row(Ui.segmented(a, listOf("Cơ bản", "Offline", "AI"),
+                    when (p.voiceEngine) { "offline" -> 1; "ai" -> 2; else -> 0 }) { i ->
+                    speaker?.stop()
+                    p.voiceEngine = when (i) { 1 -> "offline"; 2 -> "ai"; else -> "system" }
+                    speaker?.prepare()
                     render()
                 }, 14, 6)
                 voiceEngineBlock(this)
@@ -151,6 +153,7 @@ class SettingsActivity : Activity() {
     private fun voiceEngineBlock(c: LinearLayout) {
         val a = this
         when (p.voiceEngine) {
+            "offline" -> c.addView(offlineBlock())
              "ai" -> {
                 c.addView(Ui.dropRow(a, "Giọng Gemini",
                     { Prefs.aiVoiceLabel(p.aiVoice) },
@@ -203,7 +206,7 @@ class SettingsActivity : Activity() {
                     }.start()
                 }, 4, 4)
                 c.addView(st)
-                c.row(note("Gemini thử các khóa còn lại khi hết lượt hoặc khóa lỗi; chỉ dùng giọng máy nếu mọi khóa đều thất bại. Mỗi câu đọc tốn lượt gọi Gemini."), 6, 0)
+                c.row(note("Gemini thử các khóa còn lại khi hết lượt hoặc khóa lỗi; chỉ dùng giọng máy nếu mọi khóa đều thất bại. Câu chưa có âm thanh lưu đệm mới cần gọi Gemini."), 6, 0)
             }
             else -> c.addView(Ui.dropRow(a, "Chọn giọng",
                 { p.voice.ifEmpty { "Mặc định" } },
