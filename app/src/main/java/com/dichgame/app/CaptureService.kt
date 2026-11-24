@@ -79,6 +79,8 @@ class CaptureService : Service() {
     private var display: VirtualDisplay? = null
     private val captureBuffer = CaptureBuffer<ImageReader>()
     private var overlay: TextView? = null
+    private var menuOverlay: UiOverlay? = null
+    private var menuGeneration = 0
     private var tt: TextTranslator? = null
     private var speaker: Speaker? = null
     private var speak = false
@@ -404,6 +406,119 @@ class CaptureService : Service() {
         overlay = tv
     }
 
+    private fun clearMenuOverlay() {
+        menuGeneration++
+        menuOverlay?.clear()
+        menuOverlay?.visibility = View.GONE
+    }
+
+    private fun ensureMenuOverlay(): UiOverlay {
+        menuOverlay?.let { return it }
+        val v = UiOverlay(this).apply { visibility = View.GONE }
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.LEFT
+            // Android 12+ prevents touches through a highly opaque application-overlay window.
+            alpha = 0.78f
+        }
+        wm.addView(v, lp)
+        menuOverlay = v
+        return v
+    }
+
+    private data class MenuItem(val source: String, val rect: android.graphics.Rect, val colors: Pair<Int, Int>,
+                                val corners: FloatArray?, val lines: Int)
+
+    private fun menuItems(blocks: List<Blk>, image: Bitmap?, skip: List<android.graphics.Rect>): List<MenuItem> {
+        if (image == null) return emptyList()
+        return blocks.mapNotNull { b ->
+            val box = b.box ?: return@mapNotNull null
+            if (box.width() < 12 || box.height() < 8 || skip.any { it.contains(box.centerX(), box.centerY()) }) return@mapNotNull null
+            val src = UiText.joinLines(b.text, Prefs.isCjk(lang))
+            if (UiText.verdict(src, b.conf) != UiText.Verdict.TRANSLATE) return@mapNotNull null
+            val colors = NativeTextStyle.sample(image, b) ?: return@mapNotNull null
+            MenuItem(src, android.graphics.Rect(box), colors, b.corners, b.lineCount)
+        }.take(80)
+    }
+
+    private fun renderMenuItems(items: List<MenuItem>) {
+        if (!running || items.isEmpty()) { finishBusy(); return }
+        val t = tt ?: run { finishBusy(); return }
+        val generation = ++menuGeneration
+        val context = gameContext(Prefs(this))
+        val screenW = cw; val screenH = ch
+        val v = try { ensureMenuOverlay() } catch (_: Exception) {
+            finishBusy(); show("Không tạo được lớp phủ chữ trên màn hình.", false); return
+        }
+        overlay?.visibility = View.GONE
+        pacer.cleared()
+        handler.removeCallbacks(hideCheck)
+        speaker?.stop()
+        v.visibility = View.VISIBLE
+        val translated = arrayOfNulls<String>(items.size)
+        var next = 0
+        var pending = 0
+        var finished = false
+        fun current() = running && generation == menuGeneration && context == gameContext(Prefs(this)) && cw == screenW && ch == screenH
+        fun draw() {
+            if (!current()) return
+            val loc = IntArray(2); v.getLocationOnScreen(loc)
+            val draws = items.mapIndexedNotNull { i, item ->
+                val text = translated[i] ?: return@mapIndexedNotNull null
+                val b = item.rect
+                val r = android.graphics.RectF((b.left-loc[0]).toFloat(),(b.top-loc[1]).toFloat(),
+                    (b.right-loc[0]).toFloat(),(b.bottom-loc[1]).toFloat())
+                val q = item.corners?.mapIndexed { j, x -> x - loc[j%2] }?.toFloatArray()
+                UiOverlay.Draw(r,text,item.colors.first,item.colors.second,false,q,item.lines)
+            }
+            v.set(draws)
+        }
+        fun complete() {
+            if (finished || generation != menuGeneration) return
+            finished = true
+            finishBusy()
+            menuUntil = System.currentTimeMillis() + 12000
+            val texts = translated.filterNotNull()
+            if (texts.isEmpty()) {
+                clearMenuOverlay()
+                show("Chưa dịch được chữ rõ ràng trên màn hình.", false)
+            } else sendTv("region", texts.joinToString("\n"))
+            handler.postDelayed({
+                if (generation == menuGeneration) {
+                    clearMenuOverlay(); menuUntil = 0L; autoShown = false; sendTv("clear", "")
+                }
+            }, 12000)
+        }
+        fun pump() {
+            if (finished || !current()) return
+            while (pending < 3 && next < items.size) {
+                val i = next++
+                val item = items[i]
+                val protected = UiText.protect(item.source)
+                pending++
+                t.translateFull(protected.text, null, true) { tr ->
+                    if (finished || !current()) return@translateFull
+                    pending--
+                    val restored = UiText.restore(tr.text, protected)
+                    if (!tr.uncertain && restored != null && UiText.key(restored) != UiText.key(item.source)) {
+                        translated[i] = restored
+                        draw()
+                    }
+                    if (next == items.size && pending == 0) complete() else pump()
+                }
+            }
+        }
+        // Prevent a lost callback or slow network from locking screen capture indefinitely.
+        handler.postDelayed({ if (!finished && generation == menuGeneration) complete() }, 35000)
+        v.post { if (current()) draw() }
+        pump()
+    }
+
     private val autoRun = object : Runnable {
         override fun run() {
             try {
@@ -465,35 +580,20 @@ class CaptureService : Service() {
         } finally { img.close() }
         busy = true
         val skip = listOfNotNull(rectOf(frame), rectOf(overlay))
-        ocrNow.read(bmp, { m -> ocrFail(m) }) { r ->
-                val blocks = r.filter { b ->
-                    val bb = b.box
-                    b.text.length >= longLen && (bb == null || skip.none { it.contains(bb.centerX(), bb.centerY()) })
-                }.map { it.text.replace("\n", sep).trim() }.take(4)
-                if (blocks.size < 2) {
-                    autoCand = ""; autoStable = 0; autoDone = ""
-                    if (autoShown) { autoShown = false; show("") }
-                    finishBusy(); return@read
-                }
-                val sig = blocks.joinToString("|")
-                if (sig != autoCand) { autoCand = sig; autoStable = 1 } else autoStable++
-                if (autoStable < 2 || sig == autoDone) { finishBusy(); return@read }
-                autoDone = sig
-                val parts = arrayOfNulls<String>(blocks.size)
-                var left = blocks.size
-                blocks.forEachIndexed { i, b ->
-                    translateText(b) { vi ->
-                        parts[i] = vi.caption
-                        if (--left == 0) {
-                            val j = parts.joinToString("\n\n")
-                            overlay?.apply { text = j; visibility = View.VISIBLE }
-                            sendTv("region", j)
-                            autoShown = true
-                            finishBusy()
-                        }
-                    }
-                }
+        val keep = runCatching { bmp.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull()
+        ocrNow.read(bmp, { m -> keep?.recycle(); ocrFail(m) }) { r ->
+            val items = try { menuItems(r, keep, skip) } finally { keep?.recycle() }
+            val long = items.filter { it.source.length >= longLen }
+            if (long.size < 2) {
+                autoCand = ""; autoStable = 0; autoDone = ""
+                finishBusy(); return@read
             }
+            val sig = items.joinToString("|") { it.source }
+            if (sig != autoCand) { autoCand = sig; autoStable = 1 } else autoStable++
+            if (autoStable < 2 || sig == autoDone) { finishBusy(); return@read }
+            autoDone = sig
+            renderMenuItems(items)
+        }
     }
 
     // ---------- lời nghe được từ âm thanh game ----------
@@ -1051,9 +1151,10 @@ class CaptureService : Service() {
         prevVi = vi; prevOrig = cards.joinToString(" ") { it.orig }; autoShown = false
     }
 
-    /** Dịch menu: một lần, đọc cả màn hình, dịch tối đa 4 đoạn chữ dài. */
+    /** Dịch toàn bộ chữ giao diện trong ảnh, vẽ từng khối tại vị trí gốc. */
     private fun menuOnce() {
         if (busy || !ready || editing || narrate) return
+        clearMenuOverlay()
         busy = true
         overlay?.visibility = View.INVISIBLE
         handler.postDelayed({ menuGrab() }, 400)
@@ -1096,33 +1197,17 @@ class CaptureService : Service() {
             overlay?.visibility = View.VISIBLE
             return
         }
-        reader.read(bmp, { m -> ocrFail(m) }) { r ->
-            val blocks = r.map { it.text.replace("\n", sep).trim() }.filter { it.length >= longLen }.take(4)
-            if (blocks.isEmpty()) {
-                menuUntil = System.currentTimeMillis() + 3000
-                show("Không thấy đoạn chữ dài nào để dịch.")
-                handler.postDelayed({ if (!editing) show("") }, 3000)
+        val skip = listOfNotNull(rectOf(frame), rectOf(region))
+        val keep = runCatching { bmp.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull()
+        reader.read(bmp, { m -> keep?.recycle(); ocrFail(m) }) { r ->
+            val items = try { menuItems(r, keep, skip) } finally { keep?.recycle() }
+            if (!running) { finishBusy(); return@read }
+            if (items.isEmpty()) {
+                show("Không thấy chữ phù hợp để dịch trên màn hình.", false)
                 finishBusy()
                 return@read
             }
-            val parts = arrayOfNulls<TextTranslator.Tr>(blocks.size)
-            var left = blocks.size
-            blocks.forEachIndexed { i, b ->
-                translateText(b) { vi ->
-                    parts[i] = vi
-                    if (--left == 0) {
-                        menuUntil = System.currentTimeMillis() + 15000
-                        val lines = parts.filterNotNull()
-                        val translated = lines.joinToString("\n\n") { it.caption }
-                        show(translated, readAloud = lines.none { it.uncertain })
-                        sendTv("region", translated)
-                        finishBusy()
-                        handler.postDelayed({
-                            if (!editing && System.currentTimeMillis() >= menuUntil) show("")
-                        }, 15000)
-                    }
-                }
-            }
+            renderMenuItems(items)
         }
     }
 
@@ -1241,7 +1326,7 @@ class CaptureService : Service() {
     private fun show(t: String, readAloud: Boolean = true) {
         // mọi thông báo hay lệnh xoá đều thay thế dòng phụ đề đang hiện: bộ giữ nhịp phải biết là đã hết
         pacer.cleared(); handler.removeCallbacks(hideCheck)
-        if (t.isEmpty()) sendTv("clear", "")
+        if (t.isEmpty()) { clearMenuOverlay(); sendTv("clear", "") }
         overlay?.apply { text = t; visibility = if (t.isEmpty()) View.GONE else View.VISIBLE }
         if (readAloud && t.isNotEmpty() && speak && ready && !editing && !tvSpeakOn()) speaker?.speak(t)
     }
@@ -1269,7 +1354,7 @@ class CaptureService : Service() {
                 }
             }
         )
-        if (changed) relayoutFrame()
+        if (changed) { clearMenuOverlay(); menuUntil = 0L; relayoutFrame() }
     }
 
     private fun capture() {
@@ -1353,6 +1438,8 @@ class CaptureService : Service() {
         } catch (_: Exception) {}
         active = false
         handler.removeCallbacksAndMessages(null)
+        clearMenuOverlay()
+        runCatching { menuOverlay?.let { wm.removeView(it) } }; menuOverlay = null
         try { overlay?.let { wm.removeView(it) }; frame?.let { wm.removeView(it) }; region?.let { wm.removeView(it) } } catch (_: Exception) {}
         display?.release(); captureBuffer.close()
         projection?.stop()
