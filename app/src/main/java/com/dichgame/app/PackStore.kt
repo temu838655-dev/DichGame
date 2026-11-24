@@ -61,30 +61,34 @@ object PackStore {
         return File(scopedDir(ctx, profile), digest + ".tsv")
     }
 
-    @Synchronized
-    fun readLines(ctx: Context, profile: String): List<Pair<String, String>> {
-        val f = linesFile(ctx, profile)
-        return try {
-            AtomicFile(f).openRead().bufferedReader(Charsets.UTF_8).useLines { lines -> lines.mapNotNull { l ->
+    private fun readFile(f: File): List<Pair<String, String>> {
+        if (!f.exists() && !File(f.path + ".bak").exists()) return emptyList()
+        return AtomicFile(f).openRead().bufferedReader(Charsets.UTF_8).useLines { lines ->
+            lines.mapNotNull { l ->
                 val t = l.indexOf('\t')
                 if (t <= 0) null else l.substring(0, t) to l.substring(t + 1)
-            }.toList() }
-        } catch (_: Exception) { emptyList() }
+            }.toList()
+        }
     }
+
+    @Synchronized
+    fun readLines(ctx: Context, profile: String): List<Pair<String, String>> =
+        try { readFile(linesFile(ctx, profile)) } catch (_: Exception) { emptyList() }
 
     fun lineCount(ctx: Context, profile: String): Int = readLines(ctx, profile).size
 
     /** Thêm câu thoại vào hồ sơ (trùng câu gốc thì lấy bản mới). Trả về số câu sau khi gộp. */
     @Synchronized
     fun addLines(ctx: Context, profile: String, add: List<Pair<String, String>>): Int {
+        val f = linesFile(ctx, profile)
         val map = LinkedHashMap<Triple<String, String, String>, Pair<String, String>>()
-        for (e in readLines(ctx, profile) + add) {
+        // Read and write the same captured target; if reading fails do not overwrite it.
+        for (e in readFile(f) + add) {
             val k = Canon.key(e.first)
             val identity = Triple(k, digitSig(e.first), SubtitleMeaning.signature(e.first))
             if (Canon.usable(k) && e.second.isNotBlank()) map[identity] = e.first.replace('\t', ' ').replace('\n', ' ') to e.second.replace('\t', ' ').replace('\n', ' ')
         }
         val list = map.values.toList().takeLast(PackText.MAX_LINES)
-        val f = linesFile(ctx, profile)
         f.parentFile?.mkdirs()
         val atomic = AtomicFile(f)
         val output = atomic.startWrite()
@@ -127,7 +131,8 @@ object PackStore {
         val key = p.profile + "\u0000" + name + "\u0000" + (p.packOn || p.aiAuto) + "\u0000" + f.lastModified() + "\u0000" + f.length()
         mem?.let { if (key == memKey) return it }
         val built = if (p.packOn || p.aiAuto) VietHoa.linesFor(name) else emptyList()
-        return TransMemory(built + readLines(ctx, p.profile)).also { mem = it; memKey = key }
+        val imported = try { readFile(f) } catch (_: Exception) { emptyList() }
+        return TransMemory(built + imported).also { mem = it; memKey = key }
     }
 
     /** Số mục có sẵn cho game: (thuật ngữ, nhân vật, câu thoại). */
