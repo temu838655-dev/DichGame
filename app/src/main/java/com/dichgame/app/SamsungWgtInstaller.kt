@@ -65,29 +65,34 @@ internal object SamsungWgtInstaller {
         SamsungSdb(ip).use { sdb ->
             status("Đang kết nối SDB...")
             sdb.connect()
-            val capabilities = runCatching { sdb.capabilities() }.getOrDefault("")
+            val capabilities = runCatching { SamsungSdb(ip).use { probe -> probe.connect(); probe.capabilities() } }.getOrDefault("")
             val dir = capabilities.lineSequence().firstOrNull { it.startsWith("sdk_toolpath:") }
                 ?.substringAfter(':')?.trim()?.trimEnd('/')
                 ?.takeIf { it in listOf("/home/owner/share/tmp/sdk_tools", "/opt/usr/apps/tmp") }
-                ?: "/home/owner/share/tmp/sdk_tools"
+                ?: if (capabilities.contains("platform_version:2.")) "/opt/usr/apps/tmp" else "/home/owner/share/tmp/sdk_tools"
             val remote = "$dir/dichgame-" + UUID.randomUUID().toString() + ".wgt"
             try {
                 status("Đang truyền WGT đã ký...")
                 sdb.push(remote, bytes)
                 status("Đang cài ứng dụng...")
-                val result = sdb.shell("0 vd_appinstall $PKG $remote", 120000)
+                val result = SamsungSdb(ip).use { install ->
+                    install.connect()
+                    install.shell("0 vd_appinstall $PKG $remote", 120000) { reply ->
+                        reply.contains("install completed", true) || reply.contains("install failed", true)
+                    }
+                }
                 check(result.contains("install completed", ignoreCase = true) &&
                     !result.contains("install failed", ignoreCase = true)) {
                     "TV chưa xác nhận cài thành công: " + result.take(400)
                 }
                 status("Đang xác nhận ứng dụng đã cài...")
-                val apps = sdb.shell("0 vd_applist")
+                val apps = SamsungSdb(ip).use { verify -> verify.connect(); verify.shell("0 vd_applist") }
                 check(apps.contains(APP) || apps.contains(PKG)) { "Chưa xác nhận được DichGame trong danh sách app TV" }
-                val opened = runCatching { sdb.shell("0 was_execute $APP") }.getOrDefault("")
+                val opened = runCatching { SamsungSdb(ip).use { launcher -> launcher.connect(); launcher.shell("0 was_execute $APP") { it.contains(APP) && (it.contains("launched", true) || it.contains("resumed", true)) } } }.getOrDefault("")
                 return if (opened.contains(APP) && (opened.contains("launched", true) || opened.contains("resumed", true))) {
                     "TV xác nhận đã cài và mở DichGame."
                 } else "TV xác nhận đã cài. Hãy mở DichGame trong Apps trên TV."
-            } finally { runCatching { sdb.shell("0 rmfile $remote", 5000) } }
+            } finally { runCatching { SamsungSdb(ip).use { cleanup -> cleanup.connect(); cleanup.shell("0 rmfile $remote", 5000) } } }
         }
     }
 }

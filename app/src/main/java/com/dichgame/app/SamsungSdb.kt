@@ -58,10 +58,10 @@ internal class SamsungSdb(private val ip: String) : java.io.Closeable {
         send(CNXN, 0x00100000, LIMIT, "host::\u0000".toByteArray())
         val reply = read()
         check(reply.cmd != AUTH) { "TV yêu cầu xác thực SDB chưa được hỗ trợ" }
-        check(reply.cmd == CNXN && reply.b in 1..LIMIT && reply.data.toString(Charsets.UTF_8).startsWith("device::")) {
+        check(reply.cmd == CNXN && reply.b >= 1024 && reply.data.toString(Charsets.UTF_8).startsWith("device::")) {
             "TV chưa chấp nhận SDB. Kiểm tra Developer Mode và Host PC IP"
         }
-        maxPayload = reply.b
+        maxPayload = minOf(reply.b, LIMIT)
     }
     private fun send(cmd: Int, a: Int, b: Int, data: ByteArray = byteArrayOf()) {
         socket.getOutputStream().apply { write(encode(Packet(cmd, a, b, data))); flush() }
@@ -109,8 +109,11 @@ internal class SamsungSdb(private val ip: String) : java.io.Closeable {
             check(received.size() >= n) { "Phản hồi SDB thiếu dữ liệu" }
             return received.toByteArray()
         }
-        fun finish(): ByteArray {
-            while (!closed) handle(read())
+        fun finish(terminal: ((String) -> Boolean)? = null): ByteArray {
+            while (!closed) {
+                handle(read())
+                if (terminal?.invoke(received.toString("UTF-8")) == true) break
+            }
             return received.toByteArray()
         }
         fun close() {
@@ -133,22 +136,23 @@ internal class SamsungSdb(private val ip: String) : java.io.Closeable {
         check(p.cmd == OKAY && p.b == id && p.a != 0) { "TV từ chối dịch vụ SDB: " + service.substringBefore(':') }
         return Stream(id, p.a)
     }
-    fun shell(command: String, timeout: Long = 30000): String =
-        open("shell:$command", timeout).finish().toString(Charsets.UTF_8)
+    fun shell(command: String, timeout: Long = 30000, terminal: ((String) -> Boolean)? = null): String =
+        open("shell:$command", timeout).finish(terminal).toString(Charsets.UTF_8)
     fun capabilities(): String {
         val raw = open("capability:", 10000).finish()
-        check(raw.size >= 2)
-        val n = (raw[0].toInt() and 255) or ((raw[1].toInt() and 255) shl 8)
-        check(n <= 4095 && n <= raw.size - 2)
-        return raw.copyOfRange(2, n + 2).toString(Charsets.UTF_8)
+        if (raw.size >= 2) {
+            val n = (raw[0].toInt() and 255) or ((raw[1].toInt() and 255) shl 8)
+            if (n in 1..4095 && n <= raw.size - 2) return raw.copyOfRange(2, n + 2).toString(Charsets.UTF_8)
+        }
+        return raw.toString(Charsets.UTF_8)
     }
     fun push(remote: String, bytes: ByteArray) {
         val stream = open("sync:", 120000)
-        val dest = "$remote,33261".toByteArray(Charsets.UTF_8)
+        val dest = "$remote,33188".toByteArray(Charsets.UTF_8)
         stream.write(syncFrame("SEND", dest.size, dest))
         var pos = 0
         while (pos < bytes.size) {
-            val end = minOf(bytes.size, pos + 65536)
+            val end = minOf(bytes.size, pos + minOf(65536, maxPayload - 8))
             val data = bytes.copyOfRange(pos, end)
             stream.write(syncFrame("DATA", data.size, data))
             pos = end

@@ -227,7 +227,7 @@ class TvSetupActivity : Activity() {
     private var installingLg = false
 
     private fun developerLg(c: LinearLayout) {
-        c.addView(Ui.tv(this, "Bật Dev Mode Status và Key Server trong ứng dụng Developer Mode trên TV. Nhập IP và passphrase 6 ký tự. Không cần máy tính.", 14f, Ui.TEXT))
+        c.addView(Ui.tv(this, "Bật Dev Mode Status và Key Server trong ứng dụng Developer Mode trên TV. Nhập IP và passphrase 6 ký tự. Không cần máy tính; khóa TV được ghi nhớ sau khi bạn xác nhận.", 14f, Ui.TEXT))
         val ip = Ui.field(this, "IP TV LG", p.sp.getString("lg_dev_ip", p.lgIp).orEmpty())
         val pass = Ui.field(this, "Passphrase 6 ký tự", "")
         pass.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -286,6 +286,8 @@ class TvSetupActivity : Activity() {
     }
 
     private fun approveLgFingerprint(ip: String, fingerprint: String): Boolean {
+        val known = p.sp.getString("lg_host_key_$ip", null)
+        if (known == fingerprint) return true
         val latch = java.util.concurrent.CountDownLatch(1)
         val approved = java.util.concurrent.atomic.AtomicBoolean(false)
         runOnUiThread {
@@ -293,9 +295,9 @@ class TvSetupActivity : Activity() {
                 latch.countDown()
             } else {
                 AlertDialog.Builder(this, R.style.DgDialog)
-                    .setTitle("Xác nhận khóa TV LG")
-                    .setMessage("IP: $ip\n$fingerprint\nChỉ chấp nhận nếu đây là TV của bạn.")
-                    .setPositiveButton("Tin cậy") { _, _ -> approved.set(true); latch.countDown() }
+                    .setTitle(if (known == null) "Xác nhận khóa TV LG" else "Khóa TV LG đã thay đổi")
+                    .setMessage("IP: $ip\n$fingerprint\n" + if (known == null) "Chỉ chấp nhận nếu đây là TV của bạn." else "Khóa cũ không khớp. Chỉ tiếp tục nếu bạn đã xác minh TV hoặc vừa đặt lại Developer Mode.")
+                    .setPositiveButton("Tin cậy") { _, _ -> p.sp.edit().putString("lg_host_key_$ip", fingerprint).apply(); approved.set(true); latch.countDown() }
                     .setNegativeButton("Hủy") { _, _ -> latch.countDown() }
                     .setOnCancelListener { latch.countDown() }
                     .show()
