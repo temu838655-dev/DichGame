@@ -13,7 +13,7 @@ import android.view.View
  * [color] là màu nét, [knock] là màu nền để khoét chữ trên biểu tượng dịch.
  */
 class ToolIcon(c: Context, var kind: Kind, var color: Int, private val knock: Int = 0) : View(c) {
-    enum class Kind { TRANSLATE, SCAN, CC, CROP, TEXT_SIZE, SPEAKER_ON, SPEAKER_OFF, PAUSE, PLAY, SEARCH, GEAR, SUBS, DIAL, ZOOM, ROTATE, HELP, CLOSE, GAMEPAD, HOME, CHEVRON, BACK, UI_TEXT, BOLT }
+    enum class Kind { TRANSLATE, SCAN, CC, CROP, TEXT_SIZE, SPEAKER_ON, SPEAKER_OFF, PAUSE, PLAY, SEARCH, GEAR, SUBS, DIAL, ZOOM, ROTATE, HELP, CLOSE, GAMEPAD, HOME, CHEVRON, NEXT, BACK, UI_TEXT, BOLT }
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
@@ -215,6 +215,11 @@ class ToolIcon(c: Context, var kind: Kind, var color: Int, private val knock: In
             Kind.CHEVRON -> {
                 path.reset()
                 path.moveTo(s * 0.24f, s * 0.38f); path.lineTo(s * 0.5f, s * 0.64f); path.lineTo(s * 0.76f, s * 0.38f)
+                cv.drawPath(path, p)
+            }
+            Kind.NEXT -> {
+                path.reset()
+                path.moveTo(s * 0.38f, s * 0.24f); path.lineTo(s * 0.64f, s * 0.5f); path.lineTo(s * 0.38f, s * 0.76f)
                 cv.drawPath(path, p)
             }
             Kind.GEAR -> {

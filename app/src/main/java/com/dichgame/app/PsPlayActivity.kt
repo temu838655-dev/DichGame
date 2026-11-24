@@ -112,7 +112,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var scanIcon: ToolIcon? = null
     private var adjustBar: View? = null
     // Hai nút "Dịch hết chữ" (một lần) và "Dịch menu" (liên tục) dưới thanh công cụ
-    private class PillUi(val box: View, val icon: ToolIcon, val label: TextView, val kind: ToolIcon.Kind)
+    private class PillUi(val box: View, val icon: ToolIcon, val label: TextView, val kind: ToolIcon.Kind, val next: ToolIcon?)
     private var pillOnce: PillUi? = null
     private var pillMenu: PillUi? = null
     private var pillsView: View? = null
@@ -322,6 +322,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 networkCallbackRegistered = true
             }
         }
+        refreshPill()   // vừa chọn game khác ở Kho game thì ô trên cùng đổi theo
         if (console != null && !manual && !demo) requestConnect()
     }
 
@@ -397,10 +398,12 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
-    /** Vòng xoay vàng trên thẻ "Đang tìm máy…". Chỉ chạy khi đang hiện. */
+    /** Vòng neon cam quanh biểu tượng tay cầm trên thẻ "Đang tìm máy…": vầng sáng tĩnh và một cung sáng chạy quanh. Chỉ chạy khi đang hiện. */
     private class Spin(c: Context) : View(c) {
-        private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; color = Ui.GOLD }
-        private val track = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = 0x33FFD54A }
+        private val halo = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = PlayTheme.ORANGE }
+        private val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; color = PlayTheme.AMBER }
+        private val haloMul = floatArrayOf(4.4f, 3.0f, 1.8f, 0.7f)
+        private val haloAlpha = intArrayOf(24, 44, 80, 200)
         private val box = RectF()
         private var angle = 0f
         private var anim: ValueAnimator? = null
@@ -408,7 +411,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         private fun begin() {
             if (anim != null) return
             anim = ValueAnimator.ofFloat(0f, 360f).apply {
-                duration = 900
+                duration = 1600
                 repeatCount = ValueAnimator.INFINITE
                 interpolator = LinearInterpolator()
                 addUpdateListener { angle = it.animatedValue as Float; invalidate() }
@@ -429,13 +432,13 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         override fun onDraw(cv: Canvas) {
             val s = minOf(width, height).toFloat()
             if (s <= 0f) return
-            val w = s * 0.1f
-            ring.strokeWidth = w
-            track.strokeWidth = w
-            val pad = w
-            box.set((width - s) / 2f + pad, (height - s) / 2f + pad, (width + s) / 2f - pad, (height + s) / 2f - pad)
-            cv.drawArc(box, 0f, 360f, false, track)
-            cv.drawArc(box, angle, 100f, false, ring)
+            val w = s * 0.035f
+            val cx = width / 2f
+            val cy = height / 2f
+            val rad = s / 2f - w * 3.2f
+            box.set(cx - rad, cy - rad, cx + rad, cy + rad)
+            for (i in haloMul.indices) { halo.strokeWidth = w * haloMul[i]; halo.alpha = haloAlpha[i]; cv.drawCircle(cx, cy, rad, halo) }
+            for (i in 0..1) { arc.strokeWidth = w * (3.4f - i * 1.8f); arc.alpha = if (i == 0) 70 else 255; cv.drawArc(box, angle, 80f, false, arc) }
         }
     }
 
@@ -504,13 +507,14 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             if (!land) {
                 // Dọc: hàng trên (đóng, tay cầm, trạng thái, người chơi), hình trong khung vàng, thanh công cụ, hai nút dịch,
                 // thanh kéo, tay cầm ảo.
+                // ô game nằm bên phải, rộng tới hết chỗ còn lại; chip trạng thái cũ đã ẩn (chấm màu trên ảnh tròn của ô)
+                measureChild(pl, w - 2 * m10 - btn * 2 - m8 * 3, am, h, am)
                 val pillLeft = w - m10 - pl.measuredWidth
-                val chipLeft = m10 + btn * 2 + m8 * 2
-                measureChild(ch, pillLeft - m8 - chipLeft, ex, h, am)
+                measureChild(ch, 0, ex, 0, ex)
                 val rowTop = dpi(8)
-                val rowH = maxOf(btn, ch.measuredHeight, pl.measuredHeight)
+                val rowH = maxOf(btn, pl.measuredHeight)
                 fun cy(v: View) = rowTop + (rowH - v.measuredHeight) / 2
-                put(cl, m10, cy(cl)); put(pb, m10 + btn + m8, cy(pb)); put(ch, chipLeft, cy(ch)); put(pl, pillLeft, cy(pl))
+                put(cl, m10, cy(cl)); put(pb, m10 + btn + m8, cy(pb)); put(ch, 0, 0); put(pl, pillLeft, cy(pl))
                 var y = rowTop + rowH + dpi(6)
                 measureChild(vc, w - 2 * m10, ex, 0, MeasureSpec.UNSPECIFIED)
                 put(vc, m10, y); y += vc.measuredHeight
@@ -543,7 +547,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 val rowTop = dpi(6)
                 if (open) {
                     val leftW = btn * 2 + m8 * 2 + pl.measuredWidth
-                    val barW = minOf(dpi(372), maxOf(dpi(240), w - 3 * m10 - leftW))
+                    val barW = minOf(dpi(420), maxOf(dpi(290), w - 3 * m10 - leftW))
                     measureChild(br, barW, ex, h, am)
                     val rowH = maxOf(btn, br.measuredHeight, pl.measuredHeight)
                     fun cy(v: View) = rowTop + (rowH - v.measuredHeight) / 2
@@ -595,10 +599,14 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 intArrayOf(Color.parseColor("#F00B142B"), Color.parseColor("#EB0B0B16"), Color.parseColor("#E52B1030"))
             ).apply {
                 cornerRadius = dpi(22).toFloat()
-                setStroke(dpi(1), Color.parseColor("#88F2B84B"))
+                setStroke(dpi(1), Color.parseColor("#88FF8A24"))
             }
             setPadding(dpi(16), dpi(12), dpi(16), dpi(12))
-            addView(Spin(this@PsPlayActivity), Ui.lp(dpi(46), dpi(46)).apply { bottomMargin = dpi(10) })
+            // vòng neon quanh biểu tượng tay cầm
+            addView(FrameLayout(this@PsPlayActivity).apply {
+                addView(Spin(this@PsPlayActivity), FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+                addView(ToolIcon(this@PsPlayActivity, ToolIcon.Kind.GAMEPAD, PlayTheme.ICON), FrameLayout.LayoutParams(dpi(40), dpi(40), Gravity.CENTER))
+            }, Ui.lp(dpi(104), dpi(104)).apply { bottomMargin = dpi(8) })
             addView(title, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
             addView(sub, Ui.lpm(this@PsPlayActivity, 4, 0))
         }
@@ -651,9 +659,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             isClickable = true
             isFocusable = true
             contentDescription = "Mở thanh công cụ"
-            background = Ui.bg(this@PsPlayActivity, Color.parseColor("#99000000"), 14, Color.parseColor("#55F2B84B"), 1)
+            background = Ui.bg(this@PsPlayActivity, Color.parseColor("#99000000"), 14, PlayTheme.EDGE, 1)
             setOnClickListener { setTools(true) }
-            addView(ToolIcon(this@PsPlayActivity, ToolIcon.Kind.CHEVRON, Ui.GOLD), FrameLayout.LayoutParams(dpi(22), dpi(22), Gravity.CENTER))
+            addView(ToolIcon(this@PsPlayActivity, ToolIcon.Kind.CHEVRON, PlayTheme.ICON), FrameLayout.LayoutParams(dpi(22), dpi(22), Gravity.CENTER))
         }
         handleView = handle
 
@@ -663,7 +671,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             isFocusable = true
             contentDescription = "Thu gọn hoặc mở thanh công cụ"
             setOnClickListener { setTools(!toolsOpen) }
-            addView(View(this@PsPlayActivity).apply { background = Ui.bg(this@PsPlayActivity, Color.parseColor("#88F2B84B"), 3) },
+            addView(View(this@PsPlayActivity).apply { background = Ui.bg(this@PsPlayActivity, Color.parseColor("#66FFFFFF"), 3) },
                 FrameLayout.LayoutParams(dpi(44), dpi(5), Gravity.CENTER))
         }
         gripView = grip
@@ -720,15 +728,16 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 clipToOutline = false
             } else {
                 // Khung video viền vàng, bo góc; phóng hình thì phần thừa bị cắt trong khung.
-                background = Ui.bg(this@PsPlayActivity, Color.BLACK, 16, Ui.GOLD, 2)
+                background = Ui.bg(this@PsPlayActivity, Color.BLACK, 16, PlayTheme.AMBER, 2)
                 setPadding(dpi(2), dpi(2), dpi(2), dpi(2))
                 clipToOutline = true
                 outlineProvider = ViewOutlineProvider.BACKGROUND
             }
         }
-        barView?.background = if (land) Ui.glass(this, 22, strong = true, edge = Color.parseColor("#66F2B84B"))
-        else Ui.glass(this, 24, strong = true, edge = Color.parseColor("#66F2B84B"))
-        chipHolder?.visibility = if (land) View.GONE else View.VISIBLE
+        barView?.background = Ui.glass(this, if (land) 22 else 24, strong = true, edge = PlayTheme.EDGE)
+        (barView as? LinearLayout)?.let { orderTools(it, land) }
+        pillLabel?.maxWidth = dpi(if (land) 150 else 220)
+        chipHolder?.visibility = View.GONE   // trạng thái kết nối nay là chấm màu trên ảnh tròn của ô game
         gripView?.visibility = if (land) View.GONE else View.VISIBLE
         vidFrame?.let { v -> live?.attach(v); uiTr?.attach(v) }
         applyZoom()
@@ -740,9 +749,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
 
     /** Nút tròn nhỏ có biểu tượng vẽ nét (✕, tay cầm). */
     private fun roundIcon(kind: ToolIcon.Kind, onClick: () -> Unit): Pair<FrameLayout, ToolIcon> {
-        val ic = ToolIcon(this, kind, Ui.GOLD)
+        val ic = ToolIcon(this, kind, PlayTheme.ICON)
         val f = FrameLayout(this).apply {
-            background = Ui.bg(this@PsPlayActivity, Ui.CARD2, 22, Color.parseColor("#44F2B84B"), 1)
+            background = Ui.bg(this@PsPlayActivity, Ui.CARD2, 22, PlayTheme.EDGE, 1)
             isClickable = true
             isFocusable = true
             setOnClickListener { onClick() }
@@ -752,22 +761,59 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         return f to ic
     }
 
-    /** Ô chọn người chơi (tài khoản PSN đã ghép) ở góc trên bên phải. */
+    private var pillAvatar: TextView? = null
+    private var dotShape: android.graphics.drawable.GradientDrawable? = null
+
+    /** Chữ ở ô trên cùng: tên game đang dịch nếu đã chọn, không thì tên người chơi. */
+    private fun pillText(): String {
+        val g = PackStore.gameName(Prefs(this)).trim()
+        return if (g.isNotEmpty()) g else console?.players?.getOrNull(player)?.label ?: "Người chơi 1"
+    }
+
+    private fun refreshPill() {
+        val t = pillText()
+        pillLabel?.text = t
+        pillAvatar?.text = t.firstOrNull { it.isLetterOrDigit() }?.toString()?.uppercase() ?: "•"
+    }
+
+    /** Ô kính ở góc trên: ảnh tròn chữ cái đầu của game (chấm xanh khi đã kết nối) + tên game + mũi tên. Bấm để chọn người chơi. */
     private fun playerPill(): View {
         val pill = Ui.hbox(this)
-        pill.background = Ui.bg(this, Ui.CARD2, 20, Color.parseColor("#44F2B84B"), 1)
-        pill.setPadding(dpi(12), dpi(8), dpi(10), dpi(8))
+        pill.gravity = Gravity.CENTER_VERTICAL
+        pill.background = Ui.glass(this, 22, strong = true, edge = PlayTheme.EDGE)
+        pill.setPadding(dpi(6), dpi(5), dpi(12), dpi(5))
         pill.isClickable = true
         pill.isFocusable = true
-        val label = Ui.tv(this, console?.players?.getOrNull(player)?.label ?: "Người chơi 1", 13f, Ui.TEXT, true).apply {
+        pill.contentDescription = "Đổi người chơi"
+        val avatar = FrameLayout(this)
+        val letter = Ui.tv(this, "?", 13f, Color.WHITE, true).apply {
+            gravity = Gravity.CENTER
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR, intArrayOf(PlayTheme.ORANGE, PlayTheme.ORANGE_HOT)
+            ).apply { setShape(android.graphics.drawable.GradientDrawable.OVAL) }
+        }
+        pillAvatar = letter
+        avatar.addView(letter, FrameLayout.LayoutParams(dpi(28), dpi(28)))
+        val dot = View(this)
+        val shape = android.graphics.drawable.GradientDrawable().apply {
+            setShape(android.graphics.drawable.GradientDrawable.OVAL)
+            setColor(PlayTheme.AMBER)
+            setStroke(dpi(2), Color.parseColor("#14131F"))
+        }
+        dotShape = shape
+        dot.background = shape
+        avatar.addView(dot, FrameLayout.LayoutParams(dpi(12), dpi(12), Gravity.END or Gravity.BOTTOM))
+        pill.addView(avatar, Ui.lp(dpi(28), dpi(28)))
+        val label = Ui.tv(this, pillText(), 13f, Ui.TEXT, true).apply {
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            maxWidth = dpi(120)
+            maxWidth = dpi(200)
         }
         pillLabel = label
-        pill.addView(label)
-        pill.addView(ToolIcon(this, ToolIcon.Kind.CHEVRON, Ui.GOLD), Ui.lp(dpi(14), dpi(14)).apply { leftMargin = dpi(4) })
+        pill.addView(label, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(8) })
+        pill.addView(ToolIcon(this, ToolIcon.Kind.CHEVRON, PlayTheme.ICON), Ui.lp(dpi(14), dpi(14)).apply { leftMargin = dpi(4) })
         pill.setOnClickListener { pickPlayer() }
+        refreshPill()
         return pill
     }
 
@@ -778,64 +824,97 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             Toast.makeText(this, "Mới có một người chơi. Thêm người chơi ở màn Ghép nối.", Toast.LENGTH_SHORT).show()
             return
         }
-        Ui.pick(this, "Chọn người chơi", labels) { i ->
+        Ui.pick(this, "Chọn người chơi (game đang dịch: " + pillText() + ")", labels) { i ->
             if (i != player) {
                 player = i
-                pillLabel?.text = console?.players?.getOrNull(player)?.label ?: "Người chơi 1"
+                refreshPill()
                 if (!demo) reconnect()
             }
             afterAction(300)
         }
     }
 
+    private val toolCells = HashMap<String, View>()
+    private val toolLp = HashMap<String, ViewGroup.LayoutParams>()
+    private var zoomIcon: ToolIcon? = null
+
+    /**
+     * Thứ tự nút theo ảnh mẫu. Dọc: khung chọn vùng · phụ đề · loa · cỡ chữ · tốc độ · phóng hình · xoay · cài đặt · trợ giúp.
+     * Ngang: thêm nút PS (Home) màu cam, xoay lên đầu thanh.
+     */
+    private fun orderTools(bar: LinearLayout, land: Boolean) {
+        val order = if (land) listOf("rotate", "home", "crop", "subs", "speak", "font", "speed", "zoom", "gear", "help")
+        else listOf("crop", "subs", "speak", "font", "speed", "zoom", "rotate", "gear", "help")
+        bar.removeAllViews()
+        for (id in order) {
+            val cell = toolCells[id] ?: continue
+            bar.addView(cell, toolLp[id])
+        }
+    }
+
     private fun toolbar(): LinearLayout {
         val bar = Ui.hbox(this)
         bar.setPadding(dpi(4), dpi(2), dpi(4), dpi(2))
-        /** [solid]: ô vàng đặc, biểu tượng tối (nút PS). [collapse]: sau khi bấm, thanh tự thu lại. */
-        fun tool(kind: ToolIcon.Kind, desc: String, solid: Boolean = false, collapse: Boolean = true, onClick: () -> Unit): Pair<View, ToolIcon> {
-            val ic = ToolIcon(this, kind, if (solid) Color.parseColor("#2A1A08") else Ui.GOLD)
+        /** [solid]: ô cam đặc, biểu tượng trắng (nút PS). [collapse]: sau khi bấm, thanh tự thu lại. */
+        fun tool(id: String, kind: ToolIcon.Kind, desc: String, solid: Boolean = false, collapse: Boolean = true, onClick: () -> Unit): Pair<View, ToolIcon> {
+            val ic = ToolIcon(this, kind, if (solid) Color.WHITE else PlayTheme.ICON)
             val cell = FrameLayout(this).apply {
                 isClickable = true
                 isFocusable = true
                 contentDescription = desc
-                if (solid) background = Ui.bg(this@PsPlayActivity, Ui.GOLD, 18)
+                if (solid) background = android.graphics.drawable.GradientDrawable(
+                    android.graphics.drawable.GradientDrawable.Orientation.TL_BR, intArrayOf(PlayTheme.ORANGE, PlayTheme.ORANGE_HOT)
+                ).apply { cornerRadius = dpi(18).toFloat() }
                 setOnClickListener {
                     onClick()
                     if (collapse) afterAction() else armIdle()
                 }
                 addView(ic, FrameLayout.LayoutParams(dpi(24), dpi(24), Gravity.CENTER))
             }
-            bar.addView(cell, Ui.lp(0, dpi(46), 1f).apply { if (solid) { leftMargin = dpi(2); rightMargin = dpi(2) } })
+            toolCells[id] = cell
+            toolLp[id] = Ui.lp(0, dpi(46), 1f).apply { if (solid) { leftMargin = dpi(2); rightMargin = dpi(2) } }
             return cell to ic
         }
-        // Thứ tự giống thanh công cụ mẫu: xoay · PS · khung chọn vùng · phụ đề · loa · cỡ chữ · tốc độ · cài đặt · trợ giúp
-        tool(ToolIcon.Kind.ROTATE, "Xoay ngang hoặc dọc", collapse = false) {
+        tool("rotate", ToolIcon.Kind.ROTATE, "Xoay ngang hoặc dọc", collapse = false) {
             // Đổi qua lại ngang ↔ dọc và nhớ lựa chọn; chọn "Tự động" ở bảng chất lượng (⚙) để theo cảm biến xoay của máy.
             val toPortrait = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
             PsStore.setOrient(this, if (toPortrait) PsStore.ORIENT_PORTRAIT else PsStore.ORIENT_LANDSCAPE)
             PsStore.applyOrient(this)
         }
-        homeCell = tool(ToolIcon.Kind.HOME, "Nút PS (Home) của tay cầm", solid = true) { tapPs() }.first
-        scanIcon = tool(ToolIcon.Kind.CROP, "Khung chọn vùng phụ đề") { toggleAdjust() }.second
-        subsIcon = tool(ToolIcon.Kind.SUBS, "Bật hoặc tắt dịch phụ đề") { toggleTranslate() }.second
-        speakIcon = tool(ToolIcon.Kind.SPEAKER_ON, "Đọc to bản dịch") { toggleSpeak() }.second
-        tool(ToolIcon.Kind.TEXT_SIZE, "Cỡ chữ phụ đề") { showFontDialog() }
-        tool(ToolIcon.Kind.DIAL, "Tốc độ quét phụ đề") { showScanDialog() }
-        tool(ToolIcon.Kind.GEAR, "Cài đặt: Dịch hoặc Thuyết minh, giọng đọc, phóng hình, chất lượng hình") { showSettings() }
-        tool(ToolIcon.Kind.HELP, "Trợ giúp") { help() }
+        homeCell = tool("home", ToolIcon.Kind.HOME, "Nút PS (Home) của tay cầm", solid = true) { tapPs() }.first
+        scanIcon = tool("crop", ToolIcon.Kind.CROP, "Khung chọn vùng phụ đề") { toggleAdjust() }.second
+        subsIcon = tool("subs", ToolIcon.Kind.SUBS, "Bật hoặc tắt dịch phụ đề") { toggleTranslate() }.second
+        speakIcon = tool("speak", ToolIcon.Kind.SPEAKER_ON, "Đọc to bản dịch") { toggleSpeak() }.second
+        tool("font", ToolIcon.Kind.TEXT_SIZE, "Cỡ chữ phụ đề") { showFontDialog() }
+        tool("speed", ToolIcon.Kind.DIAL, "Tốc độ quét phụ đề") { showScanDialog() }
+        zoomIcon = tool("zoom", ToolIcon.Kind.ZOOM, "Phóng hình: vừa khung, ×1,25, ×1,5", collapse = false) { cycleZoom() }.second
+        tool("gear", ToolIcon.Kind.GEAR, "Cài đặt: Dịch hoặc Thuyết minh, giọng đọc, phóng hình, chất lượng hình") { showSettings() }
+        tool("help", ToolIcon.Kind.HELP, "Trợ giúp") { help() }
+        orderTools(bar, false)
         syncTools()
         return bar
     }
 
-    /** Hàng hai nút dưới thanh công cụ: "Dịch hết chữ" (đọc và dịch một lần rồi tự tắt) và "Dịch menu" (dịch liên tục). */
+    /** Bấm lần lượt: vừa khung → ×1,25 → ×1,5 → vừa khung. */
+    private fun cycleZoom() {
+        zoomLevel = (zoomLevel + 1) % zooms.size
+        applyZoom()
+        syncTools()
+        val names = arrayOf("vừa khung", "×1,25", "×1,5")
+        Toast.makeText(this, "Phóng hình: " + names[zoomLevel], Toast.LENGTH_SHORT).show()
+    }
+
+    /** Hàng hai nút dưới thanh công cụ: "Dịch hết chữ" (đọc và dịch một lần rồi tự tắt) và "Dịch menu ›" (dịch liên tục). */
     private fun pillsRow(): LinearLayout {
         val row = Ui.hbox(this)
         row.gravity = Gravity.END or Gravity.CENTER_VERTICAL
-        fun pill(kind: ToolIcon.Kind, text: String, desc: String, onLong: (() -> Unit)?, onClick: () -> Unit): PillUi {
+        fun pill(kind: ToolIcon.Kind, text: String, desc: String, trailing: Boolean, onLong: (() -> Unit)?, onClick: () -> Unit): PillUi {
             val ic = ToolIcon(this, kind, Color.WHITE)
             val tv = Ui.tv(this, text, 15f, Color.WHITE, true).apply { maxLines = 1 }
+            val next = if (trailing) ToolIcon(this, ToolIcon.Kind.NEXT, Color.WHITE) else null
             val box = Ui.hbox(this).apply {
-                setPadding(dpi(14), dpi(9), dpi(16), dpi(9))
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dpi(14), dpi(9), dpi(if (trailing) 10 else 16), dpi(9))
                 isClickable = true
                 isFocusable = true
                 contentDescription = desc
@@ -843,45 +922,56 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 if (onLong != null) setOnLongClickListener { onLong(); true }
                 addView(ic, Ui.lp(dpi(20), dpi(20)).apply { rightMargin = dpi(8) })
                 addView(tv, Ui.lp(WRAP_CONTENT, WRAP_CONTENT))
+                if (next != null) addView(next, Ui.lp(dpi(18), dpi(18)).apply { leftMargin = dpi(2) })
             }
             row.addView(box, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(10) })
-            return PillUi(box, ic, tv, kind)
+            return PillUi(box, ic, tv, kind, next)
         }
         pillOnce = pill(ToolIcon.Kind.SCAN, "Dịch hết chữ",
-            "Đọc và dịch toàn bộ chữ đang có trên hình một lần, giữ vài giây rồi tự tắt", null) { translateOnce() }
+            "Đọc và dịch toàn bộ chữ đang có trên hình một lần, giữ vài giây rồi tự tắt", false, null) { translateOnce() }
         pillMenu = pill(ToolIcon.Kind.BOLT, "Dịch menu",
-            "Dịch liên tục chữ trong menu và giao diện game. Giữ nút để xem chuỗi chưa dịch được", { showUiMissed() }) { toggleUiTr() }
+            "Dịch liên tục chữ trong menu và giao diện game. Giữ nút để xem chuỗi chưa dịch được", true, { showUiMissed() }) { toggleUiTr() }
         stylePill(pillOnce, false)
         stylePill(pillMenu, false)
         return row
     }
 
-    /** Nút dịch đang bật = nền trắng chữ tối (như thanh mẫu); đang tắt = kính tối viền mảnh chữ trắng. */
+    /**
+     * "Dịch hết chữ": kính tối viền mảnh chữ trắng. "Dịch menu ›": nút chính, nền chuyển màu cam → đỏ hồng chữ trắng.
+     * Nút đang bật (cả hai) = nền trắng chữ tối, để nhìn là biết đang chạy.
+     */
     private fun stylePill(p: PillUi?, on: Boolean) {
         p ?: return
-        p.box.background = if (on && p.kind == ToolIcon.Kind.BOLT) Ui.goldBg(this, 22)
-        else if (on) Ui.bg(this, Color.parseColor("#F5FFFFFF"), 22)
-        else Ui.glass(this, 22, strong = true, edge = Color.parseColor("#66FFFFFF"))
+        val menu = p.kind == ToolIcon.Kind.BOLT
+        p.box.background = when {
+            on -> Ui.bg(this, Color.parseColor("#F5FFFFFF"), 22)
+            menu -> android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(PlayTheme.ORANGE, PlayTheme.ORANGE_HOT)
+            ).apply { cornerRadius = dpi(22).toFloat() }
+            else -> Ui.glass(this, 22, strong = true, edge = Color.parseColor("#66FFFFFF"))
+        }
         val c = if (on) Color.parseColor("#17120D") else Color.WHITE
         p.icon.set(p.kind, c)
+        p.next?.set(ToolIcon.Kind.NEXT, c)
         p.label.setTextColor(c)
     }
 
-    /** Vẽ lại trạng thái các nút công cụ (bật = vàng có nền sáng, tắt = trắng/xám). */
+    /** Vẽ lại trạng thái các nút công cụ (bật = cam có nền sáng, tắt = trắng/xám). */
     private fun syncTools() {
         val running = live?.running == true
         val adjusting = live?.isAdjusting == true
         val pr0 = Prefs(this)
         val sp = pr0.speak || pr0.narrate
-        fun mark(ic: ToolIcon?, kind: ToolIcon.Kind, on: Boolean, offColor: Int = Ui.GOLD) {
+        fun mark(ic: ToolIcon?, kind: ToolIcon.Kind, on: Boolean, offColor: Int = PlayTheme.ICON) {
             ic ?: return
-            ic.set(kind, if (on) Ui.GOLD else offColor)
-            (ic.parent as? View)?.background = if (on) Ui.bg(this, Color.parseColor("#33F2B84B"), 16) else null
+            ic.set(kind, if (on) PlayTheme.ORANGE else offColor)
+            (ic.parent as? View)?.background = if (on) Ui.bg(this, Color.parseColor("#33FF8A24"), 16) else null
         }
         mark(scanIcon, ToolIcon.Kind.CROP, adjusting)
         mark(subsIcon, ToolIcon.Kind.SUBS, running)
-        mark(speakIcon, if (sp) ToolIcon.Kind.SPEAKER_ON else ToolIcon.Kind.SPEAKER_OFF, sp, Ui.SUB)
-        padIcon?.set(ToolIcon.Kind.GAMEPAD, if (padOn) Ui.GOLD else Ui.SUB)
+        mark(speakIcon, if (sp) ToolIcon.Kind.SPEAKER_ON else ToolIcon.Kind.SPEAKER_OFF, sp, PlayTheme.ICON_DIM)
+        mark(zoomIcon, ToolIcon.Kind.ZOOM, zoomLevel > 0)
+        padIcon?.set(ToolIcon.Kind.GAMEPAD, if (padOn) PlayTheme.ORANGE else PlayTheme.ICON_DIM)
         val u = uiTr
         stylePill(pillOnce, u != null && u.running && u.once)
         stylePill(pillMenu, u != null && u.running && !u.once)
@@ -1022,12 +1112,13 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         statusCard?.visibility = if (show) View.VISIBLE else View.GONE
         chipView?.text = if (connected) "● Đã kết nối · " + PsQuality.summary(this) else "● " + lines.first()
         chipView?.setTextColor(if (connected) Ui.OK else Ui.GOLD)
+        dotShape?.setColor(if (connected) Ui.OK else PlayTheme.AMBER)
     }
 
     private fun refreshStatus() {
         if (connected) setStatus("", false)
         else if (manual) setStatus("Đã ngắt kết nối", true)
-        else if (session == null) setStatus("Đang tìm máy…\nMáy chơi game cần đang bật (hoặc chế độ nghỉ) và cùng Wi-Fi/LAN với điện thoại.", true)
+        else if (session == null) setStatus("Đang tìm máy…\nVui lòng đợi trong giây lát\nMáy chơi game cần đang bật (hoặc chế độ nghỉ) và cùng Wi-Fi/LAN với điện thoại.", true)
         else setStatus("Đang kết nối…", true)
         syncTools()
     }
@@ -1036,21 +1127,22 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Mẹo khi chơi")
             .setMessage(
-                "Thanh công cụ, từ trái sang phải:\n" +
-                    "⟳  Xoay ngang hoặc dọc. Xoay ngang để xem hình lớn, tay cầm trong suốt phủ lên hình.\n" +
-                    "⌂  Nút PS (Home) của tay cầm: mở trung tâm điều khiển của máy chơi game.\n" +
+                "Thanh công cụ, từ trái sang phải (xoay dọc):\n" +
                     "⌗  Khung chọn vùng phụ đề: kéo khung tới đúng dòng phụ đề của game, kéo chấm tròn để đổi cỡ. Bấm Đặt lại nếu lỡ kéo quá to, bấm Xong để ẩn khung.\n" +
                     "▭  Bật hoặc tắt dịch phụ đề ngay trên hình game.\n" +
                     "🔊  Đọc to bản dịch (bật/tắt).\n" +
                     "A  Cỡ chữ phụ đề.\n" +
                     "◔  Tốc độ quét: quét nhiều đỡ sót câu nhưng hao pin hơn.\n" +
+                    "🔍  Phóng hình: bấm lần lượt vừa khung, ×1,25, ×1,5.\n" +
+                    "⟳  Xoay ngang hoặc dọc. Xoay ngang để xem hình lớn, tay cầm trong suốt phủ lên hình.\n" +
                     "⚙  Cài đặt: Dịch hoặc Thuyết minh, ngôn ngữ trong game, giọng đọc (cơ bản, AI Gemini), tốc độ đọc, phóng hình và chất lượng hình (chất lượng hình áp dụng bằng cách kết nối lại).\n\n" +
+                    "Khi xoay ngang, thanh có thêm nút ⌂ (màu cam) ngay sau nút xoay: nút PS (Home) của tay cầm, mở trung tâm điều khiển của máy chơi game. Xoay dọc thì bấm nút Home cam ở giữa tay cầm ảo.\n\n" +
                     "Hai nút dưới thanh công cụ:\n" +
                     "• Dịch hết chữ: đọc và dịch toàn bộ chữ đang có trên hình MỘT lần (kể cả phụ đề), giữ vài giây rồi tự tắt, hoặc tắt ngay khi cảnh đổi.\n" +
                     "• Dịch menu: dịch liên tục chữ trong menu, vật phẩm, kỹ năng, nhiệm vụ… Bản dịch hiện đè đúng chỗ chữ gốc; viền vàng là bản dịch còn nghi ngờ. Giữ nút này để xem chuỗi chưa dịch được.\n\n" +
                     "Tự thu gọn: bấm xong một nút thì thanh tự thu lại cho khỏi vướng; khi xoay ngang, để yên vài giây thanh cũng tự thu lại. Chạm chấm nhỏ ở giữa mép trên để mở lại.\n\n" +
                     "• Nút tay cầm ở góc trên: ẩn hoặc hiện tay cầm ảo (tay cầm thật nối với điện thoại vẫn dùng được).\n" +
-                    "• Ô người chơi ở góc trên: đổi sang tài khoản đã ghép khác.\n" +
+                    "• Ô ở góc trên (tên game đang dịch, chấm xanh là đã kết nối): bấm để đổi sang tài khoản đã ghép khác.\n" +
                     "• Thanh nhỏ dưới hình (khi xoay dọc): thu gọn hoặc mở thanh công cụ.\n" +
                     "• Máy báo đang bận: tắt Chơi từ xa ở thiết bị khác, đợi 30 giây rồi thử lại.\n" +
                     "• Hình giật: dùng Wi-Fi 5 GHz hoặc dây LAN cho máy chơi game, hạ chất lượng hình ở ⚙."

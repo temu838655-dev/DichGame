@@ -22,24 +22,31 @@ import kotlin.math.min
  * Nhiều ngón cùng lúc. Mỗi lần trạng thái đổi thì gọi [onState] với trạng thái đầy đủ.
  */
 class PadView(context: Context, private val onState: (ControllerState) -> Unit) : View(context) {
-    private val gold = Color.parseColor("#F2B84B")
-    private val fill = Color.parseColor("#26201A")
-    private val fillDown = Color.parseColor("#6B4F1D")
+    private val orange = PlayTheme.ORANGE
+    private val ice = PlayTheme.ICON
+    private val fill = Color.parseColor("#1D1B2A")
+    private val fillDown = Color.parseColor("#5A3412")
     private val back = Color.parseColor("#090A15")
-    private val neonBlue = Color.parseColor("#22ABFF")
-    private val neonPurple = Color.parseColor("#CE48FF")
-    private val neonPink = Color.parseColor("#FF4D83")
 
-    private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = gold; strokeWidth = 3f }
-    private val soft = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.parseColor("#66F2B84B"); strokeWidth = 2f }
+    private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.parseColor("#B3FF8A24"); strokeWidth = 3f }
+    private val soft = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.parseColor("#50FFFFFF"); strokeWidth = 2f }
+    private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 3f }
+    private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 8f }
     private val fillP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = gold; textAlign = Paint.Align.CENTER; isFakeBoldText = true }
-    private val sym = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = gold; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ice; textAlign = Paint.Align.CENTER; isFakeBoldText = true }
+    private val sym = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = ice; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     // Shader được tạo khi kích thước đổi, không tạo đối tượng mới mỗi khung hình cảm ứng.
     private val bgGradient = Paint(Paint.ANTI_ALIAS_FLAG)
     private val leftHalo = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rightHalo = Paint(Paint.ANTI_ALIAS_FLAG)
     private val psHalo = Paint(Paint.ANTI_ALIAS_FLAG)
+    // Nền sóng cam (chỉ chế độ dọc)
+    private val waveLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+    private val waveFill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val waves = ArrayList<Path>()
+    private val waveFillPath = Path()
+    private val waveAlpha = intArrayOf(255, 170, 105)
+    private var ringW = 3f
 
     private class Box(val key: String, val r: RectF)
     private class Round(val key: String, var cx: Float, var cy: Float, var rad: Float)
@@ -77,24 +84,29 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
         val portrait = w <= h * 1.25f
         if (!portrait) layoutLandscape(w.toFloat(), h.toFloat()) else layoutPortrait(w.toFloat(), h.toFloat())
         if (portrait && w > 0 && h > 0) {
-            bgGradient.shader = LinearGradient(0f, 0f, w.toFloat(), h.toFloat(),
-                intArrayOf(Color.parseColor("#171328"), Color.parseColor("#090B17"), Color.parseColor("#160E21")),
+            bgGradient.shader = LinearGradient(0f, 0f, 0f, h.toFloat(),
+                intArrayOf(Color.parseColor("#13121F"), Color.parseColor("#0A0B16"), Color.parseColor("#1A0F14")),
                 null, Shader.TileMode.CLAMP)
+            buildWaves(w.toFloat(), h.toFloat())
             psHalo.shader = rounds.firstOrNull { it.key == "PS" }?.let { r ->
-                RadialGradient(r.cx, r.cy, r.rad * 1.9f,
-                    intArrayOf(Color.parseColor("#66F6A637"), Color.parseColor("#00F6A637")),
+                RadialGradient(r.cx, r.cy, r.rad * 2.3f,
+                    intArrayOf(Color.parseColor("#AAFF7A1A"), Color.parseColor("#00FF7A1A")),
                     null, Shader.TileMode.CLAMP)
             }
-            fun halo(cx: Float, cy: Float, radius: Float, color: Int): RadialGradient =
+            fun halo(cx: Float, cy: Float, radius: Float): RadialGradient =
                 RadialGradient(cx, cy, radius * 1.5f,
-                    intArrayOf(Color.argb(90, Color.red(color), Color.green(color), Color.blue(color)), Color.TRANSPARENT),
+                    intArrayOf(Color.parseColor("#5AFF8A24"), Color.TRANSPARENT),
                     null, Shader.TileMode.CLAMP)
-            leftHalo.shader = halo(lsCx, lsCy, lsR, neonBlue)
-            rightHalo.shader = halo(rsCx, rsCy, rsR, neonPurple)
+            leftHalo.shader = halo(lsCx, lsCy, lsR)
+            rightHalo.shader = halo(rsCx, rsCy, rsR)
         }
         stroke.strokeWidth = (min(w, h) / 200f).coerceAtLeast(2f)
         soft.strokeWidth = stroke.strokeWidth * 0.7f
         sym.strokeWidth = stroke.strokeWidth * 1.3f
+        ringW = stroke.strokeWidth
+        ring.strokeWidth = ringW
+        glow.strokeWidth = ringW * 3f
+        waveLine.strokeWidth = stroke.strokeWidth * 1.1f
         // Khi xoay màn hình/đổi kích thước, tọa độ điều khiển cũ không còn hợp lệ.
         if (ow > 0 && oh > 0 && (ow != w || oh != h)) releaseAll()
     }
@@ -146,19 +158,49 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
 
     // ---------------- Vẽ ----------------
 
+    /** Ba đường sóng cam chạy ngang phần dưới của bảng tay cầm (nền kiểu ảnh mẫu), cộng một dải sáng mờ dưới sóng đầu. */
+    private fun buildWaves(w: Float, h: Float) {
+        waves.clear()
+        waveFillPath.reset()
+        val bases = floatArrayOf(0.60f, 0.72f, 0.86f)
+        for (i in bases.indices) {
+            val y0 = h * bases[i]
+            val amp = h * (0.045f - i * 0.01f)
+            val p = Path()
+            p.moveTo(0f, y0)
+            p.cubicTo(w * 0.20f, y0 - amp * 2f, w * 0.35f, y0 + amp * 2f, w * 0.55f, y0)
+            p.cubicTo(w * 0.72f, y0 - amp * 2f, w * 0.88f, y0 + amp * 2f, w, y0 - amp)
+            waves.add(p)
+            if (i == 0) {
+                waveFillPath.addPath(p)
+                waveFillPath.lineTo(w, h); waveFillPath.lineTo(0f, h); waveFillPath.close()
+            }
+        }
+        waveFill.shader = LinearGradient(0f, h * 0.55f, 0f, h,
+            intArrayOf(Color.parseColor("#00FF7A1A"), Color.parseColor("#26FF6A1F"), Color.parseColor("#55FF5A1F")),
+            null, Shader.TileMode.CLAMP)
+        waveLine.shader = LinearGradient(0f, 0f, w, 0f,
+            intArrayOf(Color.parseColor("#00FF8A24"), Color.parseColor("#E6FF8A24"), Color.parseColor("#55FF4D5E")),
+            null, Shader.TileMode.CLAMP)
+    }
+
+    private fun isFace(key: String) = key == "TRI" || key == "SQU" || key == "CIR" || key == "CRO"
+
     override fun onDraw(c: Canvas) {
         val portrait = width <= height * 1.25f
         if (portrait) {
-            // Sắc kính đen pha xanh/tím như bảng tay cầm mẫu; ngang luôn trong suốt để không che game.
+            // Kính đen pha tím, sóng cam ở nửa dưới như bảng tay cầm mẫu; ngang luôn trong suốt để không che game.
             c.drawColor(back)
             c.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgGradient)
+            c.drawPath(waveFillPath, waveFill)
+            for (i in waves.indices) { waveLine.alpha = waveAlpha[i]; c.drawPath(waves[i], waveLine) }
         }
         for (b in boxes) {
             val on = b.key in pressed
             fillP.color = if (on) fillDown else fill
-            val rr = b.r.height() / 3f
+            val rr = b.r.height() / 2.6f
             c.drawRoundRect(b.r, rr, rr, fillP)
-            c.drawRoundRect(b.r, rr, rr, stroke)
+            c.drawRoundRect(b.r, rr, rr, if (on) stroke else soft)
             text.textSize = b.r.height() * 0.5f
             c.drawText(b.key, b.r.centerX(), b.r.centerY() + text.textSize * 0.35f, text)
         }
@@ -170,45 +212,54 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
 
     private fun drawRound(c: Canvas, r: Round) {
         val on = r.key in pressed
-        if (r.key == "PS" && width <= height * 1.25f) {
-            c.drawCircle(r.cx, r.cy, r.rad * 1.9f, psHalo)
+        val portrait = width <= height * 1.25f
+        val ps = r.key == "PS"
+        val col = when (r.key) {
+            "TRI" -> PlayTheme.TRI
+            "SQU" -> PlayTheme.SQU
+            "CIR" -> PlayTheme.CIR
+            "CRO" -> PlayTheme.CRO
+            else -> ice
         }
-        fillP.color = if (r.key == "PS") (if (on) Color.parseColor("#FFD28A") else gold) else if (on) fillDown else fill
+        if (ps && portrait) c.drawCircle(r.cx, r.cy, r.rad * 2.3f, psHalo)
+        fillP.color = if (ps) (if (on) Color.parseColor("#FFB066") else orange) else if (on) fillDown else fill
         c.drawCircle(r.cx, r.cy, r.rad, fillP)
-        c.drawCircle(r.cx, r.cy, r.rad, if (r.key == "PS") soft else stroke)
-        val s = r.rad * 0.42f
-        sym.color = when (r.key) {
-            "TRI" -> neonBlue
-            "SQU" -> neonPurple
-            "CIR" -> neonPink
-            "CRO" -> neonBlue
-            else -> gold
+        when {
+            isFace(r.key) -> {
+                // vòng màu có vầng sáng mờ bên ngoài, giống nút tay cầm PlayStation
+                glow.color = Color.argb(70, Color.red(col), Color.green(col), Color.blue(col))
+                c.drawCircle(r.cx, r.cy, r.rad, glow)
+                ring.color = col
+                c.drawCircle(r.cx, r.cy, r.rad, ring)
+            }
+            ps -> { ring.color = Color.parseColor("#FFD2A0"); c.drawCircle(r.cx, r.cy, r.rad, ring) }
+            else -> c.drawCircle(r.cx, r.cy, r.rad, soft)
         }
+        val s = r.rad * 0.42f
+        sym.color = if (ps) Color.WHITE else col
         when (r.key) {
             "TRI" -> { val p = Path(); p.moveTo(r.cx, r.cy - s * 1.1f); p.lineTo(r.cx + s * 1.05f, r.cy + s * 0.8f); p.lineTo(r.cx - s * 1.05f, r.cy + s * 0.8f); p.close(); c.drawPath(p, sym) }
             "SQU" -> c.drawRect(r.cx - s, r.cy - s, r.cx + s, r.cy + s, sym)
             "CIR" -> c.drawCircle(r.cx, r.cy, s * 1.1f, sym)
             "CRO" -> { c.drawLine(r.cx - s, r.cy - s, r.cx + s, r.cy + s, sym); c.drawLine(r.cx + s, r.cy - s, r.cx - s, r.cy + s, sym) }
             "PS" -> {
-                // Nút Home: hình ngôi nhà tối trên nền vàng
-                sym.color = Color.parseColor("#2A1A08")
+                // Nút Home: hình ngôi nhà trắng trên nền cam phát sáng
                 val q = r.rad * 0.5f
                 val h = Path()
                 h.moveTo(r.cx - q * 1.15f, r.cy - q * 0.05f); h.lineTo(r.cx, r.cy - q * 1.0f); h.lineTo(r.cx + q * 1.15f, r.cy - q * 0.05f)
                 h.moveTo(r.cx - q * 0.8f, r.cy - q * 0.15f); h.lineTo(r.cx - q * 0.8f, r.cy + q * 0.95f)
                 h.lineTo(r.cx + q * 0.8f, r.cy + q * 0.95f); h.lineTo(r.cx + q * 0.8f, r.cy - q * 0.15f)
                 c.drawPath(h, sym)
-                sym.color = gold
             }
             "SHARE" -> { c.drawRect(r.cx - s * 0.9f, r.cy - s * 0.5f, r.cx + s * 0.5f, r.cy + s * 0.9f, sym); c.drawRect(r.cx - s * 0.5f, r.cy - s * 0.9f, r.cx + s * 0.9f, r.cy + s * 0.5f, sym) }
             "TP" -> { for (i in -1..1) for (j in -1..1) c.drawCircle(r.cx + i * s * 0.75f, r.cy + j * s * 0.75f, s * 0.14f, sym) }
             "OPT" -> { for (j in -1..1) c.drawLine(r.cx - s, r.cy + j * s * 0.7f, r.cx + s, r.cy + j * s * 0.7f, sym) }
         }
-        sym.color = gold
+        sym.color = ice
     }
 
     private fun drawDpad(c: Canvas) {
-        fillP.color = Color.parseColor("#1B1611")
+        fillP.color = Color.parseColor("#161524")
         c.drawCircle(dpadCx, dpadCy, dpadR, fillP)
         c.drawCircle(dpadCx, dpadCy, dpadR, soft)
         val a = dpadR * 0.56f
@@ -222,7 +273,7 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
             fillP.color = if (on) fillDown else fill
             val rect = RectF(dpadCx + dx - half, dpadCy + dy - half, dpadCx + dx + half, dpadCy + dy + half)
             c.drawRoundRect(rect, half / 3f, half / 3f, fillP)
-            c.drawRoundRect(rect, half / 3f, half / 3f, soft)
+            c.drawRoundRect(rect, half / 3f, half / 3f, if (on) stroke else soft)
             val s = half * 0.45f
             val x = rect.centerX(); val y = rect.centerY()
             val p = Path()
@@ -240,19 +291,22 @@ class PadView(context: Context, private val onState: (ControllerState) -> Unit) 
         if (width <= height * 1.25f) {
             c.drawCircle(cx, cy, r * 1.5f, if (cx < width / 2f) leftHalo else rightHalo)
         }
-        fillP.color = Color.parseColor("#1B1611")
+        fillP.color = Color.parseColor("#13121E")
         c.drawCircle(cx, cy, r, fillP)
-        c.drawCircle(cx, cy, r, soft)
-        fillP.color = if (on) Color.parseColor("#F7C766") else Color.parseColor("#2E251B")
+        ring.color = Color.parseColor("#66FF8A24")
+        c.drawCircle(cx, cy, r, ring)
         val kx = cx + nx * r * 0.7f
         val ky = cy + ny * r * 0.7f
+        fillP.color = if (on) fillDown else Color.parseColor("#1E1B2A")
         c.drawCircle(kx, ky, r * 0.5f, fillP)
-        // Núm cần có viền vàng dày như ảnh mẫu
-        val w0 = stroke.strokeWidth
-        stroke.strokeWidth = w0 * 2.2f
-        c.drawCircle(kx, ky, r * 0.46f, stroke)
-        stroke.strokeWidth = w0
-        fillP.color = if (on) Color.parseColor("#FFE29A") else gold
+        // Núm cần: vòng cam dày phát sáng như ảnh mẫu
+        glow.color = Color.parseColor("#55FF8A24")
+        c.drawCircle(kx, ky, r * 0.46f, glow)
+        ring.strokeWidth = ringW * 2.4f
+        ring.color = if (on) Color.parseColor("#FFB066") else orange
+        c.drawCircle(kx, ky, r * 0.46f, ring)
+        ring.strokeWidth = ringW
+        fillP.color = if (on) Color.parseColor("#FFD2A0") else orange
         c.drawCircle(kx, ky, r * 0.1f, fillP)
     }
 
