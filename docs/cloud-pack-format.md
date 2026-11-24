@@ -14,3 +14,6 @@ SHA-256 kiểm tra tính toàn vẹn so với manifest, không thay thế chữ 
 
 ## Kho Cloud theo phiên bản
 Từ bản cập nhật này, gói Cloud lưu riêng theo game/hồ sơ và thay thế nguyên tử khi tải phiên bản mới hơn. Cùng phiên bản và SHA-256 thì không tải lại CSV; phiên bản cũ hơn hoặc cùng phiên bản nhưng khác nội dung bị từ chối. File nhập tay luôn ưu tiên hơn Cloud; xuất CSV gồm cả hai lớp. Gói Cloud đã nhập bằng phiên bản cũ nằm trong kho cá nhân và không tự di chuyển để tránh làm mất bản sửa tay. Nếu nhà cung cấp đổi nguồn, cần xóa kho hiện có hoặc dùng hồ sơ riêng, sau khi sao lưu. Chưa có tải tự động hoặc upload dữ liệu cá nhân lên Cloudflare.
+
+## Kiểm tra cập nhật ngay trong app
+Thẻ Kho Cloud · offline hiển thị phiên bản đã lưu. Sau lần nhập manifest thành công, app nhớ URL manifest trong kho nội bộ, cho phép kiểm tra bản mới bằng một nút. Không tự gửi bản dịch cá nhân lên server. Có thể xóa riêng lớp Cloud mà không xóa bản nhập tay. Đổi nguồn Cloud cần sao lưu và xóa riêng kho Cloud trước. Manifest cũ chưa lưu URL cần nhập lại một lần. Không hỗ trợ cập nhật định kỳ trong nền ở thay đổi này.

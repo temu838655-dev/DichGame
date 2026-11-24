@@ -17,6 +17,7 @@ import android.widget.Toast
 class PackActivity : Activity() {
     private lateinit var p: Prefs
     private var voicePreview: Speaker? = null
+    private var linkBusy = false
 
     override fun onDestroy() {
         voicePreview?.shutdown()
@@ -97,6 +98,29 @@ class PackActivity : Activity() {
                     .setNegativeButton("Hủy", null).show()
             }, Ui.lpm(this@PackActivity, 8, 0))
             put(m, 0, 12)
+
+            val cloud = PackStore.cloudInfo(this@PackActivity, p.profile, name)
+            val cloudCard = Ui.card(this@PackActivity)
+            cloudCard.addView(Ui.section(this@PackActivity, "☁", "Kho Cloud · offline"))
+            cloudCard.addView(Ui.tv(this@PackActivity,
+                if (cloud == null) "Chưa có kho Cloud cho game đang chọn."
+                else "Phiên bản ${cloud.version} đã lưu trên máy. Khi mất mạng vẫn dùng được. Bản nhập tay được ưu tiên.",
+                13f, Ui.SUB), Ui.lpm(this@PackActivity, 0, 8))
+            cloudCard.addView(Ui.button(this@PackActivity, if (linkBusy) "Đang tải…" else if (cloud?.source != null) "Kiểm tra bản Cloud mới" else "Nhập link gói Cloud") {
+                val source = cloud?.source
+                if (source != null) downloadLink(source) else linkDialog()
+            })
+            if (cloud != null) cloudCard.addView(Ui.button(this@PackActivity, "Xóa riêng kho Cloud") {
+                val expected = scope()
+                AlertDialog.Builder(this@PackActivity, R.style.DgDialog)
+                    .setMessage("Chỉ xóa kho Cloud đã tải của game này. Giữ nguyên các câu nhập tay và bộ nhớ AI.")
+                    .setPositiveButton("Xóa kho Cloud") { _, _ ->
+                        if (scope() == expected) PackStore.deleteCloud(this@PackActivity, expected.first, expected.second)
+                        render()
+                    }
+                    .setNegativeButton("Hủy", null).show()
+            }, Ui.lpm(this@PackActivity, 8, 0))
+            put(cloudCard, 0, 12)
 
             // Bộ nhớ dịch AI lưu trên thiết bị theo hồ sơ, tách khỏi gói Việt hóa nhập tay.
             val learned = LearnedTranslations.count(this@PackActivity, p.profile, name)
@@ -475,16 +499,36 @@ class PackActivity : Activity() {
             .setPositiveButton("Tải và nhập") { _, _ ->
                 val u = et.text.toString().trim()
                 if (u.isEmpty()) return@setPositiveButton
-                Toast.makeText(this, "Đang tải gói…", Toast.LENGTH_SHORT).show()
-                Thread {
-                    val msg = try { PackStore.importLink(this, p, u) } catch (e: Exception) { "Không tải được gói: " + (e.message ?: e.javaClass.simpleName) }
-                    runOnUiThread { done(msg) }
-                }.start()
+                downloadLink(u)
             }
             .setNegativeButton("Hủy", null).show()
     }
 
+    private fun downloadLink(url: String) {
+        if (linkBusy) {
+            Toast.makeText(this, "Đang tải một gói khác.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val expected = scope()
+        val prefs = p
+        val app = applicationContext
+        linkBusy = true
+        Toast.makeText(this, "Đang tải gói…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val msg = try {
+                PackStore.importLink(app, prefs, url, expected.first, expected.second)
+            } catch (e: Exception) {
+                "Không tải được gói: " + (e.message ?: e.javaClass.simpleName)
+            }
+            runOnUiThread {
+                linkBusy = false
+                if (!isFinishing && !isDestroyed) done(msg)
+            }
+        }.start()
+    }
+
     private fun done(msg: String) {
+        if (isFinishing || isDestroyed) return
         AlertDialog.Builder(this, R.style.DgDialog).setMessage(msg).setPositiveButton("Đã hiểu", null).show()
         render()
     }
