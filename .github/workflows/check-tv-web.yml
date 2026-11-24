@@ -1,18 +1,21 @@
 name: Check TV web receivers
 on:
   push:
-    paths: ['samsung/**', 'webos/**', '.github/workflows/check-tv-web.yml']
+    paths: ['samsung/**', 'webos/**', 'tests/tv-pairing.test.js', '.github/workflows/check-tv-web.yml']
   pull_request:
-    paths: ['samsung/**', 'webos/**', '.github/workflows/check-tv-web.yml']
+    paths: ['samsung/**', 'webos/**', 'tests/tv-pairing.test.js', '.github/workflows/check-tv-web.yml']
   workflow_dispatch:
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: node --check samsung/receiver.js
+      - run: |
+          node --check samsung/receiver.js
           node --check samsung/pairing.js
           node --check webos/pairing.js
+          cmp samsung/pairing.js webos/pairing.js
+          node tests/tv-pairing.test.js
       - run: bash -n samsung/package-dev.sh
       - run: |
           python3 - <<'PY'

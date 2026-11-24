@@ -62,6 +62,10 @@ class WebSubServer(private val port: Int = 8780) {
         }
     }
 
+    fun clearTestSubtitle(expected: String) {
+        synchronized(lock) { if (text == expected) push("") }
+    }
+
     private fun boundedLine(rd: BufferedReader): String? {
         val b = StringBuilder()
         while (b.length < 4096) {
@@ -79,8 +83,7 @@ class WebSubServer(private val port: Int = 8780) {
             val rd = BufferedReader(InputStreamReader(c.getInputStream(), Charsets.ISO_8859_1))
             val line = boundedLine(rd) ?: return
             var headers = 0
-            var origin = ""
-            while (true) { val h = boundedLine(rd) ?: return; if (h.isEmpty()) break; if (++headers > 64) return; if (h.substringBefore(':').equals("Origin", true)) origin = h.substringAfter(':').trim() }
+            while (true) { val h = boundedLine(rd) ?: return; if (h.isEmpty()) break; if (++headers > 64) return }
             val parts = line.split(' ')
             if (parts.firstOrNull() != "GET") { reply(c, 404, "text/plain; charset=utf-8", "404"); return }
             val target = parts.getOrElse(1) { "/" }

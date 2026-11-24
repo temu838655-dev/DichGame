@@ -51,7 +51,7 @@ class TvSetupActivity : Activity() {
                 val row = Ui.hbox(a)
                 row.addView(brandTile("Google TV", "Cài bằng Downloader", 0), Ui.lp(0, MATCH_PARENT, 1f))
                 row.addView(brandTile("TV LG", "Thông báo trên TV", 1), tileLp())
-                row.addView(brandTile("TV Samsung", "Chiếu / trình duyệt", 2), tileLp())
+                row.addView(brandTile("TV Samsung", "App Tizen thử nghiệm", 2), tileLp())
                 addView(row)
                 addView(Ui.tv(a, brandInfo(), 13.5f, if (brand == 0) Ui.SUB else Ui.GOLD2).apply {
                     setPadding(Ui.dp(a, 2), Ui.dp(a, 12), 0, Ui.dp(a, 2))
@@ -89,7 +89,7 @@ class TvSetupActivity : Activity() {
     private fun brandInfo(): String = when (brand) {
         0 -> "TV Sony, TCL, Xiaomi... chạy Android TV hoặc Google TV, Android 8 trở lên. Cài app ngay trên TV bằng remote, không cần máy tính."
         1 -> "TV LG webOS: Dịch game ghép với TV qua LG Connect Apps rồi gửi phụ đề thành thông báo chữ của TV, nằm đè lên cả hình HDMI của máy chơi game. (thử nghiệm, chưa thử trên TV LG thật; trình cài webOS từ Android đang thử nghiệm)"
-        else -> "TV Samsung (Tizen): Samsung không cho app ngoài hiện chữ đè lên hình HDMI, và app Tizen phải ký bằng chứng chỉ Samsung nên chưa có app cài lên TV. Dùng chiếu màn hình hoặc trang web phụ đề. (thử nghiệm)"
+        else -> "TV Samsung (Tizen): app thử nghiệm dùng cửa sổ HDMI bên trong ứng dụng; cần WGT ký chứng chỉ phù hợp. Chưa kiểm thử trên TV thật."
     }
 
     private fun brandTile(name: String, how: String, idx: Int): View {
@@ -228,8 +228,10 @@ class TvSetupActivity : Activity() {
                         val started = TvOut.startWeb(applicationContext) != null
                         LgDeveloperInstaller.launch(connected, if (started) phoneIp else null)
                         runOnUiThread {
-                            result.setTextColor(Ui.OK)
-                            result.text = if (started) "TV đã xác nhận cài và mở app. Ghép mã 8 số ở mục bên dưới. Nếu chưa tự nối, nhập IP điện thoại: ${phoneIp ?: "xem mục trang web phụ đề"}:${TvOut.WEB_PORT}." else "Đã cài và mở app; hãy bật lại trang web phụ đề."
+                            if (!isFinishing && !isDestroyed && brand == 1) {
+                                render()
+                                Toast.makeText(this, if (started) "TV đã mở app. Nhập mã 8 số trong mục máy chủ phụ đề." else "Đã mở app; hãy bật máy chủ phụ đề.", Toast.LENGTH_LONG).show()
+                            }
                         }
                     } catch (e: Exception) {
                         runOnUiThread {
@@ -351,7 +353,7 @@ class TvSetupActivity : Activity() {
         c.addView(step(1, "Ghép nối PS4/PS5 trong app một lần: Trang chủ, Ghép nối máy chơi game."))
         c.addView(step(2, "Vào chơi trong app, bấm 🌐 để bật dịch phụ đề rồi kéo khung tới dòng phụ đề của game."))
         c.addView(step(3, "Chiếu điện thoại lên TV Samsung bằng Smart View (xem khung chiếu bên dưới), hoặc mở trang web phụ đề trên trình duyệt của TV để xem chữ dịch ở màn hình thứ hai."))
-        c.addView(Ui.tv(this, "Chưa có app Dịch game cài được lên TV Samsung. Bật Developer Mode trên TV chỉ có tác dụng khi bạn có gói app Tizen đã ký riêng cho TV của mình (xem Hướng dẫn chi tiết).", 12.5f, Ui.SUB), Ui.lpm(this, 8, 0))
+        c.addView(Ui.tv(this, "App Tizen thử nghiệm có nhận phụ đề qua mã ghép nối; cần đóng gói và ký WGT phù hợp trước khi cài. Xem Hướng dẫn chi tiết.", 12.5f, Ui.SUB), Ui.lpm(this, 8, 0))
     }
 
     /** Hướng dẫn chiếu màn hình điện thoại lên TV: phụ đề nằm sẵn trên hình điện thoại nên TV nào cũng thấy. */
@@ -387,6 +389,11 @@ class TvSetupActivity : Activity() {
                 Toast.makeText(this, if (ok) "Đã ghép TV" else "Mã sai, hết hạn hoặc đã đạt giới hạn TV", Toast.LENGTH_LONG).show()
                 if (ok) pairingCode.text.clear()
             })
+            c.addView(Ui.button(this, "Gửi câu thử đến app TV") {
+                val server = TvOut.web
+                server?.push("DichGame: phụ đề thử nghiệm")
+                android.os.Handler(mainLooper).postDelayed({ server?.clearTestSubtitle("DichGame: phụ đề thử nghiệm") }, 5000)
+            }, Ui.lpm(this, 8, 8))
             c.addView(Ui.button(this, "Bỏ ghép tất cả app TV") { TvOut.web?.revokeReceivers(); Toast.makeText(this, "Đã bỏ ghép", Toast.LENGTH_SHORT).show() }, Ui.lpm(this, 8, 8))
             c.addView(Ui.switchRow(this, "Cho phép trình duyệt không cần mã", "Chỉ bật khi cần; mọi thiết bị cùng mạng có thể đọc phụ đề.", p.sp.getBoolean("web_legacy", false)) { enabled ->
                 p.sp.edit().putBoolean("web_legacy", enabled).apply()
