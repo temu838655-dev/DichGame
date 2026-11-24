@@ -21,6 +21,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     // Một instance có thể sống qua thao tác chọn game ở Kho game. Không cho cache
     // hoặc ngữ cảnh của game cũ đi vào lời nhắc của game mới.
     private var activeGameContext = ""
+    @Volatile private var contextGeneration = 0L
+    private val pending = PendingTranslations<TranslationRequestKey, Tr>()
     private val aiExecutor = java.util.concurrent.ThreadPoolExecutor(
         2, 2, 0L, java.util.concurrent.TimeUnit.MILLISECONDS,
         java.util.concurrent.ArrayBlockingQueue<Runnable>(12)
@@ -131,8 +133,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     }
 
     /** Các câu đã dịch xong và đạt kiểm tra: gặp lại (khung hình lặp, nhân vật nói lại) thì dùng ngay, không gọi AI lần nữa. */
-    private val cache = object : LinkedHashMap<String, Tr>(64, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Tr>?): Boolean = size > 160
+    private val cache = object : LinkedHashMap<TranslationRequestKey, Tr>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<TranslationRequestKey, Tr>?): Boolean = size > 160
     }
 
     fun translate(text: String, done: (String) -> Unit) = translateEx(text) { vi, _ -> done(vi) }
@@ -154,6 +156,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      * không có người nói hay cảm xúc. Gói Việt hoá, bộ nhớ đệm, thuật ngữ và kiểm tra bản dịch vẫn áp dụng như cũ.
      */
     fun translateFull(text: String, speaker: String?, ui: Boolean, done: (Tr) -> Unit) {
+        if (closed) return
         val st = SessionStats.live
         val profile = p.profile
         val game = PackStore.gameName(p)
@@ -161,17 +164,19 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         val context = profile + "\u0000" + game + "\u0000" + gameDescription
         if (activeGameContext != context) {
             activeGameContext = context
+            contextGeneration++
+            pending.clear()
             history.clear()
             cache.clear()
         }
         // Một câu dịch đang chờ Gemini khi người chơi đổi game sẽ bị loại,
         // không hiện phụ đề cũ và không lưu vào bộ nhớ của game mới.
-        fun stillCurrent(): Boolean = !closed && profile == p.profile && gameDescription == p.game && game == PackStore.gameName(p)
+        val generation = contextGeneration
+        fun stillCurrent(): Boolean = !closed && generation == contextGeneration && profile == p.profile && gameDescription == p.game && game == PackStore.gameName(p)
         fun emit(result: Tr) { if (stillCurrent()) done(result) }
-        val key = context + "\u0000" +
-            (if (ui) "ui|" else "") + (speaker?.lowercase(java.util.Locale.ROOT) ?: "") + "|" + text.trim()
+        val key = TranslationRequestKey(context, speaker?.lowercase(java.util.Locale.ROOT), ui, text.trim())
         val hist = if (ui) emptyList() else history.takeLast(p.ctxCount)
-        if (!ui) {
+        if (!ui && !pending.contains(key)) {
             history.add(if (speaker != null) "$speaker: $text" else text)
             while (history.size > 10) history.removeAt(0)
         }
@@ -206,8 +211,12 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         val names = guardNames(terms, cast)
         val pace = if (ui) null else (Cast.byName(speaker, cast) ?: Cast.speakerOf(text, cast))?.pace
         val aiOn = Ai.enabled(p)
+        if (lang == "vi") { emit(Tr(text, null, false, "may")); return }
+        val flight = pending.begin(key, done) ?: run { st.inc("dich_gop"); return }
+        fun discard() { pending.take(key, flight) }
         fun finish(t: Tr) {
-            if (!stillCurrent()) return
+            val callbacks = pending.take(key, flight)
+            if (callbacks.isEmpty() || !stillCurrent()) return
             // Chỉ tự lưu bản Gemini/CloudAPI chắc chắn đạt TranslationGuard.OK.
             // Không ghi bản dịch máy dự phòng hoặc bản dịch AI bị nghi ngờ.
             val saved = p.learnTranslations && t.via == "ai" && !t.uncertain &&
@@ -217,11 +226,16 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             // Câu đã lưu lâu dài không giữ thêm trong cache: khi người dùng xóa bộ nhớ
             // sẽ không bị trả lại bản cũ từ cache trong cùng phiên chơi.
             else if (!saved && (t.via != "may" || !aiOn)) cache[key] = t
-            emit(t)
+            for (callback in callbacks) {
+                if (!stillCurrent()) break
+                try { callback(t) } catch (e: Exception) {
+                    android.util.Log.w("DG_TRANSLATE", "Translation callback failed", e)
+                }
+            }
         }
         fun fallbackLocal() {
-            if (!stillCurrent()) return
-            translateLocal(text, names, pace) { localResult ->
+            if (!stillCurrent()) { discard(); return }
+            try { translateLocal(text, names, pace) { localResult ->
                 // Khớp mờ chỉ là gợi ý khi cả AI và dịch máy không cho kết quả chắc chắn.
                 // Không tự đọc hoặc tự lưu một câu suy đoán từ gói Việt hóa.
                 if (localResult.uncertain && packHit != null && packHit.fuzzy &&
@@ -229,13 +243,16 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                     st.inc("dich_goi_gan")
                     finish(Tr(packHit.vi, null, true, "goi"))
                 } else finish(localResult)
+            } } catch (e: Exception) {
+                android.util.Log.w("DG_TRANSLATE", "Offline translation failed", e)
+                finish(Tr(text, null, true, "may"))
             }
         }
-        if (lang == "vi") { emit(Tr(text, null, false, "may")); return }
         if (!aiOn) { fallbackLocal(); return }
         val emo = p.emoTr && !ui
         try { aiExecutor.execute {
-            if (!stillCurrent()) return@execute
+            if (!stillCurrent()) { main.post { discard() }; return@execute }
+            try {
             var chosen: Tr? = null
             var strict: String? = null
             val cool = Ai.coolingMs(p)
@@ -244,7 +261,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 st.inc(AiRetry.statKey(AiRetry.Kind.QUOTA))
                 warn(AiRetry.explain(AiRetry.Kind.QUOTA, 429, cool))
             } else for (attempt in 0..1) {
-                if (!stillCurrent()) return@execute
+                if (!stillCurrent()) { main.post { discard() }; return@execute }
                 val prompt = Ai.prompt(p, srcName(), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui)
                 var raw: String? = null
                 try {
@@ -270,11 +287,15 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             }
             val res = chosen
             main.post {
-                if (!stillCurrent()) return@post
+                if (!stillCurrent()) { discard(); return@post }
                 if (res != null) finish(res) else fallbackLocal()
             }
+            } catch (e: Exception) {
+                android.util.Log.w("DG_TRANSLATE", "AI translation pipeline failed", e)
+                main.post { fallbackLocal() }
+            }
         } } catch (_: java.util.concurrent.RejectedExecutionException) {
-            if (stillCurrent()) fallbackLocal()
+            fallbackLocal()
         }
     }
 
@@ -322,6 +343,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
 
     fun close() {
         closed = true
+        pending.clear()
         aiExecutor.shutdownNow()
         try { local?.close() } catch (_: Exception) {}
     }
