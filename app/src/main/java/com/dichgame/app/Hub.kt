@@ -42,7 +42,7 @@ object Hub {
     }
 
     /** Home uses separate metallic tiles; Settings retains its original navigation rows. */
-    fun homeGrid(a: Activity, p: Prefs): LinearLayout {
+    fun homeGrid(a: Activity, p: Prefs, consolePaired: Boolean): LinearLayout {
         val grid = Ui.vbox(a)
         fun tile(kind: ToolIcon.Kind, title: String, value: String, action: () -> Unit): View {
             val tile = Ui.card(a, 13)
@@ -65,14 +65,19 @@ object Hub {
             return tile
         }
         fun pair(left: View, right: View) {
-            val row = Ui.hbox(a).apply { gravity = Gravity.TOP }
-            row.addView(left, Ui.lp(0, MATCH_PARENT, 1f))
-            row.addView(right, Ui.lp(0, MATCH_PARENT, 1f).apply { leftMargin = Ui.dp(a, 10) })
+            val row = Ui.hbox(a).apply { gravity = Gravity.TOP; baselineAligned = false }
+            row.addView(left, Ui.lp(0, WRAP_CONTENT, 1f))
+            row.addView(right, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(a, 10) })
             grid.addView(row, Ui.lpm(a, if (grid.childCount == 0) 0 else 10))
         }
         pair(tile(ToolIcon.Kind.TRANSLATE, "Cách dịch", engineLabel(p)) {
             a.startActivity(Intent(a, TranslateActivity::class.java))
         }, tile(ToolIcon.Kind.SPEAKER_ON, "Giọng đọc", voiceLabel(a, p)) { open(a, "voice") })
+        pair(tile(ToolIcon.Kind.GAMEPAD, "Kho game", profileLabel(p)) {
+            a.startActivity(Intent(a, KhoGameActivity::class.java))
+        }, tile(ToolIcon.Kind.GAMEPAD, "Ghép nối", if (consolePaired) "Đã ghép nối" else "Chưa ghép nối") {
+            a.startActivity(Intent(a, PsConnectActivity::class.java))
+        })
         pair(tile(ToolIcon.Kind.SUBS, "Phụ đề", subsLabel(p)) { open(a, "subs") },
             tile(ToolIcon.Kind.GAMEPAD, "Hồ sơ game", profileLabel(p)) { open(a, "profile") })
         return grid

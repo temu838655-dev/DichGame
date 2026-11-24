@@ -103,7 +103,7 @@ class GamepadGlyph(c: Context, private val body: Int, private val detail: Int) :
     }
 }
 
-/** Đáy màn hình chính: phủ mờ nội dung phía dưới, vòng cung xanh và cánh vàng hai bên nút tay cầm. */
+/** Đáy màn hình chính: phủ mờ nội dung phía dưới, vòng cung và cánh vàng. */
 class DockWings(c: Context, private val gapDp: Float = 52f, private val lenScale: Float = 1f) : View(c) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val r = RectF()
@@ -126,7 +126,7 @@ class DockWings(c: Context, private val gapDp: Float = 52f, private val lenScale
             intArrayOf(bgClear, bgClear or 0xE6000000.toInt(), bgClear or 0xFF000000.toInt(), bgClear or 0xFF000000.toInt()),
             floatArrayOf(0f, 0.17f, 0.32f, 1f), Shader.TileMode.CLAMP)
         cv.drawRect(0f, 0f, w, h, p)
-        // vòng cung xanh ôm quanh nút
+        // vòng cung vàng ôm quanh nút
         path.reset()
         path.moveTo(-0.15f * w, h)
         path.quadTo(cx, 12f * d - h, 1.15f * w, h)

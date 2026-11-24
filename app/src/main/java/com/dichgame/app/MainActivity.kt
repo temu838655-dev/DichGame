@@ -29,6 +29,7 @@ class MainActivity : Activity() {
     private lateinit var p: Prefs
 
     private var bannerKind = ""
+    private var homeScroll: ScrollView? = null
     private val updListener = com.dichgame.update.Updater.Listener { s ->
         // chỉ vẽ lại màn hình khi thẻ nhắc cập nhật đổi loại, không vẽ lại theo từng nhịp tải
         val k = UpdateUi.bannerKind(s)
@@ -86,6 +87,7 @@ class MainActivity : Activity() {
     private fun open(c: Class<*>) = startActivity(Intent(this, c))
 
     private fun render() {
+        val oldScroll = homeScroll?.scrollY ?: 0
         p = Prefs(this)
         bannerKind = UpdateUi.bannerKind(com.dichgame.update.Updater.state)
         window.statusBarColor = Ui.BG
@@ -95,7 +97,7 @@ class MainActivity : Activity() {
         val pad = Ui.dp(this, 16)
         content.setPadding(pad, Ui.dp(this, 10), pad, Ui.dp(this, 28))
         content.apply {
-            put(header(con != null), 4, 14)
+            put(heroHeader(con != null), 0, 10)
             UpdateUi.banner(this@MainActivity)?.let { put(it, 0, 12) }
             put(statusRow(con != null), 0, 12)
             put(consoleCard(con), 0, 12)
@@ -105,18 +107,20 @@ class MainActivity : Activity() {
             put(navCard("▶", "Dịch video trên web", "Mở trang video, phụ đề tự sang tiếng Việt", "MIỄN PHÍ") {
                 open(WebTranslateActivity::class.java)
             }, 0, 12)
-            // bốn mục cài đặt gom trong một thẻ kính: Cách dịch, Giọng đọc, Phụ đề, Hồ sơ game
-            put(Hub.homeGrid(this@MainActivity, p), 0, 14)
+            // Các ô chính giống mẫu, nhưng vẫn giữ các mục phụ đề và hồ sơ game.
+            put(Hub.homeGrid(this@MainActivity, p, con != null), 0, 12)
             put(Ui.hbox(this@MainActivity).apply {
                 addView(Ui.tv(this@MainActivity, "✨", 18f))
                 addView(Ui.tv(this@MainActivity, "Thêm", 16f, Ui.TEXT, true).apply { setPadding(Ui.dp(this@MainActivity, 10), 0, 0, 0) })
             }, 4, 8)
             val more = Ui.hbox(this@MainActivity)
-            more.addView(chip("🕹", "Kho game") { open(KhoGameActivity::class.java) }, Ui.lp(0, MATCH_PARENT, 1f))
-            more.addView(chip("📦", "Gói Việt hoá") { open(PackActivity::class.java) }, tileLp(8))
+            more.addView(chip("📦", "Gói Việt hoá") { open(PackActivity::class.java) }, Ui.lp(0, MATCH_PARENT, 1f))
             more.addView(chip("💡", "Hướng dẫn") { open(GuideActivity::class.java) }, tileLp(8))
             more.addView(chip("👑", "Tính năng") { open(FeaturesActivity::class.java) }, tileLp(8))
             put(more, 0, 12)
+            put(Ui.button(this@MainActivity, if (CaptureService.active) "Dừng dịch màn hình" else "Bắt đầu dịch màn hình") {
+                if (CaptureService.active) stopService() else begin()
+            }, 0, 10)
             put(Ui.tv(this@MainActivity, "Dịch game ${versionName()}", 12f, Ui.SUB).apply { gravity = Gravity.CENTER }, 8, 0)
             put(dock(), 0, 0).layoutParams = Ui.lp(MATCH_PARENT, Ui.dp(this@MainActivity, 112))
         }
@@ -128,34 +132,52 @@ class MainActivity : Activity() {
         sv.addView(content)
         root.addView(sv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         setContentView(root)
+        homeScroll = sv
+        if (oldScroll > 0) sv.post { if (homeScroll === sv) sv.scrollTo(0, oldScroll) }
     }
 
     private fun versionName(): String = try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (_: Exception) { "" }
 
     private fun tileLp(gap: Int = 12) = Ui.lp(0, MATCH_PARENT, 1f).apply { leftMargin = Ui.dp(this@MainActivity, gap) }
 
+    private fun heroHeader(connected: Boolean): View {
+        val hero = FrameLayout(this)
+        hero.minimumHeight = Ui.dp(this, 100)
+        hero.addView(ImageView(this).apply {
+            setImageResource(R.drawable.dg_gamer_hero)
+            scaleType = ImageView.ScaleType.FIT_END
+            alpha = 0.60f
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, FrameLayout.LayoutParams(Ui.dp(this, 184), MATCH_PARENT, Gravity.END or Gravity.CENTER_VERTICAL))
+        hero.addView(header(connected), FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+        return hero
+    }
+
     private fun header(connected: Boolean): View {
         val row = Ui.hbox(this)
         row.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_logo)
             scaleType = ImageView.ScaleType.FIT_CENTER
-        }, Ui.lp(Ui.dp(this, 64), Ui.dp(this, 64)))
+            background = Ui.glass(this@MainActivity, 16, true)
+            setPadding(Ui.dp(this@MainActivity, 4), Ui.dp(this@MainActivity, 4), Ui.dp(this@MainActivity, 4), Ui.dp(this@MainActivity, 4))
+        }, Ui.lp(Ui.dp(this, 54), Ui.dp(this, 54)))
         val col = Ui.vbox(this)
-        col.addView(Ui.tv(this, "Dịch Game", 25f, Ui.TEXT, true))
-        col.addView(Ui.tv(this, "by Huyy Đâyy", 14f, Ui.TEXT, true).apply { setTypeface(typeface, android.graphics.Typeface.BOLD_ITALIC) })
-        col.addView(Ui.tv(this, "Chơi game nào cũng hiểu", 12f, Ui.SUB).apply { maxLines = 2 })
+        col.addView(Ui.tv(this, "Dịch Game", 23f, Ui.TEXT, true).apply { setShadowLayer(3f, 0f, 1f, Color.BLACK) })
+        col.addView(Ui.tv(this, "by Huyy Đâyy", 12f, Ui.GOLD, true).apply { setShadowLayer(3f, 0f, 1f, Color.BLACK) })
+        col.addView(Ui.tv(this, "Chơi game nào cũng hiểu", 12f, Ui.TEXT).apply { maxLines = 2; setShadowLayer(3f, 0f, 1f, Color.BLACK) })
         row.addView(col, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@MainActivity, 12) })
         row.addView(TextView(this).apply {
             text = "👑"; textSize = 20f; gravity = Gravity.CENTER
             background = Ui.bg(this@MainActivity, Color.parseColor("#1A1405"), 26, Ui.GOLD, 2)
             setOnClickListener { open(FeaturesActivity::class.java) }
-        }, Ui.lp(Ui.dp(this, 52), Ui.dp(this, 52)))
+            contentDescription = "Tính năng"
+        }, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 44)))
         row.addView(Ui.tv(this, "⚙", 28f, Ui.TEXT).apply {
             gravity = Gravity.CENTER
             background = Ui.bg(this@MainActivity, Ui.CARD2, 22, Ui.LINE, 1)
             contentDescription = "Cài đặt"
             setOnClickListener { open(SettingsActivity::class.java) }
-        }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 52)).apply { leftMargin = Ui.dp(this@MainActivity, 6) })
+        }, Ui.lp(Ui.dp(this, 42), Ui.dp(this, 44)).apply { leftMargin = Ui.dp(this@MainActivity, 6) })
         row.addView(View(this).apply {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (connected || CaptureService.active) Ui.OK else Color.parseColor("#6B6B73")) }
         }, Ui.lp(Ui.dp(this, 9), Ui.dp(this, 9)))
@@ -168,18 +190,21 @@ class MainActivity : Activity() {
         val label = if (running) "Đang chạy" else if (paired) "Đã ghép nối" else "Chưa ghép nối"
         val sp = SpannableString("● $label")
         sp.setSpan(ForegroundColorSpan(if (running || paired) Ui.OK else Color.parseColor("#8E8E96")), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        val top = Ui.hbox(this)
-        top.addView(Ui.tv(this, sp, 13f, if (running) Ui.OK else Ui.TEXT, true).apply {
-            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-            background = Ui.bg(this@MainActivity, Ui.CARD, 20, Ui.LINE, 1)
-            setPadding(Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 9), Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 9))
+        val top = Ui.hbox(this).apply {
+            background = Ui.glass(this@MainActivity, 24, true)
+            val inset = Ui.dp(this@MainActivity, 4)
+            setPadding(inset, inset, inset, inset)
+        }
+        top.addView(Ui.tv(this, sp, 12f, if (running) Ui.OK else Ui.TEXT, true).apply {
+            maxLines = 2; gravity = Gravity.CENTER
+            setPadding(Ui.dp(this@MainActivity, 3), Ui.dp(this@MainActivity, 6), Ui.dp(this@MainActivity, 3), Ui.dp(this@MainActivity, 6))
         }, Ui.lp(0, WRAP_CONTENT, 1f))
         top.addView(segment(), Ui.lp(0, WRAP_CONTENT, 1.75f).apply { leftMargin = Ui.dp(this@MainActivity, 5) })
         top.addView(Ui.tv(this, "?", 20f, Ui.TEXT, true).apply {
             gravity = Gravity.CENTER
             background = Ui.bg(this@MainActivity, Ui.CARD2, 22, Ui.LINE, 1)
             setOnClickListener { help() }
-        }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 44)).apply { leftMargin = Ui.dp(this@MainActivity, 8) })
+        }, Ui.lp(Ui.dp(this, 38), Ui.dp(this, 42)).apply { leftMargin = Ui.dp(this@MainActivity, 4) })
         return top
     }
 
@@ -255,6 +280,9 @@ class MainActivity : Activity() {
             setPadding(Ui.dp(this@MainActivity, 10), 0, Ui.dp(this@MainActivity, 6), 0)
         }, Ui.lp(0, WRAP_CONTENT, 1f))
         act.addView(Ui.tv(this, "›", 24f, dark, true))
+        act.minimumHeight = Ui.dp(this, 52)
+        act.isFocusable = true
+        Ui.ripple(act, 30)
         act.setOnClickListener { open(if (con != null) PsConnectActivity::class.java else PsPairActivity::class.java) }
         c.addView(act, Ui.lpm(this, 10, 0))
         if (running) c.addView(Ui.button(this, "■  Dừng dịch") { stopService() }, Ui.lpm(this, 10, 0))
@@ -276,7 +304,7 @@ class MainActivity : Activity() {
 
     private fun segment(): View {
         val seg = Ui.hbox(this)
-        seg.background = Ui.bg(this, Ui.CARD2, 22)
+        seg.background = Ui.bg(this, Color.parseColor("#990A0A0E"), 22, Ui.LINE)
         fun item(label: String, on: Boolean, glyph: Boolean, click: () -> Unit): View {
             val b = Ui.hbox(this)
             b.gravity = Gravity.CENTER
@@ -284,7 +312,11 @@ class MainActivity : Activity() {
             if (on) b.background = Ui.goldBg(this, 20)
             b.setPadding(Ui.dp(this, 4), Ui.dp(this, 9), Ui.dp(this, 4), Ui.dp(this, 9))
             if (glyph && resources.configuration.screenWidthDp >= 480) b.addView(GamepadGlyph(this, fg, Ui.GOLD), Ui.lp(Ui.dp(this, 20), Ui.dp(this, 14)).apply { rightMargin = Ui.dp(this@MainActivity, 6) })
-            b.addView(Ui.tv(this, label, 13f, fg).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+            b.addView(Ui.tv(this, label, 13f, fg, on).apply { gravity = Gravity.CENTER; maxLines = 2 })
+            b.minimumHeight = Ui.dp(this, 44)
+            b.isSelected = on
+            b.isFocusable = true
+            Ui.ripple(b, 20)
             b.setOnClickListener { click() }
             return b
         }
@@ -320,6 +352,9 @@ class MainActivity : Activity() {
         if (badge != null) row.addView(Ui.badge(this, badge), Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = Ui.dp(this@MainActivity, 8) })
         row.addView(Ui.tv(this, "›", 26f, Ui.SUB))
         c.addView(row)
+        c.minimumHeight = Ui.dp(this, 64)
+        c.isFocusable = true
+        Ui.ripple(c, 24)
         c.setOnClickListener { onClick() }
         return c
     }

@@ -53,6 +53,8 @@ class GlassDrawable(
     private val tintP = Paint(Paint.ANTI_ALIAS_FLAG)
     private val edgeP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val sheenP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+    private val glowOuter = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = 0x25FFAF45 }
+    private val glowInner = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = 0x43FFD17D }
     private val rect = RectF()
     private val path = Path()
     private var sheen = false
@@ -68,6 +70,8 @@ class GlassDrawable(
         val sw = edgePx.coerceAtLeast(1f)
         edgeP.strokeWidth = sw
         sheenP.strokeWidth = sw
+        glowOuter.strokeWidth = sw * 5f
+        glowInner.strokeWidth = sw * 2.5f
         val half = sw / 2f
         val extra = if (topOnly) radius * 2f + sw else 0f
         rect.set(b.left + half, b.top + half, b.right - half, b.bottom - half + extra)
@@ -102,17 +106,10 @@ class GlassDrawable(
         if (tint != 0) c.drawPath(path, tintP)
         if (edge == 0) {
             // Inner luminous amber rim; no bitmap, blur or software rendering needed.
-            val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE
-                strokeWidth = edgePx * 4f
-                color = 0x25FFAF45
-            }
             c.save()
             c.clipPath(path)
-            c.drawPath(path, glow)
-            glow.strokeWidth = edgePx * 2.2f
-            glow.color = 0x43FFD17D
-            c.drawPath(path, glow)
+            c.drawPath(path, glowOuter)
+            c.drawPath(path, glowInner)
             c.restore()
         }
         if (sheen) c.drawLine(sx0, sy, sx1, sy, sheenP)
@@ -121,6 +118,8 @@ class GlassDrawable(
 
     override fun setAlpha(alpha: Int) {
         baseP.alpha = alpha; fillP.alpha = alpha; tintP.alpha = alpha; edgeP.alpha = alpha; sheenP.alpha = alpha
+        glowOuter.alpha = (0x25 * alpha / 255)
+        glowInner.alpha = (0x43 * alpha / 255)
         invalidateSelf()
     }
 
@@ -370,7 +369,7 @@ object Ui {
             maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
         })
         row.addView(col, lp(0, WRAP_CONTENT, 1f).apply { leftMargin = if (tile != null) dp(c, 12) else 0 })
-        row.addView(tv(c, "›", 24f, SUB))
+        row.addView(tv(c, "›", 24f, GOLD))
         row.isClickable = true
         row.isFocusable = true
         ripple(row, 22)

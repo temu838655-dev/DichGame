@@ -1,0 +1,26 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="184dp" android:height="120dp" android:viewportWidth="184" android:viewportHeight="120">
+    <!-- Original stylized gamer portrait, deliberately dark on the left for live UI text. -->
+    <path android:fillColor="#403B240E" android:pathData="M52,120 C65,91 93,44 143,9 L163,0 L184,0 L184,120 Z"/>
+    <path android:strokeColor="#B8E3A64F" android:strokeWidth="1.4" android:pathData="M30,113 C83,85 105,21 184,4"/>
+    <path android:strokeColor="#6CFFCA6C" android:strokeWidth="3" android:pathData="M75,120 C108,81 147,78 184,43"/>
+    <!-- Hair silhouette and shoulders -->
+    <path android:fillColor="#252634" android:pathData="M83,120 C94,95 114,86 119,80 C102,71 101,45 110,25 C120,5 142,0 160,12 C180,25 178,52 172,73 C171,90 180,104 184,120 Z"/>
+    <path android:fillColor="#6B6473" android:pathData="M103,60 C98,35 108,12 132,5 C156,-1 174,15 177,36 C167,21 156,16 144,17 C130,17 123,28 120,45 L113,64 Z"/>
+    <path android:fillColor="#B4A6A1" android:pathData="M106,40 C109,14 131,6 151,11 C161,13 170,23 171,31 C157,19 145,18 131,24 L117,40 L111,55 Z"/>
+    <path android:fillColor="#D5B8A6" android:pathData="M132,22 C122,25 118,36 117,45 L110,53 L115,58 L116,65 L120,66 C119,74 125,81 135,79 L137,93 L155,91 L152,73 C163,62 163,37 151,26 Z"/>
+    <path android:fillColor="#A27870" android:pathData="M150,29 C155,49 151,65 141,78 L137,92 L155,91 L152,73 C163,62 163,37 151,26 Z"/>
+    <path android:strokeColor="#514049" android:strokeWidth="1.4" android:strokeLineCap="round" android:pathData="M119,45 Q125,42 131,45 M120,50 L126,50"/>
+    <path android:fillColor="#9C6265" android:pathData="M115,62 L124,63 L120,66 L116,66 Z"/>
+    <path android:fillColor="#25262D" android:pathData="M83,120 C91,102 108,95 136,87 L146,95 L157,87 C171,94 179,105 184,120 Z"/>
+    <path android:strokeColor="#B08043" android:strokeWidth="1.2" android:pathData="M85,119 Q102,99 136,89 L146,97 L157,89 Q176,101 182,119"/>
+    <!-- Hair strands -->
+    <path android:strokeColor="#C8AD88" android:strokeWidth="1.5" android:strokeLineCap="round" android:pathData="M105,40 Q117,6 145,11 M109,54 Q111,24 135,18 M156,17 Q177,34 168,64 M174,72 Q163,89 177,104"/>
+    <!-- Headset -->
+    <path android:strokeColor="#1B1B24" android:strokeWidth="8" android:strokeLineCap="round" android:pathData="M127,18 Q151,-2 169,19 Q177,31 174,47"/>
+    <path android:strokeColor="#CDA96F" android:strokeWidth="1.3" android:strokeLineCap="round" android:pathData="M128,14 Q151,-3 169,17 Q177,29 174,43"/>
+    <path android:fillColor="#171821" android:strokeColor="#A87640" android:strokeWidth="1.5" android:pathData="M162,35 C173,32 181,40 181,52 C181,64 173,73 162,70 C154,67 151,59 151,51 C151,42 155,37 162,35 Z"/>
+    <path android:strokeColor="#AE79D6" android:strokeWidth="2" android:pathData="M164,40 C174,38 178,47 176,56 C175,64 168,68 161,65 C155,61 155,50 158,44 Z"/>
+    <path android:strokeColor="#C4A26A" android:strokeWidth="2" android:strokeLineCap="round" android:pathData="M156,63 Q150,76 133,71"/>
+    <path android:fillColor="#D5B072" android:pathData="M130,69 L136,69 L136,73 L130,73 Z"/>
+</vector>
