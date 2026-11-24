@@ -222,12 +222,14 @@ class TvSetupActivity : Activity() {
                         installed = true
                         p.sp.edit().putString("lg_dev_ip", address).apply()
                         runOnUiThread { result.text = "Đã cài. Đang mở ứng dụng..." }
-                        LgDeveloperInstaller.launch(connected)
+                        val ips = PsFinder.localIps(applicationContext).filter { LgDeveloperKey.isPrivateIpv4(it) }
+                        val phoneIp = ips.firstOrNull { it.substringBeforeLast('.') == address.substringBeforeLast('.') } ?: ips.singleOrNull()
+                        p.webSub = true
+                        val started = TvOut.startWeb() != null
+                        LgDeveloperInstaller.launch(connected, if (started) phoneIp else null)
                         runOnUiThread {
-                            p.webSub = true
-                            val started = TvOut.startWeb() != null
                             result.setTextColor(Ui.OK)
-                            result.text = if (started) "TV đã xác nhận cài và mở app. Nhập IP điện thoại trên TV (xem mục trang web phụ đề)." else "Đã cài và mở app; hãy bật lại trang web phụ đề."
+                            result.text = if (started) "TV đã xác nhận cài và mở app. Nếu chưa tự nối, nhập IP điện thoại: ${phoneIp ?: "xem mục trang web phụ đề"}:${TvOut.WEB_PORT}." else "Đã cài và mở app; hãy bật lại trang web phụ đề."
                         }
                     } catch (e: Exception) {
                         runOnUiThread {
@@ -406,18 +408,18 @@ class TvSetupActivity : Activity() {
                 "2. Trên TV mở LG Content Store, cài app \"Developer Mode\".\n" +
                 "3. Mở app, đăng nhập tài khoản đó, bật \"Dev Mode Status\" và \"Key Server\"; TV khởi động lại. Ghi lại địa chỉ IP và mã (passphrase) trên màn hình.\n" +
                 "4. Chế độ này tự hết hạn sau một thời gian, phải mở app và gia hạn (Extend).\n" +
-                "5. Cài gói .ipk bằng ares-cli trên máy tính (ares-setup-device, ares-install).\n\n" +
-                "Dịch game đã có mã nguồn app webOS thử nghiệm nhưng chưa có gói .ipk hoàn chỉnh và điện thoại chưa cài được app lên TV LG, nên bước B chưa cần.\n\n" +
-                "iPhone: Dịch game chỉ có bản Android, nên không cài hay ghép từ iPhone được. iPhone vẫn xem được phụ đề bằng trang web phụ đề."
+                "5. Cài bằng trình cài trên Android hoặc dùng ares-cli trên máy tính (ares-setup-device, ares-install).\n\n" +
+                "Bản Android có trình cài IPK thử nghiệm: ở mục TV LG, nhập IP và passphrase, xác nhận khóa TV rồi bấm Cài đặt & mở ứng dụng. Chưa xác nhận trên TV thật.\n\n" +
+                "iPhone: trình cài trực tiếp chưa được triển khai. Có thể xem trang web phụ đề từ điện thoại Android."
             else -> "TV SAMSUNG (Tizen)\n\n" +
                 "A. Xem phụ đề\n" +
-                "Chiếu màn hình điện thoại bằng Smart View, hoặc mở trang web phụ đề ở trình duyệt của TV. Samsung không có đường nào cho app ngoài hiện chữ đè lên hình HDMI.\n\n" +
+                "Chiếu màn hình điện thoại bằng Smart View, hoặc mở trang web phụ đề ở trình duyệt của TV. Ứng dụng Samsung thử nghiệm dùng cửa sổ HDMI bên trong app, chưa xác nhận trên TV thật.\n\n" +
                 "B. Developer Mode (chỉ cần khi cài app Tizen tự ký)\n" +
                 "1. Trên TV vào Apps, trên remote bấm lần lượt 1 2 3 4 5, cửa sổ Developer mode hiện ra.\n" +
                 "2. Chọn On, nhập IP của máy bạn dùng để cài (Host PC IP), khởi động lại TV.\n" +
                 "3. Cài gói .wgt bằng Tizen Studio hoặc công cụ sdb (cổng 26101).\n" +
                 "4. App Tizen phải ký bằng chứng chỉ Samsung gắn với mã DUID của đúng TV bạn, nên không thể làm sẵn một gói chung cho mọi người, và điện thoại cũng không tự cài được.\n\n" +
-                "Dịch game hiện CHƯA có app Tizen. iPhone: Dịch game chỉ có bản Android; iPhone xem được phụ đề bằng trang web phụ đề."
+                "Dịch game có mã nguồn app Tizen thử nghiệm, chưa có WGT đã ký và chưa có trình cài từ điện thoại."
         }
         AlertDialog.Builder(this, R.style.DgDialog)
             .setTitle("Hướng dẫn chi tiết")

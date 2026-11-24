@@ -38,8 +38,11 @@ internal object LgDeveloperInstaller {
         }
     }
 
-    fun launch(session: Session) {
-        val payload = JSONObject().put("id", APP)
+    fun launch(session: Session, phoneIp: String? = null) {
+        val payload = JSONObject().put("id", APP).put("subscribe", false)
+        if (phoneIp != null && LgDeveloperKey.isPrivateIpv4(phoneIp)) {
+            payload.put("params", JSONObject().put("server", "$phoneIp:${TvOut.WEB_PORT}"))
+        }
         val result = LgDeveloperCommand.execute(session,
             "/usr/bin/luna-send-pub -n 1 luna://com.webos.applicationManager/launch '$payload'", 15000)
         check(result.exitCode == 0 && replies(result.output).any { it.optBoolean("returnValue", false) }) {

@@ -13,7 +13,7 @@ internal object LgDeveloperSsh {
     fun connect(ip: String, passphrase: ByteArray, approve: (String) -> Boolean): Session {
         require(LgDeveloperKey.isPrivateIpv4(ip))
         require(passphrase.size == 6)
-        val key = LgDeveloperKey.fetch(ip)
+        val key = try { LgDeveloperKey.fetch(ip) } catch (e: Exception) { passphrase.fill(0); throw e }
         val jsch = JSch()
         try {
             jsch.addIdentity("lg-developer", key, null, passphrase)
