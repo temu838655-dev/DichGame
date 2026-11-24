@@ -25,24 +25,40 @@ object Ai {
      * Câu lệnh dịch một câu thoại. [terms] là bảng thuật ngữ (chỉ đưa các từ có trong câu, bắt buộc dùng đúng),
      * [cast] là thẻ nhân vật, [emo] bật dịch theo cảm xúc và tiết tấu (AI mở đầu bằng thẻ [cảm xúc|nhịp]).
      */
+    internal fun boundedHistory(history: List<String>, budget: Int = 1200): List<String> {
+        var remaining = budget.coerceAtLeast(0)
+        val kept = ArrayList<String>()
+        for (line in history.asReversed()) {
+            val clean = line.trim()
+            if (clean.isEmpty()) continue
+            if (clean.length + 1 > remaining) break
+            kept.add(clean)
+            remaining -= clean.length + 1
+        }
+        return kept.asReversed()
+    }
+
     fun prompt(
         p: Prefs, srcName: String, game: String, history: List<String>, text: String,
         terms: TermMap? = null, cast: List<Character> = emptyList(), emo: Boolean = false, speaker: String? = null,
         strict: String? = null, ui: Boolean = false,
-    ): String =
-        if (ui) uiPrompt(p, srcName, game, text, terms, strict) else
+    ): String {
+        val recent = boundedHistory(history)
+        return if (ui) uiPrompt(p, srcName, game, text, terms, strict) else
         "Bạn dịch phụ đề game từ $srcName sang tiếng Việt." +
             (if (game.isNotEmpty()) " Game / phong cách: $game." else "") +
             " " + p.styleText() +
             glossaryLine(terms, p, text) +
-            Cast.promptLine(cast, history.joinToString(" ") + " " + text + " " + (speaker ?: "")) +
+            Cast.promptLine(cast, recent.joinToString(" ") + " " + text + " " + (speaker ?: "")) +
             (if (speaker != null) " Người đang nói câu này: $speaker (giữ đúng giọng và cách xưng hô của người này, không đổi tên)." else "") +
             (if (emo) Emo.instruction() else "") +
             " Chọn xưng hô (tôi, anh, em, cậu, ông, bà...) hợp quan hệ và ngữ cảnh, sửa lỗi đọc chữ rõ ràng, giữ nguyên tên riêng." +
             (if (emo) " Chỉ trả về thẻ rồi bản dịch." else " Chỉ trả về bản dịch.") +
-            (if (history.isNotEmpty()) "\nCác câu trước (chỉ để hiểu mạch truyện, không dịch lại):\n" + history.joinToString("\n") else "") +
+            (if (recent.isNotEmpty()) "\nCác câu trước (chỉ để hiểu mạch truyện, không dịch lại):\n" + recent.joinToString("\n") else "") +
             "\nCần dịch: $text" +
             (if (strict != null) "\nLƯU Ý NGHIÊM: bản dịch trước bị loại vì $strict. Chỉ trả về đúng một bản dịch tiếng Việt của câu cần dịch: không giải thích, không thêm hay bớt ý, giữ nguyên số và tên riêng." else "")
+
+    }
 
     /** Lời nhắc cho chữ giao diện (menu, vật phẩm, kỹ năng, nhiệm vụ...): ngắn gọn, đúng thuật ngữ, giữ nguyên mã và số liệu. */
     private fun uiPrompt(p: Prefs, srcName: String, game: String, text: String, terms: TermMap?, strict: String?): String =
