@@ -77,7 +77,7 @@ class CaptureService : Service() {
     private var longLen = 25
     private var projection: MediaProjection? = null
     private var display: VirtualDisplay? = null
-    private var reader: ImageReader? = null
+    private val captureBuffer = CaptureBuffer<ImageReader>()
     private var overlay: TextView? = null
     private var tt: TextTranslator? = null
     private var speaker: Speaker? = null
@@ -120,8 +120,8 @@ class CaptureService : Service() {
     private var textGoneSince = 0L
     private var running = false
     private var last = ""
-    private var cw = 0
-    private var ch = 0
+    private val cw get() = captureBuffer.width
+    private val ch get() = captureBuffer.height
     private var editing = true
     private var narrate = false
     private val autoGameDetector = AutoGameDetector()
@@ -451,7 +451,7 @@ class CaptureService : Service() {
         if (busy || !ready || editing || narrate || region != null || System.currentTimeMillis() < menuUntil) return
         val ocrNow = ocr ?: return
         ensureSize()
-        val img = reader?.acquireLatestImage() ?: return
+        val img = captureBuffer.reader?.acquireLatestImage() ?: return
         val bmp = try {
             val p = img.planes[0]
             val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
@@ -878,7 +878,7 @@ class CaptureService : Service() {
     private fun regionGrab(box: FrameLayout) {
         val img = try {
             ensureSize()
-            reader?.acquireLatestImage()
+            captureBuffer.reader?.acquireLatestImage()
         } catch (_: Exception) {
             reportFrameError()
             finishBusy()
@@ -1062,7 +1062,7 @@ class CaptureService : Service() {
     private fun menuGrab() {
         val img = try {
             ensureSize()
-            reader?.acquireLatestImage()
+            captureBuffer.reader?.acquireLatestImage()
         } catch (_: Exception) {
             reportFrameError()
             overlay?.visibility = View.VISIBLE
@@ -1248,31 +1248,34 @@ class CaptureService : Service() {
     /** Theo kích thước thật của màn hình (xoay ngang/dọc), tạo lại bộ đệm ảnh khi đổi. */
     @Suppress("DEPRECATION")
     private fun ensureSize() {
+        val mediaProjection = projection ?: return
         val dm = DisplayMetrics()
         (getSystemService(DISPLAY_SERVICE) as DisplayManager).getDisplay(0).getRealMetrics(dm)
-        if (dm.widthPixels == cw && dm.heightPixels == ch) return
-        if (display == null && projection == null) return // dịch vụ đang dừng: không có gì để tạo
-        cw = dm.widthPixels; ch = dm.heightPixels
-        val newReader = ImageReader.newInstance(cw, ch, PixelFormat.RGBA_8888, 2)
-        if (display == null) {
-            display = projection!!.createVirtualDisplay(
-                "dg", cw, ch, dm.densityDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                newReader.surface, null, handler
-            )
-        } else {
-            display!!.resize(cw, ch, dm.densityDpi)
-            display!!.surface = newReader.surface
-        }
-        reader?.close()
-        reader = newReader
-        relayoutFrame()
+        val width = dm.widthPixels
+        val height = dm.heightPixels
+        val changed = captureBuffer.resize(width, height,
+            create = { ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2) },
+            attach = { next ->
+                val current = display
+                if (current == null) {
+                    display = checkNotNull(mediaProjection.createVirtualDisplay(
+                        "dg", width, height, dm.densityDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                        next.surface, null, handler
+                    )) { "Không tạo được màn hình ảo." }
+                } else {
+                    current.resize(width, height, dm.densityDpi)
+                    current.surface = next.surface
+                }
+            }
+        )
+        if (changed) relayoutFrame()
     }
 
     private fun capture() {
         if (busy || !ready || editing || System.currentTimeMillis() < menuUntil) return
         val fr = frame ?: return
         ensureSize()
-        val img = reader?.acquireLatestImage() ?: return
+        val img = captureBuffer.reader?.acquireLatestImage() ?: return
         val crop = try {
             val p = img.planes[0]
             val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
@@ -1350,7 +1353,7 @@ class CaptureService : Service() {
         active = false
         handler.removeCallbacksAndMessages(null)
         try { overlay?.let { wm.removeView(it) }; frame?.let { wm.removeView(it) }; region?.let { wm.removeView(it) } } catch (_: Exception) {}
-        display?.release(); reader?.close()
+        display?.release(); captureBuffer.close()
         projection?.stop()
         tt?.close(); ocr?.close()
         speaker?.shutdown(); tvExec.shutdown()
