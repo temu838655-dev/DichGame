@@ -54,10 +54,9 @@ object PackStore {
         val game = GamePackMatch.title(prefs.gameOf(profile), profile,
             prefs.selectedGameTitleOf(profile), Prefs.DEFAULT_PROFILE)
         // Keep existing named-profile data; never copy it into a different game.
-        if (game.isBlank() || GamePackMatch.selected(game, profile)) return legacyLinesFile(ctx, profile)
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-            .digest(game.trim().lowercase(java.util.Locale.ROOT).toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it.toInt() and 255) }
+        val scopedGame = GamePackMatch.storageGame(profile, game)
+        if (scopedGame.isEmpty()) return legacyLinesFile(ctx, profile)
+        val digest = GamePackMatch.storageHash(scopedGame)
         return File(scopedDir(ctx, profile), digest + ".tsv")
     }
 

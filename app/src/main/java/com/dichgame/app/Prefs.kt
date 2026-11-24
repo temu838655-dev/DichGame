@@ -139,9 +139,21 @@ class Prefs(ctx: Context) {
 
     /** Số câu trước đưa cho AI để hiểu mạch truyện. */
     /** Từ điển riêng của hồ sơ hiện tại, mỗi dòng "gốc = tiếng Việt". Dùng cho cả dịch AI lẫn dịch trên máy. */
+    private fun gameSettingsPrefix(profile: String): String =
+        "game_v2_" + GamePackMatch.storageHash(profile) + "_"
+
+    private fun gameSettingKey(key: String): String {
+        val currentProfile = profile
+        val game = GamePackMatch.title(gameOf(currentProfile), currentProfile,
+            selectedGameTitleOf(currentProfile), DEFAULT_PROFILE)
+        val scoped = GamePackMatch.storageGame(currentProfile, game)
+        return if (scoped.isEmpty()) "${key}_$currentProfile"
+        else gameSettingsPrefix(currentProfile) + GamePackMatch.storageHash(scoped) + "_" + key
+    }
+
     var glossary: String
-        get() = sp.getString("gloss_$profile", "").orEmpty()
-        set(v) = sp.edit().putString("gloss_$profile", v).apply()
+        get() = sp.getString(gameSettingKey("gloss"), "").orEmpty()
+        set(v) = sp.edit().putString(gameSettingKey("gloss"), v).apply()
 
     var ctxCount: Int
         get() = sp.getInt("ctxn", 3).coerceIn(0, 10)
@@ -174,8 +186,8 @@ class Prefs(ctx: Context) {
 
     /** Thẻ nhân vật của hồ sơ hiện tại, mỗi dòng "Tên = mô tả giọng, xưng hô; nhịp: chậm". */
     var cast: String
-        get() = sp.getString("cast_$profile", "").orEmpty()
-        set(v) = sp.edit().putString("cast_$profile", v).apply()
+        get() = sp.getString(gameSettingKey("cast"), "").orEmpty()
+        set(v) = sp.edit().putString(gameSettingKey("cast"), v).apply()
 
     /** Dịch theo cảm xúc và nhịp nhân vật (AI trả thẻ cảm xúc, app dùng để đổi giọng đọc). */
     var emoTr: Boolean
@@ -521,6 +533,9 @@ class Prefs(ctx: Context) {
             .remove("active_speaker_$name").remove("auto_voices_$name")
             .remove("auto_voice_count_$name").remove("ignored_speakers_$name")
             .remove("packon_$name").remove("game_title_$name").apply()
+        val scopedEditor = sp.edit()
+        sp.all.keys.filter { it.startsWith(gameSettingsPrefix(name)) }.forEach { scopedEditor.remove(it) }
+        scopedEditor.apply()
         PackStore.deleteProfileLines(app, name)
         LearnedTranslations.clearProfile(app, name)
     }

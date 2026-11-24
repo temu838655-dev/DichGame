@@ -5,6 +5,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GamePackMatchTest {
+    @Test fun sharedProfileUsesDifferentNamespacesForDifferentGames() {
+        assertTrue(GamePackMatch.storageGame("Grand Theft Auto VI", "grand theft auto vi").isEmpty())
+        assertTrue(GamePackMatch.storageGame("Mặc định", "").isEmpty())
+        val five = GamePackMatch.storageGame("Mặc định", "Grand Theft Auto V")
+        val six = GamePackMatch.storageGame("Mặc định", "Grand Theft Auto VI")
+        assertFalse(five == six)
+        assertFalse(GamePackMatch.storageHash(five) == GamePackMatch.storageHash(six))
+        assertTrue(six == GamePackMatch.storageGame("Mặc định", " grand theft auto vi "))
+    }
+
     @Test fun libraryHighlightsOnlyActuallySelectedGame() {
         assertTrue(GamePackMatch.selected("Grand Theft Auto VI", "grand theft auto vi"))
         assertFalse(GamePackMatch.selected("Grand Theft Auto VI", "Grand Theft Auto V"))
