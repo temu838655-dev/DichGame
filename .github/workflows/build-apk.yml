@@ -118,8 +118,15 @@ jobs:
       - name: Chạy unit test (gói Việt hoá, nhận dạng âm thanh, hợp nhất phụ đề)
         run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
 
-      - name: Build điện thoại và TV
-        run: gradle :app:assembleRelease :tv:assembleRelease -PbuildNo=${{ github.run_number }} --no-daemon --stacktrace
+      - name: Build TV receiver và nhúng bộ cài vào điện thoại
+        run: |
+          gradle :tv:assembleRelease -PbuildNo=${{ github.run_number }} --no-daemon --stacktrace
+          mkdir -p app/src/main/assets/tv
+          test -s tv/build/outputs/apk/release/tv-release.apk
+          cp tv/build/outputs/apk/release/tv-release.apk app/src/main/assets/tv/DichGame-TV.apk
+
+      - name: Build điện thoại
+        run: gradle :app:assembleRelease -PbuildNo=${{ github.run_number }} --no-daemon --stacktrace
 
       - name: Gom file APK
         run: |

@@ -49,8 +49,8 @@ class TvSetupActivity : Activity() {
 
             group("TV CỦA BẠN HÃNG GÌ?", 14) {
                 val row = Ui.hbox(a)
-                row.addView(brandTile("Google TV", "Cài bằng Downloader", 0), Ui.lp(0, MATCH_PARENT, 1f))
-                row.addView(brandTile("TV LG", "Thông báo trên TV", 1), tileLp())
+                row.addView(brandTile("Google TV", "Truyền APK qua Wi-Fi", 0), Ui.lp(0, MATCH_PARENT, 1f))
+                row.addView(brandTile("TV LG", "Cài IPK từ Android", 1), tileLp())
                 row.addView(brandTile("TV Samsung", "App Tizen thử nghiệm", 2), tileLp())
                 addView(row)
                 addView(Ui.tv(a, brandInfo(), 13.5f, if (brand == 0) Ui.SUB else Ui.GOLD2).apply {
@@ -63,6 +63,7 @@ class TvSetupActivity : Activity() {
 
             when (brand) {
                 0 -> {
+                    group("CÀI APK TỪ ĐIỆN THOẠI") { shareGoogle(this) }
                     group("CÁCH DÙNG") { stepsGoogle(this) }
                     group("KẾT NỐI TV") { pairGoogle(this) }
                 }
@@ -132,10 +133,42 @@ class TvSetupActivity : Activity() {
 
     // ---------------- Google TV / Android TV ----------------
 
+    private fun shareGoogle(c: LinearLayout) {
+        c.addView(Ui.tv(this, "Không cần máy tính hoặc tải từ GitHub trên TV. Mở Downloader hoặc trình duyệt hỗ trợ tải APK trên TV, nhập đường dẫn do điện thoại tạo. TV vẫn yêu cầu bạn xác nhận cài đặt.", 14f, Ui.TEXT))
+        val links = Ui.vbox(this)
+        var busy = false
+        c.addView(Ui.button(this, "Tạo link cài TV qua Wi-Fi", true) {
+            if (!busy) {
+                busy = true
+                links.removeAllViews()
+                links.addView(Ui.tv(this, "Đang chuẩn bị APK...", 13f, Ui.SUB))
+                Thread {
+                    val result = runCatching { TvApkShare.start(applicationContext) }
+                    runOnUiThread {
+                        busy = false
+                        if (isDestroyed || isFinishing) { TvApkShare.stop(); return@runOnUiThread }
+                        links.removeAllViews()
+                        result.fold({ addresses ->
+                            for (address in addresses) {
+                                links.addView(Ui.tv(this, address, 14f, Ui.GOLD).apply { setTextIsSelectable(true) })
+                                links.addView(Ui.button(this, "Chép link") { copy("apk", address) })
+                            }
+                            links.addView(Ui.tv(this, "Link hết hạn sau 10 phút. Sau khi cài, mở DichGame TV và cấp quyền hiển thị trên ứng dụng khác.", 13f, Ui.SUB))
+                        }, { error -> links.addView(Ui.tv(this, "Không mở được bộ cài: " + (error.message ?: "Lỗi Wi-Fi"), 13f, Ui.DANGER)) })
+                    }
+                }.start()
+            }
+        }, Ui.lpm(this, 8, 8))
+        c.addView(links)
+        c.addView(Ui.button(this, "Dừng chia sẻ APK") {
+            TvApkShare.stop(); links.removeAllViews()
+        }, Ui.lpm(this, 8, 8))
+    }
+
     private fun stepsGoogle(c: LinearLayout) {
         c.addView(step(1, "Trên TV, mở app Downloader (hoặc cài bằng USB), tải file DichGame-TV.apk trong mục Releases của dự án này trên GitHub để cài app Dịch game TV."))
         val urlRow = Ui.hbox(this)
-        val url = Ui.field(this, "Dán link tải APK TV", p.sp.getString("tvapkurl", "").orEmpty())
+        val url = Ui.field(this, "Dán link tải APK TV", p.sp.getString("tvapkurl", "https://github.com/temu838655-dev/DichGame/releases/latest/download/DichGame-TV.apk").orEmpty())
         urlRow.addView(url, Ui.lp(0, WRAP_CONTENT, 1f))
         urlRow.addView(Ui.button(this, "Chép") {
             val s = url.text.toString().trim()
@@ -567,10 +600,13 @@ class TvSetupActivity : Activity() {
 
     private fun pairTv() {
         val ip = ipField.text.toString().trim()
+        if (!LgDeveloperKey.isPrivateIpv4(ip) || !codeField.text.toString().matches(Regex("[0-9]{8}"))) {
+            status.setTextColor(Ui.DANGER); status.text = "Nhập IP nội bộ và mã đúng 8 số."; return
+        }
         status.setTextColor(Ui.SUB)
         status.text = "Đang ghép TV..."
         tvPost("/pair", codeField.text.toString().trim(), null, ip) { code, out ->
-            if (code == 200) {
+            if (code == 200 && out.matches(Regex("[0-9a-f]{32}"))) {
                 p.saveTv(ip, out)
                 status.setTextColor(Ui.OK)
                 status.text = "Đã ghép TV $ip. Bấm Gửi câu thử lên TV để kiểm tra."
