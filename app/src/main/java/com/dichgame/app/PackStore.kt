@@ -123,7 +123,10 @@ object PackStore {
 
     @Synchronized
     fun readLines(ctx: Context, profile: String): List<Pair<String, String>> {
-        val f = linesFile(ctx, profile)
+        return readAvailable(linesFile(ctx, profile))
+    }
+
+    private fun readAvailable(f: File): List<Pair<String, String>> {
         val local = runCatching { readFile(f) }.getOrDefault(emptyList())
         val cloud = runCatching { readCloud(f)?.lines.orEmpty() }.getOrDefault(emptyList())
         return RemotePack.mergeOffline(cloud, local)
@@ -173,7 +176,7 @@ object PackStore {
     fun addLines(ctx: Context, profile: String, add: List<Pair<String, String>>): Int {
         val f = linesFile(ctx, profile)
         addLinesTo(f, add, false)
-        return readLines(ctx, profile).size
+        return readAvailable(f).size
     }
 
     @Synchronized
@@ -186,9 +189,9 @@ object PackStore {
             val identity = Canon.literal(e.first)
             if (Canon.usable(k) && e.second.isNotBlank()) map[identity] = e.first.replace('\t', ' ').replace('\n', ' ') to e.second.replace('\t', ' ').replace('\n', ' ')
         }
-        if (preserveExisting && map.size > PackText.MAX_LINES)
+        if (map.size > PackText.MAX_LINES)
             throw java.io.IOException("Kho vượt giới hạn câu; không thay đổi dữ liệu đang lưu.")
-        val list = map.values.toList().takeLast(PackText.MAX_LINES)
+        val list = map.values.toList()
         require(RemotePack.mergeOffline(readCloud(f)?.lines.orEmpty(), list).size <= PackText.MAX_LINES) {
             "Kho vượt giới hạn số câu. Không thay đổi dữ liệu."
         }
@@ -235,13 +238,15 @@ object PackStore {
     /** Bộ nhớ câu thoại đang dùng: gói có sẵn (nếu bật) rồi câu đã nhập; câu nhập sau đè câu có sẵn. */
     @Synchronized
     fun memory(ctx: Context, p: Prefs): TransMemory {
-        val f = linesFile(ctx, p.profile)
+        val profile = p.profile
         val name = gameName(p)
+        val f = linesFileForGame(ctx, profile, name)
         val cf = cloudFile(f)
-        val key = p.profile + "\u0000" + name + "\u0000" + (p.packOn || p.aiAuto) + "\u0000" + f.lastModified() + "\u0000" + f.length() + "\u0000" + cf.lastModified() + "\u0000" + cf.length()
+        val builtEnabled = p.packOn || p.aiAuto
+        val key = profile + "\u0000" + name + "\u0000" + builtEnabled + "\u0000" + f.lastModified() + "\u0000" + f.length() + "\u0000" + cf.lastModified() + "\u0000" + cf.length()
         mem?.let { if (key == memKey) return it }
-        val built = if (p.packOn || p.aiAuto) VietHoa.linesFor(name) else emptyList()
-        val imported = readLines(ctx, p.profile)
+        val built = if (builtEnabled) VietHoa.linesFor(name) else emptyList()
+        val imported = readAvailable(f)
         return TransMemory(built + imported).also { mem = it; memKey = key }
     }
 
@@ -381,8 +386,12 @@ object PackStore {
     fun exportText(ctx: Context, p: Prefs): String =
         PackText.format(gameName(p).ifEmpty { p.profile }, p.glossary, p.cast, readLines(ctx, p.profile))
 
-    fun exportCsv(ctx: Context, p: Prefs): String =
-        PackText.formatScopedCsv(gameName(p), combined(linesFile(ctx, p.profile)))
+    @Synchronized
+    fun exportCsv(ctx: Context, p: Prefs): String {
+        val profile = p.profile
+        val game = gameName(p)
+        return PackText.formatScopedCsv(game, combined(linesFileForGame(ctx, profile, game)))
+    }
 
     /** Tải văn bản từ link (chỉ https, tối đa 4 MB). Link GitHub dạng /blob/ được đổi sang bản thô. Chạy ở luồng nền. */
     fun fetch(url: String): String {
@@ -418,13 +427,14 @@ object PackStore {
             require(source.length <= 2048 && source.none { it.isISOControl() }) { "Link Cloud không hợp lệ." }
             val (previous, epoch) = synchronized(this) { readCloud(target)?.info to deletionEpoch }
             require(previous?.source == null || previous.source == source) { "Nguồn Cloud khác nguồn đã lưu. Hãy sao lưu và xóa riêng kho Cloud trước khi đổi nguồn." }
-            val manifest = RemotePack.parse(fetchBounded(url, 64_000).toString(Charsets.UTF_8), game)
+            fun current(): Boolean = p.profile == profile && gameName(p) == game && synchronized(this) { epoch == deletionEpoch }
+            val manifest = RemotePack.parse(fetchWithRetry(url, 64_000, ::current).toString(Charsets.UTF_8), game)
             when (RemotePack.versionDecision(previous?.version, previous?.sha256, manifest.version, manifest.sha256)) {
                 RemotePack.Decision.SAME -> if (previous?.source != null) return "Kho Cloud đã ở phiên bản ${manifest.version}; không cần tải lại."
                 RemotePack.Decision.REJECT -> throw java.io.IOException("Phiên bản Cloud cũ hơn hoặc trùng phiên bản nhưng khác nội dung.")
                 RemotePack.Decision.INSTALL -> Unit
             }
-            val data = fetchBounded(manifest.url, manifest.bytes)
+            val data = fetchWithRetry(manifest.url, manifest.bytes, ::current)
             val pack = RemotePack.verify(manifest, data)
             if (p.profile != profile || gameName(p) != game) throw java.io.IOException("Game hoặc hồ sơ đã thay đổi. Hãy chọn lại game.")
             val filtered = LocFormat.filter(pack.lines, "cloud")
@@ -460,7 +470,25 @@ object PackStore {
         } finally { tmp.delete() }
     }
 
-    private fun fetchBounded(url: URL, limit: Int): ByteArray {
+    private class CloudHttpError(val code: Int) : java.io.IOException("Cloud trả HTTP $code.")
+
+    private fun fetchWithRetry(url: URL, limit: Int, current: () -> Boolean): ByteArray {
+        for (attempt in 0..2) {
+            if (!current()) throw java.io.IOException("Game hoặc kho đã thay đổi. Hãy tải lại.")
+            try {
+                return fetchBounded(url, limit, current)
+            } catch (e: java.io.IOException) {
+                val retry = if (e is CloudHttpError) RemotePack.retryableHttp(e.code)
+                    else e is java.net.SocketTimeoutException || e is java.net.ConnectException ||
+                        e is java.net.UnknownHostException || e is java.net.SocketException || e is java.io.EOFException
+                if (!retry || attempt == 2 || !current()) throw e
+                Thread.sleep(500L shl attempt)
+            }
+        }
+        throw java.io.IOException("Không tải được kho Cloud.")
+    }
+
+    private fun fetchBounded(url: URL, limit: Int, current: () -> Boolean): ByteArray {
         val c = url.openConnection() as HttpURLConnection
         try {
             c.instanceFollowRedirects = false
@@ -468,16 +496,19 @@ object PackStore {
             c.readTimeout = 20000
             c.setRequestProperty("User-Agent", "DichGame")
             c.setRequestProperty("Accept-Encoding", "identity")
-            if (c.responseCode != 200) throw java.io.IOException("Cloud trả HTTP ${c.responseCode}.")
+            if (c.responseCode != 200) throw CloudHttpError(c.responseCode)
             if (c.contentLengthLong > limit) throw java.io.IOException("File lớn hơn kích thước cho phép.")
-            return c.inputStream.use { it.readNBytesCapped(limit) }
+            val data = c.inputStream.use { it.readNBytesCapped(limit, current) }
+            if (c.contentLengthLong >= 0 && c.contentLengthLong != data.size.toLong()) throw java.io.EOFException("Tải Cloud bị gián đoạn.")
+            return data
         } finally { c.disconnect() }
     }
 
-    private fun java.io.InputStream.readNBytesCapped(max: Int): ByteArray {
+    private fun java.io.InputStream.readNBytesCapped(max: Int, current: () -> Boolean = { true }): ByteArray {
         val out = java.io.ByteArrayOutputStream()
         val buf = ByteArray(1 shl 14)
         while (true) {
+            if (!current()) throw java.io.IOException("Game hoặc kho đã thay đổi. Hãy tải lại.")
             val n = read(buf)
             if (n < 0) break
             out.write(buf, 0, n)

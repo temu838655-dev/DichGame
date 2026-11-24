@@ -10,6 +10,8 @@ internal object RemotePack {
     data class Manifest(val game: String, val version: Int, val url: URL, val bytes: Int, val sha256: String)
     enum class Decision { INSTALL, SAME, REJECT }
 
+    fun retryableHttp(code: Int): Boolean = code == 408 || code == 429 || code in 500..599
+
     fun versionDecision(oldVersion: Int?, oldHash: String?, version: Int, hash: String): Decision =
         when {
             oldVersion == null || version > oldVersion -> Decision.INSTALL
