@@ -265,7 +265,9 @@ class CaptureService : Service() {
         val data = intent.getParcelableExtra<Intent>("data")
         if (data == null) { stopSelf(); return START_NOT_STICKY }
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        projection = mpm.getMediaProjection(intent.getIntExtra("code", 0), data).also {
+        projection = checkNotNull(mpm.getMediaProjection(intent.getIntExtra("code", 0), data)) {
+            "Android không cấp quyền ghi màn hình."
+        }.also {
             it.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() { stopSelf() }
             }, handler)
