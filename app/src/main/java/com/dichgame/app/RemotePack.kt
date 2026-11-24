@@ -10,6 +10,22 @@ internal object RemotePack {
     data class Manifest(val game: String, val version: Int, val url: URL, val bytes: Int, val sha256: String)
     enum class Decision { INSTALL, SAME, REJECT }
 
+    fun catalogSource(raw: String, game: String): String? {
+        require(game.isNotBlank())
+        val obj = JSONObject(raw)
+        require(obj.getInt("schema") == 1)
+        val entries = obj.getJSONArray("games")
+        require(entries.length() <= 2000)
+        val matches = (0 until entries.length()).map { entries.getJSONObject(it) }
+            .filter { GamePackMatch.selected(game, it.getString("game")) }
+        require(matches.size <= 1) { "Danh mục có nhiều nguồn cho cùng game." }
+        val entry = matches.singleOrNull() ?: return null
+        val url = URL(entry.getString("manifest"))
+        require(url.protocol == "https" && url.host.isNotBlank() && url.userInfo == null &&
+            url.ref == null && url.path.endsWith(".dichgame.json", true))
+        return url.toExternalForm()
+    }
+
     fun retryableHttp(code: Int): Boolean = code == 408 || code == 429 || code in 500..599
 
     fun versionDecision(oldVersion: Int?, oldHash: String?, version: Int, hash: String): Decision =
