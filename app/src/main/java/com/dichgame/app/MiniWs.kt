@@ -24,6 +24,7 @@ class MiniWs private constructor(private val sock: Socket) {
     private val ins: InputStream = sock.getInputStream()
     private val outs: OutputStream = sock.getOutputStream()
     private val rnd = SecureRandom()
+    private var fragmented: ByteArrayOutputStream? = null
 
     @Volatile var closed = false
         private set
@@ -72,7 +73,6 @@ class MiniWs private constructor(private val sock: Socket) {
      * Ném [SocketTimeoutException] nếu quá thời gian chờ (đặt bằng [setTimeout]); gọi lại được.
      */
     fun receive(): String? {
-        var text: ByteArrayOutputStream? = null
         while (true) {
             val h = readFully(2)
             val fin = (h[0].toInt() and 0x80) != 0
@@ -85,7 +85,10 @@ class MiniWs private constructor(private val sock: Socket) {
                 len = 0
                 for (x in e) len = (len shl 8) or (x.toLong() and 255)
             }
-            if (len < 0 || len > 4_000_000) { closed = true; throw java.io.IOException("khung tin quá lớn") }
+            if (len < 0 || len > MAX_MESSAGE || (h[0].toInt() and 0x70) != 0 ||
+                (op >= 8 && (!fin || len > 125))) {
+                closed = true; sock.close(); throw java.io.IOException("khung WebSocket không hợp lệ")
+            }
             val mask = if (masked) readFully(4) else null
             val data = readFully(len.toInt())
             if (mask != null) for (i in data.indices) data[i] = (data[i].toInt() xor mask[i % 4].toInt()).toByte()
@@ -94,9 +97,23 @@ class MiniWs private constructor(private val sock: Socket) {
                 0x9 -> { try { sendFrame(0xA, data) } catch (_: Exception) {} }
                 0xA -> {}
                 0x1, 0x0 -> {
-                    if (op == 0x1) text = ByteArrayOutputStream()
-                    text?.write(data)
-                    if (fin) return String((text ?: ByteArrayOutputStream()).toByteArray(), Charsets.UTF_8)
+                    if (op == 0x1) {
+                        if (fragmented != null) { closed = true; sock.close(); throw java.io.IOException("khung tin chồng nhau") }
+                        if (fin) return String(data, Charsets.UTF_8)
+                        fragmented = ByteArrayOutputStream()
+                    }
+                    val text = fragmented ?: run {
+                        closed = true; sock.close(); throw java.io.IOException("thiếu khung tin đầu")
+                    }
+                    if (text.size().toLong() + data.size > MAX_MESSAGE) {
+                        fragmented = null
+                        closed = true; sock.close(); throw java.io.IOException("tin WebSocket quá lớn")
+                    }
+                    text.write(data)
+                    if (fin) {
+                        fragmented = null
+                        return String(text.toByteArray(), Charsets.UTF_8)
+                    }
                 }
             }
         }
@@ -112,6 +129,7 @@ class MiniWs private constructor(private val sock: Socket) {
     }
 
     companion object {
+        private const val MAX_MESSAGE = 4_000_000L
         private const val GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
         fun accept(key: String): String =
@@ -125,9 +143,17 @@ class MiniWs private constructor(private val sock: Socket) {
 
         /** Kết nối và bắt tay WebSocket. Ném IOException nếu không được. */
         fun connect(host: String, port: Int, tls: Boolean, timeoutMs: Int = 4000, path: String = "/"): MiniWs {
+            require(host.isNotBlank() && host.none { it.isWhitespace() || it.isISOControl() || it == '/' || it == '@' })
+            require(port in 1..65535 && timeoutMs > 0)
+            require(path.startsWith("/") && path.none { it.isWhitespace() || it.isISOControl() })
             val raw = Socket()
             try {
-                raw.connect(InetSocketAddress(host, port), timeoutMs)
+                val addresses = java.net.InetAddress.getAllByName(host)
+                // This trust-all TLS client is only for local TVs. Reject public endpoints.
+                val address = addresses.firstOrNull { it.isSiteLocalAddress || it.isLinkLocalAddress || it.isLoopbackAddress ||
+                    (it is java.net.Inet6Address && (it.address[0].toInt() and 0xfe) == 0xfc) }
+                    ?: throw java.io.IOException("Chỉ kết nối WebSocket TV trong mạng nội bộ")
+                raw.connect(InetSocketAddress(address, port), timeoutMs)
                 raw.soTimeout = timeoutMs
                 raw.tcpNoDelay = true
                 val s: Socket = if (tls) {

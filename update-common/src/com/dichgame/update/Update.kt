@@ -16,7 +16,7 @@ object Update {
     @Volatile var testApi: String? = null
 
     /** [no] số bản dựng, [apk] đường dẫn tải file APK, [size] dung lượng (byte, -1 nếu chưa biết), [notes] ghi chú "có gì mới". */
-    class Info(val no: Int, val page: String, val apk: String, val size: Long, val notes: String)
+    class Info(val no: Int, val page: String, val apk: String, val size: Long, val notes: String, val sha256: String? = null)
 
     private val TAG = Regex("^build-(\\d+)$")
     private val NAME = Regex("^Bản dựng (\\d+)")
@@ -41,17 +41,45 @@ object Update {
             val assets = r.optJSONArray("assets") ?: continue
             var url: String? = null
             var size = -1L
+            var sha256: String? = null
             for (k in 0 until assets.length()) {
                 val a = assets.getJSONObject(k)
                 if (a.optString("name") == assetName && a.optString("state", "uploaded") == "uploaded") {
                     url = a.optString("browser_download_url").ifEmpty { null }
                     size = a.optLong("size", -1L)
+                    sha256 = digest(a.optString("digest"))
                 }
             }
             if (url == null) continue
-            best = Info(n, r.optString("html_url"), url, size, cleanNotes(r.optString("body")))
+            best = Info(n, r.optString("html_url"), url, size, cleanNotes(r.optString("body")), sha256)
         }
         return best
+    }
+
+    internal fun digest(raw: String): String? =
+        raw.takeIf { Regex("^sha256:[0-9a-fA-F]{64}$").matches(it) }?.substringAfter(':')?.lowercase(java.util.Locale.ROOT)
+
+    internal fun validAssetUrl(url: String, assetName: String): Boolean = runCatching {
+        val uri = java.net.URI(url)
+        uri.scheme == "https" && uri.host.equals("github.com", true) &&
+            uri.userInfo == null && uri.port in listOf(-1, 443) && uri.query == null && uri.fragment == null &&
+            uri.path.startsWith("/$REPO/releases/download/") && uri.path.substringAfterLast('/') == assetName &&
+            uri.normalize().path == uri.path
+    }.getOrDefault(false)
+
+    internal fun verifyDigest(file: java.io.File, expected: String?): Boolean {
+        if (expected == null) return true // older releases / redirect fallback rely on Android signature
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        val actual = md.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+        return actual == expected
     }
 
     /** Ghi chú bản phát hành lấy từ lời nhắn commit: bỏ dòng ký tên tự động, dòng "Full Changelog", gọn lại còn tối đa 700 ký tự. */
@@ -70,7 +98,7 @@ object Update {
         val test = testApi
         if (test != null) return parse(get(test), assetName)
         try {
-            return parse(get(API), assetName)
+            return parse(get(API), assetName)?.takeIf { validAssetUrl(it.apk, assetName) }
         } catch (e: Exception) {
             // API của GitHub giới hạn số lượt gọi theo địa chỉ mạng (60 lượt mỗi giờ): hỏi trang releases/latest, không tính vào hạn mức này
             return viaRedirect(assetName) ?: throw e

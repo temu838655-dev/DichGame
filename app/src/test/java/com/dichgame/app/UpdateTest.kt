@@ -74,6 +74,26 @@ class UpdateTest {
         assertEquals("", Update.cleanNotes("**Full Changelog**: https://github.com/x/y/compare/build-1...build-2"))
     }
 
+    @Test fun releaseDigestIsParsedAndValidated() {
+        val hash = "ab".repeat(32)
+        assertEquals(hash, Update.digest("sha256:" + hash.uppercase()))
+        assertNull(Update.digest("sha256:bad"))
+        val f = kotlin.io.path.createTempFile().toFile()
+        try {
+            f.writeText("abc")
+            assertTrue(Update.verifyDigest(f, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"))
+            assertTrue(!Update.verifyDigest(f, hash))
+        } finally { f.delete() }
+    }
+
+    @Test fun assetUrlMustPointToThisRepository() {
+        val url = "https://github.com/${Update.REPO}/releases/download/build-123/DichGame.apk"
+        assertTrue(Update.validAssetUrl(url, "DichGame.apk"))
+        assertTrue(!Update.validAssetUrl(url.replace("https:", "http:"), "DichGame.apk"))
+        assertTrue(!Update.validAssetUrl(url.replace("github.com/", "github.com.example.org/"), "DichGame.apk"))
+        assertTrue(!Update.validAssetUrl(url, "DichGame-TV.apk"))
+    }
+
     @Test fun notesAreTruncated() {
         val n = Update.cleanNotes("a".repeat(2000))
         assertTrue(n.length <= 701)
