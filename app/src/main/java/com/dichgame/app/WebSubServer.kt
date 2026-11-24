@@ -27,6 +27,8 @@ class WebSubServer(private val port: Int = 8780) {
     private var style = WebTvStyle()
     private var speechSeq = 0L
     private var speech = ""
+    private var textUntil = 0L
+    private var regionUntil = 0L
     private val clients = java.util.concurrent.Semaphore(16)
     @Volatile private var stopped = false
 
@@ -61,10 +63,11 @@ class WebSubServer(private val port: Int = 8780) {
         synchronized(lock) {
             val oldText = text
             val oldRegion = region
+            val now = android.os.SystemClock.elapsedRealtime()
             when (kind) {
-                "region" -> region = t
-                "clear" -> { text = ""; region = "" }
-                else -> text = t
+                "region" -> { region = t; regionUntil = now + 15000 }
+                "clear" -> { text = ""; region = ""; textUntil = 0; regionUntil = 0 }
+                else -> { text = t; textUntil = now + 12000 }
             }
             val voiced = speak && t.isNotBlank() && style.speak
             if (voiced && (speech != t || oldText != text || oldRegion != region)) {
@@ -87,6 +90,14 @@ class WebSubServer(private val port: Int = 8780) {
 
     fun clearTestSubtitle(expected: String) {
         synchronized(lock) { if (text == expected) push("") }
+    }
+
+    private fun expireLocked() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        var changed = false
+        if (text.isNotEmpty() && now >= textUntil) { text = ""; changed = true }
+        if (region.isNotEmpty() && now >= regionUntil) { region = ""; changed = true }
+        if (changed) seq++
     }
 
     private fun boundedLine(rd: BufferedReader): String? {
@@ -136,15 +147,17 @@ class WebSubServer(private val port: Int = 8780) {
                     val body: String
                     synchronized(lock) {
                         val end = System.currentTimeMillis() + 20_000
+                        expireLocked()
                         while (seq == since && !stopped) {
                             val left = end - System.currentTimeMillis()
                             if (left <= 0) break
-                            lock.wait(left)
+                            lock.wait(minOf(left, 500L))
+                            expireLocked()
                         }
                         body = JSONObject().put("seq", seq).put("text", text).put("region", region)
                             .put("style", style.json()).put("speechSeq", speechSeq).put("speech", speech).toString()
                     }
-                    if ((receiver && !pairing.valid(param("token"))) || (!receiver && !legacyEnabled)) reply(c, 403, "text/plain", "Pair receiver first", receiver)
+                    if (stopped || (receiver && !pairing.valid(param("token"))) || (!receiver && !legacyEnabled)) reply(c, 403, "text/plain", "Pair receiver first", receiver)
                     else reply(c, 200, "application/json; charset=utf-8", body, cors = receiver)
                 }
                 "/", "/index.html" -> if (legacyEnabled) reply(c, 200, "text/html; charset=utf-8", PAGE) else reply(c, 403, "text/plain", "Enable browser mode on phone")
@@ -189,7 +202,7 @@ function poll(){
   x.open('GET','/poll?since='+seq+'&t='+(new Date().getTime()),true);
   x.timeout=30000;
   x.onload=function(){
-    try{var j=JSON.parse(x.responseText);seq=j.seq;sub.textContent=j.text;hint.style.display=j.text?'none':'block';}catch(e){}
+    try{if(x.status!==200)throw Error();var j=JSON.parse(x.responseText);seq=j.seq;sub.textContent=j.text;hint.style.display=j.text?'none':'block';}catch(e){seq=-1;sub.textContent='';hint.style.display='block';hint.textContent='Bật lại chế độ trình duyệt trên điện thoại.';}
     setTimeout(poll,50);
   };
   x.onerror=x.ontimeout=function(){seq=-1;sub.textContent='';hint.style.display='block';hint.textContent='Mất kết nối, đang thử lại...';setTimeout(poll,750);};

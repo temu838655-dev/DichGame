@@ -16,7 +16,7 @@ jobs:
           node --check webos/pairing.js
           cmp samsung/pairing.js webos/pairing.js
           node tests/tv-pairing.test.js
-      - run: bash -n samsung/package-dev.sh
+      - run: bash -n samsung/package-dev.sh samsung/install-dev.sh
       - run: |
           python3 - <<'PY'
           import json, pathlib, re, xml.etree.ElementTree as ET

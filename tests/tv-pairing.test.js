@@ -35,4 +35,7 @@ assert.equal(node.style.color,'#ffff00');
 assert.equal(node.style.top,'7%');
 assert.equal(region.style.bottom,'7%');
 assert.equal(region.textContent,'Menu');
+sandbox.window.DgReceiver.applyStyle(node,region,{region:''});
+assert.equal(region.textContent,'');
+assert.equal(node.style.top,'7%');
 console.log('TV pairing and appearance transport passed');

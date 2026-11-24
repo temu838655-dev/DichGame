@@ -22,6 +22,7 @@ final class TVSubtitleServer: ObservableObject {
     private var tokens = Set<String>()
     private var sequence = 0
     private var subtitle = ""
+    private var subtitleUntil: TimeInterval = 0
 
     init() {
         tokens = Set((UserDefaults.standard.stringArray(forKey: tokenKey) ?? []).prefix(16))
@@ -67,6 +68,7 @@ final class TVSubtitleServer: ObservableObject {
         queue.async { [weak self] in
             guard let self, self.listener != nil else { return }
             self.subtitle = text
+            self.subtitleUntil = ProcessInfo.processInfo.systemUptime + 12
             self.sequence += 1
         }
     }
@@ -114,10 +116,16 @@ final class TVSubtitleServer: ObservableObject {
         (UUID().uuidString + UUID().uuidString).replacingOccurrences(of: "-", with: "").lowercased()
     }
 
+    private static func privateHost(_ host: NWEndpoint.Host) -> Bool {
+        let raw = String(describing: host)
+        if raw.hasPrefix("::ffff:") { return TVLink.privateIPv4(String(raw.dropFirst(7))) }
+        return TVLink.privateIPv4(raw)
+    }
+
     private func accept(_ connection: NWConnection) {
         guard listener != nil, connections.count < 16,
               case let .hostPort(host, _) = connection.endpoint,
-              TVLink.privateIPv4(String(describing: host)) else { connection.cancel(); return }
+              Self.privateHost(host) else { connection.cancel(); return }
         let id = UUID()
         connections[id] = connection
         connection.start(queue: queue)
@@ -174,6 +182,7 @@ final class TVSubtitleServer: ObservableObject {
 
     private func frame(_ id: UUID, token: String) {
         guard tokens.contains(token) else { reply(id, 403, [:]); return }
+        if !subtitle.isEmpty && ProcessInfo.processInfo.systemUptime >= subtitleUntil { subtitle = ""; sequence += 1 }
         reply(id, 200, ["seq": sequence, "text": subtitle, "region": ""])
     }
 
