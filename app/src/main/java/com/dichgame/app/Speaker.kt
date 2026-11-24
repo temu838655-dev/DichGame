@@ -40,13 +40,17 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         private set
 
     /** Số câu đang đọc hoặc đang chờ (giọng máy), để biết câu có đang dồn lại không. */
-    private val queued = AtomicInteger(0)
+    private val utterances = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val utt = AtomicInteger(0)
     @Volatile private var aiPlayUntil = 0L
     /** Số lần đã bắt đầu phát một đoạn âm thanh (giọng AI hoặc giọng offline); dùng cho bản tự kiểm tra. */
     @Volatile var played = 0
         private set
-    private fun dec() { queued.updateAndGet { if (it > 0) it - 1 else 0 } }
+    private fun finished(id: String?) { if (id != null) utterances.remove(id) }
+    private fun submit(task: () -> Unit) {
+        if (disposed) return
+        try { exec.execute { if (!disposed) task() } } catch (_: java.util.concurrent.RejectedExecutionException) {}
+    }
 
     /** Được gọi (ở luồng chính) khi giọng AI lỗi; Speaker tự đọc bằng giọng máy thay thế. */
     var onAiError: ((String) -> Unit)? = null
@@ -59,10 +63,10 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                 tts?.setLanguage(Locale("vi", "VN"))
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {}
-                    override fun onDone(utteranceId: String?) { dec() }
+                    override fun onDone(utteranceId: String?) { finished(utteranceId) }
                     @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) { dec() }
-                    override fun onStop(utteranceId: String?, interrupted: Boolean) { dec() }
+                    override fun onError(utteranceId: String?) { finished(utteranceId) }
+                    override fun onStop(utteranceId: String?, interrupted: Boolean) { finished(utteranceId) }
                 })
                 applyVoice()
                 ready = true
@@ -128,10 +132,10 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         val my = seq.incrementAndGet()
         stopTrack()
         try { tts?.stop() } catch (_: Exception) {}
-        exec.execute {
-            if (disposed || my != seq.get()) return@execute
+        submit {
+            if (my != seq.get()) return@submit
             try {
-                val pcm = synthScenePcm(items)
+                val pcm = synthScenePcm(items, { !disposed && my == seq.get() })
                 play(pcm, (p.rate10 / 10f).coerceIn(0.5f, 2.5f), my)
             } catch (e: Exception) {
                 if (my == seq.get()) main.post { if (!disposed && my == seq.get()) fallback(all, last.delivery, e) }
@@ -140,8 +144,9 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     }
 
     /** Hợp nhất PCM 24 kHz theo thứ tự, thêm nhịp nghỉ ngắn để tách lời hai người. */
-    private fun synthScenePcm(items: List<VoiceLine>): Pcm {
+    private fun synthScenePcm(items: List<VoiceLine>, current: () -> Boolean): Pcm {
         val chunks = items.map { line ->
+            if (!current()) throw java.util.concurrent.CancellationException()
             val voiceName = p.aiVoiceFor(line.speaker, line.text)
             val style = styleFor(line.text, line.delivery)
             val key = voiceName + "|" + p.ttsModel + "|" + style + "|" + line.text
@@ -176,10 +181,10 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
             return
         }
         val my = tvSeq.incrementAndGet()
-        exec.execute {
-            if (my != tvSeq.get()) return@execute
-            val pcm = try { synthScenePcm(items) } catch (_: Exception) { null }
-            if (my == tvSeq.get()) cb(pcm, (p.rate10 / 10f).coerceIn(0.5f, 2.5f))
+        submit {
+            if (my != tvSeq.get()) return@submit
+            val pcm = try { synthScenePcm(items, { !disposed && my == tvSeq.get() }) } catch (_: Exception) { null }
+            if (!disposed && my == tvSeq.get()) cb(pcm, (p.rate10 / 10f).coerceIn(0.5f, 2.5f))
         }
     }
 
@@ -193,14 +198,17 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         deliveryOf(text, d)?.let { rate *= it.rate; pitch = it.pitch }
         // Tự đọc nhanh: câu mới tới lúc câu cũ chưa đọc xong thì để câu cũ đọc nốt, câu mới xếp hàng và đọc nhanh hơn.
         // Dồn quá 3 câu thì bỏ hàng cũ, đọc câu mới nhất.
-        val backlog = queued.get()
+        val backlog = utterances.size
         val add = queue || (p.autoFast && backlog in 1..2)
         if (p.autoFast && backlog > 0) rate *= (1f + 0.3f * backlog)
         t.setSpeechRate(rate.coerceIn(0.3f, 3f))
         t.setPitch(pitch)
-        if (!add) queued.set(0)
-        queued.incrementAndGet()
-        t.speak(text, if (add) TextToSpeech.QUEUE_ADD else TextToSpeech.QUEUE_FLUSH, null, "dg" + utt.incrementAndGet())
+        if (!add) utterances.clear()
+        val id = "dg" + utt.incrementAndGet()
+        utterances.add(id)
+        try {
+            if (t.speak(text, if (add) TextToSpeech.QUEUE_ADD else TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) finished(id)
+        } catch (_: Exception) { finished(id) }
     }
 
     // ---------------- Giọng AI ----------------
@@ -216,14 +224,14 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         val key = voiceName + "|" + p.ttsModel + "|" + style + "|" + text
         val backlog = p.autoFast && System.currentTimeMillis() < aiPlayUntil
         val speed = ((p.rate10 / 10f) * (if (backlog) 1.35f else 1f)).coerceIn(0.5f, 2.5f)
-        exec.execute {
-            if (disposed || my != seq.get()) return@execute
+        submit {
+            if (my != seq.get()) return@submit
             val cached: Pcm? = cache.get(key)
             val pcm: Pcm = cached ?: try {
                 AiSpeech.synth(p, text, style, voiceName).also { cache.put(key, it) }
             } catch (e: Exception) {
                 if (my == seq.get()) main.post { if (!disposed && my == seq.get()) fallback(text, d, e) }
-                return@execute
+                return@submit
             }
             play(pcm, speed, my)
         }
@@ -244,15 +252,15 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         try { tts?.stop() } catch (_: Exception) {}
         val id = p.offlineVoice
         val speed = speedFor(text, d)
-        exec.execute {
-            if (my != seq.get()) return@execute // đã có câu mới hơn, bỏ câu này
+        submit {
+            if (my != seq.get()) return@submit // đã có câu mới hơn, bỏ câu này
             val key = "off|$id|${(speed * 10).toInt()}|$text"
             val cached: Pcm? = cache.get(key)
             val pcm: Pcm = cached ?: try {
                 offline.synth(id, text, speed).also { if (it.data.isNotEmpty()) cache.put(key, it) }
             } catch (e: Throwable) {
                 if (my == seq.get()) main.post { if (!disposed && my == seq.get()) fallback(text, d, e) }
-                return@execute
+                return@submit
             }
             play(pcm, 1f, my)
         }
@@ -360,7 +368,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     fun stop() {
         seq.incrementAndGet()
         tvSeq.incrementAndGet()
-        queued.set(0)
+        utterances.clear()
         aiPlayUntil = 0L
         stopTrack()
         try { tts?.stop() } catch (_: Exception) {}
@@ -368,6 +376,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     fun shutdown() {
         disposed = true
+        utterances.clear()
         tvSeq.incrementAndGet()
         seq.incrementAndGet()
         stopTrack()

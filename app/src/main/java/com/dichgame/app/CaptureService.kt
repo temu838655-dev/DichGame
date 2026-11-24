@@ -179,7 +179,7 @@ class CaptureService : Service() {
         last = ""; cand = ""; stable = 0; prevVi = ""; prevOrig = ""
         lastFine = null; lastSig = null
         textOnScreen = false
-        menuUntil = 0L; autoShown = false; autoCand = ""
+        menuUntil = 0L; autoShown = false; autoCand = ""; autoDone = ""; autoStable = 0
         speaker?.stop()
         show("")
         return true
@@ -411,6 +411,7 @@ class CaptureService : Service() {
     }
 
     private fun clearMenuOverlay() {
+        if (renderingMenu || menuScene != null || menuOverlay?.visibility == View.VISIBLE) menuUntil = 0L
         menuGeneration++
         menuScene = null
         if (renderingMenu) { renderingMenu = false; finishBusy() }
@@ -440,6 +441,10 @@ class CaptureService : Service() {
     private data class MenuItem(val source: String, val rect: android.graphics.Rect, val colors: Pair<Int, Int>,
                                 val corners: FloatArray?, val lines: Int)
 
+    private fun scanScope() = listOf(gameContext(Prefs(this)), cw.toString(), ch.toString(), lang).joinToString("\u0000")
+
+    private fun validScan(scope: String): Boolean = running && !editing && scope == scanScope()
+
     private fun menuItems(blocks: List<Blk>, image: Bitmap?, skip: List<android.graphics.Rect>): List<MenuItem> {
         if (image == null) return emptyList()
         return blocks.mapNotNull { b ->
@@ -463,7 +468,7 @@ class CaptureService : Service() {
         menuScene = MenuSceneGuard.create(scene, screenW, screenH, items.map { intArrayOf(it.rect.left,it.rect.top,it.rect.right,it.rect.bottom) })
         lastMenuSceneCheck = android.os.SystemClock.uptimeMillis()
         val v = try { ensureMenuOverlay() } catch (_: Exception) {
-            renderingMenu = false; menuUntil = 0L; finishBusy(); show("Không tạo được lớp phủ chữ trên màn hình.", false); return
+            renderingMenu = false; menuScene = null; menuUntil = 0L; finishBusy(); show("Không tạo được lớp phủ chữ trên màn hình.", false); return
         }
         overlay?.visibility = View.GONE
         pacer.cleared()
@@ -620,8 +625,10 @@ class CaptureService : Service() {
         val skip = listOfNotNull(rectOf(frame), rectOf(overlay))
         val scene = Ocr.thumbFine(bmp)
         val keep = runCatching { bmp.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull()
-        ocrNow.read(bmp, { m -> keep?.recycle(); ocrFail(m) }) { r ->
-            val items = try { menuItems(r, keep, skip) } finally { keep?.recycle() }
+        val scope = scanScope()
+        ocrNow.read(bmp, { m -> keep?.recycle(); if (validScan(scope)) ocrFail(m) else finishBusy() }) { r ->
+            if (!validScan(scope)) { keep?.recycle(); finishBusy(); return@read }
+            val items = try { menuItems(r, keep, skip) } catch (_: Exception) { emptyList() } finally { keep?.recycle() }
             val long = items.filter { it.source.length >= longLen }
             if (long.size < 2) {
                 autoCand = ""; autoStable = 0; autoDone = ""
@@ -1059,10 +1066,13 @@ class CaptureService : Service() {
             overlay?.visibility = View.VISIBLE
             return
         }
-        reader.read(crop, { m -> ocrFail(m) }) { r ->
+        val scope = scanScope()
+        reader.read(crop, { m -> if (validScan(scope)) ocrFail(m) else finishBusy() }) { r ->
+            if (!validScan(scope)) { finishBusy(); return@read }
             val text = r.joinToString("\n") { it.text }.replace("\n", sep).trim()
             if (text.length < minLen) { show("Không thấy chữ trong khung."); finishBusy(); return@read }
             translateText(text) { vi ->
+                if (!validScan(scope)) { finishBusy(); return@translateText }
                 show(vi.caption, readAloud = !vi.uncertain)
                 hideRegionFrame()
                 sendTv("region", vi.caption, !vi.uncertain && speak && tvSpeakOn() && !tvVoiceOn())
@@ -1244,8 +1254,10 @@ class CaptureService : Service() {
         val skip = listOfNotNull(rectOf(region))
         val scene = Ocr.thumbFine(bmp)
         val keep = runCatching { bmp.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull()
-        reader.read(bmp, { m -> keep?.recycle(); ocrFail(m) }) { r ->
-            val items = try { menuItems(r, keep, skip) } finally { keep?.recycle() }
+        val scope = scanScope()
+        reader.read(bmp, { m -> keep?.recycle(); if (validScan(scope)) ocrFail(m) else finishBusy() }) { r ->
+            if (!validScan(scope)) { keep?.recycle(); finishBusy(); return@read }
+            val items = try { menuItems(r, keep, skip) } catch (_: Exception) { emptyList() } finally { keep?.recycle() }
             if (!running) { finishBusy(); return@read }
             if (items.isEmpty()) {
                 show("Không thấy chữ phù hợp để dịch trên màn hình.", false)
@@ -1465,7 +1477,10 @@ class CaptureService : Service() {
         }
         busy = true
         val scanAt = System.currentTimeMillis()
-        o.read(crop, { m -> ocrFail(m) }) { r -> onOcrResult(r, scanAt) }
+        val scope = scanScope()
+        o.read(crop, { m -> if (validScan(scope)) ocrFail(m) else finishBusy() }) { r ->
+            if (validScan(scope)) onOcrResult(r, scanAt) else finishBusy()
+        }
     }
 
     override fun onDestroy() {
