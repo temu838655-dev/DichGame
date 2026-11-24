@@ -6,3 +6,6 @@ Enable the TV subtitle server on Android, enter its LAN address on the TV, and a
 
 ### Developer deployment (computer fallback)
 Create a Samsung certificate profile for the intended TV DUID, package with `package-dev.sh` or `package-dev.ps1`, and connect in Developer Mode with `sdb connect TV_IP`. Read the exact serial in `sdb devices`. Run `bash install-dev.sh TV_SERIAL dist/FILE.wgt` or `powershell -File install-dev.ps1 -Serial TV_SERIAL -Package dist/FILE.wgt`. These scripts validate the intended app and signature files, then invoke the official CLI to install and launch; signature validity is enforced by the TV. This is not a mobile installer. References: https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/command-line-interface.html and https://developer.samsung.com/smarttv/develop/getting-started/setting-up-sdk/creating-certificates.html .
+
+### Source export
+Run `python3 samsung/export-project.py dist/DichGame-Samsung-source.zip` or download the `DichGame-Samsung-unsigned-source` CI artifact. The Android installer also exports this exact unsigned project. Extract, remove SIGNING-REQUIRED.txt, then sign with your local Samsung certificate profile. Never rename this ZIP to WGT or treat it as a signed package.

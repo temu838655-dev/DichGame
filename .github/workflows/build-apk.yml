@@ -114,6 +114,7 @@ jobs:
           test "${#packages[@]}" -eq 1
           test -s "${packages[0]}"
           cp "${packages[0]}" app/src/main/assets/tv/dichgame-lg.ipk
+          python3 samsung/export-project.py app/src/main/assets/tv/DichGame-Samsung-source.zip
 
       - name: Chạy unit test (gói Việt hoá, nhận dạng âm thanh, hợp nhất phụ đề)
         run: gradle :app:testDebugUnitTest --no-daemon --stacktrace

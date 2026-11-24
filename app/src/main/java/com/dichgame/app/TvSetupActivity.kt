@@ -396,6 +396,31 @@ class TvSetupActivity : Activity() {
         val label = Ui.tv(this, if (samsungInstalling) "Đang cài..." else "Chọn DichGame WGT đã ký cho TV của bạn. Chưa hỗ trợ tự tạo chứng chỉ.", 13f, Ui.SUB)
         samsungStatus = label
         c.addView(label)
+        c.addView(Ui.button(this, "Xuất dự án Tizen để ký WGT") {
+            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/zip"
+                putExtra(Intent.EXTRA_TITLE, "DichGame-Samsung-source.zip")
+            }, 7320)
+        }, Ui.lpm(this, 8, 8))
+        c.addView(Ui.tv(this, "ZIP là mã nguồn chưa ký. Dùng Samsung Certificate Manager / Tizen Studio với DUID TV để ký, rồi nhập WGT. Không gửi khóa riêng lên GitHub.", 12.5f, Ui.SUB))
+        c.addView(Ui.button(this, "Cài lại WGT đã lưu cho IP này") {
+            val address = ip.text.toString().trim()
+            if (!LgDeveloperKey.isPrivateIpv4(address) || samsungInstalling) return@button
+            val saved = p.sp.getString("samsung_wgt_uri_$address", "").orEmpty()
+            if (saved.isBlank()) { label.text = "Chưa lưu WGT cho IP này. Hãy chọn WGT đã ký."; return@button }
+            confirmSamsungInstall(address, android.net.Uri.parse(saved))
+        }, Ui.lpm(this, 8, 8))
+        c.addView(Ui.button(this, "Quên WGT đã lưu cho IP này") {
+            val address = ip.text.toString().trim()
+            if (!LgDeveloperKey.isPrivateIpv4(address) || samsungInstalling) return@button
+            val saved = p.sp.getString("samsung_wgt_uri_$address", "").orEmpty()
+            p.sp.edit().remove("samsung_wgt_uri_$address").apply()
+            if (saved.isNotBlank() && !p.sp.all.any { (key, value) -> key.startsWith("samsung_wgt_uri_") && value == saved }) {
+                runCatching { contentResolver.releasePersistableUriPermission(android.net.Uri.parse(saved), Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            }
+            label.text = "Đã quên đường dẫn WGT."
+        }, Ui.lpm(this, 8, 8))
         c.addView(Ui.button(this, "Chọn WGT đã ký & cài", true) {
             if (samsungInstalling) return@button
             val address = ip.text.toString().trim()
@@ -406,6 +431,7 @@ class TvSetupActivity : Activity() {
             p.sp.edit().putString("samsung_pending_ip", address).apply()
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
             }, 7319)
         }, Ui.lpm(this, 8, 8))
     }
@@ -413,13 +439,30 @@ class TvSetupActivity : Activity() {
     @Deprecated("Activity result callback for document picker")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 7320 && resultCode == RESULT_OK) {
+            val target = data?.data ?: return
+            Thread {
+                val result = runCatching {
+                    assets.open("tv/DichGame-Samsung-source.zip").use { input ->
+                        contentResolver.openOutputStream(target, "w")?.use { input.copyTo(it) }
+                            ?: error("Không mở được nơi lưu ZIP")
+                    }
+                }
+                runOnUiThread { Toast.makeText(this, if (result.isSuccess) "Đã xuất ZIP chưa ký." else "Xuất ZIP thất bại: " + result.exceptionOrNull()?.message, Toast.LENGTH_LONG).show() }
+            }.start()
+            return
+        }
         if (requestCode != 7319 || resultCode != RESULT_OK || samsungInstalling) return
         val uri = data?.data ?: return
         val address = samsungIp.ifBlank { p.sp.getString("samsung_pending_ip", "").orEmpty() }
         p.sp.edit().remove("samsung_pending_ip").apply()
         if (!LgDeveloperKey.isPrivateIpv4(address)) return
+        confirmSamsungInstall(address, uri, (data?.flags ?: 0) and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+    }
+
+    private fun confirmSamsungInstall(address: String, uri: android.net.Uri, canPersist: Boolean = false) {
         AlertDialog.Builder(this, R.style.DgDialog).setTitle("Cài DichGame TV")
-            .setMessage("Cài WGT bạn vừa chọn lên TV Samsung tại $address?")
+            .setMessage("Cài WGT đã chọn lên TV Samsung tại $address?")
             .setNegativeButton("Hủy", null).setPositiveButton("Cài") { _, _ ->
                 samsungInstalling = true
                 Thread {
@@ -433,6 +476,9 @@ class TvSetupActivity : Activity() {
                         if (isFinishing || isDestroyed) return@runOnUiThread
                         result.fold({ message ->
                             p.sp.edit().putString("samsung_dev_ip", address).apply()
+                            if (canPersist && runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }.isSuccess) {
+                                p.sp.edit().putString("samsung_wgt_uri_$address", uri.toString()).apply()
+                            }
                             p.webSub = true; TvOut.startWeb(this)
                             if (brand == 2) render()
                             Toast.makeText(this, message + " Ghép mã 8 số trên TV.", Toast.LENGTH_LONG).show()
