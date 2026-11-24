@@ -7,3 +7,5 @@ Implementation follows Samsung Electronics' Apache-2.0 tizen-agent-skills certif
 Only the four known source files are signed. Author signature covers those files; distributor signature covers those plus author-signature.xml; both contain W3C widget role and profile properties. The TV remains the ultimate verifier. No fake, shared or self-signed distributor certificate is used.
 
 Pending: complete CA/login interoperability test with an actual Samsung account and TV, independent XML signature verification, certificate renewal/backup strategy and iOS equivalent. No physical TV test yet. The existing signed-WGT import remains a fallback.
+
+WGT signing uses RSA-SHA256 and SHA256 file digests, matching the W3C widget recommendation and Samsung's sample author-signature.xml. The independent Java XMLDSig test checks both signatures and rejects a tampered file. The test uses a temporary synthetic certificate only, not a deployable Samsung certificate. SDB protocol version follows the captured Samsung 0x00100000 handshake.

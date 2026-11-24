@@ -26,7 +26,7 @@ internal object SamsungCertificateCrypto {
     }
     private fun seq(vararg values: ByteArray) = der(48, values.fold(byteArrayOf()) { a,b -> a+b })
     private fun oid(vararg bytes: Int) = der(6, bytes.map { it.toByte() }.toByteArray())
-    private fun sign(key: PrivateKey, bytes: ByteArray) = Signature.getInstance("SHA512withRSA").run {
+    private fun sign(key: PrivateKey, bytes: ByteArray, algorithm: String = "SHA512withRSA") = Signature.getInstance(algorithm).run {
         initSign(key); update(bytes); sign()
     }
     fun validDuid(value: String): Boolean = value.length in 12..160 &&
@@ -58,10 +58,10 @@ internal object SamsungCertificateCrypto {
     private const val WIDGET = "http://www.w3.org/ns/widgets-digsig#"
     private const val C14N = "http://www.w3.org/2001/10/xml-exc-c14n#"
     private const val C14N11 = "http://www.w3.org/2006/12/xml-c14n11"
-    private const val SHA = "http://www.w3.org/2001/04/xmlenc#sha512"
-    private const val RSA = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha512"
+    private const val SHA = "http://www.w3.org/2001/04/xmlenc#sha256"
+    private const val RSA = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
     val sourceNames = setOf("config.xml","index.html","receiver.js","pairing.js")
-    private fun digest(bytes: ByteArray) = b64(MessageDigest.getInstance("SHA-512").digest(bytes))
+    private fun digest(bytes: ByteArray) = b64(MessageDigest.getInstance("SHA-256").digest(bytes))
     internal fun signatureXml(files: Map<String,ByteArray>, key: PrivateKey, chain: List<X509Certificate>, author: Boolean): ByteArray {
         require(files.keys == if (author) sourceNames else sourceNames + "author-signature.xml")
         require(chain.isNotEmpty())
@@ -80,8 +80,8 @@ internal object SamsungCertificateCrypto {
             files.toSortedMap().entries.joinToString("") { ref(it.key,digest(it.value)) } +
             ref("#prop",digest(canonicalObject.toByteArray(Charsets.UTF_8)),true)
         val signedInfo = "<SignedInfo xmlns=\"$DS\">$inside</SignedInfo>"
-        val sig = sign(key,signedInfo.toByteArray(Charsets.UTF_8))
-        check(Signature.getInstance("SHA512withRSA").run { initVerify(chain.first()); update(signedInfo.toByteArray()); verify(sig) }) { "Khóa ký không khớp chứng chỉ" }
+        val sig = sign(key,signedInfo.toByteArray(Charsets.UTF_8), "SHA256withRSA")
+        check(Signature.getInstance("SHA256withRSA").run { initVerify(chain.first()); update(signedInfo.toByteArray()); verify(sig) }) { "Khóa ký không khớp chứng chỉ" }
         val certificates = chain.joinToString("") { "<X509Certificate>${b64(it.encoded)}</X509Certificate>" }
         return ("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Signature xmlns=\"$DS\" Id=\"$id\"><SignedInfo>$inside</SignedInfo>" +
             "<SignatureValue>${b64(sig)}</SignatureValue><KeyInfo><X509Data>$certificates</X509Data></KeyInfo>$obj</Signature>").toByteArray(Charsets.UTF_8)

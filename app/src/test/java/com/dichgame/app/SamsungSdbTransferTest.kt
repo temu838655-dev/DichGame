@@ -24,8 +24,8 @@ class SamsungSdbTransferTest {
                         }
                         val hello = read()
                         assertEquals(SamsungSdb.CNXN, hello.cmd)
-                        assertEquals(0x01000000, hello.a)
-                        send(SamsungSdb.CNXN, 0x01000000, 1024, "device::test".toByteArray())
+                        assertEquals(0x00100000, hello.a)
+                        send(SamsungSdb.CNXN, 0x00100000, 1024, "device::test".toByteArray())
                         val open = read()
                         assertEquals(SamsungSdb.OPEN, open.cmd)
                         assertEquals("sync:\u0000", open.data.toString(Charsets.UTF_8))
