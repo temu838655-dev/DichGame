@@ -82,6 +82,8 @@ class CaptureService : Service() {
     private var menuOverlay: UiOverlay? = null
     private var menuGeneration = 0
     private var renderingMenu = false
+    private var menuScene: MenuSceneGuard? = null
+    private var lastMenuSceneCheck = 0L
     private var tt: TextTranslator? = null
     private var speaker: Speaker? = null
     private var speak = false
@@ -409,6 +411,7 @@ class CaptureService : Service() {
 
     private fun clearMenuOverlay() {
         menuGeneration++
+        menuScene = null
         if (renderingMenu) { renderingMenu = false; finishBusy() }
         menuOverlay?.clear()
         menuOverlay?.visibility = View.GONE
@@ -448,7 +451,7 @@ class CaptureService : Service() {
         }.take(80)
     }
 
-    private fun renderMenuItems(items: List<MenuItem>) {
+    private fun renderMenuItems(items: List<MenuItem>, scene: IntArray) {
         if (!running || items.isEmpty()) { finishBusy(); return }
         val t = tt ?: run { finishBusy(); return }
         val generation = ++menuGeneration
@@ -456,6 +459,8 @@ class CaptureService : Service() {
         menuUntil = Long.MAX_VALUE
         val context = gameContext(Prefs(this))
         val screenW = cw; val screenH = ch
+        menuScene = MenuSceneGuard.create(scene, screenW, screenH, items.map { intArrayOf(it.rect.left,it.rect.top,it.rect.right,it.rect.bottom) })
+        lastMenuSceneCheck = android.os.SystemClock.uptimeMillis()
         val v = try { ensureMenuOverlay() } catch (_: Exception) {
             renderingMenu = false; menuUntil = 0L; finishBusy(); show("Không tạo được lớp phủ chữ trên màn hình.", false); return
         }
@@ -524,6 +529,30 @@ class CaptureService : Service() {
         pump()
     }
 
+    /** Watch the unmasked game pixels while translated text is visible. Never OCR the overlay itself. */
+    private fun checkMenuScene() {
+        val watch = menuScene ?: return
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastMenuSceneCheck < 1000L) return
+        lastMenuSceneCheck = now
+        val img = captureBuffer.reader?.acquireLatestImage() ?: return
+        val thumb = try {
+            val p = img.planes[0]
+            val full = Bitmap.createBitmap(p.rowStride / p.pixelStride, img.height, Bitmap.Config.ARGB_8888)
+            try {
+                full.copyPixelsFromBuffer(p.buffer)
+                val cropped = cropAndRecycle(full, 0, 0, img.width, img.height)
+                try { Ocr.thumbFine(cropped) } finally { cropped.recycle() }
+            } finally { if (!full.isRecycled) full.recycle() }
+        } finally { img.close() }
+        if (watch.changed(thumb)) {
+            clearMenuOverlay()
+            menuUntil = 0L
+            autoCand = ""; autoDone = ""; autoStable = 0
+            show("")
+        }
+    }
+
     private val autoRun = object : Runnable {
         override fun run() {
             try {
@@ -588,6 +617,7 @@ class CaptureService : Service() {
         } finally { img.close() }
         busy = true
         val skip = listOfNotNull(rectOf(frame), rectOf(overlay))
+        val scene = Ocr.thumbFine(bmp)
         val keep = runCatching { bmp.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull()
         ocrNow.read(bmp, { m -> keep?.recycle(); ocrFail(m) }) { r ->
             val items = try { menuItems(r, keep, skip) } finally { keep?.recycle() }
@@ -600,7 +630,7 @@ class CaptureService : Service() {
             if (sig != autoCand) { autoCand = sig; autoStable = 1 } else autoStable++
             if (autoStable < 2 || sig == autoDone) { finishBusy(); return@read }
             autoDone = sig
-            renderMenuItems(items)
+            renderMenuItems(items, scene)
         }
     }
 
@@ -1211,6 +1241,7 @@ class CaptureService : Service() {
         // Explicit full-screen mode includes the subtitle area, too. The locked
         // subtitle frame has no visible pixels and must not exclude game text.
         val skip = listOfNotNull(rectOf(region))
+        val scene = Ocr.thumbFine(bmp)
         val keep = runCatching { bmp.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull()
         reader.read(bmp, { m -> keep?.recycle(); ocrFail(m) }) { r ->
             val items = try { menuItems(r, keep, skip) } finally { keep?.recycle() }
@@ -1220,7 +1251,7 @@ class CaptureService : Service() {
                 finishBusy()
                 return@read
             }
-            renderMenuItems(items)
+            renderMenuItems(items, scene)
         }
     }
 
@@ -1377,6 +1408,7 @@ class CaptureService : Service() {
         if (!ready || editing) return
         // Detect rotation even while translated menu text is held on screen.
         ensureSize()
+        if (menuScene != null) { checkMenuScene(); return }
         if (busy || System.currentTimeMillis() < menuUntil) return
         val fr = frame ?: return
         val img = captureBuffer.reader?.acquireLatestImage() ?: return
