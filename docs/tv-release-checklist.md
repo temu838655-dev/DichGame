@@ -3,5 +3,5 @@
 - Samsung: signed WGT per Samsung certificate requirements; verify TVWindow permissions, HDMI source selection, subtitle polling, remote UP, CEC, HDR and game mode on actual models. Receiver now uses eight-digit approval and remembered tokens; verify expiry, revocation, reconnect and CORS on hardware. Legacy browser access is separately enabled. LAN HTTP is not encrypted. Do not expose port 8780 to the internet.
 - LG: package receiver with icon, verify installation and launch, confirm HDMI behavior separately. Fullscreen receiver is not an HDMI overlay.
 - Android/iOS installers: require tested developer protocol, device identity verification, secure credential storage, signed package and actual install/launch confirmation. No fake success.
-- iOS: implement subtitle producer and TV transport before advertising live TV support.
+- iOS: screenshot translations can be sent to the Android TV receiver after eight-digit pairing. Verify local-network permission, ATS, voice and clearing on real devices. No live screen capture or direct LG/Samsung installer yet.
 - No release claim until build and hardware tests pass.

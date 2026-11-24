@@ -27,6 +27,14 @@ struct ContentView: View {
     @State private var savedKeys = false
     @State private var showKeys = false
     @State private var speaker = AVSpeechSynthesizer()
+    @AppStorage("dichgame.tv.ip") private var tvIP = ""
+    @AppStorage("dichgame.tv.pairedIP") private var tvPairedIP = ""
+    @AppStorage("dichgame.tv.token") private var tvToken = ""
+    @AppStorage("dichgame.tv.size") private var tvSize = 36.0
+    @AppStorage("dichgame.tv.speak") private var tvSpeak = false
+    @State private var tvCode = ""
+    @State private var tvBusy = false
+    @State private var tvStatus = ""
 
     var body: some View {
         NavigationStack {
@@ -50,6 +58,7 @@ struct ContentView: View {
                         contextPanel
                         imagePanel
                         resultPanel
+                        tvPanel
                         settingsPanel
                         footer
                     }
@@ -267,6 +276,58 @@ struct ContentView: View {
                     .font(.system(size: 12)).foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    private var tvPanel: some View {
+        panel(title: "Phụ đề trên Android TV", subtitle: "Gửi bản dịch ảnh qua Wi-Fi nội bộ", icon: "tv") {
+            Text("Mở app DichGame TV, cấp quyền hiển thị và nhập mã 8 số. Đây chưa phải dịch trực tiếp khi chơi game trên iOS.")
+                .font(.system(size: 12)).foregroundStyle(Palette.muted)
+            TextField("IP của TV", text: $tvIP).keyboardType(.decimalPad).autocorrectionDisabled().inputStyle()
+            TextField("Mã 8 số trên TV", text: $tvCode).keyboardType(.numberPad).inputStyle()
+            Button("Ghép TV") {
+                let ip = tvIP.trimmingCharacters(in: .whitespacesAndNewlines), code = tvCode
+                tvBusy = true
+                Task {
+                    defer { tvBusy = false }
+                    do {
+                        tvToken = try await TVLink.pair(ip: ip, code: code)
+                        tvPairedIP = ip
+                        tvCode = ""
+                        tvStatus = "Đã ghép TV"
+                    } catch { tvStatus = error.localizedDescription }
+                }
+            }.disabled(tvBusy || !TVLink.privateIPv4(tvIP.trimmingCharacters(in: .whitespacesAndNewlines)))
+            Text("Cỡ chữ: \(Int(tvSize))").font(.system(size: 13))
+            Slider(value: $tvSize, in: 14...80, step: 1).tint(Palette.gold)
+            Toggle("Đọc bằng loa TV", isOn: $tvSpeak).tint(Palette.gold)
+            HStack {
+                Button("Gửi bản dịch") { sendToTV(translation) }.disabled(tvBusy || translation.isEmpty || !tvReady)
+                Button("Thử TV") { sendToTV("DichGame: phụ đề thử nghiệm") }.disabled(tvBusy || !tvReady)
+                Button("Xóa chữ") { sendToTV("", clear: true) }.disabled(tvBusy || !tvReady)
+            }.font(.system(size: 13))
+            if !tvToken.isEmpty {
+                Button("Quên TV") { tvToken = ""; tvPairedIP = ""; tvStatus = "Đã quên TV trên iPhone" }.disabled(tvBusy)
+            }
+            Text(tvStatus.isEmpty ? (tvReady ? "Đã lưu kết nối TV" : "Chưa ghép TV") : tvStatus)
+                .font(.system(size: 12)).foregroundStyle(Palette.muted)
+        }.tint(Palette.gold)
+    }
+
+    private var tvReady: Bool {
+        tvIP.trimmingCharacters(in: .whitespacesAndNewlines) == tvPairedIP && TVLink.validToken(tvToken)
+    }
+
+    private func sendToTV(_ text: String, clear: Bool = false) {
+        guard tvReady else { return }
+        let ip = tvPairedIP, token = tvToken, size = Int(tvSize), speak = tvSpeak
+        tvBusy = true
+        Task {
+            defer { tvBusy = false }
+            do {
+                try await TVLink.send(ip: ip, token: token, text: text, size: size, speak: speak, clear: clear)
+                tvStatus = "TV đã nhận lệnh"
+            } catch { tvStatus = error.localizedDescription }
         }
     }
 

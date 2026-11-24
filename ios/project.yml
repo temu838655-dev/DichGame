@@ -12,10 +12,18 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: DichGameiOS
+    info:
+      path: Generated/Info.plist
+      properties:
+        CFBundleDisplayName: DichGame
+        NSLocalNetworkUsageDescription: DichGame kết nối TV trong mạng nội bộ để gửi phụ đề.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dichgame.ios
-        GENERATE_INFOPLIST_FILE: YES
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "DichGame kết nối TV trong mạng nội bộ để gửi phụ đề."
         INFOPLIST_KEY_CFBundleDisplayName: "DichGame"
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
