@@ -238,7 +238,7 @@ class Prefs(ctx: Context) {
     /** Nhân vật phát hiện từ nhãn lời thoại, lưu theo hồ sơ game; không tự đoán giới tính qua tên. */
     fun detectedSpeakers(): List<String> {
         val result = ArrayList<String>()
-        val raw = sp.getString("detected_speakers_$profile", "[]").orEmpty()
+        val raw = sp.getString(gameSettingKey("detected_speakers"), "[]").orEmpty()
         try {
             val a = JSONArray(raw)
             for (i in 0 until a.length().coerceAtMost(250)) {
@@ -250,7 +250,7 @@ class Prefs(ctx: Context) {
     }
 
     private fun ignoredSpeakers(): List<String> {
-        val raw = sp.getString("ignored_speakers_$profile", "[]").orEmpty()
+        val raw = sp.getString(gameSettingKey("ignored_speakers"), "[]").orEmpty()
         return try {
             val arr = JSONArray(raw)
             (0 until arr.length().coerceAtMost(250)).mapNotNull { i ->
@@ -269,11 +269,11 @@ class Prefs(ctx: Context) {
         val ignored = ignoredSpeakers()
         if (!fromUser && ignored.any { it.equals(name, ignoreCase = true) }) return
         val editor = sp.edit()
-        if (fromUser) editor.putString("ignored_speakers_$profile",
+        if (fromUser) editor.putString(gameSettingKey("ignored_speakers"),
             JSONArray(ignored.filterNot { it.equals(name, ignoreCase = true) }).toString())
         val names = detectedSpeakers()
         if (names.none { it.equals(name, ignoreCase = true) })
-            editor.putString("detected_speakers_$profile", JSONArray((names + name).takeLast(250)).toString())
+            editor.putString(gameSettingKey("detected_speakers"), JSONArray((names + name).takeLast(250)).toString())
         editor.apply()
     }
 
@@ -291,17 +291,17 @@ class Prefs(ctx: Context) {
             return data.toString()
         }
         val editor = sp.edit()
-            .putString("detected_speakers_$profile", JSONArray(rest).toString())
-            .putString("manual_voices_$profile", withoutEntry("manual_voices_$profile"))
-            .putString("auto_voices_$profile", withoutEntry("auto_voices_$profile"))
-            .putString("ignored_speakers_$profile", JSONArray(ignored).toString())
-        if (activeSpeaker.equals(name, ignoreCase = true)) editor.putString("active_speaker_$profile", "")
+            .putString(gameSettingKey("detected_speakers"), JSONArray(rest).toString())
+            .putString(gameSettingKey("manual_voices"), withoutEntry(gameSettingKey("manual_voices")))
+            .putString(gameSettingKey("auto_voices"), withoutEntry(gameSettingKey("auto_voices")))
+            .putString(gameSettingKey("ignored_speakers"), JSONArray(ignored).toString())
+        if (activeSpeaker.equals(name, ignoreCase = true)) editor.putString(gameSettingKey("active_speaker"), "")
         editor.apply()
     }
 
     /** Chọn giọng riêng bằng giao diện; null = quay về chế độ tự động. */
     fun manualVoice(name: String): String? {
-        val raw = sp.getString("manual_voices_$profile", "{}").orEmpty()
+        val raw = sp.getString(gameSettingKey("manual_voices"), "{}").orEmpty()
         return try {
             JSONObject(raw).optString(name.trim().lowercase(java.util.Locale.ROOT))
                 .takeIf { id -> AI_VOICES.any { it.first == id } }
@@ -317,22 +317,22 @@ class Prefs(ctx: Context) {
 
     @Synchronized fun setManualVoice(name: String, id: String?) {
         if (name.isBlank() || id != null && AI_VOICES.none { it.first == id }) return
-        val raw = sp.getString("manual_voices_$profile", "{}").orEmpty()
+        val raw = sp.getString(gameSettingKey("manual_voices"), "{}").orEmpty()
         val data = try { JSONObject(raw) } catch (_: Exception) { JSONObject() }
         val key = name.trim().lowercase(java.util.Locale.ROOT)
         if (id == null) data.remove(key) else data.put(key, id)
-        sp.edit().putString("manual_voices_$profile", data.toString()).apply()
+        sp.edit().putString(gameSettingKey("manual_voices"), data.toString()).apply()
         rememberSpeaker(name, fromUser = true)
     }
 
     /**
      * Đóng băng giọng tự động theo hồ sơ game. Danh sách nhân vật hiển thị chỉ lưu 100 tên gần nhất,
      * vì vậy không được tính lại giọng theo vị trí trong danh sách này sau khi đã gán.
-     * Lần đầu nâng cấp, ghi nhận thứ tự cũ để những nhân vật đã chơi không bị đổi giọng.
+     * Dữ liệu giọng được tách theo game; không sao chép ánh xạ cũ của hồ sơ chung sang game khác.
      */
     private fun stableAutoVoice(name: String, aliases: List<String>, preferred: List<Pair<String, String>> = AI_VOICES): String = synchronized(sp) {
-        val key = "auto_voices_$profile"
-        val counterKey = "auto_voice_count_$profile"
+        val key = gameSettingKey("auto_voices")
+        val counterKey = gameSettingKey("auto_voice_count")
         val old = sp.getString(key, null)
         val mapping = try { JSONObject(old ?: "{}") } catch (_: Exception) { JSONObject() }
         val known = detectedSpeakers()
@@ -361,8 +361,8 @@ class Prefs(ctx: Context) {
 
     /** Nhân vật được người chơi chọn khi game không hiển thị nhãn tên người nói. */
     var activeSpeaker: String
-        get() = sp.getString("active_speaker_$profile", "").orEmpty()
-        set(v) = sp.edit().putString("active_speaker_$profile", v.trim()).apply()
+        get() = sp.getString(gameSettingKey("active_speaker"), "").orEmpty()
+        set(v) = sp.edit().putString(gameSettingKey("active_speaker"), v.trim()).apply()
 
     /** Mỗi người nói đã nhận diện có giọng mặc định ổn định; người chơi có thể ghi đè thủ công. */
     fun aiVoiceFor(speaker: String?, sentence: String): String =
