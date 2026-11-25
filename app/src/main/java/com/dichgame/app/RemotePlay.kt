@@ -1,24 +1,23 @@
 package com.dichgame.app
 
-/** Một app chơi từ xa hoặc chơi đám mây, và các nền tảng nó dùng được cho. */
+/** Một ứng dụng chơi từ xa cho các máy console DịchGame hỗ trợ. */
 class RemoteApp(val pkg: String, val name: String, val desc: String, val plats: Set<Plat>)
 
-/** Các app chơi từ xa thường dùng và cách dùng theo từng nền tảng. Dịch game không tự điều khiển máy chơi game, chỉ hiện bản dịch đè lên hình. */
+/** Chỉ liệt kê luồng chơi từ xa cho PS5, PS4 và Xbox; PC chỉ có thể là nguồn dữ liệu Việt hóa. */
 object RemotePlay {
     val APPS = listOf(
         RemoteApp("com.playstation.remoteplay", "PS Remote Play", "Chơi PS4/PS5 từ xa (app chính thức của Sony)", setOf(Plat.PS5, Plat.PS4)),
         RemoteApp("com.metallic.chiaki", "Chiaki", "Chơi PS4/PS5 từ xa (mã nguồn mở)", setOf(Plat.PS5, Plat.PS4)),
-        RemoteApp("com.limelight", "Moonlight", "Chơi game từ máy tính qua Sunshine hoặc GeForce", setOf(Plat.PC, Plat.STEAM)),
-        RemoteApp("com.valvesoftware.steamlink", "Steam Link", "Chơi game Steam trên điện thoại", setOf(Plat.PC, Plat.STEAM)),
-        RemoteApp("com.nvidia.geforcenow", "GeForce NOW", "Chơi game đám mây, có nhiều game Steam", setOf(Plat.PC, Plat.STEAM)),
         RemoteApp("com.microsoft.xboxone.smartglass", "Xbox", "Chơi Xbox từ xa, Game Pass", setOf(Plat.XBOX)),
     )
 
-    /** Các app hợp với nền tảng [p] đứng trước, các app còn lại đứng sau. */
+    /** Các ứng dụng phù hợp với console đang chọn được xếp trước. */
     fun ordered(p: Plat?): List<RemoteApp> =
-        if (p == null) APPS else APPS.filter { p in it.plats } + APPS.filter { p !in it.plats }
+        if (p == null || p !in SUPPORTED) emptyList()
+        else APPS.filter { p in it.plats }
 
-    fun forPlatform(p: Plat): List<RemoteApp> = APPS.filter { p in it.plats }
+    fun forPlatform(p: Plat): List<RemoteApp> =
+        if (p in SUPPORTED) APPS.filter { p in it.plats } else emptyList()
 
     fun guide(p: Plat): String = when (p) {
         Plat.PS5, Plat.PS4 ->
@@ -27,11 +26,8 @@ object RemotePlay {
         Plat.XBOX ->
             "Trên Xbox bật Chơi từ xa (Cài đặt › Thiết bị và kết nối › Tính năng từ xa). Mở app Xbox trên điện thoại, chọn Chơi từ xa trên thiết bị này, " +
                 "vào game rồi quay lại Dịch game bấm Bắt đầu."
-        Plat.PC, Plat.STEAM ->
-            "Cài Sunshine (dùng với Moonlight) hoặc bật Steam Link trên máy tính cùng mạng Wi-Fi. Mở Moonlight hoặc Steam Link, vào game " +
-                "rồi quay lại Dịch game bấm Bắt đầu. Chơi ngay trên điện thoại hoặc máy tính bảng chạy game thì chỉ cần bấm Bắt đầu."
-        Plat.SWITCH ->
-            "Switch không có chơi từ xa. Cần một bộ thu hình HDMI (capture card) nối Switch với điện thoại, mở app xem camera USB, " +
-                "rồi bấm Bắt đầu để Dịch game đọc chữ trên màn hình điện thoại."
+        else -> "DịchGame hiện hỗ trợ chơi và dịch trên PS5, PS4 và Xbox. Bản Việt hóa PC chỉ là nguồn dữ liệu tham khảo cho cùng game."
     }
+
+    val SUPPORTED = setOf(Plat.PS5, Plat.PS4, Plat.XBOX)
 }
