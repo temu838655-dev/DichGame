@@ -9,6 +9,8 @@ package com.dichgame.app
 internal object TranslationSpeechPolicy {
     data class Candidate(val text: String, val uncertain: Boolean)
 
+    fun isSpeakable(candidate: Candidate): Boolean = candidate.text.isNotBlank()
+
     fun speakable(candidates: List<Candidate>): List<String> =
-        candidates.map { it.text.trim() }.filter { it.isNotEmpty() }
+        candidates.filter(::isSpeakable).map { it.text.trim() }
 }
