@@ -200,7 +200,7 @@ object AiRetry {
         Kind.BLOCKED -> "AI từ chối câu này (bộ lọc nội dung). Câu này dịch bằng dịch máy."
         Kind.BAD -> when (code) {
             401, 403 -> "Khóa AI sai hoặc không có quyền (lỗi $code). Kiểm tra lại ở Cài đặt › Cách dịch. Đang dùng dịch máy."
-            400 -> "Khóa AI hoặc tên model sai (lỗi 400). Kiểm tra lại ở Cài đặt › Cách dịch. Đang dùng dịch máy."
+            400 -> "Gemini từ chối yêu cầu (400): " + (detail?.take(320)?.takeIf { it.isNotBlank() } ?: "yêu cầu hoặc cấu hình không hợp lệ") + ". Kiểm tra model, API Key và cấu hình request. Đang dùng dịch máy."
             404 -> "Sai tên model hoặc địa chỉ AI (lỗi 404). Kiểm tra lại ở Cài đặt › Cách dịch. Đang dùng dịch máy."
             else -> "AI báo lỗi $code. Đang dùng dịch máy."
         }
