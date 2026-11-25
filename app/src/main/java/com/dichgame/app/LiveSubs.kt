@@ -386,9 +386,9 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         stats.inc("quet")
         try {
             if (o.isCloud) {
-                val sig = Ocr.thumb(bmp)
-                if (Ocr.same(sig, lastSig) && (cand.isEmpty() || cand == last) && skipRun < 12) {
-                skipRun++; runCatching { bmp.recycle() }; busy = false; stats.inc("quet_dung_yen"); return }
+                val sig = Ocr.thumbFine(bmp)
+                if (Ocr.sameStrict(sig, lastSig) && (cand.isEmpty() || cand == last)) {
+                skipRun = (skipRun + 1).coerceAtMost(1000); runCatching { bmp.recycle() }; busy = false; stats.inc("quet_dung_yen"); return }
                 lastSig = sig
             skipRun = 0
             } else if (Prefs(act).skipStatic) {
