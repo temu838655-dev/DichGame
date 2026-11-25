@@ -239,7 +239,7 @@ class AiRetryTest {
 
     @Test fun explainMentionsWhatToDo() {
         assertTrue(AiRetry.explain(AiRetry.Kind.QUOTA, 429, 21_000).contains("21 giây"))
-        assertTrue(AiRetry.explain(AiRetry.Kind.QUOTA, 429, 0).contains("hết lượt"))
+        assertTrue(AiRetry.explain(AiRetry.Kind.QUOTA, 429, 0).contains("hạn mức"))
         assertTrue(AiRetry.explain(AiRetry.Kind.BAD, 401, 0).contains("Khóa AI"))
         assertTrue(AiRetry.explain(AiRetry.Kind.BAD, 404, 0).contains("model"))
         assertTrue(AiRetry.explain(AiRetry.Kind.BLOCKED, -1, 0).contains("bộ lọc"))
