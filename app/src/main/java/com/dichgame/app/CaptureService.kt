@@ -1456,9 +1456,9 @@ class CaptureService : Service() {
         stats.inc("quet")
         if (o.isCloud) {
             // Gemini: chỉ gửi khi hình trong khung thật sự đổi, để khỏi tốn lượt dùng.
-            val sig = Ocr.thumb(crop)
-            if (Ocr.same(sig, lastSig) && (cand.isEmpty() || cand == last) && skipRun < 12) {
-                skipRun++
+            val sig = Ocr.thumbFine(crop)
+            if (Ocr.sameStrict(sig, lastSig) && (cand.isEmpty() || cand == last)) {
+                skipRun = (skipRun + 1).coerceAtMost(1000)
                 // Không gửi ảnh trùng lên Gemini thì cũng phải giải phóng crop,
                 // vì nhánh này không chuyển quyền sở hữu cho Ocr.read().
                 if (!crop.isRecycled) runCatching { crop.recycle() }
