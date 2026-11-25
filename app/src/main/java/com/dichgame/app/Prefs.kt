@@ -154,7 +154,7 @@ class Prefs(ctx: Context) {
     }
 
     var geminiModel: String
-        get() = sp.getString("gmodel", "gemini-flash-latest").orEmpty().ifBlank { "gemini-flash-latest" }
+        get() = sp.getString("gmodel", "gemini-3.8-flash").orEmpty().ifBlank { "gemini-3.8-flash" }
         set(v) = sp.edit().putString("gmodel", v.trim()).apply()
 
     /** CloudAPI: dịch vụ AI đám mây theo chuẩn OpenAI (/chat/completions), cần địa chỉ, khóa và tên model. */
