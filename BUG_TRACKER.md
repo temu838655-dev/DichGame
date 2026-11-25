@@ -60,3 +60,9 @@ Không đánh dấu VERIFIED cho các hạng mục chỉ mới có source code; 
 | QA-001 | Emulator Smoke #161 (45708105649) remains IN_PROGRESS. | OPEN — no emulator runtime conclusion. |
 
 Do not infer Android runtime success from Python tests. Re-poll the exact run IDs before changing these statuses.
+
+
+### Correction — latest CI re-poll (2026-11-26)
+- QA-006 Android bridge #173 (45711630980): VERIFIED — Android JVM unit tests completed successfully.
+- QA-005 Android Build #1961 (45711631124): OPEN — still running app unit tests; no APK success claim.
+- QA-001 Emulator Smoke #161 (45708105649): OPEN — emulator execution still running.
