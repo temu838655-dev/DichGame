@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import closing
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any
@@ -48,7 +49,7 @@ class TranslationMatcher:
 
     def correct_ocr(self, game_id: str, text: str, min_confidence: float = 0.95) -> tuple[str, list[dict[str, str]]]:
         """Apply only unambiguous, explicitly curated whole-token OCR substitutions."""
-        with self.kb.connect() as db:
+        with closing(self.kb.connect()) as db:
             entries = db.execute(
                 "SELECT correct_word, incorrect_variants_json, confidence_score "
                 "FROM ocr_dictionary WHERE game_id=?",
