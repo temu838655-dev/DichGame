@@ -163,6 +163,8 @@ class KeyRingTest {
         val status = KeyRing.status("A", m, 0)
         assertEquals(KeyRing.State.QUOTA, status.state)
         assertTrue(status.leftMs >= 60 * 60_000L)
+        assertEquals(KeyRing.State.QUOTA, KeyRing.status("B", m, 0).state)
+        assertTrue(KeyRing.waitMs(keys, m, 0) >= 60 * 60_000L)
     }
 
 }
