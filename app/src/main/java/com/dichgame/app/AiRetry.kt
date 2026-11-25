@@ -57,8 +57,12 @@ object AiRetry {
         val maxAttempts: Int = 3,
         /** Hết lượt mà máy chủ bảo chờ lâu hơn mức này thì bỏ cuộc ngay (không treo câu phụ đề), nhường dịch máy. */
         val maxWaitMs: Long = 3000,
-        /** Chờ giữa các lần thử: backoffMs × số lần đã thử. */
+        /** Base delay for exponential backoff. */
         val backoffMs: Long = 500,
+        /** Maximum exponential delay before jitter. */
+        val maxBackoffMs: Long = 4000,
+        /** Randomized delay ratio for transient network failures (0.2 = +/-20%). */
+        val jitterRatio: Double = 0.2,
         /** Quá chừng này kể từ lần gọi đầu thì không thử thêm. */
         val budgetMs: Long = 22000,
     )
@@ -78,11 +82,27 @@ object AiRetry {
                 val kind = kindOf(e)
                 if (kind == Kind.BLOCKED || kind == Kind.BAD) throw e
                 if (attempt >= plan.maxAttempts) throw e
-                var wait = plan.backoffMs * attempt
-                if (kind == Kind.QUOTA) {
-                    val told = (e as? AiException)?.retryAfterMs ?: 0L
-                    if (told > plan.maxWaitMs) throw e
-                    wait = maxOf(wait, told)
+                val shift = (attempt - 1).coerceIn(0, 20)
+                val exponential = (plan.backoffMs.coerceAtLeast(0L) * (1L shl shift))
+                    .coerceAtMost(plan.maxBackoffMs.coerceAtLeast(0L))
+                val told = if (kind == Kind.QUOTA) (e as? AiException)?.retryAfterMs ?: 0L else 0L
+                if (told > plan.maxWaitMs) throw e
+
+                // Honor Retry-After as a lower bound. Otherwise apply bounded jitter so
+                // many game clients do not synchronize retries against a recovering API.
+                val base = maxOf(exponential, told)
+                val ratio = plan.jitterRatio.coerceIn(0.0, 1.0)
+                val wait = if (kind == Kind.QUOTA && told > 0L) {
+                    base
+                } else if (ratio == 0.0 || base == 0L) {
+                    base
+                } else {
+                    val spread = (base * ratio).toLong()
+                    val low = (base - spread).coerceAtLeast(0L)
+                    val high = (base + spread).coerceAtMost(
+                        if (kind == Kind.QUOTA) Long.MAX_VALUE else plan.maxBackoffMs.coerceAtLeast(0L)
+                    )
+                    if (high <= low) low else java.util.concurrent.ThreadLocalRandom.current().nextLong(low, high + 1)
                 }
                 if (now() - start + wait > plan.budgetMs) throw e
                 sleep(wait)
