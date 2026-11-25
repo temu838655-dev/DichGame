@@ -252,7 +252,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 } catch (e: Exception) {
                     val kind = AiRetry.kindOf(e)
                     st.inc(AiRetry.statKey(kind))
-                    warn(AiRetry.explain(kind, (e as? AiException)?.code ?: 0, Ai.coolingMs(p)))
+                    warn(AiRetry.explain(kind, (e as? AiException)?.code ?: 0, Ai.coolingMs(p), (e as? AiException)?.message))
                 }
                 if (raw.isNullOrEmpty()) break
                 val parsed = if (emo) Emo.parse(raw) else Emo.Parsed(raw, null)
