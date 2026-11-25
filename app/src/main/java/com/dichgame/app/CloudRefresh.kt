@@ -21,11 +21,12 @@ class CloudRefresh(ctx: Context) {
             val p = Prefs(app)
             val profile = p.profile
             val game = PackStore.gameName(p)
-            val context = profile + "\u0000" + game
+            val context = profile + "\u0000" + game + "\u0000" + p.packCatalogUrl + "\u0000" + p.autoPackRefresh
             if (context != lastContext) { lastContext = context; generation++; next = 0L }
             val now = android.os.SystemClock.elapsedRealtime()
             if (p.autoPackRefresh && game.isNotBlank() && !busy && now >= next) {
                 val token = generation
+                val catalog = p.packCatalogUrl
                 val epoch = PackStore.autoCloudEpoch(app, profile, game)
                 next = now + 30 * 60_000L
                 if (epoch != null) {
@@ -33,9 +34,9 @@ class CloudRefresh(ctx: Context) {
                     exec.execute {
                         try {
                             val source = PackStore.cloudInfo(app, profile, game)?.source
-                                ?: p.packCatalogUrl.takeIf { it.isNotBlank() }?.let { PackStore.catalogSource(it, game) }
+                                ?: catalog.takeIf { it.isNotBlank() }?.let { PackStore.catalogSource(it, game) }
                             if (source != null) PackStore.importLink(app, p, source, profile, game, autoEpoch = epoch) {
-                                generation == token && p.autoPackRefresh && !Thread.currentThread().isInterrupted
+                                generation == token && p.autoPackRefresh && p.packCatalogUrl == catalog && !Thread.currentThread().isInterrupted
                             }
                         } catch (_: Exception) {
                             // Keep existing offline data.
