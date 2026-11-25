@@ -32,7 +32,10 @@ def _similarity(left: str, right: str) -> float:
 
 
 def _context_score(row: dict[str, Any], context: dict[str, str]) -> float:
-    keys = ("context", "speaker", "scene_id", "mission_id")
+    # Previous/next lines are part of game dialogue context too. They must be
+    # considered in both exact-match disambiguation and fuzzy candidate ranking.
+    keys = ("context", "speaker", "scene_id", "mission_id",
+            "previous_sentence", "next_sentence")
     supplied = [(key, value) for key, value in context.items() if key in keys and value]
     if not supplied:
         return 0.0
@@ -74,7 +77,6 @@ class TranslationMatcher:
         corrections: list[dict[str, str]] = []
         output = text
         for variant, candidates in variant_map.items():
-            # Conflicting dictionary entries are ambiguous: do not guess.
             if len(candidates) != 1:
                 continue
             correct = next(iter(candidates))
@@ -88,8 +90,6 @@ class TranslationMatcher:
         terms = [term for term in re.findall(r"[\w]+", query, flags=re.UNICODE) if len(term) > 1]
         if not terms:
             return []
-        # OR is intentional here: fuzzy comparison needs candidates even when OCR
-        # has damaged one token. Result count is bounded to protect mobile RAM.
         match_query = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms[:12])
         with self.kb.connect() as db:
             rows = db.execute(
@@ -119,6 +119,8 @@ class TranslationMatcher:
         context_data = {
             "context": context or "", "speaker": speaker or "",
             "scene_id": scene_id or "", "mission_id": mission_id or "",
+            "previous_sentence": previous_sentence or "",
+            "next_sentence": next_sentence or "",
         }
         corrected, corrections = self.correct_ocr(game_id, source_text)
         normalized = normalize_text(corrected)
@@ -151,8 +153,6 @@ class TranslationMatcher:
             source_norm = normalize_text(str(row["source_text"]))
             lexical = _similarity(normalized, source_norm)
             context_fit = _context_score(row, context_data)
-            # Context is a tie-breaker / modest boost, not a way to rescue
-            # unrelated text. Explicitly mismatched context lowers the score.
             supplied_context_count = sum(bool(v) for v in context_data.values())
             if supplied_context_count:
                 score = lexical * 0.88 + context_fit * 0.12
@@ -167,8 +167,6 @@ class TranslationMatcher:
 
         scored.sort(key=lambda item: item[0], reverse=True)
         best_score, lexical, best = scored[0]
-        # A close second candidate with a different translation/context means
-        # the fuzzy result is ambiguous; let the AI fallback handle it.
         if best_score < fuzzy_threshold:
             return None
         if len(scored) > 1:
