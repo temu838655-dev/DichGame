@@ -11,6 +11,9 @@ The package separates public contribution from verification.
    approve, reject, or request changes.
 5. Approval sets `VERIFIED` and records the reviewer and timestamp. Rejection
    removes the item from normal matching. Review history remains append-only.
+6. A player may report a previously verified translation; a reviewer can
+   reconsider it only while an open report exists, preventing unreported
+   verified entries from being casually downgraded.
 
 ## Example
 
