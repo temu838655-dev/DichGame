@@ -33,6 +33,18 @@ object AiRetry {
             .any { s.contains(it) }
     }
 
+    /** Chỉ chuyển từ Interactions sang generateContent khi endpoint/JSON Interactions không tương thích. */
+    fun shouldFallbackTtsEndpoint(code: Int, body: String): Boolean {
+        if (code == 404) return true
+        if (code != 400) return false
+        val s = body.lowercase(java.util.Locale.ROOT)
+        val mentionsInteractionsShape = listOf("interactions", "response_format", "generation_config", "speech_metadata", "user_input")
+            .any { s.contains(it) }
+        val rejectsShape = listOf("unknown", "unsupported", "not supported", "not found", "unrecognized", "invalid")
+            .any { s.contains(it) }
+        return mentionsInteractionsShape && rejectsShape
+    }
+
     /** Lấy thông báo có ích từ response body của Google; giữ status và details nhưng không làm lộ request headers. */
     fun providerErrorMessage(body: String, maxChars: Int = 1200): String {
         val root = runCatching { JSONObject(body) }.getOrNull()
