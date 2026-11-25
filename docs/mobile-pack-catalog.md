@@ -15,11 +15,14 @@ Mỗi game có một bộ dữ liệu hợp nhất, có thể được tổng h�
     {
       "game": "Example Game",
       "source_platform": "PC",
+      "target_platforms": ["PS5", "PS4", "XBOX"],
       "manifest": "https://packs.example.org/example.dichgame.json"
     }
   ]
 }
 ```
+
+Danh sách `target_platforms` là bắt buộc trong schema 2 và phải khai báo rõ PS5, PS4 và/hoặc XBOX. App kiểm tra console đang chơi có nằm trong danh sách này hay không; không suy luận quyền tái sử dụng chỉ từ `source_platform`.
 
 Mỗi game chỉ có một manifest trong danh mục. Nếu có nhiều bản Việt hóa/nguồn, hãy hợp nhất các câu dịch vào một bộ dữ liệu đã kiểm tra trùng lặp, nguồn gốc và quyền sử dụng. Không tạo nhiều entry trùng game gây mơ hồ.
 
