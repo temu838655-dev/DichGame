@@ -68,7 +68,16 @@ class CatalogRepository:
                 db.execute("ALTER TABLE localization_releases ADD COLUMN source_platform TEXT NOT NULL DEFAULT 'OTHER'")
                 db.execute("UPDATE localization_releases SET source_platform=upper(platform)")
             if "target_platforms_json" not in columns:
-                db.execute("""ALTER TABLE localization_releases ADD COLUMN target_platforms_json TEXT NOT NULL DEFAULT '["PS5","PS4","XBOX"]'""")
+                db.execute("""ALTER TABLE localization_releases ADD COLUMN target_platforms_json TEXT NOT NULL DEFAULT '[]'""")
+                # Legacy rows retain only an explicitly matching console target.
+                # PC/Steam provenance is not proof of console redistribution rights.
+                db.execute("""UPDATE localization_releases SET target_platforms_json =
+                    CASE upper(platform)
+                      WHEN 'PS5' THEN '["PS5"]'
+                      WHEN 'PS4' THEN '["PS4"]'
+                      WHEN 'XBOX' THEN '["XBOX"]'
+                      ELSE '[]'
+                    END""")
             db.commit()
 
     def connect(self) -> sqlite3.Connection:
