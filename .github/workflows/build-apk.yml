@@ -198,7 +198,7 @@ jobs:
             LATEST_TAG="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName \
               --jq '[.[].tagName | select(test("^build-[0-9]+$"))] | sort_by(sub("^build-"; "") | tonumber) | last // empty')"
             if [ -n "$LATEST_TAG" ]; then
-              PREVIOUS_BUILD_NO="\${LATEST_TAG#build-}"
+              PREVIOUS_BUILD_NO="${LATEST_TAG#build-}"
               if [ "$GITHUB_RUN_NUMBER" -le "$PREVIOUS_BUILD_NO" ]; then
                 echo "::error::Số bản dựng mới ($GITHUB_RUN_NUMBER) không cao hơn Release hiện tại ($LATEST_TAG). Dừng phát hành."
                 exit 1
