@@ -26,7 +26,7 @@ object TranslationGuard {
     private val QUOTES = "\"“”«»'‘’「」『』"
     // Runtime placeholders and formatting tokens must survive translation byte-for-byte.
     private val PROTECTED_TOKEN = Regex(
-        """\${[^{}\r\n]{1,80}}|\{[^{}\r\n]{1,80}}|%(?:%|\d+\$)?[-+#0 ]*\d*(?:\.\d+)?[a-zA-Z]|\\[nrt]|\\u[0-9a-fA-F]{4}|<[^<>\r\n]{1,120}>|\[(?:/?(?:color|b|i|u|s|size|font|url|sprite|icon|c|alpha|outline|shadow)(?:=[^\]]*)?)\]|§[0-9a-fk-or]|#[0-9a-fA-F]{6,8}""",
+        """\{[^{}\r\n]{1,80}\}|%(?:\d+\$)?[-+#0 ]*\d*(?:\.\d+)?[a-zA-Z]|\\[nrt]|\\u[0-9a-fA-F]{4}|<[^<>\r\n]{1,120}>|\[(?:/?(?:color|b|i|u|s|size|font|url|sprite|icon|c|alpha|outline|shadow)(?:=[^\]]*)?)\]|§[0-9a-fk-or]|#[0-9a-fA-F]{6,8}""",
         RegexOption.IGNORE_CASE
     )
 
