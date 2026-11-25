@@ -5,12 +5,13 @@ Phạm vi: audit repository Dịch Game by Huyy Đâyy
 
 | ID | Mức độ | Vấn đề / bằng chứng | Nguyên nhân hoặc ảnh hưởng | Trạng thái |
 |---|---|---|---|---|
-| SEC-001 | CRITICAL | `keystore/dichgame.jks` đã được commit trong repository public; Gradle còn fallback mật khẩu/alias mặc định. README xác nhận khóa đã lộ. | Bất kỳ ai có bản sao khóa có thể ký APK giả cùng package/chứng thư. Không thể thu hồi chứng thư đối với cài đặt sideload hiện có. | BLOCKED — cần chủ sở hữu quyết định chiến lược chuyển khóa; workflow hiện đã chặn public Release khi thiếu đủ 4 signing secrets. |
-| SEC-002 | HIGH | `app/src/main/AndroidManifest.xml` đặt `android:usesCleartextTraffic="true"` cho toàn ứng dụng. | Cho phép HTTP không mã hóa ở mọi host; tăng nguy cơ lộ/chỉnh sửa dữ liệu. Cần lập danh sách endpoint LAN/TV và giới hạn bằng Network Security Config, không tắt mù quáng. | OPEN |
-| QA-001 | HIGH | Emulator smoke workflow run 45703102492 kết thúc `cancelled` tại bước “Chạy trên máy giả lập”. | Chưa có bằng chứng smoke test hoàn tất; không được coi là pass. | OPEN |
-| QA-002 | HIGH | Chưa có bằng chứng kiểm thử trên Android arm64, Android TV và console thật. | CI không thay thế được kiểm thử phần cứng/Remote Play thực tế. | BLOCKED — cần thiết bị và phiên chơi thực tế. |
-| REL-001 | MEDIUM | Run 45703102330 build/release #1872 hoàn tất success trước khi policy khóa ký mới được ghi nhận; đây không chứng minh policy mới đã chạy đúng. | Cần xác minh run sau commit policy; hiện chưa có run ID/kết quả xác nhận trong lần audit này. | OPEN |
-| DOC-001 | LOW | Chưa có `QUALITY_CHECKLIST.md` và tracker tập trung trước audit này. | Khó theo dõi các tiêu chí và trạng thái đã xác minh. | FIXED — tạo tracker/checklist trong commit audit này. |
+| SEC-001 | CRITICAL | `keystore/dichgame.jks` đã được commit trong repository public; Gradle còn fallback mật khẩu/alias mặc định. | Khóa cũ đã lộ; không thể thu hồi chứng thư đối với cài đặt sideload hiện có. | BLOCKED — cần chủ sở hữu quyết định giữ khóa trong GitHub Secrets để tương thích (chấp nhận rủi ro) hay chuyển khóa kèm migration package/dữ liệu. Workflow release mới gate bằng 4 secrets. |
+| SEC-002 | HIGH | Phone manifest vẫn đặt `android:usesCleartextTraffic="true"` toàn app. PR #85 thêm chặn CloudAPI bearer credential qua HTTP và chỉ gửi PCM tới host TV private/local. | HTTP cleartext còn cần cho receiver trong LAN; chưa thể tắt global nếu chưa tách transport/đánh giá đầy đủ endpoint và backward compatibility. | OPEN — mitigation một phần đang ở PR #85; cần review/merge sau khi CI hoàn tất và thiết kế giới hạn cleartext sâu hơn. |
+| QA-001 | HIGH | Smoke run 45703102492 attempt 2 kết thúc cancelled ngay ở bước “Build bản debug”; emulator chưa chạy. | CI smoke chưa có kết quả chức năng. Đã gửi rerun job mới nhất 139527252026; chờ attempt mới. | OPEN |
+| QA-002 | HIGH | Chưa có bằng chứng kiểm thử Android arm64, Android TV và PS4/PS5/Xbox thật. | CI không thay thế kiểm thử phần cứng/Remote Play thực tế. | BLOCKED — cần thiết bị, console, firmware, mạng và tài khoản thực tế. |
+| REL-001 | MEDIUM | Main build run 45707264385 (#1897) đang chạy; signing-gate step đã success nhưng các bước unit test/build/verify/release chưa hoàn tất. | Chưa xác minh kết luận Release bị skip khi secrets thiếu. | OPEN — kiểm tra lại run sau khi kết thúc. |
+| SEC-003 | HIGH | PR #85 thay TV token/LG key/browser receiver tokens sang AES-GCM Android Keystore; thêm HTTPS validation cho CloudAPI và private-host validation cho TV PCM. | Giảm rò rỉ token và bearer credential; cần kiểm tra migration, clear/remove và tích hợp trên thiết bị. | FIXED (branch only) — PR #85 còn draft/open; JVM unit tests success, build app đang chạy. |
+| DOC-001 | LOW | Tài liệu theo dõi audit đã được tạo và cập nhật. | Trạng thái được lưu trong repository. | VERIFIED |
 
 ## Quy tắc trạng thái
 - OPEN: cần điều tra hoặc sửa.
