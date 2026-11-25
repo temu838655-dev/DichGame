@@ -98,16 +98,16 @@ class Prefs(ctx: Context) {
         set(v) = sp.edit().putString("langc", v).apply()
 
     var engine: String
-        get() = sp.getString("engine", null) ?: if (sp.getString("key", "").isNullOrEmpty()) ENGINE_LOCAL else ENGINE_GEMINI
+        get() = sp.getString("engine", null) ?: if (geminiKeys().isEmpty()) ENGINE_LOCAL else ENGINE_GEMINI
         set(v) = sp.edit().putString("engine", v).apply()
 
     var geminiKey: String
-        get() = sp.getString("key", "").orEmpty()
-        set(v) = sp.edit().putString("key", v.trim()).apply()
+        get() = ApiSecrets.read(app, "key")
+        set(v) { ApiSecrets.write(app, mapOf("key" to v.trim())) }
     /** Khóa dự phòng (mỗi dòng một khóa). Khóa chính ở [geminiKey]. */
     var geminiSpare: String
-        get() = sp.getString("keys2", "").orEmpty()
-        set(v) = sp.edit().putString("keys2", v).apply()
+        get() = ApiSecrets.read(app, "keys2")
+        set(v) { ApiSecrets.write(app, mapOf("keys2" to v)) }
 
     /** Tất cả khóa Gemini theo thứ tự: khóa chính rồi các khóa dự phòng. */
     fun geminiKeys(): List<String> =
@@ -117,8 +117,7 @@ class Prefs(ctx: Context) {
     fun setGeminiKeys(list: List<String>) {
         val before = geminiKeys().toSet()
         val k = list.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        geminiKey = k.firstOrNull().orEmpty()
-        geminiSpare = k.drop(1).joinToString("\n")
+        if (!ApiSecrets.write(app, mapOf("key" to k.firstOrNull().orEmpty(), "keys2" to k.drop(1).joinToString("\n")))) return
         for (n in k) if (n !in before) KeyRing.forget(n)
     }
 
@@ -153,8 +152,8 @@ class Prefs(ctx: Context) {
         get() = sp.getString("curl", "").orEmpty()
         set(v) = sp.edit().putString("curl", v.trim()).apply()
     var cloudKey: String
-        get() = sp.getString("ckey", "").orEmpty()
-        set(v) = sp.edit().putString("ckey", v.trim()).apply()
+        get() = ApiSecrets.read(app, "ckey")
+        set(v) { ApiSecrets.write(app, mapOf("ckey" to v.trim())) }
     var cloudModel: String
         get() = sp.getString("cmodel", "gemini-3.1-flash-lite").orEmpty()
         set(v) = sp.edit().putString("cmodel", v.trim()).apply()
