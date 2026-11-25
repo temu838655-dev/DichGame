@@ -737,6 +737,8 @@ class CaptureService : Service() {
     private fun deliver(w: Job, cards: List<Card>) {
         if (cards.isEmpty() || editing || narrate) return
         val now = System.currentTimeMillis()
+        // Nếu một câu đã chậm hơn 8 giây và câu mới đang chờ, bỏ kết quả cũ để không lệch cảnh.
+        if (jobs.isNotEmpty() && now - w.seenAt > 8_000L) { stats.inc("hang_day"); return }
         val text = cards.joinToString(" ") { it.tr.text }
         val item = SubtitlePacer.Item(text, w.src, pacer.holdFor(text, w.speechMs), cards[0].speaker, Payload(cards, w.seenAt))
         val shown = pacer.submit(item, now, w.replace)
