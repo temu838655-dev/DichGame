@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from knowledge_base.db import KnowledgeBase
-from knowledge_base.sync import PackIntegrityError, export_game_pack, import_game_pack
+from knowledge_base.sync import PackIntegrityError, export_android_csv, export_game_pack, import_game_pack
 
 
 class SignedPackTests(unittest.TestCase):
@@ -56,6 +56,35 @@ class SignedPackTests(unittest.TestCase):
             import_game_pack(self.target, self.pack, self.key)
         with self.assertRaises(PackIntegrityError):
             import_game_pack(self.target, self.pack, b"wrong key that is at least 32 bytes")
+
+    def test_android_csv_exports_only_verified_and_licensed_translations(self):
+        pending_source = self.source.add_source(
+            "Pending source", "CC-BY-4.0", author_name="Contributor",
+        )
+        self.source.add_translation(
+            "pack-game", "Pending source line", "Dòng chờ duyệt",
+            source_id=pending_source, translation_status="VERIFIED",
+        )
+        self.source.add_translation(
+            "pack-game", "AI line", "Dòng AI", translation_status="AI_UNVERIFIED",
+        )
+        self.source.add_translation(
+            "pack-game", "Manual verified line", "Dòng đã kiểm duyệt",
+            translation_status="VERIFIED",
+        )
+        with self.source.transaction() as db:
+            db.execute(
+                "UPDATE data_sources SET verification_status='VERIFIED' WHERE license_id='CC-BY-4.0'"
+            )
+        output = self.root / "android-import.csv"
+        export_android_csv(self.source, "pack-game", output)
+        rows = output.read_text(encoding="utf-8-sig").splitlines()
+        self.assertEqual(rows[0], "source,vi,game")
+        self.assertEqual(len(rows), 3)
+        self.assertTrue(any("Open inventory" in row for row in rows))
+        self.assertTrue(any("Manual verified line" in row for row in rows))
+        self.assertFalse(any("Pending source line" in row for row in rows))
+        self.assertFalse(any("AI line" in row for row in rows))
 
     def test_duplicate_translations_are_skipped(self):
         export_game_pack(self.source, "pack-game", self.key, self.pack)
