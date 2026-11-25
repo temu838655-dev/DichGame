@@ -225,3 +225,16 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 - PR #86: https://github.com/temu838655-dev/DichGame/pull/86
 - Android bridge #172: https://github.com/temu838655-dev/DichGame/actions/runs/45711278032
 - Knowledge Base #226: https://github.com/temu838655-dev/DichGame/actions/runs/45711278038
+
+
+---
+
+## CI follow-up — 2026-11-26 (latest observed)
+- Knowledge Base Tests #227 (run 45711631198): SUCCESS on PR head c41a6a35290c547680cac5d7b68de0378b1971c7.
+- Android Build #1961 (run 45711631124): IN_PROGRESS; unit tests step was running at last poll. Do not mark APK build passed.
+- Android bridge tests #173 (run 45711630980): IN_PROGRESS; Android JVM unit tests job running at last poll.
+- Emulator Smoke #161 (run 45708105649): IN_PROGRESS; emulator job still running. No runtime conclusion yet.
+- PR #86 remains draft/open and GitHub reports mergeable=true at last poll. Do not merge until all required checks finish and review is complete.
+- These are live CI observations, not a claim that tests or runtime validation have completed.
+
+Links: [KB #227](https://github.com/temu838655-dev/DichGame/actions/runs/45711631198) · [Android Build #1961](https://github.com/temu838655-dev/DichGame/actions/runs/45711631124) · [Bridge #173](https://github.com/temu838655-dev/DichGame/actions/runs/45711630980) · [Smoke #161](https://github.com/temu838655-dev/DichGame/actions/runs/45708105649)
