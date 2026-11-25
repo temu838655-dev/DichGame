@@ -159,6 +159,35 @@ jobs:
             for f in dist/*.apk; do echo "| $(basename "$f") | $(du -h "$f" | cut -f1) |"; done
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Kiểm tra trước khi đóng gói: APK hợp lệ, đúng package và cùng chứng thư ký.
+      - name: Xác minh chữ ký và định dạng hai APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          AAPT="$BUILD_TOOLS/aapt"
+          test -x "$APKSIGNER"
+          test -x "$ZIPALIGN"
+          test -x "$AAPT"
+          for apk in dist/DichGame.apk dist/DichGame-TV.apk; do
+            test -s "$apk"
+            "$APKSIGNER" verify --verbose "$apk"
+            "$ZIPALIGN" -c -v 4 "$apk"
+          done
+          PHONE_PACKAGE="$("$AAPT" dump badging dist/DichGame.apk | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n1)"
+          TV_PACKAGE="$("$AAPT" dump badging dist/DichGame-TV.apk | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n1)"
+          test "$PHONE_PACKAGE" = "com.dichgame.app"
+          test "$TV_PACKAGE" = "com.dichgame.tv"
+          PHONE_CERT="$("$APKSIGNER" verify --print-certs dist/DichGame.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1)"
+          TV_CERT="$("$APKSIGNER" verify --print-certs dist/DichGame-TV.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1)"
+          test -n "$PHONE_CERT"
+          test "$PHONE_CERT" = "$TV_CERT"
+          echo "Package điện thoại: $PHONE_PACKAGE"
+          echo "Package Android TV: $TV_PACKAGE"
+          echo "Hai APK hợp lệ và dùng cùng chứng thư ký SHA-256: $PHONE_CERT" >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/upload-artifact@v4
         with:
           name: DichGame-APKs
