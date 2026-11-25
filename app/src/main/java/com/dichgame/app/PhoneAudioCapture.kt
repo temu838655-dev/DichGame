@@ -73,6 +73,7 @@ class PhoneAudioCapture(
             if (rec == null) {
                 if (!allowMic) { onMode("none:system"); return }
                 rec = openMic()
+                activeRecorder = rec
                 if (rec == null) { onMode("none:mic"); return }
                 system = false
                 mode = "mic"; onMode("mic")
@@ -104,6 +105,7 @@ class PhoneAudioCapture(
 
     /** Đọc liên tục tới khi dừng. Trả true nếu âm thanh trong bị chặn (đang phát mà bản thu im lặng hoàn toàn). */
     private fun loop(rec: AudioRecord, system: Boolean): Boolean {
+        if (!running) return false
         val buf = ShortArray(FRAME)
         val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         rec.startRecording()
