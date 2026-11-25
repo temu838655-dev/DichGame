@@ -17,6 +17,7 @@ import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Choreographer
 import android.view.Gravity
 import android.view.KeyEvent
@@ -28,6 +29,8 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.inputmethod.EditorInfo
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
@@ -268,9 +271,14 @@ class WebTranslateActivity : Activity() {
 })();
 """
 
+    private val captionGate = WebCaptionGate()
+
     inner class Bridge {
         @JavascriptInterface
-        fun sub(t: String) { runOnUiThread { onSub(t) } }
+        fun sub(t: String) {
+            val accepted = captionGate.accept(t, SystemClock.elapsedRealtime()) ?: return
+            runOnUiThread { if (!isFinishing && !isDestroyed) onSub(accepted) }
+        }
     }
 
     private fun dp(n: Number) = Ui.dp(this, n)
@@ -327,11 +335,26 @@ class WebTranslateActivity : Activity() {
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         web.settings.mediaPlaybackRequiresUserGesture = false
+        web.settings.javaScriptCanOpenWindowsAutomatically = false
+        web.settings.setSupportMultipleWindows(false)
+        web.settings.allowFileAccess = false
+        web.settings.allowContentAccess = false
+        web.settings.allowFileAccessFromFileURLs = false
+        web.settings.allowUniversalAccessFromFileURLs = false
+        web.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        web.settings.safeBrowsingEnabled = true
         web.addJavascriptInterface(Bridge(), "DG")
         web.webChromeClient = WebChromeClient()
         web.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean =
+                !isAllowedWebTranslateUrl(request.url.toString())
+
+            @Suppress("DEPRECATION")
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean =
+                !isAllowedWebTranslateUrl(url.orEmpty())
+
             override fun onPageFinished(view: WebView?, u: String?) {
-                view?.evaluateJavascript(js, null)
+                if (u != null && isAllowedWebTranslateUrl(u)) view?.evaluateJavascript(js, null)
                 applyHide()
                 syncNav(u)
             }
@@ -979,11 +1002,16 @@ class WebTranslateActivity : Activity() {
             s.contains('.') && !s.contains(' ') -> "https://$s"
             else -> "https://www.google.com/search?q=" + java.net.URLEncoder.encode(s, "UTF-8")
         }
+        if (!isAllowedWebTranslateUrl(u)) {
+            Toast.makeText(this, "Chỉ mở được trang web HTTP hoặc HTTPS hợp lệ.", Toast.LENGTH_SHORT).show()
+            return
+        }
         web.loadUrl(u)
     }
 
     override fun onResume() {
         super.onResume()
+        if (::web.isInitialized) { web.onResume(); web.resumeTimers() }
         if (running) cloudRefresh.start()
         if (running && source == "ocr") scheduleScan(500)
     }
@@ -991,6 +1019,7 @@ class WebTranslateActivity : Activity() {
     override fun onPause() {
         cloudRefresh.stop()
         ui.removeCallbacks(scanTask)
+        if (::web.isInitialized) { web.onPause(); web.pauseTimers() }
         super.onPause()
     }
 
@@ -1006,7 +1035,7 @@ class WebTranslateActivity : Activity() {
     override fun onDestroy() {
         cloudRefresh.close()
         ui.removeCallbacksAndMessages(null)
-        try { web.destroy() } catch (_: Exception) {}
+        try { web.stopLoading(); web.removeJavascriptInterface("DG"); web.destroy() } catch (_: Exception) {}
         translator?.close()
         ocr?.close()
         speaker?.shutdown()
