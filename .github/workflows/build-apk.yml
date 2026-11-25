@@ -51,6 +51,8 @@ jobs:
           sudo apt-get install -y -qq protobuf-compiler
           python -m pip install "protobuf>=4,<6"
           protoc --version
+      - name: Kiểm thử quy tắc tương thích cập nhật Release
+        run: python3 -m unittest discover -s ci -p 'test_release_compat.py' -v
 
       - uses: actions/setup-java@v4
         with:
@@ -226,12 +228,13 @@ jobs:
               PREVIOUS_TV_VERSION="$("$AAPT" dump badging "$PREVIOUS_TV" | sed -n "s/^package:.*versionCode='\([0-9][0-9]*\)'.*/\1/p" | head -n1)"
               test -n "$PREVIOUS_PHONE_VERSION"
               test -n "$PREVIOUS_TV_VERSION"
-              EXPECTED_PHONE_VERSION=$((PREVIOUS_PHONE_VERSION + GITHUB_RUN_NUMBER - PREVIOUS_BUILD_NO))
-              EXPECTED_TV_VERSION=$((PREVIOUS_TV_VERSION + GITHUB_RUN_NUMBER - PREVIOUS_BUILD_NO))
-              if [ "$PHONE_VERSION_CODE" -ne "$EXPECTED_PHONE_VERSION" ] || [ "$TV_VERSION_CODE" -ne "$EXPECTED_TV_VERSION" ]; then
-                echo "::error::versionCode không khớp quy tắc cập nhật trong app. Dự kiến phone=$EXPECTED_PHONE_VERSION TV=$EXPECTED_TV_VERSION; thực tế phone=$PHONE_VERSION_CODE TV=$TV_VERSION_CODE."
-                exit 1
-              fi
+              python3 ci/release_compat.py \
+                --previous-build "$PREVIOUS_BUILD_NO" \
+                --current-build "$GITHUB_RUN_NUMBER" \
+                --previous-phone "$PREVIOUS_PHONE_VERSION" \
+                --previous-tv "$PREVIOUS_TV_VERSION" \
+                --current-phone "$PHONE_VERSION_CODE" \
+                --current-tv "$TV_VERSION_CODE"
               {
                 echo "Đối chiếu Release trước: $LATEST_TAG"
                 echo "versionCode điện thoại: $PREVIOUS_PHONE_VERSION → $PHONE_VERSION_CODE (đúng delta build)"
