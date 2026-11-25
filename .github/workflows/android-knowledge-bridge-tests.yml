@@ -1,0 +1,48 @@
+name: Android knowledge-base bridge tests
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle/**"
+      - ".github/workflows/android-knowledge-bridge-tests.yml"
+  push:
+    branches:
+      - main
+      - feature/translation-importers-phase2
+    paths:
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle/**"
+      - ".github/workflows/android-knowledge-bridge-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-bridge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-unit-tests:
+    name: Android JVM unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Android unit tests without native Remote Play build
+        run: ./gradlew :app:testDebugUnitTest -PnoNative --no-daemon --stacktrace
