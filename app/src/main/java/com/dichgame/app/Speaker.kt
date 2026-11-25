@@ -35,6 +35,10 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     private val seq = AtomicInteger(0)
     @Volatile private var disposed = false
     private val lock = Any()
+    private data class PendingSystem(val text: String, val queue: Boolean, val delivery: Delivery?, val interrupt: Boolean)
+    private val pendingSystemLock = Any()
+    private val pendingSystem = java.util.ArrayDeque<PendingSystem>()
+    private val maxPendingSystem = 5
     /** Một đoạn chờ đọc bằng âm thanh tự tạo (giọng AI hoặc offline). */
     private class Clip(
         val gen: Int, val text: String, val norm: String, val d: Delivery?, val baseSpeed: Float, val at: Long,
@@ -120,6 +124,16 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                 })
                 applyVoice()
                 ready = true
+                val waiting = synchronized(pendingSystemLock) {
+                    val copy = pendingSystem.toList()
+                    pendingSystem.clear()
+                    copy
+                }
+                main.post {
+                    if (!disposed) waiting.forEach { item ->
+                        speakSystem(item.text, item.queue, item.delivery, item.interrupt)
+                    }
+                }
                 onReady?.invoke()
             }
         }
@@ -231,8 +245,18 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     @Volatile private var lastSysAt = 0L
 
     private fun speakSystem(text: String, queue: Boolean, d: Delivery?, interrupt: Boolean = false) {
-        val t = tts ?: return
-        if (!ready) return
+        if (disposed) return
+        val t = tts
+        if (t == null || !ready) {
+            synchronized(pendingSystemLock) {
+                if (interrupt) pendingSystem.clear()
+                val norm = SpeechPolicy.norm(text)
+                if (pendingSystem.any { SpeechPolicy.norm(it.text) == norm }) return
+                while (pendingSystem.size >= maxPendingSystem) pendingSystem.removeFirst()
+                pendingSystem.addLast(PendingSystem(text, queue, d, interrupt))
+            }
+            return
+        }
         // Cùng một câu gửi lại liền nhau (chữ OCR nháy, bản dịch được sửa lại) thì chỉ đọc một lần.
         val norm = SpeechPolicy.norm(text)
         val now = SystemClock.elapsedRealtime()
@@ -509,6 +533,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     }
 
     fun stop() {
+        synchronized(pendingSystemLock) { pendingSystem.clear() }
         seq.incrementAndGet()
         tvSeq.incrementAndGet()
         utterances.clear()
@@ -524,6 +549,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     fun shutdown() {
         disposed = true
+        synchronized(pendingSystemLock) { pendingSystem.clear() }
         utterances.clear()
         tvSeq.incrementAndGet()
         seq.incrementAndGet()
