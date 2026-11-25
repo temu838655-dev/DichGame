@@ -16,10 +16,14 @@ object AiSpeech {
 
     /** Đọc [text] bằng giọng [voiceName] (mã giọng Gemini, mặc định giọng đã chọn trong cài đặt). Tự đổi khóa khi một khóa hết lượt hay sai (xem [KeyRing]). */
     fun synth(p: Prefs, text: String, style: String, voiceName: String = p.aiVoice): Pcm {
+        val model = p.ttsModel.trim()
+        if (!model.matches(Regex("[A-Za-z0-9._-]{1,100}"))) {
+            throw AiException(400, "Tên model giọng Gemini không hợp lệ. Chỉ dùng mã model, không thêm URL hoặc tham số.")
+        }
         return try {
             viaInteractions(p, text, style, voiceName)
         } catch (e: AiException) {
-            if (e.code == 400 || e.code == 404) viaGenerate(p, text, style, voiceName) else throw e
+            if (AiRetry.shouldFallbackTtsEndpoint(e.code, e.message.orEmpty())) viaGenerate(p, text, style, voiceName) else throw e
         }
     }
 
