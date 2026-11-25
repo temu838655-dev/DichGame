@@ -204,7 +204,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
 
         /** Hai ảnh coi là y hệt chỉ khi không ô nào lệch quá [cell] mức sáng và độ lệch trung bình rất nhỏ (nhiễu nén video vẫn qua). */
         fun sameStrict(a: IntArray?, b: IntArray?, cell: Int = 14): Boolean {
-            if (a == null || b == null || a.size != b.size) return false
+            if (a == null || b == null || a.isEmpty() || a.size != b.size) return false
             var sum = 0
             for (i in a.indices) {
                 val d = Math.abs(a[i] - b[i])
@@ -228,9 +228,14 @@ class Ocr(private val p: Prefs, private val lang: String) {
         }
 
         fun same(a: IntArray?, b: IntArray?): Boolean {
-            if (a == null || b == null || a.size != b.size) return false
+            if (a == null || b == null || a.isEmpty() || a.size != b.size) return false
             var d = 0
-            for (i in a.indices) d += Math.abs(a[i] - b[i])
+            for (i in a.indices) {
+                val delta = Math.abs(a[i] - b[i])
+                // A localized subtitle change must not disappear in the global average.
+                if (delta > 24) return false
+                d += delta
+            }
             return d / a.size < 6
         }
     }
