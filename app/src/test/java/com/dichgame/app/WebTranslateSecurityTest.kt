@@ -10,6 +10,7 @@ class WebTranslateSecurityTest {
     @Test fun onlyHttpAndHttpsPagesAreAllowed() {
         assertTrue(isAllowedWebTranslateUrl("https://www.youtube.com/watch?v=abc"))
         assertTrue(isAllowedWebTranslateUrl("http://192.168.1.20:8080/player"))
+        assertTrue(isAllowedWebTranslateUrl("https://example.com/视频?title=你好"))
         assertFalse(isAllowedWebTranslateUrl("file:///sdcard/private.txt"))
         assertFalse(isAllowedWebTranslateUrl("content://com.example.provider/item"))
         assertFalse(isAllowedWebTranslateUrl("javascript:alert(1)"))
