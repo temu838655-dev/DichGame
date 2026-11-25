@@ -24,6 +24,14 @@ object TranslationGuard {
     )
     private val commonEnglish = setOf("yes", "no", "wait", "stop", "run", "go", "help", "continue", "retry", "cancel", "exit", "settings", "loading", "new game", "game over", "try again", "thank you", "come here", "look out", "watch out", "good morning", "good night", "i love you")
     private val QUOTES = "\"“”«»'‘’「」『』"
+    // Runtime placeholders and formatting tokens must survive translation byte-for-byte.
+    private val PROTECTED_TOKEN = Regex(
+        """\${[^{}\r\n]{1,80}}|\{[^{}\r\n]{1,80}}|%(?:%|\d+\$)?[-+#0 ]*\d*(?:\.\d+)?[a-zA-Z]|\\[nrt]|\\u[0-9a-fA-F]{4}|<[^<>\r\n]{1,120}>|\[(?:/?(?:color|b|i|u|s|size|font|url|sprite|icon|c|alpha|outline|shadow)(?:=[^\]]*)?)\]|§[0-9a-fk-or]|#[0-9a-fA-F]{6,8}""",
+        RegexOption.IGNORE_CASE
+    )
+
+    private fun protectedTokens(text: String): List<String> =
+        PROTECTED_TOKEN.findAll(text).map { it.value }.sorted()
 
     /** Bỏ phần AI hay thêm vào quanh bản dịch: rào markdown, nhãn "Bản dịch:", dấu ngoặc kép bao ngoài, dòng ghi chú. */
     fun clean(out: String, src: String): String {
@@ -54,6 +62,11 @@ object TranslationGuard {
         val t = out.trim()
         if (t.isEmpty()) return Verdict(Level.REJECT, t, listOf("bản dịch rỗng"))
         val low = t.lowercase(Locale.ROOT)
+        val sourceTokens = protectedTokens(src)
+        val outputTokens = protectedTokens(t)
+        if (sourceTokens != outputTokens) {
+            return Verdict(Level.REJECT, t, listOf("mất, thêm hoặc thay đổi placeholder/thẻ định dạng"))
+        }
         if (sourceLang == "en" && SubtitleMeaning.reversesCommand(src, t)) {
             return Verdict(Level.REJECT, t, listOf("bản dịch đảo nghĩa mệnh lệnh khẳng định/phủ định"))
         }
