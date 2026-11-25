@@ -21,7 +21,8 @@ class CloudRefresh(ctx: Context) {
             val p = Prefs(app)
             val profile = p.profile
             val game = PackStore.gameName(p)
-            val context = profile + "\u0000" + game
+            val platform = p.selectedPlatform
+            val context = profile + "\u0000" + game + "\u0000" + platform
             if (context != lastContext) { lastContext = context; generation++; next = 0L }
             val now = android.os.SystemClock.elapsedRealtime()
             if (p.autoPackRefresh && game.isNotBlank() && !busy && now >= next) {
@@ -32,10 +33,18 @@ class CloudRefresh(ctx: Context) {
                     busy = true
                     exec.execute {
                         try {
-                            val source = PackStore.cloudInfo(app, profile, game)?.source
-                                ?: p.packCatalogUrl.takeIf { it.isNotBlank() }?.let { PackStore.catalogSource(it, game) }
+                            // When a catalog is configured, resolve it for the currently
+                            // selected console. A saved manifest URL alone does not carry the
+                            // catalog's target-platform grant.
+                            val catalogUrl = p.packCatalogUrl.takeIf { it.isNotBlank() }
+                            val source = CloudRefreshPolicy.resolveSource(
+                                catalogConfigured = catalogUrl != null,
+                                catalog = { PackStore.catalogSource(catalogUrl.orEmpty(), game, platform) },
+                                saved = { PackStore.cloudInfo(app, profile, game)?.source }
+                            )
                             if (source != null) PackStore.importLink(app, p, source, profile, game, autoEpoch = epoch) {
-                                generation == token && p.autoPackRefresh && !Thread.currentThread().isInterrupted
+                                generation == token && p.autoPackRefresh && p.selectedPlatform == platform &&
+                                    !Thread.currentThread().isInterrupted
                             }
                         } catch (_: Exception) {
                             // Keep existing offline data.
@@ -59,4 +68,14 @@ class CloudRefresh(ctx: Context) {
         handler.removeCallbacks(tick)
     }
     fun close() { stop(); exec.shutdownNow() }
+}
+
+
+/** A configured catalog is authoritative: a denied/missing game must not fall back to a saved URL. */
+internal object CloudRefreshPolicy {
+    fun resolveSource(
+        catalogConfigured: Boolean,
+        catalog: () -> String?,
+        saved: () -> String?
+    ): String? = if (catalogConfigured) catalog() else saved()
 }

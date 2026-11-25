@@ -10,16 +10,47 @@ internal object RemotePack {
     data class Manifest(val game: String, val version: Int, val url: URL, val bytes: Int, val sha256: String)
     enum class Decision { INSTALL, SAME, REJECT }
 
-    fun catalogSource(raw: String, game: String): String? {
+    /**
+     * Resolve one game-level translation dataset. Its source may be a PC localization
+     * or another permitted source; it is intentionally independent from the console
+     * where the player is currently viewing the game.
+     */
+    fun catalogSource(raw: String, game: String, platform: String? = null): String? {
         require(game.isNotBlank())
+        val target = platform?.trim()?.uppercase(Locale.ROOT)
+        require(target == null || target in setOf("PS5", "PS4", "XBOX")) {
+            "DịchGame chỉ hỗ trợ đích PS5, PS4 và Xbox."
+        }
         val obj = JSONObject(raw)
-        require(obj.getInt("schema") == 1)
+        val schema = obj.getInt("schema")
+        require(schema in 1..2) { "Phiên bản danh mục chưa được hỗ trợ." }
         val entries = obj.getJSONArray("games")
         require(entries.length() <= 2000)
         val matches = (0 until entries.length()).map { entries.getJSONObject(it) }
             .filter { GamePackMatch.selected(game, it.getString("game")) }
-        require(matches.size <= 1) { "Danh mục có nhiều nguồn cho cùng game." }
+        require(matches.size <= 1) { "Danh mục có nhiều gói dữ liệu cho cùng game; hãy hợp nhất thành một bộ dữ liệu." }
         val entry = matches.singleOrNull() ?: return null
+
+        // Schema 2 must declare the console targets explicitly. Source platform is
+        // provenance only (e.g. PC); it never grants cross-console reuse by itself.
+        if (schema >= 2) {
+            val targets = entry.optJSONArray("target_platforms")
+                ?: throw IllegalArgumentException("Danh mục thiếu target_platforms.")
+            require(targets.length() in 1..3) { "target_platforms phải có ít nhất một đích PS5, PS4 hoặc Xbox." }
+            val allowed = setOf("PS5", "PS4", "XBOX")
+            val normalized = (0 until targets.length()).map { targets.getString(it).trim().uppercase(Locale.ROOT) }
+            require(normalized.all { it in allowed } && normalized.distinct().size == normalized.size) {
+                "target_platforms chỉ được chứa PS5, PS4 và XBOX, không trùng lặp."
+            }
+            require(target == null || target in normalized) {
+                "Gói Việt hóa này chưa khai báo quyền sử dụng cho $target."
+            }
+        } else if (target != null) {
+            // Legacy schema 1 has no explicit rights metadata. Do not infer PC-to-console reuse.
+            val source = entry.optString("source_platform", "").trim().uppercase(Locale.ROOT)
+            require(source == target) { "Danh mục cũ không xác nhận quyền dùng nguồn $source trên $target." }
+        }
+
         val url = URL(entry.getString("manifest"))
         require(url.protocol == "https" && url.host.isNotBlank() && url.userInfo == null &&
             url.ref == null && url.path.endsWith(".dichgame.json", true))

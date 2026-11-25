@@ -131,6 +131,16 @@ class Prefs(ctx: Context) {
         get() = sp.getString("pack_catalog_url", "").orEmpty()
         set(v) = sp.edit().putString("pack_catalog_url", v.trim()).apply()
 
+    /** Console đang chơi; chỉ hỗ trợ PS5, PS4 và Xbox. Không dùng trường này để lọc nguồn dữ liệu Việt hóa. */
+    var selectedPlatform: String
+        get() = sp.getString("selected_platform_$profile", "PS5").orEmpty()
+            .takeIf { it in setOf("PS5", "PS4", "XBOX") } ?: "PS5"
+        set(v) {
+            val safe = v.uppercase(java.util.Locale.ROOT)
+            if (safe in setOf("PS5", "PS4", "XBOX"))
+                sp.edit().putString("selected_platform_$profile", safe).apply()
+        }
+
     var autoPackRefresh: Boolean
         get() = sp.getBoolean("auto_pack_refresh", false)
         set(v) = sp.edit().putBoolean("auto_pack_refresh", v).apply()

@@ -14,9 +14,6 @@
     <queries>
         <package android:name="com.playstation.remoteplay" />
         <package android:name="com.metallic.chiaki" />
-        <package android:name="com.limelight" />
-        <package android:name="com.valvesoftware.steamlink" />
-        <package android:name="com.nvidia.geforcenow" />
         <package android:name="com.microsoft.xboxone.smartglass" />
     </queries>
 

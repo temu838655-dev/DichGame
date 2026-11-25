@@ -98,6 +98,57 @@ class PackTextTest {
         assertEquals(listOf("YOU DIED" to "BẠN ĐÃ CHẾT"), p.lines)
     }
 
+    @Test fun verifiedKnowledgeCsvRoundTripsQuotedCellsAndKeepsGameScope() {
+        val original = listOf(
+            "Hello, \"hero\"" to "Chào, \"anh hùng\"",
+            "A line\ncontinued" to "Một dòng\ntiếp tục"
+        )
+        val csv = PackText.formatScopedCsv("Game thử", original)
+        val pack = PackText.parseScopedCsv(csv)
+        assertNotNull(pack)
+        assertEquals("Game thử", pack!!.name)
+        assertEquals(
+            listOf("Hello, \"hero\"" to "Chào, \"anh hùng\"", "A line continued" to "Một dòng tiếp tục"),
+            pack.lines
+        )
+    }
+
+    @Test fun scopedCsvRejectsMissingSourceOrTranslation() {
+        val missingSource = "source,vi,game\n,\"Bản dịch\",\"Game thử\"\n"
+        val missingTranslation = "source,vi,game\n\"Original\",,\"Game thử\"\n"
+        assertTrue(runCatching { PackText.parseScopedCsv(missingSource) }.isFailure)
+        assertTrue(runCatching { PackText.parseScopedCsv(missingTranslation) }.isFailure)
+    }
+
+    @Test fun scopedCsvRejectsMixedGamesAndEmptyData() {
+        val mixed = "source,vi,game\n\"One\",\"Một\",\"Game A\"\n\"Two\",\"Hai\",\"Game B\"\n"
+        val empty = "source,vi,game\n"
+        assertTrue(runCatching { PackText.parseScopedCsv(mixed) }.isFailure)
+        assertTrue(runCatching { PackText.parseScopedCsv(empty) }.isFailure)
+    }
+
+    @Test fun verifiedKnowledgeImportPreservesExistingPlayerCorrection() {
+        val existing = listOf(
+            "Quest complete" to "Nhiệm vụ đã xong (bản sửa tay)",
+            "Old line" to "Dòng cũ"
+        )
+        val verified = listOf(
+            "Quest complete" to "Hoàn thành nhiệm vụ",
+            "New line" to "Dòng mới"
+        )
+        val merged = TranslationLineMerge.merge(existing, verified, preserveExisting = true)
+        assertEquals("Nhiệm vụ đã xong (bản sửa tay)", merged.first { it.first == "Quest complete" }.second)
+        assertEquals("Dòng mới", merged.first { it.first == "New line" }.second)
+        assertEquals(3, merged.size)
+    }
+
+    @Test fun normalPackImportCanStillReplaceExistingTranslation() {
+        val existing = listOf("Quest complete" to "Bản cũ")
+        val incoming = listOf("Quest complete" to "Bản mới")
+        val merged = TranslationLineMerge.merge(existing, incoming, preserveExisting = false)
+        assertEquals("Bản mới", merged.single().second)
+    }
+
     @Test fun importedLinesWorkInTransMemory() {
         val p = PackText.parseAny("""{"original":"YOU DIED","vi":"BẠN ĐÃ CHẾT"}""".let { "[$it]" })
         val tm = TransMemory(p.lines)

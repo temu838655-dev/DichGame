@@ -21,7 +21,7 @@ import android.widget.TextView
 import android.widget.Toast
 
 /**
- * Kho game Việt hoá: chọn game đang chơi, lọc theo nền tảng (PS5, PS4, Xbox, PC, Steam, Switch), xem gói Việt hoá của game
+ * Kho game Việt hoá: chọn game đang chơi trên PS5, PS4 hoặc Xbox, xem gói Việt hoá của game
  * (thuật ngữ, nhân vật, câu thông báo chuẩn) và cách chơi trên từng nền tảng. Chọn một game sẽ chuyển sang (hoặc tạo) hồ sơ riêng
  * tên game đó, nhớ khung phụ đề riêng, và gói Việt hoá của game được áp dụng khi dịch.
  */
@@ -36,6 +36,7 @@ class KhoGameActivity : Activity() {
     private lateinit var statusRow: LinearLayout
     private var status = 0 // 0 tất cả, 1 có gói Việt hoá riêng, 2 dịch AI theo thể loại
     private val vietMemo = HashMap<String, Boolean>()
+    private val consolePlatforms = listOf(Plat.PS5, Plat.PS4, Plat.XBOX)
 
     /** Game có gói Việt hoá riêng không (nhớ kết quả vì tra khá nặng). */
     private fun isViet(name: String): Boolean = vietMemo.getOrPut(name) { VietHoa.hasSpecific(name) }
@@ -49,7 +50,7 @@ class KhoGameActivity : Activity() {
             intent.getStringExtra("plat")?.let { k -> plat = Plat.values().firstOrNull { it.name.equals(k, true) }; tab = 1 }
         }
         screen("Kho game Việt hoá") {
-            put(Ui.tv(this@KhoGameActivity, "Chọn game để áp dụng đúng thuật ngữ, thẻ nhân vật và bộ nhớ dịch theo game. Mỗi game có hồ sơ riêng; câu AI mới vẫn cần kiểm tra chất lượng.", 13f, Ui.SUB), 0, 10)
+            put(Ui.tv(this@KhoGameActivity, "DịchGame hỗ trợ PS5, PS4 và Xbox. Có thể dùng dữ liệu câu dịch từ bản Việt hóa PC làm nguồn tham khảo chung cho cùng game; không cần bản patch riêng cho console.", 13f, Ui.SUB), 0, 10)
             val search = Ui.field(this@KhoGameActivity, "Tìm game", "")
             search.addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) { query = s?.toString().orEmpty().trim(); fill() }
@@ -84,7 +85,7 @@ class KhoGameActivity : Activity() {
 
     private fun drawChips() {
         chips.removeAllViews()
-        val all = listOf<Plat?>(null) + Plat.values().toList()
+        val all = listOf<Plat?>(null) + consolePlatforms
         for (pl in all) {
             val on = pl == plat
             chips.addView(TextView(this).apply {
@@ -146,7 +147,7 @@ class KhoGameActivity : Activity() {
     }
 
     private fun platLine(name: String): String {
-        val ps = Catalog.platformsOf(name)
+        val ps = Catalog.platformsOf(name).intersect(consolePlatforms.toSet())
         val s = if (ps.isEmpty()) "" else ps.joinToString(" · ") { it.label }
         return s
     }
@@ -183,7 +184,7 @@ class KhoGameActivity : Activity() {
             val info = Ui.vbox(this@KhoGameActivity)
             info.addView(Ui.tv(this@KhoGameActivity, name, 21f, Ui.TEXT, true))
             if (g.isNotEmpty()) info.addView(Ui.tv(this@KhoGameActivity, g.replaceFirstChar { it.uppercase() }, 13.5f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 2, 0))
-            val ps = Catalog.platformsOf(name)
+            val ps = Catalog.platformsOf(name).intersect(consolePlatforms.toSet())
             if (ps.isNotEmpty()) {
                 val r = Ui.hbox(this@KhoGameActivity)
                 for (x in ps) r.addView(Ui.badge(this@KhoGameActivity, x.label), Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = Ui.dp(this@KhoGameActivity, 6) })
@@ -206,11 +207,15 @@ class KhoGameActivity : Activity() {
                 "Áp dụng khi dịch AI và dịch trên máy nhằm giữ cách gọi nhất quán. Một số gói dành cho cả series hoặc thể loại, không bảo đảm mọi câu đều chính xác. Gói do người làm app soạn theo cách gọi phổ biến, " +
                     "không phải bản dịch chính thức của nhà phát hành. Sửa hoặc nhập thêm gói trong mục Gói Việt hoá.", 12f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 6, 0))
             addView(c, Ui.lpm(this@KhoGameActivity, 12, 0))
+            val defaultPlatform = ps.firstOrNull() ?: Plat.PS5
+            var selectedPlatform = if (PackStore.gameName(p).equals(name, ignoreCase = true))
+                consolePlatforms.firstOrNull { it.name == p.selectedPlatform && (ps.isEmpty() || it in ps) } ?: defaultPlatform
+            else defaultPlatform
             // File Việt hoá tải về: áp vào game này để khi chơi hiện đúng câu trong file
             val mine = PackStore.lineCount(this@KhoGameActivity, name)
             addView(Ui.button(this@KhoGameActivity, "📥  Nhập file Việt hoá của game này") {
                 d.dismiss()
-                this@KhoGameActivity.select(name)
+                this@KhoGameActivity.select(name, selectedPlatform)
                 setResult(RESULT_OK)
                 Toast.makeText(this@KhoGameActivity, "Đã chọn $name. File nhập vào sẽ áp dụng cho game này.", Toast.LENGTH_SHORT).show()
                 startActivity(Intent(this@KhoGameActivity, PackActivity::class.java).putExtra("import", true))
@@ -220,7 +225,7 @@ class KhoGameActivity : Activity() {
                     "Tải file Việt hoá (en.json + vi.json, strings.xml, .srt...) rồi nhập vào đây: khi chơi, câu nào trên màn hình khớp câu trong file thì hiện đúng bản đó, như chơi bản Việt hoá trên máy tính.",
                 12f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 6, 0))
             // Cách chơi theo nền tảng
-            val start = ps.firstOrNull() ?: Plat.PS5
+            val start = selectedPlatform
             val guide = Ui.tv(this@KhoGameActivity, RemotePlay.guide(start), 13f, Ui.TEXT)
             val appsBox = Ui.vbox(this@KhoGameActivity)
             val nguonBox = Ui.vbox(this@KhoGameActivity)
@@ -253,14 +258,14 @@ class KhoGameActivity : Activity() {
             val hs = HorizontalScrollView(this@KhoGameActivity).apply { isHorizontalScrollBarEnabled = false; addView(pr) }
             fun drawPlat(sel: Plat) {
                 pr.removeAllViews()
-                for (x in Plat.values()) {
+                for (x in consolePlatforms) {
                     val on = x == sel
                     pr.addView(TextView(this@KhoGameActivity).apply {
                         text = x.label; textSize = 13f; gravity = Gravity.CENTER
                         setTextColor(if (on) Color.parseColor("#2A1A08") else Ui.TEXT)
                         background = if (on) Ui.goldBg(this@KhoGameActivity, 16) else Ui.bg(this@KhoGameActivity, Ui.CARD2, 16, Ui.LINE, 1)
                         setPadding(Ui.dp(this@KhoGameActivity, 14), Ui.dp(this@KhoGameActivity, 6), Ui.dp(this@KhoGameActivity, 14), Ui.dp(this@KhoGameActivity, 6))
-                        setOnClickListener { drawPlat(x); showApps(x) }
+                        setOnClickListener { selectedPlatform = x; drawPlat(x); showApps(x) }
                     }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = Ui.dp(this@KhoGameActivity, 6) })
                 }
             }
@@ -279,8 +284,8 @@ class KhoGameActivity : Activity() {
             addView(nguonBox, Ui.lpm(this@KhoGameActivity, 4, 0))
             addView(Ui.tv(this@KhoGameActivity, NguonVietHoa.SAFETY, 11.5f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 8, 0))
             // Chọn
-            addView(Ui.button(this@KhoGameActivity, "Chọn game này", true) { d.dismiss(); choose(name, false) }, Ui.lpm(this@KhoGameActivity, 16, 0))
-            addView(Ui.button(this@KhoGameActivity, "Chọn và dịch ngay") { d.dismiss(); choose(name, true) }, Ui.lpm(this@KhoGameActivity, 8, 0))
+            addView(Ui.button(this@KhoGameActivity, "Chọn game này", true) { d.dismiss(); choose(name, false, selectedPlatform) }, Ui.lpm(this@KhoGameActivity, 16, 0))
+            addView(Ui.button(this@KhoGameActivity, "Chọn và dịch ngay") { d.dismiss(); choose(name, true, selectedPlatform) }, Ui.lpm(this@KhoGameActivity, 8, 0))
             addView(Ui.button(this@KhoGameActivity, "Sao chép tên game") {
                 (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("game", name))
                 Toast.makeText(this@KhoGameActivity, "Đã sao chép: $name", Toast.LENGTH_SHORT).show()
@@ -303,16 +308,17 @@ class KhoGameActivity : Activity() {
     }
 
     /** Đặt game này làm game đang chơi: hồ sơ riêng của game, tên game và thể loại. */
-    private fun select(name: String) {
+    private fun select(name: String, platform: Plat? = null) {
         val g = genreOf(name)
         if (p.profiles.contains(name)) p.profile = name else p.addProfile(name)
         p.game = if (g.isEmpty()) name else "$name, $g"
         p.selectedGameTitle = name
+        p.selectedPlatform = platform?.name ?: consolePlatforms.firstOrNull { it in Catalog.platformsOf(name) }?.name ?: "PS5"
         p.addPlayed(name)
     }
 
-    private fun choose(name: String, go: Boolean) {
-        select(name)
+    private fun choose(name: String, go: Boolean, platform: Plat? = null) {
+        select(name, platform)
         Toast.makeText(this, "Đã chọn $name. Gói Việt hoá của game đang được dùng.", Toast.LENGTH_SHORT).show()
         setResult(RESULT_OK)
         if (go) startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("go", true))

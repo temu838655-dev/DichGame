@@ -49,6 +49,50 @@ object Canon {
     fun usable(key: String): Boolean = key.length >= 3 || (key.length >= 2 && key.any { isCjk(it) })
 }
 
+/**
+ * Gộp câu theo đúng nội dung gốc. Khi nhập kho VERIFIED, dữ liệu có sẵn
+ * (bao gồm bản người chơi tự sửa) được ưu tiên hơn dữ liệu nhập mới.
+ */
+internal object TranslationLineMerge {
+    fun merge(
+        existing: List<Pair<String, String>>,
+        incoming: List<Pair<String, String>>,
+        preserveExisting: Boolean
+    ): List<Pair<String, String>> {
+        val merged = LinkedHashMap<String, Pair<String, String>>()
+        val ordered = if (preserveExisting) incoming + existing else existing + incoming
+        for ((source, translated) in ordered) {
+            if (Canon.usable(Canon.key(source)) && translated.isNotBlank()) {
+                val cleanSource = source.replace('\t', ' ').replace('\r', ' ').replace('\n', ' ').trim()
+                val cleanTranslation = translated.replace('\t', ' ').replace('\r', ' ').replace('\n', ' ').trim()
+                if (cleanSource.isNotEmpty() && cleanTranslation.isNotEmpty()) {
+                    merged[Canon.literal(cleanSource)] = cleanSource to cleanTranslation
+                }
+            }
+        }
+        return merged.values.toList()
+    }
+
+    fun edit(existing: List<Pair<String, String>>, oldSource: String, newSource: String, newTranslation: String): List<Pair<String, String>>? {
+        val oldKey = Canon.literal(oldSource)
+        if (oldKey.isBlank()) return null
+        val index = existing.indexOfFirst { Canon.literal(it.first) == oldKey }
+        if (index < 0) return null
+        val source = newSource.replace('\t', ' ').replace('\r', ' ').replace('\n', ' ').trim()
+        val translation = newTranslation.replace('\t', ' ').replace('\r', ' ').replace('\n', ' ').trim()
+        if (!Canon.usable(Canon.key(source)) || translation.isBlank()) return null
+        val withoutOld = existing.toMutableList().also { it.removeAt(index) }
+        return merge(withoutOld, listOf(source to translation), preserveExisting = false)
+    }
+
+    fun delete(existing: List<Pair<String, String>>, source: String): List<Pair<String, String>>? {
+        val key = Canon.literal(source)
+        if (key.isBlank()) return null
+        val filtered = existing.filterNot { Canon.literal(it.first) == key }
+        return if (filtered.size == existing.size) null else filtered
+    }
+}
+
 private data class LineKey(val letters: String, val numbers: String, val cues: String) {
     companion object {
         fun of(source: String) = LineKey(Canon.key(source), digitSig(source), SubtitleMeaning.signature(source))
@@ -572,12 +616,20 @@ object PackText {
         var game = ""
         while (rows.hasNext()) {
             val cells = csvRow(rows.next(), ',')
-            require(cells.size == 3 && cells[2].isNotBlank()) { "CSV DichGame thiếu tên game hoặc sai cấu trúc." }
-            if (game.isEmpty()) game = cells[2].trim()
-            require(GamePackMatch.selected(game, cells[2])) { "CSV chứa nhiều game. Hãy tách riêng từng game." }
+            require(cells.size == 3) { "CSV DichGame phải có đúng 3 cột source, vi, game." }
+            val source = cells[0].trim()
+            val translated = cells[1].trim()
+            val rowGame = cells[2].trim()
+            require(source.isNotEmpty() && translated.isNotEmpty() && rowGame.isNotEmpty()) {
+                "CSV DichGame có dòng thiếu câu gốc, bản dịch hoặc tên game."
+            }
+            require(rowGame.length <= 200) { "Tên game trong CSV quá dài." }
+            if (game.isEmpty()) game = rowGame
+            require(GamePackMatch.selected(game, rowGame)) { "CSV chứa nhiều game. Hãy tách riêng từng game." }
             require(pairs.size < MAX_LINES) { "CSV vượt quá giới hạn số câu." }
-            pairs.add(cells[0] to cells[1])
+            pairs.add(source to translated)
         }
+        require(pairs.isNotEmpty()) { "CSV DichGame chưa có câu dịch nào." }
         return Pack(game, emptyList(), emptyList(), pairs)
     }
 

@@ -186,6 +186,51 @@ object PackStore {
 
     fun lineCount(ctx: Context, profile: String): Int = readLines(ctx, profile).size
 
+    /** Chỉ đọc các câu được lưu trực tiếp trên máy; không trộn dữ liệu từ kho Cloud. */
+    @Synchronized
+    fun localLines(ctx: Context, profile: String): List<Pair<String, String>> =
+        readFile(linesFile(ctx, profile))
+
+    /** Sửa một câu đã nhập trên máy. Dữ liệu Cloud cùng game không bị thay đổi. */
+    @Synchronized
+    fun editLocalLine(ctx: Context, profile: String, oldSource: String, newSource: String, newTranslation: String): Boolean {
+        val f = linesFile(ctx, profile)
+        val updated = TranslationLineMerge.edit(readFile(f), oldSource, newSource, newTranslation) ?: return false
+        require(RemotePack.mergeOffline(readCloud(f)?.lines.orEmpty(), updated).size <= PackText.MAX_LINES) {
+            "Kho vượt giới hạn số câu. Không thay đổi dữ liệu."
+        }
+        writeManagedLocalLines(f, updated)
+        mem = null; memKey = ""
+        return true
+    }
+
+    /** Xóa một câu lưu trên máy; bản cùng nội dung trong kho Cloud không bị xóa. */
+    @Synchronized
+    fun deleteLocalLine(ctx: Context, profile: String, source: String): Boolean {
+        val f = linesFile(ctx, profile)
+        val updated = TranslationLineMerge.delete(readFile(f), source) ?: return false
+        writeManagedLocalLines(f, updated)
+        mem = null; memKey = ""
+        return true
+    }
+
+    private fun writeManagedLocalLines(f: File, rows: List<Pair<String, String>>) {
+        f.parentFile?.mkdirs()
+        val atomic = AtomicFile(f)
+        val output = atomic.startWrite()
+        try {
+            val writer = output.bufferedWriter(Charsets.UTF_8)
+            for ((original, vi) in rows) {
+                writer.write(original); writer.write("\t"); writer.write(vi); writer.newLine()
+            }
+            writer.flush()
+            atomic.finishWrite(output)
+        } catch (e: Exception) {
+            atomic.failWrite(output)
+            throw e
+        }
+    }
+
     /** Thêm câu thoại vào hồ sơ (trùng câu gốc thì lấy bản mới). Trả về số câu sau khi gộp. */
     @Synchronized
     fun addLines(ctx: Context, profile: String, add: List<Pair<String, String>>): Int {
@@ -194,19 +239,24 @@ object PackStore {
         return readAvailable(f).size
     }
 
+    /**
+     * Nhập bản xuất VERIFIED từ knowledge base như lớp dữ liệu nền:
+     * không ghi đè câu đã có, vì câu đó có thể là bản người chơi tự hiệu chỉnh.
+     */
+    @Synchronized
+    fun addVerifiedLines(ctx: Context, profile: String, add: List<Pair<String, String>>): Int {
+        val f = linesFile(ctx, profile)
+        addLinesTo(f, add, true)
+        return readAvailable(f).size
+    }
+
     @Synchronized
     private fun addLinesTo(f: File, add: List<Pair<String, String>>, preserveExisting: Boolean): Int {
-        val map = LinkedHashMap<String, Pair<String, String>>()
         // Read and write the same captured target; if reading fails do not overwrite it.
         val existing = readFile(f)
-        for (e in (if (preserveExisting) add + existing else existing + add)) {
-            val k = Canon.key(e.first)
-            val identity = Canon.literal(e.first)
-            if (Canon.usable(k) && e.second.isNotBlank()) map[identity] = e.first.replace('\t', ' ').replace('\n', ' ') to e.second.replace('\t', ' ').replace('\n', ' ')
-        }
-        if (map.size > PackText.MAX_LINES)
+        val list = TranslationLineMerge.merge(existing, add, preserveExisting)
+        if (list.size > PackText.MAX_LINES)
             throw java.io.IOException("Kho vượt giới hạn câu; không thay đổi dữ liệu đang lưu.")
-        val list = map.values.toList()
         require(RemotePack.mergeOffline(readCloud(f)?.lines.orEmpty(), list).size <= PackText.MAX_LINES) {
             "Kho vượt giới hạn số câu. Không thay đổi dữ liệu."
         }
@@ -274,7 +324,10 @@ object PackStore {
 
     /** Nhập một gói (văn bản) vào hồ sơ hiện tại. Phần đã có được giữ nguyên. Trả về câu báo kết quả. */
     fun importText(ctx: Context, p: Prefs, text: String, fileName: String = ""): String {
-        val pack = PackText.parseScopedCsv(text) ?: PackText.parseAny(text)
+        // CSV riêng này chỉ được xuất từ các mục VERIFIED của knowledge base.
+        // Giữ ưu tiên cho bản đã có trên máy (nhất là bản người chơi tự sửa).
+        val verifiedKnowledgePack = PackText.parseScopedCsv(text)
+        val pack = verifiedKnowledgePack ?: PackText.parseAny(text)
         if (pack.isEmpty) {
             // file có cả chữ gốc lẫn bản Việt hoá bên trong (cột en + vi, XLIFF, TMX, .srt hai dòng, Ren'Py...)
             Bilingual.parse(text, fileName)?.let { return importFound(ctx, p, it) }
@@ -296,7 +349,8 @@ object PackStore {
         p.cast = Cast.merge(p.cast, pack.cast)
         val beforeL = lineCount(ctx, p.profile)
         val j = LocFormat.filter(pack.lines, "file")
-        val total = if (j.pairs.isEmpty()) beforeL else addLines(ctx, p.profile, j.pairs)
+        val total = if (j.pairs.isEmpty()) beforeL else if (verifiedKnowledgePack != null)
+            addVerifiedLines(ctx, p.profile, j.pairs) else addLines(ctx, p.profile, j.pairs)
         val who = if (pack.name.isNotBlank()) " \"${pack.name}\"" else ""
         return "Đã nhập gói$who vào hồ sơ ${p.profile}: thêm $addedTerms thuật ngữ, ${pack.cast.size} nhân vật, ${total - beforeL} câu thoại." + skipNote(j)
     }
@@ -426,11 +480,11 @@ object PackStore {
         } finally { c.disconnect() }
     }
 
-    fun catalogSource(link: String, game: String): String? {
+    fun catalogSource(link: String, game: String, platform: String? = null): String? {
         val url = URL(link)
         require(url.protocol == "https" && url.host.isNotBlank() && url.userInfo == null && url.ref == null)
         return RemotePack.catalogSource(fetchWithRetry(url, 512_000) { !Thread.currentThread().isInterrupted }
-            .toString(Charsets.UTF_8), game)
+            .toString(Charsets.UTF_8), game, platform)
     }
 
     /** Download a user-authorized direct pack link, including ZIP and MO, with a bounded temporary file. */
