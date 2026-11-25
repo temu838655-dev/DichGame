@@ -58,7 +58,10 @@ incompatible rights. Keep author attribution and the original source URL.
    verified-only CSV export compatible with the Android app's existing importer.
    See [BACKUP_SYNC.md](BACKUP_SYNC.md).
 
-9. Permission-aware game catalog registry and metadata-feed importer, with per-platform localization release records and link-only handling for sources without explicit integration rights. See [CATALOG.md](CATALOG.md). This does not scrape sites or download patch archives.\n\n## Remaining phases\n
+9. Permission-aware game catalog registry and metadata-feed importer, with per-platform localization release records and link-only handling for sources without explicit integration rights. See [CATALOG.md](CATALOG.md). This does not scrape sites or download patch archives.
+
+## Remaining phases
+
 1. Additional local-model adapters and provider-specific quota/pricing controls.
 2. Network synchronization service, incremental delta protocol and conflict UI.
 3. Community account authentication, abuse/rate controls and reviewer administration.
