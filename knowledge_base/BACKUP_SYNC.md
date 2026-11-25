@@ -71,5 +71,13 @@ that source must also have `verification_status='VERIFIED'`. AI-unverified
 and pending community entries are deliberately omitted. Transfer the CSV to
 the phone and import it with the app's existing file-import flow.
 
+The Android importer validates the exact header and requires one non-empty game
+scope per file. Imported entries enter the selected game's local translation
+memory, which the OCR translation flow checks before learned AI memory, cache
+and AI fallback. When a verified CSV contains a source phrase already present
+on the phone, the existing local translation is preserved; this protects a
+player's manual correction. Ordinary user-created pack imports retain their
+existing replace-newer behavior.
+
 This is a file-based bridge, not automatic live synchronization. The Python
 knowledge base still does not run inside the Android app process.
