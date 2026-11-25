@@ -192,6 +192,7 @@ object Ai {
         val body = JSONObject().put("contents", JSONArray().put(
             JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))
         ))
+        body.put("generationConfig", JSONObject().put("maxOutputTokens", 512))
         if (withSafety) body.put("safetySettings", JSONArray().apply {
             for (c in SAFETY_CATEGORIES) put(JSONObject().put("category", c).put("threshold", "BLOCK_NONE"))
         })
@@ -207,7 +208,9 @@ object Ai {
             val r = post(cloudEndpoint(p.cloudUrl), body, mapOf("Authorization" to "Bearer " + p.cloudKey), metric = "api_dich_cloud")
             JSONObject(r).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
         } else {
-            val model = p.geminiModel.trim()\n            if (!model.matches(Regex("[A-Za-z0-9._-]{1,100}"))) throw AiException(400, "Tên model Gemini không hợp lệ. Chỉ dùng mã model, không thêm URL hoặc tham số.")\n            val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
+            val model = p.geminiModel.trim()
+            if (!model.matches(Regex("[A-Za-z0-9._-]{1,100}"))) throw AiException(400, "Tên model Gemini không hợp lệ. Chỉ dùng mã model, không thêm URL hoặc tham số.")
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
             val r = try {
                 geminiPost(p, url, geminiBody(prompt, safetyAccepted))
             } catch (e: AiException) {
