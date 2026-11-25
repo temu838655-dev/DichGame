@@ -177,7 +177,9 @@ class Prefs(ctx: Context) {
         set(v) = sp.edit().putString("curl", v.trim()).apply()
     var cloudKey: String
         get() = ApiSecrets.read(app, "ckey")
-        set(v) { ApiSecrets.write(app, mapOf("ckey" to v.trim())) }
+        set(v) {
+            if (ApiSecrets.write(app, mapOf("ckey" to v.trim()))) KeyRing.clearBilling()
+        }
     var cloudModel: String
         get() = sp.getString("cmodel", "gemini-3.1-flash-lite").orEmpty()
         set(v) = sp.edit().putString("cmodel", v.trim()).apply()
