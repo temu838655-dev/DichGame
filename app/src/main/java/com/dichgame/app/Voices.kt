@@ -45,18 +45,25 @@ object Voices {
             File(d, "tokens.txt").let { it.isFile && it.length() > 0 }
     }
 
+    fun revision(ctx: Context, id: String): String {
+        val d = dir(ctx, id)
+        return runCatching { File(d, "ok").readText().take(64) }.getOrDefault("") +
+            ":" + File(d, "model.onnx").lastModified() + ":" + File(d, "tokens.txt").lastModified()
+    }
+
     fun sizeMb(ctx: Context, id: String): Int =
         ((dir(ctx, id).listFiles()?.sumOf { it.length() } ?: 0L) / (1024 * 1024)).toInt()
 
     private val operations = java.util.concurrent.locks.ReentrantLock()
 
-    fun delete(ctx: Context, id: String) {
-        if (pack(id) == null) return
-        if (!operations.tryLock()) return
+    fun delete(ctx: Context, id: String): Boolean {
+        if (pack(id) == null) return false
+        if (!operations.tryLock()) return false
         try {
             File(ctx.filesDir, "voices/$id.bak").deleteRecursively()
             dir(ctx, id).deleteRecursively()
             File(ctx.filesDir, "voices/$id.tmp").deleteRecursively()
+            return !dir(ctx, id).exists()
         } finally { operations.unlock() }
     }
 
@@ -134,7 +141,7 @@ object Voices {
             }
             if (cancel.get()) throw CancelledException()
             if (!haveModel || !haveTokens || File(tmp, "model.onnx").length() == 0L || File(tmp, "tokens.txt").length() == 0L) return "Gói giọng tải về bị thiếu file."
-            File(tmp, "ok").writeText("1")
+            File(tmp, "ok").writeText(java.util.UUID.randomUUID().toString())
             if (backup.exists() && !backup.deleteRecursively()) return "Không dọn được bản sao cũ."
             if (dst.exists() && !dst.renameTo(backup)) return "Không sao lưu được giọng cũ."
             if (!tmp.renameTo(dst)) {
