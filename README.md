@@ -61,9 +61,9 @@ Mỗi bản dựng trên nhánh `main` có số thứ tự (`build-N`), số nà
 
 ### Khóa ký
 
-Mặc định APK ký bằng khóa trong `keystore/dichgame.jks` (mật khẩu `dichgame123`). Khóa này nằm công khai trong repo, chỉ hợp để dùng cá nhân.
-Muốn dùng khóa riêng: tạo 4 secrets trên GitHub (`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`), workflow sẽ tự dùng.
-Lưu ý: đổi khóa thì phải gỡ app cũ rồi cài lại.
+Bản build thử nghiệm trên Pull Request có thể dùng khóa mặc định công khai trong repo; **không cài bản thử nghiệm này làm bản phát hành chính thức**.
+Trước khi phát hành công khai, bắt buộc tạo 4 GitHub Actions secrets: `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. Workflow sẽ từ chối tạo Release nếu thiếu bất kỳ secret nào.
+Khóa riêng phải được sao lưu an toàn và giữ nguyên cho mọi phiên bản sau để Android cho phép cập nhật đè, không mất dữ liệu. Nếu thay khóa ký, người dùng phải gỡ app cũ rồi cài lại.
 
 ## Ghép TV
 
