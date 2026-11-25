@@ -15,7 +15,7 @@ class TranslationGuardTest {
         assertEquals(Level.OK, lv("Press \${player} to continue.", "Nhấn \${player} để tiếp tục."))
         assertEquals(Level.REJECT, lv("Hello {player}.", "Xin chào người chơi."))
         assertEquals(Level.REJECT, lv("Hello {player}.", "Xin chào {hero}."))
-        assertEquals(Level.REJECT, lv("You have %1\\$s.", "Bạn có %s."))
+        assertEquals(Level.REJECT, lv("You have %1\$s.", "Bạn có %s."))
     }
 
     @Test fun escapedNewlinesColorAndMarkupTagsMustBePreserved() {
