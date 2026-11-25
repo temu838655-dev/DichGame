@@ -11,30 +11,20 @@ internal object RemotePack {
     enum class Decision { INSTALL, SAME, REJECT }
 
     /**
-     * Resolve a game/platform-specific manifest from an authorized catalog.
-     * Schema 1 remains readable for callers that explicitly omit platform;
-     * automatic refresh supplies a platform and therefore requires an exact match.
+     * Resolve one game-level translation dataset. Its source may be a PC localization
+     * or another permitted source; it is intentionally independent from the console
+     * where the player is currently viewing the game.
      */
-    fun catalogSource(raw: String, game: String, platform: String? = null): String? {
+    fun catalogSource(raw: String, game: String, @Suppress("UNUSED_PARAMETER") platform: String? = null): String? {
         require(game.isNotBlank())
-        val allowedPlatforms = setOf("PC", "STEAM", "PS5", "PS4", "XBOX", "SWITCH", "ANDROID", "IOS")
-        val wantedPlatform = platform?.uppercase(Locale.ROOT)
-        require(wantedPlatform == null || wantedPlatform in allowedPlatforms) { "Nền tảng không được hỗ trợ." }
         val obj = JSONObject(raw)
         val schema = obj.getInt("schema")
         require(schema in 1..2) { "Phiên bản danh mục chưa được hỗ trợ." }
         val entries = obj.getJSONArray("games")
         require(entries.length() <= 2000)
         val matches = (0 until entries.length()).map { entries.getJSONObject(it) }
-            .filter { entry ->
-                if (!GamePackMatch.selected(game, entry.getString("game"))) false
-                else if (wantedPlatform == null) true
-                else {
-                    val declared = entry.optString("platform").uppercase(Locale.ROOT)
-                    declared in allowedPlatforms && declared == wantedPlatform
-                }
-            }
-        require(matches.size <= 1) { "Danh mục có nhiều nguồn cho cùng game và nền tảng." }
+            .filter { GamePackMatch.selected(game, it.getString("game")) }
+        require(matches.size <= 1) { "Danh mục có nhiều gói dữ liệu cho cùng game; hãy hợp nhất thành một bộ dữ liệu." }
         val entry = matches.singleOrNull() ?: return null
         val url = URL(entry.getString("manifest"))
         require(url.protocol == "https" && url.host.isNotBlank() && url.userInfo == null &&
