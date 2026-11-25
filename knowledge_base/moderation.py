@@ -100,6 +100,8 @@ class CommunityModeration:
             ).fetchone()
             if row is None:
                 raise ValueError("translation does not exist")
+            if row["translation_status"] not in {"COMMUNITY", "AI_UNVERIFIED", "AI_REVIEWED"}:
+                raise ValueError("Only pending or reviewable translations can be moderated")
             cursor = db.execute(
                 """INSERT INTO translation_reviews(
                        translation_id, reviewer_id, decision, note
