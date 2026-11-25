@@ -150,7 +150,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         adjusting = on
         box.adjusting = on
         if (on) { view.visibility = View.GONE }
-        lastFine = null; lastSig = null
+        lastFine = null; lastSig = null; skipRun = 0
     }
 
     val isAdjusting: Boolean get() = adjusting
@@ -305,7 +305,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         pacer.cleared()
         RecentLines.clear()
         last = ""; cand = ""; stable = 0; prevVi = ""
-        lastFine = null; lastSig = null
+        lastFine = null; lastSig = null; skipRun = 0
         textOnScreen = false
         speaker?.stop()
         notice("")
@@ -338,7 +338,8 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             2 -> if (ocr?.isCloud == true) 1.0 else 0.7
             else -> 1.0
         }
-        return (pr.scanMs * f).toLong().coerceIn(120L, 4000L)
+        val base = (pr.scanMs * f).toLong().coerceIn(120L, 4000L)
+        return ScanCadence.delay(base, skipRun, cand.isNotEmpty() && cand != last, pr.perf == 2)
     }
 
     private fun capture() {
@@ -423,7 +424,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     private fun ocrFail(m: String) {
         finishBusy()
-        lastSig = null; lastFine = null
+        lastSig = null; lastFine = null; skipRun = 0
         if (m.isNotEmpty()) reportErr(m)
     }
 
