@@ -40,7 +40,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     private fun offlinePcm(id: String, text: String, speed: Float): Pcm {
         val actualSpeed = speed.coerceIn(0.5f, 2.2f)
-        val key = VoiceDiskCache.key("piper-v1", id, actualSpeed.toBits().toString(), text)
+        val key = VoiceDiskCache.key("piper-v2", id, Voices.revision(app, id), actualSpeed.toBits().toString(), text)
         cache.get(key)?.let { return it }
         diskCache.get(key)?.let { cache.put(key, it); return it }
         return offline.synth(id, text, actualSpeed).also {
