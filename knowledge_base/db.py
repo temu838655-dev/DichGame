@@ -165,7 +165,7 @@ class KnowledgeBase:
                 (
                     game_id, source_text, normalized, translated_text,
                     sha256_text(normalized), context, speaker, scene_id, mission_id,
-                    previous_sentence, next_sentence, source_id, translation_source,
+                    previous_sentence, next_sentence, source_id, contributor_id, translation_source,
                     translation_status, confidence_score,
                 ),
             )
