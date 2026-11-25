@@ -186,25 +186,52 @@ jobs:
           TV_CERT="$("$APKSIGNER" verify --print-certs dist/DichGame-TV.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1)"
           test -n "$PHONE_CERT"
           test "$PHONE_CERT" = "$TV_CERT"
-          echo "Package điện thoại: $PHONE_PACKAGE"
-          echo "Package Android TV: $TV_PACKAGE"
-          echo "Hai APK hợp lệ và dùng cùng chứng thư ký SHA-256: $PHONE_CERT" >> "$GITHUB_STEP_SUMMARY"
+          PHONE_VERSION_CODE="$("$AAPT" dump badging dist/DichGame.apk | sed -n "s/^package:.*versionCode='\([0-9][0-9]*\)'.*/\1/p" | head -n1)"
+          TV_VERSION_CODE="$("$AAPT" dump badging dist/DichGame-TV.apk | sed -n "s/^package:.*versionCode='\([0-9][0-9]*\)'.*/\1/p" | head -n1)"
+          test -n "$PHONE_VERSION_CODE"
+          test -n "$TV_VERSION_CODE"
+          echo "Package điện thoại: $PHONE_PACKAGE (versionCode=$PHONE_VERSION_CODE)"
+          echo "Package Android TV: $TV_PACKAGE (versionCode=$TV_VERSION_CODE)"
+          echo "Hai APK hợp lệ, cùng chứng thư ký SHA-256: $PHONE_CERT" >> "$GITHUB_STEP_SUMMARY"
           if [ "$IS_PUBLIC_RELEASE" = "true" ]; then
-            LATEST_TAG="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
-              --jq '[.[] | select(.tagName | test("^build-[0-9]+$"))] | sort_by(.createdAt) | reverse | .[0].tagName // empty')"
+            # Chọn build-N lớn nhất theo số, không phụ thuộc thứ tự thời gian trả về từ GitHub.
+            LATEST_TAG="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName \
+              --jq '[.[].tagName | select(test("^build-[0-9]+$"))] | sort_by(sub("^build-"; "") | tonumber) | last // empty')"
             if [ -n "$LATEST_TAG" ]; then
+              PREVIOUS_BUILD_NO="\${LATEST_TAG#build-}"
+              if [ "$GITHUB_RUN_NUMBER" -le "$PREVIOUS_BUILD_NO" ]; then
+                echo "::error::Số bản dựng mới ($GITHUB_RUN_NUMBER) không cao hơn Release hiện tại ($LATEST_TAG). Dừng phát hành."
+                exit 1
+              fi
               mkdir -p "$RUNNER_TEMP/previous-release"
-              gh release download "$LATEST_TAG" --repo "$GITHUB_REPOSITORY" --pattern DichGame.apk \
+              gh release download "$LATEST_TAG" --repo "$GITHUB_REPOSITORY" --pattern 'DichGame*.apk' \
                 --dir "$RUNNER_TEMP/previous-release"
-              PREVIOUS_CERT="$("$APKSIGNER" verify --print-certs "$RUNNER_TEMP/previous-release/DichGame.apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1)"
+              PREVIOUS_PHONE="$RUNNER_TEMP/previous-release/DichGame.apk"
+              PREVIOUS_TV="$RUNNER_TEMP/previous-release/DichGame-TV.apk"
+              test -s "$PREVIOUS_PHONE"
+              test -s "$PREVIOUS_TV"
+              PREVIOUS_CERT="$("$APKSIGNER" verify --print-certs "$PREVIOUS_PHONE" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1)"
               test -n "$PREVIOUS_CERT"
               if [ "$PHONE_CERT" != "$PREVIOUS_CERT" ]; then
                 echo "::error::Chứng thư APK mới khác bản phát hành $LATEST_TAG. Dừng phát hành để tránh làm người dùng không thể cập nhật."
                 exit 1
               fi
-              echo "Đã xác minh chứng thư trùng bản phát hành trước ($LATEST_TAG)." >> "$GITHUB_STEP_SUMMARY"
+              PREVIOUS_PHONE_VERSION="$("$AAPT" dump badging "$PREVIOUS_PHONE" | sed -n "s/^package:.*versionCode='\([0-9][0-9]*\)'.*/\1/p" | head -n1)"
+              PREVIOUS_TV_VERSION="$("$AAPT" dump badging "$PREVIOUS_TV" | sed -n "s/^package:.*versionCode='\([0-9][0-9]*\)'.*/\1/p" | head -n1)"
+              test -n "$PREVIOUS_PHONE_VERSION"
+              test -n "$PREVIOUS_TV_VERSION"
+              if [ "$PHONE_VERSION_CODE" -le "$PREVIOUS_PHONE_VERSION" ] || [ "$TV_VERSION_CODE" -le "$PREVIOUS_TV_VERSION" ]; then
+                echo "::error::versionCode mới phải tăng cho cả điện thoại và TV. Cũ: phone=$PREVIOUS_PHONE_VERSION TV=$PREVIOUS_TV_VERSION; mới: phone=$PHONE_VERSION_CODE TV=$TV_VERSION_CODE."
+                exit 1
+              fi
+              {
+                echo "Đối chiếu Release trước: $LATEST_TAG"
+                echo "versionCode điện thoại: $PREVIOUS_PHONE_VERSION → $PHONE_VERSION_CODE"
+                echo "versionCode Android TV: $PREVIOUS_TV_VERSION → $TV_VERSION_CODE"
+                echo "Chứng thư ký SHA-256 không đổi."
+              } >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "::warning::Chưa có bản build-* trước đó để đối chiếu chứng thư."
+              echo "::warning::Chưa có bản build-* trước đó để đối chiếu chứng thư/versionCode."
             fi
           fi
 
