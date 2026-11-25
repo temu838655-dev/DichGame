@@ -115,7 +115,7 @@ object Ai {
     fun isSecureCloudUrl(base: String): Boolean {
         val uri = try { URI(base.trim()) } catch (_: Exception) { return false }
         return uri.scheme.equals("https", ignoreCase = true) &&
-            !uri.host.isNullOrBlank() && uri.userInfo.isNullOrEmpty() && uri.port in -1..65535
+            !uri.host.isNullOrBlank() && uri.userInfo.isNullOrEmpty() && (uri.port == -1 || uri.port in 1..65535)
     }
 
     internal fun isBillingLimitResponse(code: Int, body: String): Boolean =
