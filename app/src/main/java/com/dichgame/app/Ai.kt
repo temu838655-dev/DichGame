@@ -106,6 +106,15 @@ object Ai {
                 code, txt.take(200), AiRetry.retryDelayMs(c.getHeaderField("Retry-After"), txt),
                 perDay = code == 429 && KeyRing.isDailyQuota(txt), badKey = KeyRing.isBadKey(code, txt),
             )
+            runCatching {
+                val json = JSONObject(txt)
+                val usage = json.optJSONObject("usageMetadata") ?: json.optJSONObject("usage")
+                if (usage != null) {
+                    val input = usage.optLong("promptTokenCount", usage.optLong("prompt_tokens", -1))
+                    val output = usage.optLong("candidatesTokenCount", usage.optLong("completion_tokens", -1))
+                    SessionStats.live.recordTokens(metric, input, output)
+                }
+            }
             return txt
         } finally {
             c.disconnect()
