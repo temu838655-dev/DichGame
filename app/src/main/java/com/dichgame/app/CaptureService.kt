@@ -1483,8 +1483,12 @@ class CaptureService : Service() {
         busy = true
         val scanAt = System.currentTimeMillis()
         val scope = scanScope()
+        val ocrStarted = android.os.SystemClock.elapsedRealtime()
         o.read(crop, { m -> if (validScan(scope)) ocrFail(m) else finishBusy() }) { r ->
-            if (validScan(scope)) onOcrResult(r, scanAt) else finishBusy()
+            if (validScan(scope)) {
+                stats.ocrLatency(o.isCloud, android.os.SystemClock.elapsedRealtime() - ocrStarted)
+                onOcrResult(r, scanAt)
+            } else finishBusy()
         }
     }
 
