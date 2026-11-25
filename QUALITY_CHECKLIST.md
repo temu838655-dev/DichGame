@@ -117,3 +117,5 @@ Links: [Build #1961](https://github.com/temu838655-dev/DichGame/actions/runs/457
 | Release APK / signing | PENDING | Await CI; signing compatibility/security blocker remains documented above. |
 
 Do not claim end-to-end completion from source edits or JVM tests alone.
+
+| Android TTS initialization race | FIXED IN BRANCH | Pending system-voice utterances are buffered up to 5 and drained on engine readiness; CI and physical device playback pending. |
