@@ -384,7 +384,7 @@ class PackActivity : Activity() {
                 onAiError = { message -> Toast.makeText(this@PackActivity, message, Toast.LENGTH_LONG).show() }
             }
         }
-        voicePreview?.speak("Xin chào, đây là giọng đọc tiếng Việt của nhân vật $name.", speakerName = name)
+        voicePreview?.speak("Xin chào, đây là giọng đọc tiếng Việt của nhân vật $name.", speakerName = name, interrupt = true)
     }
 
     private fun addCharacterVoice() {

@@ -147,7 +147,7 @@ class SettingsActivity : Activity() {
                 val err = if (pcm == null) "giọng đọc lỗi" else TvLink.postAudio(p.tvIp, p.tvToken, pcm, speed)
                 runOnUiThread { Toast.makeText(this, if (err == null) "Đã gửi tiếng sang TV." else "Không gửi được sang TV: $err", Toast.LENGTH_LONG).show() }
             }
-        } else speaker?.speak(text)
+        } else speaker?.speak(text, interrupt = true)
     }
 
     private fun voiceEngineBlock(c: LinearLayout) {

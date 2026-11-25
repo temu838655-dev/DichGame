@@ -84,6 +84,10 @@ class SessionStats {
             val measured = get(metric + "_usage")
             if (measured > 0) sb.append("Token $label: vào ${get(metric + "_input")}, ra ${get(metric + "_output")} ($measured phản hồi có số liệu).\n")
         }
+        val read = get("doc_doc")
+        if (read > 0) {
+            sb.append("Đọc to: $read câu; phải xếp hàng chờ ${get("doc_cho")}, bị cắt giữa chừng ${get("doc_cat")}, bị bỏ vì dồn hoặc quá cũ ${get("doc_bo")}\n")
+        }
         if (get("khoa_doi") > 0) sb.append("Đổi khóa Gemini tự động: ${get("khoa_doi")} lần\n")
         val why = machineReasons()
         if (why.isNotEmpty()) sb.append("Dịch trên máy vì AI không dùng được: ").append(why).append('\n')

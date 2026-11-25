@@ -1955,7 +1955,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                 hVoice.addView(Ui.switchRow(a, "Đọc theo cảm xúc",
                     "Nhận ra câu giận, buồn, vui hay sợ qua câu chữ để đổi nhịp và giọng đọc.", pr.emotion) { pr.emotion = it })
                 hVoice.addView(Ui.button(a, "▶  Nghe thử", true) {
-                    testerSp()?.speak("Xin chào, đây là giọng đọc bản dịch trong game.")
+                    testerSp()?.speak("Xin chào, đây là giọng đọc bản dịch trong game.", interrupt = true)
                 }, Ui.lpm(a, 6, 0))
             }
 
