@@ -50,7 +50,7 @@ class KhoGameActivity : Activity() {
             intent.getStringExtra("plat")?.let { k -> plat = Plat.values().firstOrNull { it.name.equals(k, true) }; tab = 1 }
         }
         screen("Kho game Việt hoá") {
-            put(Ui.tv(this@KhoGameActivity, "DịchGame hỗ trợ PS5, PS4 và Xbox. Có thể dùng dữ liệu câu dịch từ bản Việt hóa PC làm nguồn tham khảo chung cho cùng game; không cần bản patch riêng cho console.", 13f, Ui.SUB), 0, 10)
+            put(Ui.tv(this@KhoGameActivity, "Thư viện game kèm thuật ngữ theo game/series và câu mẫu dùng chung. Nhãn thuật ngữ không có nghĩa game đã có bộ thoại Việt hóa hoàn chỉnh. DịchGame hỗ trợ PS5, PS4 và Xbox.", 13f, Ui.SUB), 0, 10)
             val search = Ui.field(this@KhoGameActivity, "Tìm game", "")
             search.addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) { query = s?.toString().orEmpty().trim(); fill() }
@@ -108,7 +108,7 @@ class KhoGameActivity : Activity() {
     /** Ba tab trạng thái có số đếm: Tất cả / Việt hoá (gói riêng của game) / Dịch AI (theo thể loại). */
     private fun drawStatus(all: Int, viet: Int, ai: Int) {
         statusRow.removeAllViews()
-        statusRow.addView(Ui.segmented(this, listOf("Tất cả $all", "Có gói $viet", "Dịch AI $ai"), status) { status = it; fill() }, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
+        statusRow.addView(Ui.segmented(this, listOf("Tất cả $all", "Thuật ngữ riêng $viet", "AI theo thể loại $ai"), status) { status = it; fill() }, Ui.lp(MATCH_PARENT, WRAP_CONTENT))
     }
 
     private fun fill() {
@@ -197,15 +197,15 @@ class KhoGameActivity : Activity() {
             addView(head)
             // Gói Việt hoá
             val c = Ui.card(this@KhoGameActivity, 14)
-            c.addView(Ui.tv(this@KhoGameActivity, "👑  Gói Việt hoá", 16f, Ui.GOLD, true))
+            c.addView(Ui.tv(this@KhoGameActivity, "📚  Thuật ngữ & câu mẫu", 16f, Ui.GOLD, true))
             c.addView(Ui.tv(this@KhoGameActivity,
                 "Thuật ngữ: ${sp + ge + co}" + (if (sp > 0) " ($sp theo game/series, $ge theo thể loại, $co chung)" else " ($ge theo thể loại, $co chung)") +
                     (if (cast.isNotEmpty()) "\nThẻ nhân vật: ${cast.size} người (xưng hô, giọng, nhịp nói)" else "\nChưa có thẻ nhân vật, bạn tự thêm được trong Gói Việt hoá") +
-                    "\nCâu thông báo chuẩn: $lines (YOU DIED, Quest complete...)",
+                    "\nCâu mẫu dùng chung/series: $lines (ví dụ YOU DIED, Quest complete...)",
                 13.5f, Ui.TEXT), Ui.lpm(this@KhoGameActivity, 6, 0))
             c.addView(Ui.tv(this@KhoGameActivity,
-                "Áp dụng khi dịch AI và dịch trên máy nhằm giữ cách gọi nhất quán. Một số gói dành cho cả series hoặc thể loại, không bảo đảm mọi câu đều chính xác. Gói do người làm app soạn theo cách gọi phổ biến, " +
-                    "không phải bản dịch chính thức của nhà phát hành. Sửa hoặc nhập thêm gói trong mục Gói Việt hoá.", 12f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 6, 0))
+                "Áp dụng khi dịch AI và dịch trên máy nhằm giữ cách gọi nhất quán. Đây là thuật ngữ và câu mẫu, không phải bản Việt hóa đầy đủ mọi hội thoại. Một số mục dùng chung cho series/thể loại. " +
+                    "Dữ liệu do dự án tự soạn, không phải bản dịch chính thức. Bạn có thể sửa hoặc nhập bộ câu riêng trong mục Gói Việt hoá.", 12f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 6, 0))
             addView(c, Ui.lpm(this@KhoGameActivity, 12, 0))
             val defaultPlatform = ps.firstOrNull() ?: Plat.PS5
             var selectedPlatform = if (PackStore.gameName(p).equals(name, ignoreCase = true))
