@@ -178,8 +178,19 @@ class CatalogRepository:
                         updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
                 """, (game_id, title, json.dumps(item.get("alternative_titles", []), ensure_ascii=False),
                       item.get("developer"), item.get("publisher")))
-                cursor = db.execute("""
-                    INSERT OR IGNORE INTO localization_releases(
+                identity = (game_id, platform, item.get("region"), item.get("edition"),
+                            item.get("translation_version"), source_id)
+                exists = db.execute("""
+                    SELECT 1 FROM localization_releases
+                    WHERE game_id=? AND platform=? AND region IS ? AND edition IS ?
+                      AND translation_version IS ? AND source_id=?
+                    LIMIT 1
+                """, identity).fetchone()
+                if exists:
+                    skipped += 1
+                    continue
+                db.execute("""
+                    INSERT INTO localization_releases(
                         game_id, platform, region, edition, game_version, translation_version,
                         author_name, source_id, source_url, license_id, license_url, attribution,
                         download_url, download_permitted, content_sha256, status, updated_at
@@ -188,10 +199,7 @@ class CatalogRepository:
                       item.get("translation_version"), item.get("author_name"), source_id, source_url,
                       license_id, item.get("license_url"), item.get("attribution"), download_url,
                       int(download_permitted), digest, status, item.get("updated_at")))
-                if cursor.rowcount:
-                    imported += 1
-                else:
-                    skipped += 1
+                imported += 1
             db.commit()
         return CatalogImportReport(source_id, imported, skipped, feed_hash)
 
