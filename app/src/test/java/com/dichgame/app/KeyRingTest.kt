@@ -153,4 +153,16 @@ class KeyRingTest {
         assertEquals("5 phút", AiRetry.humanWait(5 * 60_000L))
         assertEquals("12 giờ", AiRetry.humanWait(12 * 3_600_000L))
     }
+
+    @Test fun accountBillingLimitIsNotMistakenForOrdinaryRateLimit() {
+        val billing = """{"error":{"code":"insufficient_quota","message":"billing hard limit reached"}}"""
+        assertTrue(KeyRing.isBillingLimit(billing))
+        assertFalse(KeyRing.isBillingLimit("""{"error":{"code":"rate_limit_exceeded"}}"""))
+        val error = AiException(429, billing, billingLimit = true)
+        assertTrue(KeyRing.report("A", m, error, now = 0))
+        val status = KeyRing.status("A", m, 0)
+        assertEquals(KeyRing.State.QUOTA, status.state)
+        assertTrue(status.leftMs >= 60 * 60_000L)
+    }
+
 }
