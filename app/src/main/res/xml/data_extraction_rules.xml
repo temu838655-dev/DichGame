@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
+        <!-- dg.xml also holds legacy secrets until the app has migrated them. Android rules are file-based,
+             so exclude the complete preference file rather than risk backing up plaintext credentials.
+             This intentionally means local app settings are not restored from cloud backup. -->
+        <exclude domain="sharedpref" path="dg.xml" />
         <!-- API credentials are encrypted with a device-bound Android Keystore key. -->
         <exclude domain="sharedpref" path="dg_api_secrets.xml" />
         <!-- Keystore keys are device-bound and cannot decrypt a restored preferences file. -->
@@ -10,9 +14,10 @@
         <exclude domain="file" path="learned_translations/" />
     </cloud-backup>
     <device-transfer>
+        <!-- Never transfer legacy preferences which may contain plaintext credentials. -->
+        <exclude domain="sharedpref" path="dg.xml" />
         <!-- Do not transfer API credentials without their original Keystore key. -->
         <exclude domain="sharedpref" path="dg_api_secrets.xml" />
-        <!-- Do not transfer credentials without their original Keystore key. -->
         <exclude domain="sharedpref" path="ps.xml" />
         <exclude domain="sharedpref" path="ps_remote_play.xml" />
     </device-transfer>

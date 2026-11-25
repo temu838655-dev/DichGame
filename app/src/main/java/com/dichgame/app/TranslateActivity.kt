@@ -288,9 +288,14 @@ class TranslateActivity : Activity() {
 
     private fun runTest(status: TextView, forceCloud: Boolean = false) {
         status.setTextColor(Ui.SUB)
-        if (if (forceCloud) !p.cloudUrl.startsWith("https://", ignoreCase = true) || p.cloudKey.isBlank() || p.cloudModel.isBlank() else !Ai.enabled(p)) {
+        if (if (forceCloud) !Ai.isSecureCloudUrl(p.cloudUrl) || p.cloudKey.isBlank() || p.cloudModel.isBlank() else !Ai.enabled(p)) {
             status.setTextColor(Ui.DANGER)
-            status.text = if (p.engine == Prefs.ENGINE_CLOUD) "Hãy nhập địa chỉ và khóa API." else "Hãy thêm khóa API."
+            status.text = when {
+                (forceCloud || p.engine == Prefs.ENGINE_CLOUD) && !Ai.isSecureCloudUrl(p.cloudUrl) ->
+                    "CloudAPI chỉ chấp nhận địa chỉ HTTPS hợp lệ để bảo vệ khóa API."
+                forceCloud || p.engine == Prefs.ENGINE_CLOUD -> "Hãy nhập địa chỉ HTTPS, khóa API và model CloudAPI."
+                else -> "Hãy thêm khóa API."
+            }
             return
         }
         status.text = "Đang kiểm tra..."

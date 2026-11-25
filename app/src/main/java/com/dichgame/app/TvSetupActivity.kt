@@ -202,7 +202,7 @@ class TvSetupActivity : Activity() {
         c.addView(codeField, Ui.lpm(this, 0, 8))
         c.addView(Ui.button(this, "Kết nối TV", true) { pairTv() }, Ui.lpm(this, 4, 8))
         c.addView(Ui.button(this, "Gửi câu thử lên TV") { testTv() }, Ui.lpm(this, 0, 8))
-        if (p.tvPaired) c.addView(Ui.button(this, "Bỏ ghép TV") { p.clearTv(); render() })
+        if (p.tvPaired) c.addView(Ui.button(this, "Bỏ ghép TV") { if (p.clearTv()) render() else Toast.makeText(this, "Không xóa được mã ghép TV an toàn.", Toast.LENGTH_LONG).show() })
     }
 
     // ---------------- TV LG ----------------
@@ -226,7 +226,7 @@ class TvSetupActivity : Activity() {
             c.addView(Ui.button(this, "Mở app trên TV LG (thử nghiệm)") { openLgReceiver() }, Ui.lpm(this, 0, 8))
             c.divide()
             c.addView(Ui.switchRow(this, "Gửi phụ đề lên TV LG khi đang dịch", "Tắt nếu chỉ muốn thử ghép.", p.lgSubs) { p.lgSubs = it }, Ui.lpm(this, 12, 12))
-            c.addView(Ui.button(this, "Bỏ ghép TV LG") { p.clearLg(); TvOut.resetLg(); render() })
+            c.addView(Ui.button(this, "Bỏ ghép TV LG") { if (p.clearLg()) { TvOut.resetLg(); render() } else Toast.makeText(this, "Không xóa được khóa ghép TV LG an toàn.", Toast.LENGTH_LONG).show() })
         }
     }
 
@@ -358,15 +358,19 @@ class TvSetupActivity : Activity() {
             val err = tv.connect(60_000) {
                 runOnUiThread { status.text = "Nhìn lên TV và chọn Có (Cho phép) trong hộp hỏi kết nối..." }
             }
-            if (err == null) { p.saveLg(ip, tv.key); TvOut.resetLg() }
+            val saved = err == null && p.saveLg(ip, tv.key)
+            if (saved) TvOut.resetLg()
             val toastErr = if (err == null) tv.toast("Dịch game đã kết nối ✓") else null
             tv.close()
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                if (err == null) {
+                if (saved) {
                     render() // dựng lại trang (công tắc gửi phụ đề, nút Bỏ ghép) rồi mới ghi kết quả vào dòng trạng thái mới
                     status.setTextColor(Ui.OK)
                     status.text = "Đã ghép TV LG $ip." + (if (toastErr != null) " Nhưng gửi thông báo thử bị lỗi: $toastErr" else " TV vừa hiện thông báo thử.")
+                } else if (err == null) {
+                    status.setTextColor(Ui.DANGER)
+                    status.text = "TV đã kết nối nhưng không lưu được khóa ghép an toàn. Hãy thử ghép lại."
                 } else {
                     status.setTextColor(Ui.DANGER)
                     status.text = "Không ghép được: $err"
@@ -813,7 +817,11 @@ class TvSetupActivity : Activity() {
         status.text = "Đang ghép TV..."
         tvPost("/pair", codeField.text.toString().trim(), null, ip) { code, out ->
             if (code == 200 && out.matches(Regex("[0-9a-f]{32}"))) {
-                p.saveTv(ip, out)
+                if (!p.saveTv(ip, out)) {
+                    status.setTextColor(Ui.DANGER)
+                    status.text = "Đã kết nối TV nhưng không lưu được mã ghép an toàn. Hãy thử ghép lại."
+                    return@tvPost
+                }
                 status.setTextColor(Ui.OK)
                 status.text = "Đã ghép TV $ip. Bấm Gửi câu thử lên TV để kiểm tra."
             } else {

@@ -86,7 +86,15 @@ object ApiSecrets {
                 Log.w("DG_SECRETS", "Encrypted credential unavailable; checking legacy migration value.")
                 val legacy = context.getSharedPreferences("dg", Context.MODE_PRIVATE)
                     .getString(name, "").orEmpty()
-                if (legacy.isNotEmpty()) legacy else ""
+                if (legacy.isNotEmpty()) {
+                    // The Android Keystore key may have been reset during device restore.
+                    // Re-encrypt the surviving legacy value with the current key and remove
+                    // plaintext only after the encrypted preference commit succeeds.
+                    if (!write(context, mapOf(name to legacy))) {
+                        Log.w("DG_SECRETS", "Legacy credential is still readable but could not be re-encrypted.")
+                    }
+                    legacy
+                } else ""
             }
         }
 

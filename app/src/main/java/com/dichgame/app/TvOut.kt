@@ -4,6 +4,7 @@ import android.content.Context
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import org.json.JSONArray
 
 /**
  * Các đường đưa phụ đề ra ngoài điện thoại ngoài app Dịch game TV (Android TV):
@@ -34,11 +35,33 @@ object TvOut {
     @Synchronized
     fun startWeb(context: Context? = null): Int? {
         val prefs = context?.applicationContext?.getSharedPreferences("dg", Context.MODE_PRIVATE)
-        val w = web?.takeIf { it.running } ?: WebSubServer(WEB_PORT).also { server ->
-            if (prefs != null) server.pairing = WebReceiverPairing(saved = prefs.getStringSet("web_receiver_tokens", emptySet()).orEmpty(), persist = { prefs.edit().putStringSet("web_receiver_tokens", it).apply() })
-            web = server
-        }
-        if (prefs != null) {
+        val w = web?.takeIf { it.running } ?: WebSubServer(WEB_PORT).also { web = it }
+        if (prefs != null && context != null) {
+            val app = context.applicationContext
+            val secureJson = ApiSecrets.read(app, "web_receiver_tokens_v2")
+            val savedTokens = if (secureJson.isNotBlank()) {
+                prefs.edit().remove("web_receiver_tokens").apply()
+                runCatching {
+                    val array = JSONArray(secureJson)
+                    buildSet { for (i in 0 until array.length()) array.optString(i).takeIf { it.matches(Regex("[0-9a-f]{64}")) }?.let(::add) }
+                }.getOrDefault(emptySet())
+            } else {
+                val legacy = runCatching { prefs.getStringSet("web_receiver_tokens", emptySet()).orEmpty() }.getOrDefault(emptySet())
+                if (legacy.isNotEmpty()) {
+                    val array = JSONArray().apply { legacy.forEach { put(it) } }
+                    if (ApiSecrets.write(app, mapOf("web_receiver_tokens_v2" to array.toString())))
+                        prefs.edit().remove("web_receiver_tokens").commit()
+                }
+                legacy
+            }
+            w.pairing = WebReceiverPairing(saved = savedTokens, persist = { tokens ->
+                val array = JSONArray().apply { tokens.forEach { put(it) } }
+                if (ApiSecrets.write(app, mapOf("web_receiver_tokens_v2" to array.toString())))
+                    prefs.edit().remove("web_receiver_tokens").commit()
+            })
+            w.legacyEnabled = prefs.getBoolean("web_legacy", false)
+            w.setStyle(WebTvStyle.read(prefs))
+        } else if (prefs != null) {
             w.legacyEnabled = prefs.getBoolean("web_legacy", false)
             w.setStyle(WebTvStyle.read(prefs))
         }
@@ -61,7 +84,7 @@ object TvOut {
             web?.push(if (kind == "clear" && speak) text else t, kind, speak)
         }
         val ip = p.getString("lgip", "").orEmpty()
-        val key = p.getString("lgkey", "").orEmpty()
+        val key = ApiSecrets.read(ctx, "lgkey")
         if (kind == "region") return
         if (t.isBlank()) pending.set(null)
         if (ip.isNotEmpty() && key.isNotEmpty() && p.getBoolean("lgsubs", true) && t.isNotBlank()) {

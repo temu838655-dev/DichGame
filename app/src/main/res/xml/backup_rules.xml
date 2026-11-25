@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
+    <!-- Legacy shared preferences (dg.xml) can contain credentials on installs not yet migrated.
+         Android backup rules cannot exclude individual preference keys, so the whole file is excluded.
+         Local settings remain intact; they simply are not restored from cloud/device backup. -->
+    <exclude domain="sharedpref" path="dg.xml" />
     <!-- API credentials are encrypted with a device-bound Android Keystore key. -->
     <exclude domain="sharedpref" path="dg_api_secrets.xml" />
     <!-- Remote Play secrets are encrypted with a device-bound Android Keystore key. -->
     <exclude domain="sharedpref" path="ps.xml" />
-    <!-- Legacy preferences may still contain unencrypted pairing keys before migration. -->
+    <!-- Legacy Remote Play preferences may still contain unencrypted pairing keys before migration. -->
     <exclude domain="sharedpref" path="ps_remote_play.xml" />
     <!-- Bản dịch AI được lưu nội bộ, không sao lưu nguyên văn lời thoại lên cloud. -->
     <exclude domain="file" path="learned_translations/" />
