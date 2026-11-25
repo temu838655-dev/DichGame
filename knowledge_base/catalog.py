@@ -102,8 +102,8 @@ class CatalogRepository:
                 mode = _required(source, "integration_mode")
                 if mode not in INTEGRATION_MODES:
                     raise CatalogValidationError(f"Unsupported integration mode for {source_id}.")
-                metadata = bool(source.get("metadata_sync_allowed", False))
-                download = bool(source.get("content_download_allowed", False))
+                metadata = _boolean(source, "metadata_sync_allowed", False)
+                download = _boolean(source, "content_download_allowed", False)
                 if mode == "link_only" and (metadata or download):
                     raise CatalogValidationError("link_only sources cannot enable automatic sync or downloads.")
                 if download and not metadata:
@@ -156,14 +156,19 @@ class CatalogRepository:
                 license_id = _required(item, "license_id")
                 if license_id.lower() in {"unknown", "none", "unlicensed", "all-rights-reserved", "n/a"}:
                     raise CatalogValidationError("Unknown or restrictive rights cannot be treated as reusable.")
-                download_permitted = bool(item.get("download_permitted", False))
+                download_permitted = _boolean(item, "download_permitted", False)
                 download_url = item.get("download_url")
                 if download_permitted and not source["content_download_allowed"]:
                     raise CatalogValidationError("Source registry does not permit content downloads.")
                 if download_permitted and not download_url:
                     raise CatalogValidationError("A permitted download requires a download_url.")
+                if download_url and not download_permitted:
+                    raise CatalogValidationError("A download_url cannot be stored unless download permission is explicit.")
                 if download_url:
                     download_url = _https({"download_url": download_url}, "download_url")
+                license_url = item.get("license_url")
+                if license_url is not None:
+                    license_url = _https({"license_url": license_url}, "license_url")
                 digest = item.get("content_sha256")
                 if digest is not None and (not isinstance(digest, str) or not HASH_RE.fullmatch(digest)):
                     raise CatalogValidationError("content_sha256 must be a lowercase SHA-256 hex digest.")
@@ -197,7 +202,7 @@ class CatalogRepository:
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (game_id, platform, item.get("region"), item.get("edition"), item.get("game_version"),
                       item.get("translation_version"), item.get("author_name"), source_id, source_url,
-                      license_id, item.get("license_url"), item.get("attribution"), download_url,
+                      license_id, license_url, item.get("attribution"), download_url,
                       int(download_permitted), digest, status, item.get("updated_at")))
                 imported += 1
             db.commit()
@@ -211,8 +216,24 @@ def _required(data: dict[str, Any], key: str) -> str:
     return value.strip()
 
 
+def _boolean(data: dict[str, Any], key: str, default: bool) -> bool:
+    value = data.get(key, default)
+    if not isinstance(value, bool):
+        raise CatalogValidationError(f"{key} must be a JSON boolean.")
+    return value
+
+
 def _https(data: dict[str, Any], key: str) -> str:
+    from urllib.parse import urlsplit
+
     value = _required(data, key)
-    if not value.startswith("https://") or len(value) > 2048:
-        raise CatalogValidationError(f"{key} must be an HTTPS URL.")
+    try:
+        parsed = urlsplit(value)
+        valid = (parsed.scheme == "https" and bool(parsed.hostname) and
+                 parsed.username is None and parsed.password is None and
+                 parsed.fragment == "" and len(value) <= 2048)
+    except ValueError:
+        valid = False
+    if not valid:
+        raise CatalogValidationError(f"{key} must be a safe HTTPS URL without credentials or fragments.")
     return value
