@@ -121,6 +121,12 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var pillMenu: PillUi? = null
     private var pillsView: View? = null
     private var handleView: View? = null
+    /** Nhãn trạng thái dịch luôn hiện khi thanh công cụ đã thu lại (chấm màu + chữ), chạm vào để mở lại thanh. */
+    private var statView: View? = null
+    private var statDot: View? = null
+    private var statText: TextView? = null
+    private var statColor = 0
+    private var statWanted = false
     private var homeCell: View? = null
     private var speakIcon: ToolIcon? = null
     private var padIcon: ToolIcon? = null
@@ -329,6 +335,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     override fun onStart() {
         super.onStart()
         activityStarted = true
+        syncPills()
         if (!inputListenerRegistered) {
             (getSystemService(Context.INPUT_SERVICE) as? InputManager)?.registerInputDeviceListener(inputDeviceListener, ui)
             inputListenerRegistered = true
@@ -495,6 +502,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         var pills: View? = null
         /** Chấm nhỏ ở giữa mép trên (chỉ khi xoay ngang và thanh công cụ đã thu lại) để mở lại thanh. */
         var handle: View? = null
+        /** Nhãn "Dịch menu · BẬT · N chữ…" hiện khi thanh đã thu lại mà việc dịch vẫn đang chạy. */
+        var stat: View? = null
         /** Thanh "Xong / Đặt lại" hiện khi đang chỉnh khung đọc phụ đề. */
         var adj: View? = null
 
@@ -595,6 +604,15 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     put(av, (w - av.measuredWidth) / 2, h - av.measuredHeight - dpi(16))
                 }
             }
+            // Nhãn trạng thái dịch: dọc → góc trên trái khung hình; ngang → giữa mép trên, ngay dưới chấm mở thanh
+            stat?.let { st ->
+                if (st.visibility == View.GONE) { measureChild(st, 0, ex, 0, ex); put(st, 0, 0) }
+                else {
+                    measureChild(st, w - 2 * m10, am, h, am)
+                    if (land) put(st, (w - st.measuredWidth) / 2, dpi(2) + dpi(28) + dpi(4))
+                    else put(st, m10 + dpi(10), vc.top + dpi(10))
+                }
+            }
             // Hai view chỉ dùng ở chế độ dọc: không đo, không xếp khi đang ngang (đã ẩn bằng visibility)
             if (land) { measureChild(ch, 0, ex, 0, ex); put(ch, 0, 0); measureChild(gr, 0, ex, 0, ex); put(gr, 0, 0) }
         }
@@ -689,6 +707,21 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         }
         handleView = handle
 
+        // Nhãn trạng thái dịch (chỉ hiện khi thanh công cụ đã thu lại mà "Dịch menu" / "Dịch hết chữ" còn đang chạy)
+        val sDot = View(this).apply { background = Ui.bg(this@PsPlayActivity, PlayTheme.AMBER, 4) }
+        val sText = Ui.tv(this, "", 12f, Color.WHITE, true).apply { maxLines = 1 }
+        val stat = Ui.hbox(this).apply {
+            setPadding(dpi(10), dpi(5), dpi(12), dpi(5))
+            background = Ui.glass(this@PsPlayActivity, 16, strong = true, edge = Color.parseColor("#44FFFFFF"))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { setTools(true) }
+            addView(sDot, Ui.lp(dpi(8), dpi(8)).apply { rightMargin = dpi(7) })
+            addView(sText, Ui.lp(WRAP_CONTENT, WRAP_CONTENT))
+            visibility = View.GONE
+        }
+        statView = stat; statDot = sDot; statText = sText; statColor = PlayTheme.AMBER
+
         // Thanh kéo (chỉ ở chế độ dọc): bấm để thu gọn hoặc mở lại thanh công cụ, dành chỗ cho tay cầm.
         val grip = FrameLayout(this).apply {
             isClickable = true
@@ -724,10 +757,10 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         val root = PlayLayout(this)
         root.adj = adjBar
         root.vcard = vcard; root.pad = padV; root.close = closeBtn; root.padBtn = padBtn
-        root.chip = chip; root.pill = pill; root.bar = bar; root.grip = grip; root.pills = pills; root.handle = handle
+        root.chip = chip; root.pill = pill; root.bar = bar; root.grip = grip; root.pills = pills; root.handle = handle; root.stat = stat
         // Thứ tự vẽ: hình, tay cầm phủ lên hình, rồi các nút điều khiển nằm trên cùng.
         root.addView(vcard); root.addView(padV); root.addView(closeBtn); root.addView(padBtn)
-        root.addView(bar); root.addView(pills); root.addView(pill); root.addView(chip); root.addView(grip); root.addView(handle); root.addView(adjBar)
+        root.addView(bar); root.addView(pills); root.addView(pill); root.addView(chip); root.addView(grip); root.addView(handle); root.addView(stat); root.addView(adjBar)
         playRoot = root
         setContentView(root)
     }
@@ -1003,26 +1036,44 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     /** Chữ huy hiệu hiện trên hai nút (cho nhật ký thử). */
-    private fun pillState() = "once=${pillOnce?.badge?.text} menu=${pillMenu?.badge?.text}"
+    private fun pillState() = "once=${pillOnce?.badge?.text} menu=${pillMenu?.badge?.text} chip=" +
+        (if (statView?.visibility == View.VISIBLE) statText?.text else "-")
 
     private var pillPolling = false
     private val pillTick = Runnable { pillPolling = false; syncPills() }
 
-    /** Cập nhật hai nút dịch theo trạng thái thật của [UiTranslate]. Khi một nút đang chạy thì tự làm mới mỗi giây (số chữ đã dịch, đếm ngược). */
+    /**
+     * Cập nhật hai nút dịch (và nhãn trạng thái hiện khi thanh đã thu lại) theo trạng thái thật của [UiTranslate].
+     * Khi đang chạy thì tự làm mới mỗi giây (số chữ đã dịch, đếm ngược tự tắt).
+     */
     private fun syncPills() {
         val u = uiTr?.takeIf { it.running }
         val once = u != null && u.once
+        var chip: String? = null
+        var chipOn = false
         if (u != null && once) {
+            val left = (u.holdLeftMs + 999) / 1000
             when (u.phase) {
-                UiTranslate.Phase.SHOWING -> stylePill(pillOnce, PillMode.ON, "ĐÃ DỊCH · " + ((u.holdLeftMs + 999) / 1000) + "s")
-                UiTranslate.Phase.PREPARING -> stylePill(pillOnce, PillMode.BUSY, "ĐANG TẢI…")
-                else -> stylePill(pillOnce, PillMode.BUSY, "ĐANG DỊCH…")
+                UiTranslate.Phase.SHOWING -> { stylePill(pillOnce, PillMode.ON, "ĐÃ DỊCH · ${left}s"); chip = "Dịch hết chữ · còn ${left}s"; chipOn = true }
+                UiTranslate.Phase.PREPARING -> { stylePill(pillOnce, PillMode.BUSY, "ĐANG TẢI…"); chip = "Dịch hết chữ · đang tải…" }
+                else -> { stylePill(pillOnce, PillMode.BUSY, "ĐANG DỊCH…"); chip = "Dịch hết chữ · đang dịch…" }
             }
         } else stylePill(pillOnce, PillMode.OFF, "1 LẦN")
         if (u != null && !once) {
-            if (u.phase == UiTranslate.Phase.PREPARING) stylePill(pillMenu, PillMode.BUSY, "ĐANG TẢI…")
-            else stylePill(pillMenu, PillMode.ON, if (u.shown > 0) "BẬT · ${u.shown} chữ" else "BẬT · tìm chữ…")
+            if (u.phase == UiTranslate.Phase.PREPARING) { stylePill(pillMenu, PillMode.BUSY, "ĐANG TẢI…"); chip = "Dịch menu · đang tải…" }
+            else {
+                val b = if (u.shown > 0) "BẬT · ${u.shown} chữ" else "BẬT · tìm chữ…"
+                stylePill(pillMenu, PillMode.ON, b); chip = "Dịch menu · $b"; chipOn = true
+            }
         } else stylePill(pillMenu, PillMode.OFF, "TẮT")
+        statWanted = chip != null
+        if (chip != null) {
+            statText?.let { if (it.text.toString() != chip) it.text = chip }
+            val c = if (chipOn) Color.parseColor("#3DDC84") else PlayTheme.AMBER
+            if (c != statColor) { statColor = c; statDot?.background = Ui.bg(this, c, 4) }
+        }
+        val sv = if (statWanted && !toolsOpen) View.VISIBLE else View.GONE
+        if (statView?.visibility != sv) { statView?.visibility = sv; playRoot?.requestLayout() }
         if (u != null && !pillPolling && activityStarted && !isFinishing && !isDestroyed) {
             pillPolling = true
             ui.postDelayed(pillTick, 1000)
@@ -1070,6 +1121,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         barView?.visibility = tools
         pillsView?.visibility = tools
         handleView?.visibility = if (land && !toolsOpen) View.VISIBLE else View.GONE
+        statView?.visibility = if (statWanted && !toolsOpen) View.VISIBLE else View.GONE
         // Xoay ngang: các nút trên cùng nằm đè lên nút vai (L1/L2/R1/R2) của tay cầm ảo, nên khi thanh đang mở thì mờ tay cầm
         // đi cho dễ nhìn; thu lại là tay cầm rõ như cũ. Tay cầm vẫn nhận chạm bình thường.
         pad?.alpha = if (land) (if (toolsOpen) 0.3f else 0.8f) else 1f
