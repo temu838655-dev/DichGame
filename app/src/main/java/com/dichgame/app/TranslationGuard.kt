@@ -31,7 +31,7 @@ object TranslationGuard {
     )
 
     private fun protectedTokens(text: String): List<String> =
-        PROTECTED_TOKEN.findAll(text).map { it.value }.sorted()
+        PROTECTED_TOKEN.findAll(text).map { it.value }.toList().sorted()
 
     /** Bỏ phần AI hay thêm vào quanh bản dịch: rào markdown, nhãn "Bản dịch:", dấu ngoặc kép bao ngoài, dòng ghi chú. */
     fun clean(out: String, src: String): String {
