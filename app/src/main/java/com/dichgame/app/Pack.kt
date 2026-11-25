@@ -49,6 +49,29 @@ object Canon {
     fun usable(key: String): Boolean = key.length >= 3 || (key.length >= 2 && key.any { isCjk(it) })
 }
 
+/**
+ * Gộp câu theo đúng nội dung gốc. Khi nhập kho VERIFIED, dữ liệu có sẵn
+ * (bao gồm bản người chơi tự sửa) được ưu tiên hơn dữ liệu nhập mới.
+ */
+internal object TranslationLineMerge {
+    fun merge(
+        existing: List<Pair<String, String>>,
+        incoming: List<Pair<String, String>>,
+        preserveExisting: Boolean
+    ): List<Pair<String, String>> {
+        val merged = LinkedHashMap<String, Pair<String, String>>()
+        val ordered = if (preserveExisting) incoming + existing else existing + incoming
+        for ((source, translated) in ordered) {
+            if (Canon.usable(Canon.key(source)) && translated.isNotBlank()) {
+                merged[Canon.literal(source)] =
+                    source.replace('\t', ' ').replace('\n', ' ') to
+                        translated.replace('\t', ' ').replace('\n', ' ')
+            }
+        }
+        return merged.values.toList()
+    }
+}
+
 private data class LineKey(val letters: String, val numbers: String, val cues: String) {
     companion object {
         fun of(source: String) = LineKey(Canon.key(source), digitSig(source), SubtitleMeaning.signature(source))
