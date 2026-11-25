@@ -18,6 +18,7 @@ class CloudRefresh(ctx: Context) {
     private val tick = object : Runnable {
         override fun run() {
             if (!enabled) return
+            try {
             val p = Prefs(app)
             val profile = p.profile
             val game = PackStore.gameName(p)
@@ -27,12 +28,13 @@ class CloudRefresh(ctx: Context) {
             if (p.autoPackRefresh && game.isNotBlank() && !busy && now >= next) {
                 val token = generation
                 val catalog = p.packCatalogUrl
-                val epoch = PackStore.autoCloudEpoch(app, profile, game)
                 next = now + 30 * 60_000L
-                if (epoch != null) {
+                run {
                     busy = true
                     exec.execute {
                         try {
+                            val epoch = PackStore.autoCloudEpoch(app, profile, game) ?: return@execute
+                            if (generation != token) return@execute
                             val source = PackStore.cloudInfo(app, profile, game)?.source
                                 ?: catalog.takeIf { it.isNotBlank() }?.let { PackStore.catalogSource(it, game) }
                             if (source != null) PackStore.importLink(app, p, source, profile, game, autoEpoch = epoch) {
@@ -44,7 +46,11 @@ class CloudRefresh(ctx: Context) {
                     }
                 }
             }
-            handler.postDelayed(this, 15_000L)
+            } catch (_: Exception) {
+                busy = false
+            } finally {
+                if (enabled) handler.postDelayed(this, 15_000L)
+            }
         }
     }
     fun start() {
