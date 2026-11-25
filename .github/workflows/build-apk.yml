@@ -53,6 +53,8 @@ jobs:
           protoc --version
       - name: Kiểm thử quy tắc tương thích cập nhật Release
         run: python3 -m unittest discover -s ci -p 'test_release_compat.py' -v
+      - name: Kiểm tra quy tắc sao lưu an toàn
+        run: python3 -m unittest discover -s ci -p 'test_backup_rules_security.py' -v
 
       - uses: actions/setup-java@v4
         with:
