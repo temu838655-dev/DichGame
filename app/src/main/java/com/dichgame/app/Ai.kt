@@ -1,6 +1,7 @@
 package com.dichgame.app
 
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import java.security.MessageDigest
 import org.json.JSONArray
@@ -15,6 +16,17 @@ class AiException(
 ) : Exception(message)
 
 /** Dịch bằng AI đám mây: Google Gemini hoặc CloudAPI (chuẩn OpenAI /chat/completions). Hàm ở đây chặn luồng, hãy gọi từ luồng nền. */
+internal fun aiTestErrorText(e: AiException): String = if (e.billingLimit) {
+    "Tài khoản hoặc dự án AI đã chạm giới hạn thanh toán/chi tiêu. Hãy kiểm tra Billing và hạn mức chi tiêu."
+} else when (e.code) {
+    400 -> "Lỗi 400: sai tên model hoặc yêu cầu không hợp lệ. ${e.message.orEmpty()}"
+    401, 403 -> "Lỗi ${e.code}: khóa API sai hoặc không có quyền."
+    404 -> "Lỗi 404: sai địa chỉ hoặc tên model."
+    429 -> "Lỗi 429: hết lượt dùng, chờ rồi thử lại hoặc đổi khóa."
+    else -> "Lỗi ${e.code}: ${e.message.orEmpty()}"
+}
+
+
 object Ai {
     private val requestDeduplicator = RequestDeduplicator<String, String>()
 
@@ -38,7 +50,7 @@ object Ai {
     }
     fun enabled(p: Prefs): Boolean = if (p.aiAuto) p.geminiKeys().isNotEmpty() || autoCloud(p) else when (p.engine) {
         Prefs.ENGINE_GEMINI -> p.geminiKeys().isNotEmpty()
-        Prefs.ENGINE_CLOUD -> p.cloudKey.isNotEmpty() && p.cloudUrl.isNotEmpty()
+        Prefs.ENGINE_CLOUD -> isSecureCloudUrl(p.cloudUrl) && p.cloudKey.isNotEmpty() && p.cloudModel.isNotBlank()
         else -> false
     }
 
@@ -99,8 +111,18 @@ object Ai {
         return " Bắt buộc dùng đúng các thuật ngữ sau (gốc = tiếng Việt): " + list.joinToString("; ") { it.first + " = " + it.second } + "."
     }
 
+    /** CloudAPI carries a bearer credential; never send it over cleartext HTTP or to a URL with embedded user info. */
+    fun isSecureCloudUrl(base: String): Boolean {
+        val uri = try { URI(base.trim()) } catch (_: Exception) { return false }
+        return uri.scheme.equals("https", ignoreCase = true) &&
+            !uri.host.isNullOrBlank() && uri.userInfo.isNullOrEmpty() && uri.port in -1..65535
+    }
+
+    internal fun isBillingLimitResponse(code: Int, body: String): Boolean =
+        code in 400..499 && KeyRing.isBillingLimit(body)
+
     private fun autoCloud(p: Prefs): Boolean = p.autoCloudFallback &&
-        p.cloudUrl.startsWith("https://", ignoreCase = true) && p.cloudKey.isNotBlank() && p.cloudModel.isNotBlank()
+        isSecureCloudUrl(p.cloudUrl) && p.cloudKey.isNotBlank() && p.cloudModel.isNotBlank()
 
     private fun cloudScope(p: Prefs) = "cloud:" + p.cloudUrl + ":" + p.cloudModel
     private fun cloudWait(p: Prefs) = KeyRing.waitMs(listOf(p.cloudKey), cloudScope(p))
@@ -126,7 +148,7 @@ object Ai {
             if (code !in 200..299) throw AiException(
                 code, txt.take(200), AiRetry.retryDelayMs(c.getHeaderField("Retry-After"), txt),
                 perDay = code == 429 && KeyRing.isDailyQuota(txt), badKey = KeyRing.isBadKey(code, txt),
-                billingLimit = code == 429 && metric == "api_dich_cloud" && KeyRing.isBillingLimit(txt),
+                billingLimit = isBillingLimitResponse(code, txt),
             )
             runCatching {
                 val json = JSONObject(txt)
@@ -201,6 +223,8 @@ object Ai {
     /** Một lần gọi AI (không thử lại). Dịch câu thì dùng [translateRetry]. */
     fun translate(p: Prefs, prompt: String, forceCloud: Boolean = false): String {
         val out: String = if (forceCloud || (!p.aiAuto && p.engine == Prefs.ENGINE_CLOUD)) {
+            if (!isSecureCloudUrl(p.cloudUrl))
+                throw AiException(400, "CloudAPI chỉ nhận địa chỉ HTTPS hợp lệ để bảo vệ khóa API.")
             val body = JSONObject()
                 .put("model", p.cloudModel)
                 .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
@@ -285,13 +309,7 @@ object Ai {
     fun test(p: Prefs, forceCloud: Boolean = false): String = try {
         "OK: " + translate(p, prompt(p, "tiếng Anh", "", emptyList(), "Hello, how are you?"), forceCloud = forceCloud)
     } catch (e: AiException) {
-        when (e.code) {
-            400 -> "Lỗi 400: sai tên model hoặc yêu cầu không hợp lệ. ${e.message.orEmpty()}"
-            401, 403 -> "Lỗi ${e.code}: khóa API sai hoặc không có quyền."
-            404 -> "Lỗi 404: sai địa chỉ hoặc tên model."
-            429 -> "Lỗi 429: hết lượt dùng, chờ rồi thử lại hoặc đổi khóa."
-            else -> "Lỗi ${e.code}: ${e.message.orEmpty()}"
-        }
+        aiTestErrorText(e)
     } catch (e: Exception) {
         "Không kết nối được: ${e.message.orEmpty()}"
     }
