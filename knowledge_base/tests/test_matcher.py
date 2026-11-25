@@ -41,6 +41,18 @@ class MatcherTests(unittest.TestCase):
         )
         self.assertEqual(result.translation["translated_text"], "Ta hiểu rồi.")
 
+    def test_exact_ambiguous_translations_without_context_match_fall_back(self):
+        self.kb.add_translation(
+            "game", "Open the gate", "Mở cổng", speaker="Guard",
+            translation_status="VERIFIED",
+        )
+        self.kb.add_translation(
+            "game", "Open the gate", "Mở cửa", speaker="Player",
+            translation_status="COMMUNITY",
+        )
+        result = self.matcher.lookup("game", "Open the gate", speaker="Merchant")
+        self.assertIsNone(result)
+
     def test_ocr_correction_only_uses_high_confidence_curated_variants(self):
         with self.kb.transaction() as db:
             db.execute(
