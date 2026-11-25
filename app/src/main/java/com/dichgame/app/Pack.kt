@@ -572,12 +572,20 @@ object PackText {
         var game = ""
         while (rows.hasNext()) {
             val cells = csvRow(rows.next(), ',')
-            require(cells.size == 3 && cells[2].isNotBlank()) { "CSV DichGame thiếu tên game hoặc sai cấu trúc." }
-            if (game.isEmpty()) game = cells[2].trim()
-            require(GamePackMatch.selected(game, cells[2])) { "CSV chứa nhiều game. Hãy tách riêng từng game." }
+            require(cells.size == 3) { "CSV DichGame phải có đúng 3 cột source, vi, game." }
+            val source = cells[0].trim()
+            val translated = cells[1].trim()
+            val rowGame = cells[2].trim()
+            require(source.isNotEmpty() && translated.isNotEmpty() && rowGame.isNotEmpty()) {
+                "CSV DichGame có dòng thiếu câu gốc, bản dịch hoặc tên game."
+            }
+            require(rowGame.length <= 200) { "Tên game trong CSV quá dài." }
+            if (game.isEmpty()) game = rowGame
+            require(GamePackMatch.selected(game, rowGame)) { "CSV chứa nhiều game. Hãy tách riêng từng game." }
             require(pairs.size < MAX_LINES) { "CSV vượt quá giới hạn số câu." }
-            pairs.add(cells[0] to cells[1])
+            pairs.add(source to translated)
         }
+        require(pairs.isNotEmpty()) { "CSV DichGame chưa có câu dịch nào." }
         return Pack(game, emptyList(), emptyList(), pairs)
     }
 
