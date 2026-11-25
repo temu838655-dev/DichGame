@@ -198,14 +198,19 @@ class KnowledgeBase:
             ).fetchall()
             return [dict(row) for row in rows]
 
-    def cache_get(self, game_id: str, text: str, context: str = "") -> str | None:
+    def cache_get(\n        self, game_id: str, text: str, context: str = "",\n        max_age_seconds: int | None = None,\n    ) -> str | None:
         text_hash = sha256_text(normalize_text(text))
         context_hash = sha256_text(normalize_text(context)) if context else ""
         with self.transaction() as db:
+            cutoff = None
+            if max_age_seconds is not None:
+                from datetime import datetime, timedelta, timezone
+                cutoff = (datetime.now(timezone.utc) - timedelta(seconds=max(0, max_age_seconds))).isoformat(timespec="milliseconds").replace("+00:00", "Z")
             row = db.execute(
                 """SELECT translated_text FROM translation_cache
-                   WHERE game_id=? AND text_hash=? AND context_hash=?""",
-                (game_id, text_hash, context_hash),
+                   WHERE game_id=? AND text_hash=? AND context_hash=?
+                     AND (? IS NULL OR created_at >= ?)""",
+                (game_id, text_hash, context_hash, cutoff, cutoff),
             ).fetchone()
             if row is None:
                 return None
