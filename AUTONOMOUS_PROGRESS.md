@@ -17,6 +17,9 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 - [x] GitHub Release build-1872 đã được tạo với DichGame.apk và DichGame-TV.apk.
 - [ ] Workflow smoke test giả lập Android (run 45703102492) chưa kết thúc tại thời điểm cập nhật; bước chạy trên emulator đang in_progress.
 - [ ] Hoàn tất audit bảo mật toàn bộ luồng mạng, lưu trữ bí mật, backup, permissions và service lifecycle.
+- [x] Xác minh repository là public và keystore/dichgame.jks (2,636 bytes) đang được track trong Git; build-1872 xác nhận 4 signing secrets trống và dùng keystore trong repo. Đánh giá khóa ký đã lộ.
+- [x] Sửa workflow để từ chối Release công khai nếu thiếu đủ 4 signing secrets; build kiểm thử không phát hành vẫn được phép dùng keystore test.
+- [x] Cập nhật README cảnh báo compromise, phân biệt giữ khóa cũ (tương thích nhưng không an toàn) và đổi khóa mới (không cập nhật đè được; cần migration dữ liệu).
 - [ ] Audit toàn bộ module AI/OCR/ASR/TTS/UI và kiểm tra các đường đi lỗi/tích hợp còn thiếu.
 - [ ] Kiểm thử thực tế trên điện thoại Android arm64, Android TV và PS4/PS5/Xbox thật. Chưa có bằng chứng phần cứng trong CI.
 - [ ] Xác minh đầy đủ hành vi phát hành/cập nhật từ bản cài đặt cũ trên thiết bị người dùng.
@@ -32,6 +35,7 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 ## Phát hiện cần xử lý trong vòng audit kế tiếp
 
 - AndroidManifest.xml hiện bật `android:usesCleartextTraffic="true"`; cần rà soát mọi endpoint HTTP cục bộ/TV và thay bằng Network Security Config có phạm vi host rõ ràng nếu khả thi, tránh tắt mù quáng làm hỏng kết nối LAN.
+- RỦI RO NGHIÊM TRỌNG: keystore release đã nằm trong repository public và đã ký build-1872. Không thể thu hồi chứng thư đã lộ đối với app sideload hiện có. Workflow mới chặn phát hành thiếu secrets nhưng không thể tự giải quyết việc đổi khóa mà vẫn cập nhật đè. Cần chủ sở hữu quyết định giữ khóa cũ trong Secrets để duy trì tương thích (chấp nhận rủi ro), hay lập kế hoạch chuyển đổi package/cài lại và sao lưu dữ liệu sang khóa mới.
 - app/build.gradle.kts có fallback thông tin ký mặc định trong cấu hình Gradle; README ghi rõ khóa mặc định là public/test và cần secrets riêng cho phát hành. Cần xác minh workflow từ chối public release khi thiếu secrets, không ghi secrets vào log và không vô tình dùng khóa test.
 - CI dùng một số action phiên bản @v4; log đã cảnh báo setup-java@v4 deprecated. Cần lên kế hoạch nâng cấp có kiểm chứng.
 - README ghi phạm vi chơi trực tiếp hiện tại là PS5/PS4/Xbox; PC chỉ là nguồn dữ liệu Việt hóa, Switch chưa được hỗ trợ. Không quảng bá vượt quá phạm vi này.
@@ -41,11 +45,12 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 ## Tiếp tục từ đây
 
 1. Đọc file này và kiểm tra trạng thái workflow 45703102330, 45703102492 cùng Release build-1872.
-2. Hoàn tất smoke test; nếu fail, lấy log, sửa nguyên nhân, chạy lại.
-3. Audit sâu các điểm bảo mật nêu trên, xem README, AndroidManifest, Prefs/ApiSecrets/KeyRing, network clients, CaptureService/RemotePlay.
-4. Thêm test cho các lỗi có thể tái hiện; chạy unit tests và build phone/TV.
-5. Cập nhật file này sau mỗi giai đoạn có bằng chứng.
-6. Chỉ kết luận production-ready khi có kiểm thử thiết bị thật; nếu không có thiết bị thì ghi rõ giới hạn.
+2. Kiểm tra CI sau commit workflow/README: build kiểm thử có chạy được không; push main không được phát hành nếu secrets thiếu. Xác nhận run cũ #1873 không tạo thêm release sau khi policy mới vào main.
+3. Hoàn tất smoke test; nếu fail, lấy log, sửa nguyên nhân, chạy lại.
+4. Audit sâu các điểm bảo mật nêu trên, xem README, AndroidManifest, Prefs/ApiSecrets/KeyRing, network clients, CaptureService/RemotePlay.
+5. Thêm test cho các lỗi có thể tái hiện; chạy unit tests và build phone/TV.
+6. Cập nhật file này sau mỗi giai đoạn có bằng chứng.
+7. Chỉ kết luận production-ready khi có kiểm thử thiết bị thật; nếu không có thiết bị thì ghi rõ giới hạn.
 
 ## Link xác minh
 
