@@ -1,5 +1,7 @@
 # AUTONOMOUS_PROGRESS.md
 
+> Lịch sử kiểm toán trước được giữ nguyên. Phần “Audit tiếp tục — trạng thái mới nhất” ở cuối file là nguồn trạng thái hiện hành và supersede các snapshot cũ.
+
 Cập nhật: 2026-11-26 (UTC+8)
 Repository: https://github.com/temu838655-dev/DichGame
 Nhánh: main
@@ -154,3 +156,92 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 - Smoke #161 (pending): https://github.com/temu838655-dev/DichGame/actions/runs/45708105649
 - PR #85 build #1927: https://github.com/temu838655-dev/DichGame/actions/runs/45709164698
 - PR #85: https://github.com/temu838655-dev/DichGame/pull/85
+
+
+---
+
+## Audit tiếp tục — trạng thái mới nhất (2026-11-26 06:16 UTC+8)
+
+### Repository và CI
+- [x] Đã kiểm tra main commit a373a90212eab60788b51bb7bc64e74b29b3a627, Git tree, branches, commits, workflows và releases.
+- [x] Main run #1913 (45708105647) success: JVM tests, Android phone/TV release build, APK packaging, signature/zipalign/package checks và artifact upload.
+- [x] Main #1913 bỏ qua public Release đúng policy do thiếu signing secrets; Release gần nhất vẫn build-1872 với DichGame.apk và DichGame-TV.apk.
+- [x] Knowledge Base Tests #218–#226 success trên các commit liên quan.
+- [x] Android JVM knowledge-base bridge tests #172 (45711278032) success trên commit a5282e89235d50b8e9967c61fdc8e461d2871e78, bao gồm code redirect validation.
+- [ ] Android Build #1960 (45711622996) đang pending cho latest PR head c41a6a35290c547680cac5d7b68de0378b1971c7; chưa đánh dấu build APK cuối cùng pass.
+- [ ] Smoke #161 (45708105649) vẫn in_progress ở bước chạy emulator; chưa có kết luận runtime.
+- [x] PR #85 build #1939 (45710182871) success.
+- [ ] PR #85 vẫn open và mergeable_state=dirty; base conflict chưa được giải quyết. Không merge.
+- [x] PR #86 được tạo draft, mergeable=true tại lần kiểm tra; latest head c41a6a35290c547680cac5d7b68de0378b1971c7, 10 files. Chờ Android Build #1960 và review cuối trước khi merge.
+
+### Đối chiếu đối thủ — thông tin cập nhật
+- [x] PCNET Việt Hóa: trang công khai hiển thị 14 game Steam; Windows 10/11, app khoảng 2 MB, tự tìm Steam, cài/gỡ một nút, game page ghi version/scope và có update.
+- [x] PCNET Dịch Game: bản 0.7.16 Windows khoảng 103 MB đã phát hành cho PS5; dùng Sony Remote Play hoặc capture card/OBS; app tự cập nhật; PC game vẫn ghi sắp có.
+- [x] PCNET hướng dẫn kiểm tra SHA-256 bộ cài bằng PowerShell và nói bộ cài chưa có chữ ký số. Hai link GitHub pcnetdl/dich-game và pcnet-viet-hoa trả 404 trong lần audit, nên không xác minh được source internals.
+- [x] PS5 Tiếng Việt: games.html hiển thị 196 game, 31 game có bộ câu Việt hóa và 165 có hướng dẫn Dịch AI.
+- [x] Hóng Sub: Remote Play/capture card/window capture, tối đa 8 vùng, menu/full-screen, floating subtitle/replace source text, voice per character, 25 AI voices, audio sync và hướng dẫn Android TV/Google TV/LG/Samsung.
+- [x] Đã cập nhật COMPETITIVE_GAP_ANALYSIS.md theo thông tin PCNET mới.
+
+### Kiểm kê kho Việt hóa trong source
+- [x] Catalog.kt có 201 tên game và 201 platform-code entries. Đây là metadata catalog, không phải 201 game đã có bản dịch.
+- [x] VietHoa.kt có 33 nhóm glossary game/series; VietHoaPlus.kt có 81 nhóm glossary/character profiles.
+- [x] Built-in phrase memory có 58 cặp câu dùng chung và 18 cặp câu riêng trên 6 franchise groups.
+- [ ] Không có bằng chứng toàn bộ 201 game có phrase pack riêng. PackStore hỗ trợ import user pack/HTTPS manifest; cần thống kê pack thực tế từ nguồn/thiết bị.
+- [x] knowledge_base là Python/SQLite FTS5 độc lập; có importer, provenance/license, matcher, moderation, backup/signed packs và verified-only CSV bridge.
+- [ ] Hosted sync/auth/reviewer admin và tích hợp Knowledge Base end-to-end vào app chưa hoàn thành.
+
+### Code changes trên PR #86
+- [x] TranslationMatcher dùng previous_sentence và next_sentence trong context score exact/fuzzy.
+- [x] Khi cùng source có nhiều bản dịch khác nhau nhưng không có context nào khớp, matcher trả None để caller fallback AI thay vì đoán.
+- [x] Regression tests cho adjacent dialogue và ambiguous exact context.
+- [x] KhoGameActivity đổi nhãn “Có gói” thành “Thuật ngữ riêng” và giải thích rõ glossary không phải bộ thoại đầy đủ.
+- [x] PackStore.fetch tắt automatic redirects, giới hạn 3 hop và từ chối HTTPS downgrade, URL chứa credentials hoặc fragment.
+- [x] RemotePack tests cho relative HTTPS redirect, downgrade, credentials, fragment và HTTP origin.
+- [x] Android JVM knowledge-base bridge tests #172 success; Knowledge Base Tests #223–#226 success.
+- [ ] Android APK Build #1960 cần hoàn tất trên latest head; smoke emulator vẫn pending.
+
+### Bảo mật / Release
+- [ ] SEC-001 keystore/dichgame.jks vẫn được track trong public repository; chủ sở hữu phải chọn giữ khóa để tương thích update (chấp nhận rủi ro) hay package/key migration.
+- [ ] SEC-002 usesCleartextTraffic=true toàn app vẫn mở; cần tách LAN transport và policy theo host.
+- [ ] SEC-006 LG WebSocket trust-all TLS vẫn là rủi ro mở; cần TOFU/pinning có xác nhận người dùng.
+- [ ] PR #85 có security changes tốt và build pass nhưng đang dirty/conflicted; chưa được merge.
+- [ ] Chưa tạo Release mới; không phát hành bằng khóa giả/test.
+
+### Tiếp tục từ đây
+1. Theo dõi Android Build #1960 và smoke #161; chỉ ghi PASS khi job hoàn tất.
+2. Review PR #86 diff cuối và CI; nếu pass thì mark ready, squash merge, xác minh main CI lại.
+3. Resolve PR #85 trên base main bằng rebase/cherry-pick có review; không merge khi dirty.
+4. Lập kế hoạch signing key với chủ sở hữu trước khi phát hành.
+5. Review/fix LG TLS trust-all và thu hẹp cleartext transport.
+6. Tiếp tục audit kho dữ liệu: pack count, source/license, version compatibility, matching confidence, moderation.
+7. Cập nhật ba file theo dõi sau mỗi giai đoạn có bằng chứng.
+
+### Links
+- Main build #1913: https://github.com/temu838655-dev/DichGame/actions/runs/45708105647
+- Android build #1960: https://github.com/temu838655-dev/DichGame/actions/runs/45711622996
+- Emulator smoke #161: https://github.com/temu838655-dev/DichGame/actions/runs/45708105649
+- PR #85: https://github.com/temu838655-dev/DichGame/pull/85
+- PR #85 build #1939: https://github.com/temu838655-dev/DichGame/actions/runs/45710182871
+- PR #86: https://github.com/temu838655-dev/DichGame/pull/86
+- Android bridge #172: https://github.com/temu838655-dev/DichGame/actions/runs/45711278032
+- Knowledge Base #226: https://github.com/temu838655-dev/DichGame/actions/runs/45711278038
+
+
+---
+
+## CI follow-up — 2026-11-26 (latest observed)
+- Knowledge Base Tests #227 (run 45711631198): SUCCESS on PR head c41a6a35290c547680cac5d7b68de0378b1971c7.
+- Android Build #1961 (run 45711631124): IN_PROGRESS; unit tests step was running at last poll. Do not mark APK build passed.
+- Android bridge tests #173 (run 45711630980): IN_PROGRESS; Android JVM unit tests job running at last poll.
+- Emulator Smoke #161 (run 45708105649): IN_PROGRESS; emulator job still running. No runtime conclusion yet.
+- PR #86 remains draft/open and GitHub reports mergeable=true at last poll. Do not merge until all required checks finish and review is complete.
+- These are live CI observations, not a claim that tests or runtime validation have completed.
+
+Links: [KB #227](https://github.com/temu838655-dev/DichGame/actions/runs/45711631198) · [Android Build #1961](https://github.com/temu838655-dev/DichGame/actions/runs/45711631124) · [Bridge #173](https://github.com/temu838655-dev/DichGame/actions/runs/45711630980) · [Smoke #161](https://github.com/temu838655-dev/DichGame/actions/runs/45708105649)
+
+
+### Correction — live CI re-poll (2026-11-26)
+- Android bridge tests #173 (45711630980) have now COMPLETED SUCCESSFULLY. This supersedes the earlier in-progress observation above.
+- Android Build #1961 (45711631124) remains IN_PROGRESS at the app unit-test step.
+- Emulator Smoke #161 (45708105649) remains IN_PROGRESS at emulator execution.
+- Knowledge Base Tests #227 (45711631198) remain SUCCESS.

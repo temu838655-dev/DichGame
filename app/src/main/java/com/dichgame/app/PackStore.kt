@@ -468,16 +468,31 @@ object PackStore {
         var u = url.trim()
         val m = Regex("^https?://github\\.com/([^/]+/[^/]+)/blob/(.+)$").find(u)
         if (m != null) u = "https://raw.githubusercontent.com/${m.groupValues[1]}/${m.groupValues[2]}"
-        if (!u.startsWith("https://")) throw java.io.IOException("Chỉ nhận link https.")
-        val c = URL(u).openConnection() as HttpURLConnection
-        try {
-            c.connectTimeout = 10000
-            c.readTimeout = 20000
-            c.setRequestProperty("User-Agent", "DichGame")
-            if (c.responseCode != 200) throw java.io.IOException("Mã lỗi ${c.responseCode}.")
-            val bytes = c.inputStream.use { it.readNBytesCapped(4_000_000) }
-            return String(bytes, Charsets.UTF_8)
-        } finally { c.disconnect() }
+        var current = URL(u)
+        require(current.protocol == "https" && current.host.isNotBlank() &&
+            current.userInfo == null && current.ref == null) { "Chỉ nhận link HTTPS hợp lệ." }
+        var redirects = 0
+        while (true) {
+            val c = current.openConnection() as HttpURLConnection
+            try {
+                c.instanceFollowRedirects = false
+                c.connectTimeout = 10000
+                c.readTimeout = 20000
+                c.setRequestProperty("User-Agent", "DichGame")
+                val code = c.responseCode
+                if (code in 300..399) {
+                    if (redirects >= 3) throw java.io.IOException("Link chuyển hướng quá nhiều lần.")
+                    val location = c.getHeaderField("Location")
+                        ?: throw java.io.IOException("Máy chủ chuyển hướng nhưng thiếu Location.")
+                    current = RemotePack.safeHttpsRedirect(current, location)
+                    redirects++
+                    continue
+                }
+                if (code != 200) throw java.io.IOException("Mã lỗi $code.")
+                val bytes = c.inputStream.use { it.readNBytesCapped(4_000_000) }
+                return String(bytes, Charsets.UTF_8)
+            } finally { c.disconnect() }
+        }
     }
 
     fun catalogSource(link: String, game: String, platform: String? = null): String? {

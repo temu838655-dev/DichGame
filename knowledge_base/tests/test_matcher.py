@@ -26,6 +26,33 @@ class MatcherTests(unittest.TestCase):
         self.assertEqual(result.translation["translated_text"], "Mở cửa")
         self.assertEqual(result.method, "EXACT")
 
+    def test_exact_match_uses_previous_and_next_dialogue_context(self):
+        self.kb.add_translation(
+            "game", "I understand.", "Tôi hiểu.", previous_sentence="Where are you going?",
+            next_sentence="Then let's move.", translation_status="COMMUNITY",
+        )
+        self.kb.add_translation(
+            "game", "I understand.", "Ta hiểu rồi.", previous_sentence="Who are you?",
+            next_sentence="Prove it.", translation_status="COMMUNITY",
+        )
+        result = self.matcher.lookup(
+            "game", "I understand.", previous_sentence="Who are you?",
+            next_sentence="Prove it.",
+        )
+        self.assertEqual(result.translation["translated_text"], "Ta hiểu rồi.")
+
+    def test_exact_ambiguous_translations_without_context_match_fall_back(self):
+        self.kb.add_translation(
+            "game", "Open the gate", "Mở cổng", speaker="Guard",
+            translation_status="VERIFIED",
+        )
+        self.kb.add_translation(
+            "game", "Open the gate", "Mở cửa", speaker="Player",
+            translation_status="COMMUNITY",
+        )
+        result = self.matcher.lookup("game", "Open the gate", speaker="Merchant")
+        self.assertIsNone(result)
+
     def test_ocr_correction_only_uses_high_confidence_curated_variants(self):
         with self.kb.transaction() as db:
             db.execute(

@@ -75,6 +75,22 @@ class RemotePackTest {
         assertTrue(runCatching { RemotePack.catalogSource(catalog.toString(), "GTA VI", "PC") }.isFailure)
     }
 
+    @Test fun httpsRedirectsMayResolveRelativeLocations() {
+        val current = java.net.URL("https://packs.example.org/v1/index.json")
+        val target = RemotePack.safeHttpsRedirect(current, "../v2/index.json")
+        assertEquals("https://packs.example.org/v2/index.json", target.toExternalForm())
+    }
+
+    @Test fun httpsRedirectsRejectDowngradeAndCredentialInjection() {
+        val current = java.net.URL("https://packs.example.org/v1/index.json")
+        assertTrue(runCatching { RemotePack.safeHttpsRedirect(current, "http://packs.example.org/file.csv") }.isFailure)
+        assertTrue(runCatching { RemotePack.safeHttpsRedirect(current, "https://user:pass@packs.example.org/file.csv") }.isFailure)
+        assertTrue(runCatching { RemotePack.safeHttpsRedirect(current, "https://packs.example.org/file.csv#fragment") }.isFailure)
+        assertTrue(runCatching {
+            RemotePack.safeHttpsRedirect(java.net.URL("http://packs.example.org/file.csv"), "/next")
+        }.isFailure)
+    }
+
     @Test fun transientCloudFailuresMayRetryButPermanentFailuresDoNot() {
         for (code in listOf(408, 429, 500, 502, 503, 504)) assertTrue(RemotePack.retryableHttp(code))
         for (code in listOf(200, 301, 400, 401, 403, 404, 413)) assertFalse(RemotePack.retryableHttp(code))

@@ -1,5 +1,7 @@
 # BUG_TRACKER.md
 
+> Các dòng lịch sử phía trên được giữ lại. Bảng cập nhật hiện hành bên dưới supersede trạng thái cũ của cùng mã lỗi.
+
 Cập nhật: 2026-11-26 (UTC+8)
 Phạm vi: audit repository Dịch Game by Huyy Đâyy
 
@@ -20,3 +22,47 @@ Phạm vi: audit repository Dịch Game by Huyy Đâyy
 - BLOCKED: cần quyết định, quyền truy cập hoặc thiết bị bên ngoài.
 
 Không đánh dấu VERIFIED chỉ dựa trên việc source code biên dịch.
+
+
+---
+
+## Cập nhật hiện hành — 2026-11-26 06:16 UTC+8
+
+| ID | Mức độ | Vấn đề / bằng chứng | Trạng thái hiện hành |
+|---|---|---|---|
+| SEC-001 | CRITICAL | keystore/dichgame.jks vẫn được track trong repository public. Xóa ở commit mới không xóa khỏi Git history. | BLOCKED — cần chủ sở hữu chọn key compatibility hay package/key migration. Không phát hành production trước quyết định. |
+| SEC-002 | HIGH | usesCleartextTraffic=true toàn application; LAN TV receiver cần transport nội bộ. | OPEN — cần inventory endpoint, tách LAN/Internet policy và test backward compatibility. |
+| SEC-003 | HIGH | PR #85 AES-GCM Android Keystore, HTTPS CloudAPI, private/local TV PCM host và backup exclusions. Build #1939 success. | PARTIAL — PR #85 mergeable_state=dirty; chưa merge/review xong. |
+| SEC-006 | HIGH | LG WebSocket custom trust manager chấp nhận certificate không được xác minh/pinning. | OPEN — cần TOFU/pinning và xác nhận fingerprint; không merge security PR như thể đã xử lý xong. |
+| SEC-005 | HIGH | PackStore.fetch trước đây để HttpURLConnection tự follow redirect, có thể cho phép HTTPS downgrade. | FIXED IN PR #86 — manual redirect, tối đa 3 hop, HTTPS-only, chặn userinfo/fragment; Android JVM bridge tests #172 success. Chờ build #1960 cuối. |
+| MATCH-001 | MEDIUM | previous_sentence/next_sentence có trong API matcher nhưng bị bỏ qua; exact match có thể chọn nhầm khi câu trùng ngữ cảnh. | FIXED IN PR #86 — context score exact/fuzzy và từ chối ambiguous exact khi không có context match; Knowledge Base Tests #223–#226 success. |
+| LIB-002 | HIGH | Catalog.kt có 201 tên game nhưng không phải 201 phrase packs; built-in phrase memory chỉ 58 generic + 18 specific rows trên 6 franchise groups. | OPEN — cần pack inventory thật, nguồn/license, game version và coverage evidence. |
+| UI-001 | MEDIUM | Nhãn “Có gói” trước đây có thể hiểu nhầm glossary thành bộ Việt hóa hoàn chỉnh. | FIXED IN PR #86 — đổi thành “Thuật ngữ riêng”, giải thích scope rõ. Chờ Android build #1960. |
+| QA-001 | HIGH | Smoke #161 vẫn chạy bước emulator. | OPEN — chưa có kết quả cuối. |
+| QA-002 | HIGH | Chưa có test Android arm64, TV vật lý, PS4/PS5/Xbox thật. | BLOCKED — cần thiết bị/console/firmware/mạng thực. |
+| QA-003 | HIGH | OCR/AI/ASR/TTS end-to-end chưa được xác minh trên thiết bị. | OPEN — cần test corpus và thiết bị thật. |
+| REL-001 | MEDIUM | Main #1913 success nhưng public Release step skip vì signing secrets thiếu; release gần nhất build-1872. | VERIFIED (gate behavior only) — không có Release mới. |
+| REL-002 | MEDIUM | PR #85 build #1939 success nhưng mergeable_state=dirty. | OPEN — resolve base conflict và review trước merge. |
+| REL-003 | MEDIUM | PR #86 draft, mergeable=true; Android Build #1960 pending. | OPEN — đợi CI latest head, review và merge sau đó. |
+
+Không đánh dấu VERIFIED cho các hạng mục chỉ mới có source code; phải có CI/runtime evidence phù hợp.
+
+
+---
+
+## CI follow-up — 2026-11-26
+
+| ID | Latest evidence | Current state |
+|---|---|---|
+| QA-004 | Knowledge Base Tests #227 (45711631198) succeeded on PR head c41a6a35290c547680cac5d7b68de0378b1971c7. | VERIFIED — Python knowledge-base suite only. |
+| QA-005 | Android Build #1961 (45711631124) was IN_PROGRESS; JVM/unit-test step running at last poll. | OPEN — no APK build pass claim. |
+| QA-006 | Android bridge #173 (45711630980) was IN_PROGRESS; Android JVM tests running at last poll. | OPEN — no test conclusion yet. |
+| QA-001 | Emulator Smoke #161 (45708105649) remains IN_PROGRESS. | OPEN — no emulator runtime conclusion. |
+
+Do not infer Android runtime success from Python tests. Re-poll the exact run IDs before changing these statuses.
+
+
+### Correction — latest CI re-poll (2026-11-26)
+- QA-006 Android bridge #173 (45711630980): VERIFIED — Android JVM unit tests completed successfully.
+- QA-005 Android Build #1961 (45711631124): OPEN — still running app unit tests; no APK success claim.
+- QA-001 Emulator Smoke #161 (45708105649): OPEN — emulator execution still running.

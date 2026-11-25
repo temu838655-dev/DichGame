@@ -1,5 +1,7 @@
 # QUALITY_CHECKLIST.md
 
+> Bảng lịch sử phía trên được giữ lại. Bảng “Current audit status” bên dưới là trạng thái mới nhất và supersede các snapshot trước.
+
 Cập nhật: 2026-11-26 (UTC+8)
 
 | Hạng mục | Trạng thái | Bằng chứng / giới hạn |
@@ -27,3 +29,71 @@ Cập nhật: 2026-11-26 (UTC+8)
 
 ## Điều kiện kết luận
 Chỉ chuyển sang VERIFIED khi có test/log/bằng chứng cụ thể. NOT VERIFIED và BLOCKED không được diễn giải thành đạt.
+
+
+---
+
+## Current audit status — 2026-11-26 06:16 UTC+8
+
+| Hạng mục | Trạng thái mới nhất | Bằng chứng / giới hạn |
+|---|---|---|
+| Repository / main inventory | VERIFIED | Main commit a373a902; tree, branches, commits, workflows, releases đã kiểm tra. |
+| Android phone/TV build baseline | VERIFIED (CI baseline) | Main #1913 success; latest PR build #1960 pending. |
+| Android JVM bridge tests | VERIFIED (CI) | Run #172 success trên source có HTTPS redirect validation. |
+| Knowledge Base Python tests | VERIFIED (CI) | #223–#226 success trên matcher updates. |
+| Android APK build latest PR head | PENDING | #1960 queued; chưa được đánh dấu pass. |
+| Emulator smoke | NOT VERIFIED | #161 vẫn ở bước emulator execution; chưa có conclusion. |
+| Production signing key safety | NOT PASS / BLOCKED | Keystore tracked public; owner decision required. |
+| Signing release gate | VERIFIED (gate behavior only) | Main #1913 skip public Release khi thiếu secrets. |
+| Latest official release | VERIFIED (metadata) | build-1872 có phone APK + TV APK; không phải release mới. |
+| Catalog game count | VERIFIED (source inventory) | 201 game-title rows; không phải 201 game có pack. |
+| Built-in glossary | VERIFIED (source inventory) | 33 nhóm VietHoa.kt + 81 nhóm VietHoaPlus.kt. |
+| Built-in phrase memory | VERIFIED (source inventory) | 58 generic rows + 18 specific rows trên 6 franchise groups. |
+| Phrase packs cho toàn catalog | NOT VERIFIED | Chưa có bằng chứng 201 game đều có pack thoại; cần inventory từ nguồn cloud/user. |
+| Matcher dialogue context | VERIFIED (Python CI) | previous/next sentence context; ambiguous exact fallback; tests #223–#226 success. |
+| HTTPS redirect hardening | VERIFIED (Android JVM CI) | Manual redirect, max 3 hops, HTTPS-only, reject credentials/fragments; bridge tests #172 success. |
+| Game library status labels | PARTIAL / PR #86 | Glossary-only state đổi thành “Thuật ngữ riêng”; chờ APK build #1960. |
+| Knowledge Base hosted integration | NOT COMPLETE | Python/SQLite + CSV bridge có; hosted sync/auth/reviewer admin và end-to-end integration chưa có. |
+| CloudAPI/credential hardening | PARTIAL / PR #85 | Build #1939 pass; PR dirty/conflicted; LG trust-all TLS remains open. |
+| LAN cleartext policy | NOT PASS | usesCleartextTraffic=true toàn app; cần tách policy. |
+| OCR/AI/ASR/TTS runtime | NOT VERIFIED | Chưa có test corpus end-to-end trên thiết bị. |
+| TV/console hardware | NOT VERIFIED | Chưa có log Android TV, LG, Samsung, PS5/PS4/Xbox vật lý. |
+| PC/Steam native | GAP | Dự án chưa có app native PC/Steam được xác minh trên main. |
+| iOS/Windows/macOS production | PARTIAL | Có source/workflow preview; chưa xác minh signed production release. |
+| Performance/battery/memory soak | NOT VERIFIED | Chưa có profile/soak test dài hạn. |
+
+## Release gate
+- [ ] Owner quyết định signing key compatibility hoặc package/key migration.
+- [ ] CRITICAL/HIGH security blockers được xử lý hoặc chấp thuận bằng văn bản.
+- [ ] Latest Android build trên commit phát hành pass.
+- [ ] Emulator smoke pass.
+- [ ] Test cài mới, update từ build-1872, backup/restore trên thiết bị.
+- [ ] End-to-end capture → OCR → memory → AI fallback → subtitle/TTS → TV pass.
+- [ ] LG TLS trust và cleartext LAN policy được xử lý.
+- [ ] Release notes chỉ công bố nền tảng đã kiểm chứng.
+- [ ] APK production-signed, fingerprint xác minh và download link kiểm tra được.
+
+Không diễn giải build success thành production-ready.
+
+
+---
+
+## CI refresh — 2026-11-26
+
+| Hạng mục | Bằng chứng mới | Trạng thái |
+|---|---|---|
+| Knowledge Base Python suite | PR head c41a6a3, run #227 (45711631198) success | VERIFIED — chỉ phạm vi Python tests |
+| Android APK build | Run #1961 (45711631124) đang in_progress ở lần kiểm tra | PENDING |
+| Android knowledge-base bridge | Run #173 (45711630980) đang in_progress ở lần kiểm tra | PENDING |
+| Emulator smoke | Run #161 (45708105649) vẫn in_progress | NOT VERIFIED |
+| PR #86 | Draft/open; mergeable=true ở lần kiểm tra | CHƯA MERGE — chờ Android checks và review |
+
+Links: [Build #1961](https://github.com/temu838655-dev/DichGame/actions/runs/45711631124), [Bridge #173](https://github.com/temu838655-dev/DichGame/actions/runs/45711630980), [Smoke #161](https://github.com/temu838655-dev/DichGame/actions/runs/45708105649), [KB #227](https://github.com/temu838655-dev/DichGame/actions/runs/45711631198).
+
+
+### Correction — latest CI re-poll (2026-11-26)
+| Hạng mục | Bằng chứng mới | Trạng thái |
+|---|---|---|
+| Android knowledge-base bridge | Run #173 (45711630980) completed success | VERIFIED (Android JVM tests) |
+| Android APK build | Run #1961 still running app unit tests | PENDING |
+| Emulator smoke | Run #161 still running emulator execution | NOT VERIFIED |
