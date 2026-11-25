@@ -61,3 +61,28 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 - Build workflow #1872: https://github.com/temu838655-dev/DichGame/actions/runs/45703102330
 - Smoke test workflow #159: https://github.com/temu838655-dev/DichGame/actions/runs/45703102492
 - Release build-1872: https://github.com/temu838655-dev/DichGame/releases/tag/build-1872
+
+
+## Audit tiếp tục — 2026-11-26 05:34 UTC+8
+
+### Xác minh bổ sung
+- [x] Repository main truy cập được; tài khoản hiện tại có quyền admin/push.
+- [x] Đọc README, AndroidManifest, app/build.gradle.kts và toàn bộ phần chính của build-apk.yml.
+- [x] Run 45703102330: job build completed/success; unit tests, TV build, phone build, APK packaging, signature/zipalign/package checks và Release step đều success. Lưu ý đây là run trước khi hoàn tất audit policy khóa ký; không dùng nó làm bằng chứng policy mới.
+- [x] Run 45703102492: emulator smoke job completed/cancelled; bước “Chạy trên máy giả lập” bị cancelled. Đây KHÔNG phải pass.
+- [x] Workflow hiện tại có điều kiện `CAN_PUBLISH_RELEASE == 'true'` cho ghi chú và tạo Release; thiếu signing secrets trên public push sẽ đặt false trong bước nạp khóa.
+- [x] Tạo BUG_TRACKER.md và QUALITY_CHECKLIST.md trong hai commit audit riêng.
+
+### Vấn đề còn mở
+- [ ] SEC-001: keystore công khai đã lộ. Workflow chặn phát hành thiếu secrets, nhưng chưa có quyết định chuyển khóa an toàn. Không tự ý đổi chứng thư vì sẽ chặn cập nhật đè của người dùng hiện tại.
+- [ ] SEC-002: app manifest bật cleartext traffic toàn ứng dụng. Phải audit endpoint HTTP LAN/TV trước khi thu hẹp policy.
+- [ ] QA-001: chạy lại và hoàn tất emulator smoke test; run cũ bị cancelled.
+- [ ] REL-001: xác minh workflow sau commit release-gate thực sự bỏ qua public Release khi secrets thiếu.
+- [ ] QA-002: kiểm thử trên Android arm64, Android TV và console thật vẫn cần thiết bị thực.
+- [ ] Audit sâu Gemini/key storage, OCR, ASR, TTS, Remote Play, backup/restore, permissions, lifecycle, UI, hiệu năng và network endpoints.
+
+### Bằng chứng và giới hạn
+- Build baseline: https://github.com/temu838655-dev/DichGame/actions/runs/45703102330
+- Emulator smoke (cancelled): https://github.com/temu838655-dev/DichGame/actions/runs/45703102492
+- Commits mới nhất trước audit: 07da9260cfa4e403c9a0fb788d90958e91e568d8.
+- Chưa tuyên bố app production-ready; chưa có kiểm thử thiết bị thật.
