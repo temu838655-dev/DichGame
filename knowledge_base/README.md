@@ -51,8 +51,9 @@ incompatible rights. Keep author attribution and the original source URL.
    retries, input/output limits and offline mode. See [AI_FALLBACK.md](AI_FALLBACK.md).
 6. Concrete Gemini and OpenAI-compatible HTTPS adapters using Python's standard
    library. See [PROVIDERS.md](PROVIDERS.md).
-7. Community submissions, authorized human review, rejection, report queues and
-   moderation history. See [MODERATION.md](MODERATION.md).
+7. Community submissions with contributor attribution, authorized human review,
+   rejection, report queues, moderation history and a local maintainer CLI.
+   See [MODERATION.md](MODERATION.md).
 8. Integrity-checked SQLite backup/restore, HMAC-signed offline packs and
    verified-only CSV export compatible with the Android app's existing importer.
    See [BACKUP_SYNC.md](BACKUP_SYNC.md).
