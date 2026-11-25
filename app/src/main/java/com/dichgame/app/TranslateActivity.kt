@@ -195,7 +195,10 @@ class TranslateActivity : Activity() {
             row.addView(Ui.tv(a, if (enabled) "TẮT" else "BẬT", 12f, Ui.GOLD, true).apply {
                 gravity = Gravity.CENTER
                 setPadding(Ui.dp(a, 8), Ui.dp(a, 6), Ui.dp(a, 6), Ui.dp(a, 6))
-                setOnClickListener { p.setGeminiKeyEnabled(k, !enabled); render() }
+                setOnClickListener {
+                    if (p.setGeminiKeyEnabled(k, !enabled)) render()
+                    else Toast.makeText(a, "Không lưu được trạng thái khóa. Hãy thử lại.", Toast.LENGTH_SHORT).show()
+                }
             })
             row.addView(Ui.tv(a, "✎", 18f, Ui.TEXT, true).apply {
                 gravity = Gravity.CENTER
@@ -212,9 +215,12 @@ class TranslateActivity : Activity() {
                                 Toast.makeText(a, "Khóa không được để trống.", Toast.LENGTH_SHORT).show()
                             } else if (updated != k) {
                                 val next = keys.toMutableList().also { it[i] = updated }
-                                p.setGeminiKeys(next)
-                                KeyRing.forget(k)
-                                render()
+                                if (p.setGeminiKeys(next)) {
+                                    KeyRing.forget(k)
+                                    render()
+                                } else {
+                                    Toast.makeText(a, "Không lưu được khóa mã hóa. Khóa cũ vẫn được giữ.", Toast.LENGTH_LONG).show()
+                                }
                             }
                         }
                         .show()
@@ -223,7 +229,10 @@ class TranslateActivity : Activity() {
             row.addView(Ui.tv(a, "✕", 18f, Ui.DANGER, true).apply {
                 gravity = Gravity.CENTER
                 setPadding(Ui.dp(a, 8), Ui.dp(a, 6), Ui.dp(a, 4), Ui.dp(a, 6))
-                setOnClickListener { p.setGeminiKeys(keys.filterIndexed { j, _ -> j != i }); render() }
+                setOnClickListener {
+                    if (p.setGeminiKeys(keys.filterIndexed { j, _ -> j != i })) render()
+                    else Toast.makeText(a, "Không xóa được khóa. Dữ liệu cũ vẫn được giữ.", Toast.LENGTH_LONG).show()
+                }
             })
             c.addView(row)
             c.divide()
@@ -233,8 +242,8 @@ class TranslateActivity : Activity() {
         c.addView(Ui.button(a, "＋  Thêm khóa") {
             val v = add.text.toString().trim()
             if (v.isEmpty()) { Toast.makeText(a, "Hãy dán khóa vào ô trên.", Toast.LENGTH_SHORT).show(); return@button }
-            p.setGeminiKeys(p.geminiKeys() + v)
-            render()
+            if (p.setGeminiKeys(p.geminiStoredKeys() + v)) render()
+            else Toast.makeText(a, "Không lưu được khóa mã hóa. Hãy kiểm tra bộ nhớ thiết bị.", Toast.LENGTH_LONG).show()
         }, Ui.lpm(a, 0, 4))
         c.addView(Ui.tv(a, "Thêm nhiều khóa: có thể sửa, bật hoặc tắt riêng từng khóa. Khi một khóa hết lượt (lỗi 429) hoặc bị từ chối, app tự chuyển sang khóa kế tiếp và tạm bỏ khóa đó tới giờ hồi (hết lượt theo ngày thì tới nửa đêm giờ Thái Bình Dương). Lưu ý: Google tính hạn mức theo dự án, các khóa tạo trong cùng một dự án dùng chung hạn mức nên không thêm lượt; hãy tạo khóa ở dự án khác.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 4))
         c.addView(Ui.button(a, "Lấy khóa miễn phí ở aistudio.google.com") {
