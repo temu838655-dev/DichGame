@@ -16,6 +16,8 @@ class Prefs(ctx: Context) {
         ApiSecrets.read(app, "key")
         ApiSecrets.read(app, "keys2")
         ApiSecrets.read(app, "ckey")
+        ApiSecrets.read(app, "tvtoken")
+        ApiSecrets.read(app, "lgkey")
     }
 
     companion object {
@@ -506,18 +508,24 @@ class Prefs(ctx: Context) {
         set(v) = sp.edit().putBoolean("tvspeak", v).apply()
     val tvIp: String get() = sp.getString("tvip", "").orEmpty()
     var tvToken: String
-        get() = sp.getString("tvtoken", "").orEmpty()
-        set(v) = sp.edit().putString("tvtoken", v).apply()
+        get() = ApiSecrets.read(app, "tvtoken")
+        set(v) { if (!ApiSecrets.write(app, mapOf("tvtoken" to v))) android.util.Log.w("DG_PREFS", "Could not save TV pairing token.") }
     val tvPaired: Boolean get() = tvIp.isNotEmpty() && tvToken.isNotEmpty()
-    fun saveTv(ip: String, token: String) = sp.edit().putString("tvip", ip).putString("tvtoken", token).apply()
-    fun clearTv() = sp.edit().remove("tvtoken").apply()
+    fun saveTv(ip: String, token: String): Boolean {
+        if (!ApiSecrets.write(app, mapOf("tvtoken" to token))) return false
+        return sp.edit().putString("tvip", ip).commit()
+    }
+    fun clearTv(): Boolean = ApiSecrets.write(app, mapOf("tvtoken" to ""))
 
     // ---- TV LG (webOS): ghép qua LG Connect Apps, gửi phụ đề bằng thông báo trên TV (thử nghiệm) ----
     val lgIp: String get() = sp.getString("lgip", "").orEmpty()
-    val lgKey: String get() = sp.getString("lgkey", "").orEmpty()
+    val lgKey: String get() = ApiSecrets.read(app, "lgkey")
     val lgPaired: Boolean get() = lgIp.isNotEmpty() && lgKey.isNotEmpty()
-    fun saveLg(ip: String, key: String) = sp.edit().putString("lgip", ip).putString("lgkey", key).apply()
-    fun clearLg() = sp.edit().remove("lgkey").apply()
+    fun saveLg(ip: String, key: String): Boolean {
+        if (!ApiSecrets.write(app, mapOf("lgkey" to key))) return false
+        return sp.edit().putString("lgip", ip).commit()
+    }
+    fun clearLg(): Boolean = ApiSecrets.write(app, mapOf("lgkey" to ""))
     var lgSubs: Boolean
         get() = sp.getBoolean("lgsubs", true)
         set(v) = sp.edit().putBoolean("lgsubs", v).apply()
