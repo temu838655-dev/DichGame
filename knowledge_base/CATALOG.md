@@ -2,7 +2,7 @@
 
 ## Mục tiêu
 
-Kho game lưu thông tin game và từng bản Việt hóa theo **nền tảng, khu vực, phiên bản game, phiên bản bản dịch, tác giả, nguồn và giấy phép**. Một game có thể có nhiều bản phát hành khác nhau; không dùng một gói PS5 thay cho PC/PS4/Switch hoặc ngược lại.
+DịchGame chỉ hỗ trợ dịch phụ đề khi chơi trên **PS5, PS4 và Xbox**. Kho dữ liệu lưu cặp câu gốc–tiếng Việt theo game và ngữ cảnh. Nền tảng ghi trong metadata (ví dụ PC) là **nguồn xuất phát của dữ liệu**, không phải nền tảng đích. Bản Việt hóa PC được phép trích xuất có thể cung cấp câu dịch tham khảo cho cùng game đang chơi trên PS5, PS4 hoặc Xbox.
 
 ## Quy tắc kết nối nguồn
 
@@ -41,7 +41,7 @@ Feed UTF-8 JSON có cấu trúc:
 }
 ```
 
-`download_permitted` chỉ được bật nếu registry của nguồn cũng cho phép tải nội dung. Hiện module chỉ nhập metadata và đường dẫn; chưa tải hoặc cài patch.
+Trường `platform` trong feed là **nền tảng của bản Việt hóa nguồn** (ví dụ PC), không phải console mà người chơi đang sử dụng. Một bộ câu dịch đã được phép sử dụng có thể phục vụ cả PS5, PS4 và Xbox. `download_permitted` chỉ được bật nếu registry của nguồn cũng cho phép tải nội dung.
 
 ## Chạy
 
@@ -54,16 +54,16 @@ Feed không được nhập nếu thiếu xác nhận quyền, nguồn chưa đ�
 
 ## Danh mục Cloud cho ứng dụng Android
 
-Định dạng danh mục HTTPS theo tên game + nền tảng, manifest CSV có hash và quy tắc không hạ phiên bản được mô tả tại [mobile-pack-catalog.md](../docs/mobile-pack-catalog.md). Đây là định dạng phân phối riêng của Android, không phải feed metadata của kho Python.
+Danh mục HTTPS theo game, độc lập với console đích, manifest CSV có hash và quy tắc không hạ phiên bản được mô tả tại [mobile-pack-catalog.md](../docs/mobile-pack-catalog.md).
 
 ## Quy trình áp dụng trong game
 
-1. Người chơi chọn game và nền tảng.
-2. Kho tìm bản dịch đúng platform/region/edition/game version.
-3. Nếu có gói được phép tải: kiểm tra quyền, hash và tính tương thích trước khi cài (cài đặt patch là bước riêng, cần người dùng đồng ý, sao lưu và có rollback).
+1. Người chơi chọn game và console đích: PS5, PS4 hoặc Xbox.
+2. Kho tìm dữ liệu theo game/ngữ cảnh; dữ liệu nguồn có thể xuất phát từ bản Việt hóa PC.
+3. Nếu có gói dữ liệu được phép đồng bộ: kiểm tra quyền, hash, game build nguồn và chất lượng câu dịch trước khi đưa vào bộ nhớ tra cứu; không cài patch PC vào console.
 4. Nếu chỉ có trang nguồn: mở trang gốc để người dùng tự xem hướng dẫn/tải theo điều khoản tác giả.
 5. Khi không có câu dịch phù hợp, OCR ổn định văn bản rồi tra translation memory theo game/ngữ cảnh; chỉ sau đó mới gọi AI. AI output lưu ở trạng thái chưa xác minh.
 
 ## Giới hạn hiện tại
 
-Đây là lớp registry + nhập metadata feed được cấp quyền, chưa phải dịch vụ crawler, API đồng bộ nền, kho patch, installer PC hay pipeline OCR đầu-cuối. Console locked platforms vẫn cần luồng capture/Remote Play/overlay; app điện thoại không thể tự sửa file game PS5/Xbox/Switch.
+Đây là lớp registry + nhập metadata feed được cấp quyền, chưa phải dịch vụ crawler, API đồng bộ nền, kho patch, installer PC hay pipeline OCR đầu-cuối. Console vẫn cần luồng capture/Remote Play/overlay; app điện thoại không thể tự sửa file game PS5/PS4/Xbox.
