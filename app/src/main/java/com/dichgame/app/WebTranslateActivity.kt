@@ -346,6 +346,13 @@ class WebTranslateActivity : Activity() {
         web.addJavascriptInterface(Bridge(), "DG")
         web.webChromeClient = WebChromeClient()
         web.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, u: String?, favicon: Bitmap?) {
+                captionGate.reset()
+                lastProcessed = ""
+                pendingText = null
+                ui.removeCallbacks(pendingRun)
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean =
                 !isAllowedWebTranslateUrl(request.url.toString())
 
