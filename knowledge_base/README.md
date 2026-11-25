@@ -53,16 +53,18 @@ incompatible rights. Keep author attribution and the original source URL.
    library. See [PROVIDERS.md](PROVIDERS.md).
 7. Community submissions, authorized human review, rejection, report queues and
    moderation history. See [MODERATION.md](MODERATION.md).
-8. Integrity-checked SQLite backup/restore and HMAC-signed per-game export/import
-   packs for trusted offline synchronization. See [BACKUP_SYNC.md](BACKUP_SYNC.md).
+8. Integrity-checked SQLite backup/restore, HMAC-signed offline packs and
+   verified-only CSV export compatible with the Android app's existing importer.
+   See [BACKUP_SYNC.md](BACKUP_SYNC.md).
 
 ## Remaining phases
 
 1. Additional local-model adapters and provider-specific quota/pricing controls.
 2. Network synchronization service, incremental delta protocol and conflict UI.
 3. Community account authentication, abuse/rate controls and reviewer administration.
-4. Performance/quality benchmarks and end-to-end Android/desktop app integration
-   through OCR, translation, subtitle display and audio.
+4. Performance/quality benchmarks and automatic in-process Android/desktop app
+   integration through OCR, translation, subtitle display and audio. A verified-
+   only CSV bridge to the app's existing import screen is available now.
 
 The package remains a standalone Python component. Hosted sync service, account
 authentication, reviewer administration and end-to-end Android/desktop app
