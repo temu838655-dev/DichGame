@@ -172,13 +172,26 @@ object Cast {
     }
 
     /** Dòng đưa vào câu lệnh: các nhân vật có mặt trong câu hoặc câu trước đứng đầu, tối đa [max] người. */
-    fun promptLine(cast: List<Character>, context: String, max: Int = 14): String {
-        if (cast.isEmpty()) return ""
+    fun promptLine(cast: List<Character>, context: String, max: Int = 14, speaker: String? = null): String {
+        if (cast.isEmpty() || max <= 0) return ""
         val ctx = context.lowercase(Locale.ROOT)
-        val (hit, rest) = cast.partition { c -> c.names.any { it.length >= 2 && ctx.contains(it.lowercase(Locale.ROOT)) } }
-        val pick = (hit + rest).take(max)
+        val active = byName(speaker, cast)
+        val hit = cast.filter { c -> c.names.any { name ->
+            name.length >= 2 && Regex("(?<![\\p{L}\\p{N}])" + Regex.escape(name.lowercase(Locale.ROOT)) + "(?![\\p{L}\\p{N}])").containsMatchIn(ctx)
+        } }
+        val pick = (listOfNotNull(active) + hit).distinct().take(max)
+            .ifEmpty { cast.take(minOf(max, 3)) }
+        val descriptions = ArrayList<String>()
+        var remaining = 1200
+        for (c in pick) {
+            val line = c.name + ": " + c.desc.trimEnd('.', ';')
+            if (line.length + 2 > remaining) continue
+            descriptions.add(line)
+            remaining -= line.length + 2
+        }
+        if (descriptions.isEmpty()) return ""
         return " Nhân vật trong game (giữ đúng giọng nói và cách xưng hô của từng người): " +
-            pick.joinToString("; ") { it.name + ": " + it.desc.trimEnd('.', ';') } + "."
+            descriptions.joinToString("; ") + "."
     }
 
     /** Thêm các dòng chưa có tên nhân vật đó vào thẻ. */

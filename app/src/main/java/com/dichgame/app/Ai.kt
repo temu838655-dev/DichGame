@@ -49,7 +49,7 @@ object Ai {
             (if (game.isNotEmpty()) " Game / phong cách: $game." else "") +
             " " + p.styleText() +
             glossaryLine(terms, p, text) +
-            Cast.promptLine(cast, recent.joinToString(" ") + " " + text + " " + (speaker ?: "")) +
+            Cast.promptLine(cast, recent.joinToString(" ") + " " + text, speaker = speaker) +
             (if (speaker != null) " Người đang nói câu này: $speaker (giữ đúng giọng và cách xưng hô của người này, không đổi tên)." else "") +
             (if (emo) Emo.instruction() else "") +
             " Chọn xưng hô (tôi, anh, em, cậu, ông, bà...) hợp quan hệ và ngữ cảnh, sửa lỗi đọc chữ rõ ràng, giữ nguyên tên riêng." +
