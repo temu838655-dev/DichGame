@@ -63,14 +63,15 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      # Ưu tiên khóa riêng trong GitHub Secrets; nếu chưa cấu hình thì giữ cơ chế keystore hiện hữu
-      # như workflow main trước đây. Bước xác minh phía dưới bắt buộc chứng thư phải khớp Release cũ.
+      # Release công khai chỉ được ký bằng secrets; keystore trong repo đã bị lộ vì repo là public.
+      # Build PR/manual không phát hành có thể dùng keystore test hiện hữu để kiểm tra tương thích.
       - name: Kiểm tra và nạp khóa ký
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          IS_PUBLIC_RELEASE: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
         shell: bash
         run: |
           set -euo pipefail
@@ -89,9 +90,12 @@ jobs:
             echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
             echo "Đang ký bằng khóa riêng đã cấu hình."
           else
+            if [ "$IS_PUBLIC_RELEASE" = "true" ]; then
+              echo "::error::Từ chối phát hành công khai: phải cấu hình đầy đủ KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS và KEY_PASSWORD trong GitHub Actions Secrets."
+              exit 1
+            fi
             test -s keystore/dichgame.jks
-            echo "Dùng keystore hiện hữu trong repo theo cơ chế tương thích trước đây."
-            echo "::warning::Bước xác minh chứng thư sẽ chặn phát hành nếu khóa này không khớp APK Release gần nhất."
+            echo "Dùng keystore test trong repo chỉ cho build không phát hành."
           fi
 
       # Android NDK đôi lúc được SDK Manager tải thành tệp ZIP hỏng trên runner GitHub.
