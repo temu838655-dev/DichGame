@@ -155,4 +155,8 @@ Mã nguồn nền tảng dữ liệu độc lập với giao diện Android nằ
 
 Chạy kiểm thử: `python -m unittest discover -s knowledge_base/tests -v`.
 
-Các tính năng fuzzy matching, sửa OCR theo ngữ cảnh, điều phối AI, đồng bộ máy chủ và kiểm duyệt cộng đồng vẫn là các giai đoạn tiếp theo; không được xem là đã hoàn thành chỉ vì đã có schema dữ liệu.
+Đã có fuzzy matching và sửa OCR ở mức cơ bản, có giới hạn ứng viên và kiểm thử. Điều phối AI, đồng bộ máy chủ và kiểm duyệt cộng đồng vẫn là các giai đoạn tiếp theo; không được xem là đã hoàn thành chỉ vì đã có schema dữ liệu.
+
+- Bộ tra cứu offline: sửa OCR bằng từ điển game có ngưỡng tin cậy, exact/context match và fuzzy matching trên tập ứng viên FTS5 có giới hạn.
+- RapidFuzz được dùng nếu cài đặt; có fallback `difflib` không cần thư viện ngoài. Xem [knowledge_base/MATCHING.md](knowledge_base/MATCHING.md).
+
