@@ -25,7 +25,8 @@ Feed UTF-8 JSON có cấu trúc:
   "entries": [{
     "game_id": "publisher-or-catalog-id",
     "title": "Game title",
-    "platform": "PC",
+    "source_platform": "PC",
+    "target_platforms": ["PS5", "PS4", "XBOX"],
     "region": "Global",
     "edition": "Standard",
     "game_version": "1.2.3",
@@ -41,7 +42,7 @@ Feed UTF-8 JSON có cấu trúc:
 }
 ```
 
-Trường `platform` trong feed là **nền tảng của bản Việt hóa nguồn** (ví dụ PC), không phải console mà người chơi đang sử dụng. Một bộ câu dịch đã được phép sử dụng có thể phục vụ cả PS5, PS4 và Xbox. `download_permitted` chỉ được bật nếu registry của nguồn cũng cho phép tải nội dung.
+Trường `source_platform` ghi **nền tảng của bản Việt hóa nguồn** (ví dụ PC/Steam); `target_platforms` ghi các console được phép sử dụng dữ liệu đó. Nếu bỏ qua `target_platforms`, mặc định dữ liệu được khai báo phục vụ PS5, PS4 và Xbox. Bộ lọc console chỉ kiểm tra danh sách đích, không loại dữ liệu chỉ vì nguồn là PC/Steam. Trường `platform` cũ vẫn được chấp nhận như bí danh tương thích ngược. `download_permitted` chỉ được bật nếu registry của nguồn cũng cho phép tải nội dung.
 
 ## Chạy
 
