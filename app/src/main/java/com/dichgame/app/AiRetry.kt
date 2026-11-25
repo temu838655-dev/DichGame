@@ -190,7 +190,7 @@ object AiRetry {
     }
 
     /** Câu báo cho người dùng khi một câu phải dịch bằng dịch máy vì AI lỗi. [coolMs]: còn bao lâu nữa mới thử lại AI. */
-    fun explain(kind: Kind, code: Int, coolMs: Long): String = when (kind) {
+    fun explain(kind: Kind, code: Int, coolMs: Long, detail: String? = null): String = when (kind) {
         Kind.QUOTA ->
             "Nhà cung cấp AI báo hết lượt hoặc đã chạm hạn mức sử dụng; các khóa cùng dự án hoặc tài khoản có thể dùng chung hạn mức." +
                 if (coolMs > 0) " Tạm dịch bằng dịch máy khoảng ${humanWait(coolMs)} rồi thử lại AI." else " Câu này tạm dịch bằng dịch máy."
