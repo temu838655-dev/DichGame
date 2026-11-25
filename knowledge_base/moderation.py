@@ -96,13 +96,22 @@ class CommunityModeration:
 
         with self.kb.transaction() as db:
             row = db.execute(
-                "SELECT translation_status FROM translations WHERE translation_id=?",
+                """SELECT t.translation_status,
+                          EXISTS(
+                              SELECT 1 FROM translation_reports r
+                              WHERE r.translation_id=t.translation_id AND r.status='OPEN'
+                          ) AS has_open_reports
+                   FROM translations t WHERE t.translation_id=?""",
                 (translation_id,),
             ).fetchone()
             if row is None:
                 raise ValueError("translation does not exist")
-            if row["translation_status"] not in {"COMMUNITY", "AI_UNVERIFIED", "AI_REVIEWED"}:
-                raise ValueError("Only pending or reviewable translations can be moderated")
+            allowed = {"COMMUNITY", "AI_UNVERIFIED", "AI_REVIEWED"}
+            # A previously verified entry may be reconsidered only after a player report.
+            if row["translation_status"] not in allowed and not (
+                row["translation_status"] == "VERIFIED" and row["has_open_reports"]
+            ):
+                raise ValueError("Only pending translations or reported verified translations can be moderated")
             cursor = db.execute(
                 """INSERT INTO translation_reviews(
                        translation_id, reviewer_id, decision, note
