@@ -47,6 +47,13 @@ class AiRetryTest {
         assertTrue(message.contains("INVALID_ARGUMENT"))
     }
 
+    @Test fun ttsEndpointFallbackDoesNotHideInvalidApiKey() {
+        assertTrue(AiRetry.shouldFallbackTtsEndpoint(404, """{"error":{"message":"Interactions endpoint not found"}}"""))
+        assertTrue(AiRetry.shouldFallbackTtsEndpoint(400, """{"error":{"message":"Unknown field response_format in Interactions request"}}"""))
+        assertFalse(AiRetry.shouldFallbackTtsEndpoint(400, """{"error":{"message":"API key not valid"}}"""))
+        assertFalse(AiRetry.shouldFallbackTtsEndpoint(403, """{"error":{"message":"permission denied"}}"""))
+    }
+
     @Test fun classifiesErrors() {
         assertEquals(AiRetry.Kind.QUOTA, AiRetry.kindOf(ex(429)))
         assertEquals(AiRetry.Kind.BILLING, AiRetry.kindOf(AiException(429, "insufficient_quota", billingLimit = true)))
