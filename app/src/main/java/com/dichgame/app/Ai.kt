@@ -21,7 +21,7 @@ object Ai {
     /** Fingerprint request scope and active credentials without retaining secrets in the map key. */
     private fun translationRequestKey(p: Prefs, prompt: String): String {
         val providerScope = when {
-            p.aiAuto -> "auto|gemini:${p.geminiModel}|cloud:${cloudEndpoint(p.cloudUrl)}|${p.cloudModel}"
+            p.aiAuto -> "auto|fallback:${p.autoCloudFallback}|gemini:${p.geminiModel}|cloud:${cloudEndpoint(p.cloudUrl)}|${p.cloudModel}"
             p.engine == Prefs.ENGINE_GEMINI -> "gemini|${p.geminiModel}"
             p.engine == Prefs.ENGINE_CLOUD -> "cloud|${cloudEndpoint(p.cloudUrl)}|${p.cloudModel}"
             else -> p.engine
