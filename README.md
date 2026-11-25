@@ -165,3 +165,8 @@ Chạy kiểm thử: `python -m unittest discover -s knowledge_base/tests -v`.
 - Bộ tra cứu offline: sửa OCR bằng từ điển game có ngưỡng tin cậy, exact/context match và fuzzy matching trên tập ứng viên FTS5 có giới hạn.
 - RapidFuzz được dùng nếu cài đặt; có fallback `difflib` không cần thư viện ngoài. Xem [knowledge_base/MATCHING.md](knowledge_base/MATCHING.md).
 
+
+
+## Sao lưu và bảo vệ thông tin đăng nhập
+
+Khóa API, mã ghép TV và token nhận phụ đề được lưu mã hóa bằng Android Keystore trên thiết bị. Tệp SharedPreferences cũ `dg.xml` có thể còn chứa thông tin đăng nhập dạng rõ trước khi ứng dụng chạy lần đầu để tự di chuyển dữ liệu; Android Backup Rules chỉ lọc được theo tệp, không lọc riêng từng khóa. Vì vậy `dg.xml` bị loại khỏi cloud backup và device-to-device transfer. **Cài đặt ứng dụng trong tệp này không tự khôi phục từ bản sao lưu Android**; dữ liệu cục bộ trên thiết bị hiện tại không bị xóa. Người dùng cần ghi nhớ cấu hình quan trọng trước khi chuyển máy/cài lại.
