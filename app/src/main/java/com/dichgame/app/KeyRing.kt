@@ -20,6 +20,8 @@ object KeyRing {
     private val until = HashMap<String, Long>()
     private val bad = HashMap<String, Long>()
     private val current = HashMap<String, String>()
+    /** Provider/model-wide billing cap shared by every key in the same scope. */
+    private val billingUntil = HashMap<String, Long>()
     /** Keys leased to in-flight requests, independently per provider/model scope. */
     private val inFlight = HashMap<String, MutableSet<String>>()
 
@@ -33,6 +35,8 @@ object KeyRing {
     @Synchronized fun status(key: String, scope: String, now: Long = System.currentTimeMillis()): Status {
         val b = (bad[key] ?: 0L) - now
         if (b > 0) return Status(State.BAD, b, false)
+        val billing = (billingUntil[scope] ?: 0L) - now
+        if (billing > 0) return Status(State.QUOTA, billing, false)
         val q = (until[id(key, scope)] ?: 0L) - now
         if (q > 0) return Status(State.QUOTA, q, false)
         return Status(State.OK, 0L, current[scope] == key)
@@ -92,6 +96,15 @@ object KeyRing {
         if (t > (until[id(key, scope)] ?: 0L)) until[id(key, scope)] = t
     }
 
+    /** Billing/spend caps apply to every key in the same provider/model scope. */
+    @Synchronized fun blockBilling(scope: String, ms: Long, now: Long = System.currentTimeMillis()) {
+        val t = now + ms
+        if (t > (billingUntil[scope] ?: 0L)) billingUntil[scope] = t
+    }
+
+    @Synchronized fun billingWaitMs(scope: String, now: Long = System.currentTimeMillis()): Long =
+        ((billingUntil[scope] ?: 0L) - now).coerceAtLeast(0L)
+
     /** Khóa sai (hoặc bị thu hồi): bỏ qua một lúc ở mọi model. */
     @Synchronized fun blockBad(key: String, now: Long = System.currentTimeMillis()) { bad[key] = now + BAD_MS }
 
@@ -101,7 +114,7 @@ object KeyRing {
         until.keys.removeAll { it.endsWith("|$key") }
     }
 
-    @Synchronized fun reset() { until.clear(); bad.clear(); current.clear(); inFlight.clear() }
+    @Synchronized fun reset() { until.clear(); bad.clear(); current.clear(); inFlight.clear(); billingUntil.clear() }
 
     /**
      * Mọi khóa đều đang nghỉ: còn bao lâu nữa khóa sớm nhất dùng lại được (mili giây). 0 nếu có khóa dùng được ngay;
@@ -175,7 +188,7 @@ object KeyRing {
      */
     fun report(key: String, scope: String, e: AiException, now: Long = System.currentTimeMillis()): Boolean = when {
         e.badKey -> { blockBad(key, now); true }
-        e.billingLimit -> { blockQuota(key, scope, maxOf(60 * 60_000L, e.retryAfterMs), now); true }
+        e.billingLimit -> { blockBilling(scope, maxOf(60 * 60_000L, e.retryAfterMs), now); true }
         e.code == 429 -> { blockQuota(key, scope, quotaBlockMs(e.retryAfterMs, e.perDay, now), now); true }
         else -> false
     }
