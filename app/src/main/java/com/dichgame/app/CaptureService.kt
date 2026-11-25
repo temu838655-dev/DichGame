@@ -202,10 +202,13 @@ class CaptureService : Service() {
         if (!cloudBusy.compareAndSet(false, true)) return
         cloudRefresh.execute {
             try {
+                val epoch = PackStore.autoCloudEpoch(applicationContext, profile, game) ?: return@execute
                 val source = PackStore.cloudInfo(applicationContext, profile, game)?.source
                     ?: p.packCatalogUrl.takeIf { it.isNotBlank() }?.let { PackStore.catalogSource(it, game) }
                 if (source != null && p.autoPackRefresh && !Thread.currentThread().isInterrupted) {
-                    PackStore.importLink(applicationContext, p, source, profile, game)
+                    PackStore.importLink(applicationContext, p, source, profile, game, autoEpoch = epoch) {
+                        p.autoPackRefresh && !Thread.currentThread().isInterrupted
+                    }
                 }
             } catch (_: Exception) {
                 // Keep the existing offline pack on network or validation failure.
