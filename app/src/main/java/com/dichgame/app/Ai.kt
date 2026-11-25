@@ -89,7 +89,7 @@ object Ai {
         return if (b.endsWith("/chat/completions")) b else "$b/chat/completions"
     }
 
-    internal fun post(url: String, body: JSONObject, headers: Map<String, String>): String {
+    internal fun post(url: String, body: JSONObject, headers: Map<String, String>, metric: String = "api_dich_gemini"): String {
         val c = URL(url).openConnection() as HttpURLConnection
         try {
             c.requestMethod = "POST"
@@ -98,6 +98,7 @@ object Ai {
             c.doOutput = true
             c.setRequestProperty("Content-Type", "application/json")
             for ((k, v) in headers) c.setRequestProperty(k, v)
+            SessionStats.live.inc(metric)
             c.outputStream.use { it.write(body.toString().toByteArray()) }
             val code = c.responseCode
             val txt = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
@@ -105,6 +106,15 @@ object Ai {
                 code, txt.take(200), AiRetry.retryDelayMs(c.getHeaderField("Retry-After"), txt),
                 perDay = code == 429 && KeyRing.isDailyQuota(txt), badKey = KeyRing.isBadKey(code, txt),
             )
+            runCatching {
+                val json = JSONObject(txt)
+                val usage = json.optJSONObject("usageMetadata") ?: json.optJSONObject("usage")
+                if (usage != null) {
+                    val input = usage.optLong("promptTokenCount", usage.optLong("prompt_tokens", -1))
+                    val output = usage.optLong("candidatesTokenCount", usage.optLong("completion_tokens", -1))
+                    SessionStats.live.recordTokens(metric, input, output)
+                }
+            }
             return txt
         } finally {
             c.disconnect()
@@ -162,7 +172,7 @@ object Ai {
             val body = JSONObject()
                 .put("model", p.cloudModel)
                 .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
-            val r = post(cloudEndpoint(p.cloudUrl), body, mapOf("Authorization" to "Bearer " + p.cloudKey))
+            val r = post(cloudEndpoint(p.cloudUrl), body, mapOf("Authorization" to "Bearer " + p.cloudKey), metric = "api_dich_cloud")
             JSONObject(r).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
         } else {
             val url = "https://generativelanguage.googleapis.com/v1beta/models/${p.geminiModel}:generateContent"

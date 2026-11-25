@@ -21,6 +21,13 @@ class SessionStats {
 
     @Synchronized fun get(key: String): Long = counts[key] ?: 0L
 
+    @Synchronized fun recordTokens(metric: String, input: Long, output: Long) {
+        if (input < 0 || output < 0) return
+        inc(metric + "_usage")
+        inc(metric + "_input", input)
+        inc(metric + "_output", output)
+    }
+
     /** Độ trễ (ms) từ lúc câu xuất hiện (chữ hiện trên màn hình, hoặc nhân vật nói xong) tới lúc bản dịch được hiện. */
     @Synchronized fun latency(ms: Long) {
         if (ms < 0 || ms > 120_000) return
@@ -69,6 +76,14 @@ class SessionStats {
         sb.append("; ghép với chữ đọc dở: ${get("ghep")}\n")
         sb.append("Dịch: AI ${get("dich_ai")}, bộ nhớ đệm ${get("dich_cache")}, gói Việt hoá ${get("dich_goi")}" + (if (get("dich_goi_gan") > 0) " (trong đó ${get("dich_goi_gan")} khớp gần đúng)" else "") + ", dịch trên máy ${get("dich_may")}")
         sb.append("; AI bị loại rồi dịch lại ${get("dich_loai")}; còn nghi ngờ ${get("dich_nghi")}\n")
+        val gemini = get("api_dich_gemini")
+        val cloud = get("api_dich_cloud")
+        val voice = get("api_giong_gemini")
+        sb.append("Lượt thử gửi API: dịch Gemini $gemini, dịch CloudAPI $cloud, giọng Gemini $voice (gồm thử lại; không phải số lượt tính phí).\n")
+        for ((metric, label) in listOf("api_dich_gemini" to "Gemini dịch", "api_dich_cloud" to "CloudAPI dịch", "api_giong_gemini" to "Gemini giọng")) {
+            val measured = get(metric + "_usage")
+            if (measured > 0) sb.append("Token $label: vào ${get(metric + "_input")}, ra ${get(metric + "_output")} ($measured phản hồi có số liệu).\n")
+        }
         if (get("khoa_doi") > 0) sb.append("Đổi khóa Gemini tự động: ${get("khoa_doi")} lần\n")
         val why = machineReasons()
         if (why.isNotEmpty()) sb.append("Dịch trên máy vì AI không dùng được: ").append(why).append('\n')

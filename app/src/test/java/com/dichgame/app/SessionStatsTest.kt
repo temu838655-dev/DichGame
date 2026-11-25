@@ -6,6 +6,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SessionStatsTest {
+    @Test fun apiAttemptsAndReportedTokensAreSeparate() {
+        val s = SessionStats()
+        s.reset(1, 50)
+        s.inc("api_dich_gemini", 3)
+        s.inc("api_dich_cloud")
+        s.inc("api_giong_gemini", 2)
+        s.recordTokens("api_dich_gemini", 100, 20)
+        s.recordTokens("api_dich_gemini", 50, 10)
+        s.recordTokens("api_dich_gemini", -1, 10)
+        val r = s.report(1000, 50)
+        assertTrue(r, r.contains("dịch Gemini 3, dịch CloudAPI 1, giọng Gemini 2"))
+        assertTrue(r, r.contains("Token Gemini dịch: vào 150, ra 30 (2 phản hồi có số liệu)"))
+        assertEquals(0L, s.get("api_dich_cloud_usage"))
+        s.reset(2000, 50)
+        assertEquals(0L, s.get("api_dich_gemini_input"))
+    }
+
     @Test fun countsAndPercentiles() {
         val s = SessionStats()
         s.reset(1_000, 80)
