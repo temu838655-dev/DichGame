@@ -1,10 +1,12 @@
-# Danh mục gói Cloud theo nền tảng (Android)
+# Danh mục dữ liệu Việt hóa dùng chung cho PS5, PS4 và Xbox
 
-Ứng dụng Android tự kiểm tra danh mục HTTPS khi bật **Tự kiểm tra kho Cloud**. Danh mục chỉ trỏ tới manifest của gói; manifest lại trỏ tới CSV có SHA-256. Không nhúng hoặc sao chép bản vá của cộng đồng.
+DịchGame chỉ hỗ trợ **dịch phụ đề khi chơi trên PS5, PS4 và Xbox**. Nền tảng ghi trong metadata của một bản Việt hóa là **nơi xuất phát của dữ liệu tham khảo**, không phải nền tảng đích của DịchGame.
 
-## Schema 2 (khuyến nghị)
+Ví dụ: game có bản Việt hóa PC được cấp phép trích xuất cặp câu gốc–tiếng Việt. DịchGame có thể dùng bộ câu đó để tra phụ đề OCR khi người chơi đang chơi cùng game trên PS5, PS4 hoặc Xbox. Không cần có patch riêng cho console.
 
-Mỗi entry phải khai báo nền tảng cụ thể. DịchGame chỉ chọn entry khớp **tên game + nền tảng**; không dùng gói PC làm dự phòng cho PS5, PS4, Xbox hoặc Switch.
+## Danh mục game (schema 2)
+
+Mỗi game có một bộ dữ liệu hợp nhất, có thể được tổng hợp từ nhiều nguồn hợp lệ. `source_platform` chỉ ghi nguồn gốc dữ liệu (ví dụ PC); ứng dụng không lọc gói theo nền tảng console đang chơi.
 
 ```json
 {
@@ -12,19 +14,14 @@ Mỗi entry phải khai báo nền tảng cụ thể. DịchGame chỉ chọn en
   "games": [
     {
       "game": "Example Game",
-      "platform": "PC",
-      "manifest": "https://packs.example.org/example-pc.dichgame.json"
-    },
-    {
-      "game": "Example Game",
-      "platform": "PS5",
-      "manifest": "https://packs.example.org/example-ps5.dichgame.json"
+      "source_platform": "PC",
+      "manifest": "https://packs.example.org/example.dichgame.json"
     }
   ]
 }
 ```
 
-Giá trị platform hợp lệ: `PC`, `STEAM`, `PS5`, `PS4`, `XBOX`, `SWITCH`, `ANDROID`, `IOS`. Không khai báo hai entry trùng tên game và nền tảng.
+Mỗi game chỉ có một manifest trong danh mục. Nếu có nhiều bản Việt hóa/nguồn, hãy hợp nhất các câu dịch vào một bộ dữ liệu đã kiểm tra trùng lặp, nguồn gốc và quyền sử dụng. Không tạo nhiều entry trùng game gây mơ hồ.
 
 ## Manifest gói
 
@@ -33,7 +30,7 @@ Giá trị platform hợp lệ: `PC`, `STEAM`, `PS5`, `PS4`, `XBOX`, `SWITCH`, `
   "schema": 1,
   "game": "Example Game",
   "version": 3,
-  "url": "https://packs.example.org/example-ps5.csv",
+  "url": "https://packs.example.org/example.csv",
   "bytes": 12345,
   "sha256": "64-lowercase-hex-characters"
 }
@@ -41,14 +38,20 @@ Giá trị platform hợp lệ: `PC`, `STEAM`, `PS5`, `PS4`, `XBOX`, `SWITCH`, `
 
 CSV phải có tiêu đề `source,vi,game`. Ứng dụng kiểm tra game, kích thước và SHA-256 trước khi nhập. Phiên bản thấp hơn hoặc cùng phiên bản nhưng hash khác bị từ chối; dữ liệu offline hiện có được giữ nguyên. Bản người chơi tự sửa luôn được ưu tiên hơn bản Cloud.
 
-## Schema 1 cũ
+## Luồng dịch trên console
 
-Schema 1 không có trường `platform` chỉ được đọc khi gọi tra cứu không kèm nền tảng (chế độ tương thích cũ). Tự động cập nhật trong phiên chơi luôn truyền nền tảng đã chọn, vì vậy entry schema 1 không có platform sẽ không được tự động chọn. Hãy nâng danh mục lên schema 2.
+1. Người chơi chọn game và console đích: PS5, PS4 hoặc Xbox.
+2. DịchGame tìm một bộ dữ liệu theo game, không theo console.
+3. Dữ liệu có thể đến từ bản Việt hóa PC, phụ đề cộng đồng hoặc đóng góp được phép sử dụng; giữ lại nguồn, tác giả, giấy phép và phiên bản.
+4. OCR đọc phụ đề từ luồng hình ảnh console, chuẩn hóa và chờ câu ổn định.
+5. Tra câu gốc trong bộ dữ liệu chung và bộ nhớ theo game/ngữ cảnh.
+6. Chỉ khi không tìm thấy mới gọi AI; kết quả AI được lưu ở trạng thái chưa xác minh để tái sử dụng.
 
 ## Quyền và an toàn
 
-- Chỉ đưa vào danh mục các gói mà chủ nguồn cho phép phân phối/đồng bộ theo điều khoản của họ.
+- Chỉ nhập/trích xuất hoặc đồng bộ nội dung khi chủ nguồn cho phép; metadata công khai không đồng nghĩa với quyền sao chép bản dịch.
 - HTTPS bắt buộc; dùng link trực tiếp tới manifest `.dichgame.json`.
-- Ghi rõ nguồn, tác giả, giấy phép và phiên bản trong hồ sơ phát hành của bạn.
-- Link trang web cộng đồng như The Red Team vẫn là link-only cho tới khi có API hoặc quyền tích hợp bằng văn bản; ứng dụng không scrape, không mirror và không tự tải patch từ các trang đó.
-- Chọn đúng phiên bản game, vùng, edition và platform trước khi phát hành. Hash bảo vệ tính toàn vẹn file, không tự chứng minh quyền phân phối.
+- Ghi rõ nguồn, tác giả, giấy phép và phiên bản trong hồ sơ phát hành.
+- Link trang cộng đồng như The Red Team vẫn là link-only cho tới khi có API hoặc quyền tích hợp được xác nhận; ứng dụng không scrape, không mirror và không tự tải patch từ các trang đó.
+- Nếu dữ liệu đến từ bản PC, ghi rõ build/phiên bản PC gốc và trạng thái kiểm tra câu dịch. Hash xác minh tính toàn vẹn file, không tự chứng minh quyền phân phối.
+- DịchGame không cài patch PC vào PS5/PS4/Xbox và không sửa file game console; app chỉ tra cứu/dịch phụ đề qua luồng capture/Remote Play/overlay phù hợp.
