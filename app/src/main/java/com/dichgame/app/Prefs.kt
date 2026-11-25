@@ -375,10 +375,12 @@ class Prefs(ctx: Context) {
     private fun chooseAiVoice(speaker: String?, sentence: String, ignoreManual: Boolean): String {
         if (!characterVoices) return aiVoice
         val cards = PackStore.cast(this)
-        val card = Cast.byName(speaker, cards) ?: Cast.speakerOf(sentence, cards)
-        val name = speaker?.takeIf { it.isNotBlank() && !isIgnoredSpeaker(it) }
-            ?: card?.names?.firstOrNull()?.takeIf { !isIgnoredSpeaker(it) }
-            ?: activeSpeaker.takeIf { it.isNotBlank() } ?: return aiVoice
+        val explicit = speaker?.takeIf { it.isNotBlank() && !isIgnoredSpeaker(it) }
+        val inferred = if (explicit == null) Cast.speakerOf(sentence, cards) else null
+        val name = explicit
+            ?: inferred?.names?.firstOrNull()?.takeIf { !isIgnoredSpeaker(it) }
+            ?: activeSpeaker.takeIf { it.isNotBlank() && !isIgnoredSpeaker(it) } ?: return aiVoice
+        val card = Cast.byName(name, cards)
         if (!ignoreManual) effectiveManualVoice(name)?.let { return it }
         val desc = card?.desc.orEmpty().lowercase(java.util.Locale.ROOT)
         val requested = Regex("giọng\\s*[:=]\\s*([^;,]+)", RegexOption.IGNORE_CASE)

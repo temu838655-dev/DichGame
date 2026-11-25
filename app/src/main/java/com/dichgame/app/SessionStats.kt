@@ -10,11 +10,23 @@ import java.util.Locale
 class SessionStats {
     private val counts = HashMap<String, Long>()
     private val latencies = ArrayList<Long>()
+    private val ocrTimes = HashMap<Boolean, ArrayList<Long>>()
+    @Synchronized fun ocrLatency(cloud: Boolean, ms: Long) {
+        if (ms !in 0..120_000L) return
+        val samples = ocrTimes.getOrPut(cloud) { ArrayList() }
+        if (samples.size >= 2000) samples.removeAt(0)
+        samples.add(ms)
+    }
+    @Synchronized fun ocrPercentile(cloud: Boolean, p: Int): Long {
+        val sorted = ocrTimes[cloud]?.sorted().orEmpty()
+        if (sorted.isEmpty()) return -1
+        return sorted[(sorted.lastIndex * p.coerceIn(0, 100) / 100)]
+    }
     private var startAt = 0L
     private var startBattery = -1
 
     @Synchronized fun reset(nowMs: Long, batteryPct: Int) {
-        counts.clear(); latencies.clear(); startAt = nowMs; startBattery = batteryPct
+        counts.clear(); latencies.clear(); ocrTimes.clear(); startAt = nowMs; startBattery = batteryPct
     }
 
     @Synchronized fun inc(key: String, n: Long = 1) { counts[key] = (counts[key] ?: 0L) + n }
@@ -63,6 +75,10 @@ class SessionStats {
             sb.append("Quét màn hình: $scans lần, bỏ qua ${skipped} lần vì khung hình đứng yên (${skipped * 100 / scans}%)\n")
         }
         sb.append("Chữ đọc được: ${get("ocr_cau")} câu; loại vì chữ rác hoặc độ tin cậy thấp: ${get("ocr_rac")}\n")
+        for (cloudOcr in listOf(false, true)) {
+            val count = ocrTimes[cloudOcr]?.size ?: 0
+            if (count > 0) sb.append("OCR ${if (cloudOcr) "Cloud" else "offline"} ($count mẫu gần nhất): p50 ${ocrPercentile(cloudOcr, 50)} ms, p90 ${ocrPercentile(cloudOcr, 90)} ms\n")
+        }
         val src = when {
             get("nguon_he_thong") > 0 && get("nguon_mic") > 0 -> "âm thanh trong của máy, sau đó micro"
             get("nguon_he_thong") > 0 -> "âm thanh trong của máy"
@@ -76,6 +92,7 @@ class SessionStats {
         sb.append("; ghép với chữ đọc dở: ${get("ghep")}\n")
         sb.append("Dịch: AI ${get("dich_ai")}, bộ nhớ đệm ${get("dich_cache")}, gói Việt hoá ${get("dich_goi")}" + (if (get("dich_goi_gan") > 0) " (trong đó ${get("dich_goi_gan")} khớp gần đúng)" else "") + ", dịch trên máy ${get("dich_may")}")
         sb.append("; AI bị loại rồi dịch lại ${get("dich_loai")}; còn nghi ngờ ${get("dich_nghi")}\n")
+        sb.append("Giọng đọc: cache RAM ${get("giong_cache_ram")}, cache đĩa ${get("giong_cache_disk")}, thử tổng hợp offline ${get("giong_offline_synth")} lần.\n")
         val gemini = get("api_dich_gemini")
         val cloud = get("api_dich_cloud")
         val voice = get("api_giong_gemini")
