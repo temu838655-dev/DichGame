@@ -230,10 +230,10 @@ def export_android_csv(
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8-sig", newline="") as stream:
-        writer = csv.writer(stream, lineterminator="\\r\\n")
+        writer = csv.writer(stream)
         writer.writerow(["source", "vi", "game"])
         for row in rows:
-            source = str(row["source_text"]).replace("\\r", " ").replace("\\n", " ").replace("\\t", " ")
+            source = str(row["source_text"]).replace(chr(13), " ").replace(chr(10), " ").replace(chr(9), " ")
             translated = str(row["translated_text"]).replace("\\r", " ").replace("\\n", " ").replace("\\t", " ")
             writer.writerow([source, translated, str(game["game_name"])])
     return path
