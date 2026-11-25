@@ -132,7 +132,7 @@ object Ai {
         if (keys.isEmpty()) throw AiException(401, "Chưa có khóa Gemini", badKey = true)
         var last: AiException? = null
         while (true) {
-            val k = KeyRing.pick(keys, scope) ?: break
+            val k = KeyRing.acquire(keys, scope) ?: break
             try {
                 val r = call(k)
                 if (KeyRing.success(k, scope)) SessionStats.live.inc("khoa_doi")
@@ -140,9 +140,14 @@ object Ai {
             } catch (e: AiException) {
                 last = e
                 if (!KeyRing.report(k, scope, e)) throw e
+            } finally {
+                KeyRing.release(k, scope)
             }
         }
         if (KeyRing.allBad(keys)) throw last ?: AiException(401, "Mọi khóa Gemini đều sai hoặc bị thu hồi", badKey = true)
+        if (KeyRing.hasInFlight(keys, scope)) {
+            throw AiException(503, "Các khóa API đang được request khác sử dụng; thử lại sau.", retryAfterMs = 500L)
+        }
         throw AiException(429, "Mọi khóa Gemini đều hết lượt", KeyRing.waitMs(keys, scope), perDay = last?.perDay == true)
     }
 
