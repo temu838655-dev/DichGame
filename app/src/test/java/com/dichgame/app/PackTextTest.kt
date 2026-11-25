@@ -127,6 +127,28 @@ class PackTextTest {
         assertTrue(runCatching { PackText.parseScopedCsv(empty) }.isFailure)
     }
 
+    @Test fun verifiedKnowledgeImportPreservesExistingPlayerCorrection() {
+        val existing = listOf(
+            "Quest complete" to "Nhiệm vụ đã xong (bản sửa tay)",
+            "Old line" to "Dòng cũ"
+        )
+        val verified = listOf(
+            "Quest complete" to "Hoàn thành nhiệm vụ",
+            "New line" to "Dòng mới"
+        )
+        val merged = TranslationLineMerge.merge(existing, verified, preserveExisting = true)
+        assertEquals("Nhiệm vụ đã xong (bản sửa tay)", merged.first { it.first == "Quest complete" }.second)
+        assertEquals("Dòng mới", merged.first { it.first == "New line" }.second)
+        assertEquals(3, merged.size)
+    }
+
+    @Test fun normalPackImportCanStillReplaceExistingTranslation() {
+        val existing = listOf("Quest complete" to "Bản cũ")
+        val incoming = listOf("Quest complete" to "Bản mới")
+        val merged = TranslationLineMerge.merge(existing, incoming, preserveExisting = false)
+        assertEquals("Bản mới", merged.single().second)
+    }
+
     @Test fun importedLinesWorkInTransMemory() {
         val p = PackText.parseAny("""{"original":"YOU DIED","vi":"BẠN ĐÃ CHẾT"}""".let { "[$it]" })
         val tm = TransMemory(p.lines)
