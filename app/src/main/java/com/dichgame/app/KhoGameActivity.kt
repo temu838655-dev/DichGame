@@ -21,7 +21,7 @@ import android.widget.TextView
 import android.widget.Toast
 
 /**
- * Kho game Việt hoá: chọn game đang chơi, lọc theo nền tảng (PS5, PS4, Xbox, PC, Steam, Switch), xem gói Việt hoá của game
+ * Kho game Việt hoá: chọn game đang chơi trên PS5, PS4 hoặc Xbox, xem gói Việt hoá của game
  * (thuật ngữ, nhân vật, câu thông báo chuẩn) và cách chơi trên từng nền tảng. Chọn một game sẽ chuyển sang (hoặc tạo) hồ sơ riêng
  * tên game đó, nhớ khung phụ đề riêng, và gói Việt hoá của game được áp dụng khi dịch.
  */
@@ -36,6 +36,7 @@ class KhoGameActivity : Activity() {
     private lateinit var statusRow: LinearLayout
     private var status = 0 // 0 tất cả, 1 có gói Việt hoá riêng, 2 dịch AI theo thể loại
     private val vietMemo = HashMap<String, Boolean>()
+    private val consolePlatforms = listOf(Plat.PS5, Plat.PS4, Plat.XBOX)
 
     /** Game có gói Việt hoá riêng không (nhớ kết quả vì tra khá nặng). */
     private fun isViet(name: String): Boolean = vietMemo.getOrPut(name) { VietHoa.hasSpecific(name) }
@@ -49,7 +50,7 @@ class KhoGameActivity : Activity() {
             intent.getStringExtra("plat")?.let { k -> plat = Plat.values().firstOrNull { it.name.equals(k, true) }; tab = 1 }
         }
         screen("Kho game Việt hoá") {
-            put(Ui.tv(this@KhoGameActivity, "Chọn game để áp dụng đúng thuật ngữ, thẻ nhân vật và bộ nhớ dịch theo game. Mỗi game có hồ sơ riêng; câu AI mới vẫn cần kiểm tra chất lượng.", 13f, Ui.SUB), 0, 10)
+            put(Ui.tv(this@KhoGameActivity, "DịchGame hỗ trợ PS5, PS4 và Xbox. Có thể dùng dữ liệu câu dịch từ bản Việt hóa PC làm nguồn tham khảo chung cho cùng game; không cần bản patch riêng cho console.", 13f, Ui.SUB), 0, 10)
             val search = Ui.field(this@KhoGameActivity, "Tìm game", "")
             search.addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) { query = s?.toString().orEmpty().trim(); fill() }
@@ -84,7 +85,7 @@ class KhoGameActivity : Activity() {
 
     private fun drawChips() {
         chips.removeAllViews()
-        val all = listOf<Plat?>(null) + Plat.values().toList()
+        val all = listOf<Plat?>(null) + consolePlatforms
         for (pl in all) {
             val on = pl == plat
             chips.addView(TextView(this).apply {
@@ -146,7 +147,7 @@ class KhoGameActivity : Activity() {
     }
 
     private fun platLine(name: String): String {
-        val ps = Catalog.platformsOf(name)
+        val ps = Catalog.platformsOf(name).intersect(consolePlatforms.toSet())
         val s = if (ps.isEmpty()) "" else ps.joinToString(" · ") { it.label }
         return s
     }
@@ -208,7 +209,7 @@ class KhoGameActivity : Activity() {
             addView(c, Ui.lpm(this@KhoGameActivity, 12, 0))
             val defaultPlatform = ps.firstOrNull() ?: Plat.PS5
             var selectedPlatform = if (PackStore.gameName(p).equals(name, ignoreCase = true))
-                Plat.values().firstOrNull { it.name == p.selectedPlatform && (ps.isEmpty() || it in ps) } ?: defaultPlatform
+                consolePlatforms.firstOrNull { it.name == p.selectedPlatform && (ps.isEmpty() || it in ps) } ?: defaultPlatform
             else defaultPlatform
             // File Việt hoá tải về: áp vào game này để khi chơi hiện đúng câu trong file
             val mine = PackStore.lineCount(this@KhoGameActivity, name)
@@ -257,7 +258,7 @@ class KhoGameActivity : Activity() {
             val hs = HorizontalScrollView(this@KhoGameActivity).apply { isHorizontalScrollBarEnabled = false; addView(pr) }
             fun drawPlat(sel: Plat) {
                 pr.removeAllViews()
-                for (x in Plat.values()) {
+                for (x in consolePlatforms) {
                     val on = x == sel
                     pr.addView(TextView(this@KhoGameActivity).apply {
                         text = x.label; textSize = 13f; gravity = Gravity.CENTER
@@ -312,7 +313,7 @@ class KhoGameActivity : Activity() {
         if (p.profiles.contains(name)) p.profile = name else p.addProfile(name)
         p.game = if (g.isEmpty()) name else "$name, $g"
         p.selectedGameTitle = name
-        p.selectedPlatform = platform?.name ?: Plat.values().firstOrNull { it in Catalog.platformsOf(name) }?.name ?: "PS5"
+        p.selectedPlatform = platform?.name ?: consolePlatforms.firstOrNull { it in Catalog.platformsOf(name) }?.name ?: "PS5"
         p.addPlayed(name)
     }
 
