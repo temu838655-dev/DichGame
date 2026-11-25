@@ -4,6 +4,16 @@ import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 
+internal fun aiSpeechTestErrorText(e: AiException, model: String): String = if (e.billingLimit) {
+    "Tài khoản hoặc dự án AI đã chạm giới hạn thanh toán/chi tiêu cho giọng đọc. Hãy kiểm tra Billing và hạn mức chi tiêu."
+} else when (e.code) {
+    401, 403 -> "Lỗi ${e.code}: khóa Gemini sai hoặc không có quyền dùng giọng AI."
+    404 -> "Lỗi 404: sai tên model giọng AI ($model)."
+    429 -> "Mọi khóa Gemini đang hết lượt giọng AI (429)" +
+        (if (e.retryAfterMs > 0) ", khóa sớm nhất dùng lại sau ${AiRetry.humanWait(e.retryAfterMs)}" else "") + "."
+    else -> "Lỗi ${e.code}: ${e.message.orEmpty()}"
+}
+
 /** Âm thanh thô 16 bit. */
 class Pcm(val data: ByteArray, val rate: Int, val channels: Int)
 
@@ -99,12 +109,7 @@ object AiSpeech {
         val r = synth(p, "Xin chào.", "")
         if (r.data.isEmpty()) "Không nhận được âm thanh." else null
     } catch (e: AiException) {
-        when (e.code) {
-            401, 403 -> "Lỗi ${e.code}: khóa Gemini sai hoặc không có quyền dùng giọng AI."
-            404 -> "Lỗi 404: sai tên model giọng AI (${p.ttsModel})."
-            429 -> "Mọi khóa Gemini đang hết lượt giọng AI (429)" + (if (e.retryAfterMs > 0) ", khóa sớm nhất dùng lại sau ${AiRetry.humanWait(e.retryAfterMs)}" else "") + "."
-            else -> "Lỗi ${e.code}: ${e.message.orEmpty()}"
-        }
+        aiSpeechTestErrorText(e, p.ttsModel)
     } catch (e: Exception) {
         "Không kết nối được: ${e.message.orEmpty()}"
     }
