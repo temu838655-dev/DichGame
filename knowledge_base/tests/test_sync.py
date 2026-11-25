@@ -15,12 +15,12 @@ class SignedPackTests(unittest.TestCase):
         self.target = KnowledgeBase(self.root / "target.db")
         self.source.add_game("pack-game", "Pack Game", "PC")
         self.key = b"test signing key with at least 32 bytes long"
-        source_id = self.source.add_source(
+        self.authorized_source_id = self.source.add_source(
             "Authorized source", "CC-BY-4.0", author_name="Translator",
             attribution="Credit translator",
         )
         self.source.add_translation(
-            "pack-game", "Open inventory", "Mở túi đồ", source_id=source_id,
+            "pack-game", "Open inventory", "Mở túi đồ", source_id=self.authorized_source_id,
             translation_status="VERIFIED",
         )
         self.pack = self.root / "game-pack.json"
@@ -74,7 +74,8 @@ class SignedPackTests(unittest.TestCase):
         )
         with self.source.transaction() as db:
             db.execute(
-                "UPDATE data_sources SET verification_status='VERIFIED' WHERE license_id='CC-BY-4.0'"
+                "UPDATE data_sources SET verification_status='VERIFIED' WHERE source_id=?",
+                (self.authorized_source_id,),
             )
         output = self.root / "android-import.csv"
         export_android_csv(self.source, "pack-game", output)
