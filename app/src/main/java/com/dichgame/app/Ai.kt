@@ -211,8 +211,8 @@ object Ai {
             val r = try {
                 geminiPost(p, url, geminiBody(prompt, safetyAccepted))
             } catch (e: AiException) {
-                if (e.code == 400 && safetyAccepted) {
-                    // 400 cũng là lỗi khi khóa sai: chỉ khi gửi lại KHÔNG có safetySettings mà được thì mới ghi nhớ là model này không nhận
+                if (safetyAccepted && AiRetry.shouldRetryWithoutSafetySettings(e.code, e.message.orEmpty())) {
+                    // Chỉ fallback khi response nêu rõ safetySettings không tương thích; không retry lỗi key/model/request 400 chung chung.
                     val r2 = geminiPost(p, url, geminiBody(prompt, false))
                     safetyAccepted = false
                     r2
