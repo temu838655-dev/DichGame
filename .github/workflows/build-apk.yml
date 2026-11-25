@@ -63,8 +63,10 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      # Release công khai chỉ được ký bằng secrets; keystore trong repo đã bị lộ vì repo là public.
-      # Build PR/manual không phát hành có thể dùng keystore test hiện hữu để kiểm tra tương thích.
+      # Người vận hành đã chấp thuận tạm bỏ qua việc xoay khóa ký để phát hành bản cập nhật.
+      # Nếu thiếu GitHub Secrets, dùng keystore hiện có trong repo; bước xác minh phía dưới
+      # bắt buộc chứng thư SHA-256 và versionCode khớp Release trước, nếu không sẽ dừng phát hành.
+      # Khóa hiện tại đã từng xuất hiện trong lịch sử repo công khai: cần xoay khóa sau đợt chuyển tiếp.
       - name: Kiểm tra và nạp khóa ký
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -91,16 +93,16 @@ jobs:
             echo "CAN_PUBLISH_RELEASE=true" >> "$GITHUB_ENV"
             echo "Đang ký bằng khóa trong GitHub Secrets; kiểm tra tương thích chứng thư sẽ quyết định có phát hành được hay không."
           else
+            test -s keystore/dichgame.jks
             if [ "$IS_PUBLIC_RELEASE" = "true" ]; then
-              echo "::warning::Không phát hành Release công khai vì thiếu signing secrets. Vẫn chạy test/build và lưu artifact để không chặn CI."
-              echo "CAN_PUBLISH_RELEASE=false" >> "$GITHUB_ENV"
-              echo "### Chưa phát hành Release" >> "$GITHUB_STEP_SUMMARY"
-              echo "Thiếu signing secrets. APK trong artifact chỉ là bản kiểm thử, không phải bản cài đặt/cập nhật chính thức." >> "$GITHUB_STEP_SUMMARY"
+              echo "::warning::Đang dùng khóa ký hiện có trong repo theo yêu cầu phát hành; khóa này đã lộ trong lịch sử repo công khai."
+              echo "CAN_PUBLISH_RELEASE=true" >> "$GITHUB_ENV"
+              echo "### Phát hành bằng khóa ký hiện có" >> "$GITHUB_STEP_SUMMARY"
+              echo "Đã bỏ qua yêu cầu secrets theo chấp thuận của chủ dự án. Release chỉ tiếp tục nếu chứng thư và versionCode khớp bản trước." >> "$GITHUB_STEP_SUMMARY"
             else
               echo "CAN_PUBLISH_RELEASE=false" >> "$GITHUB_ENV"
             fi
-            test -s keystore/dichgame.jks
-            echo "Dùng keystore test trong repo chỉ cho build không phát hành."
+            echo "Dùng keystore hiện có; mọi public release vẫn phải qua bước đối chiếu chứng thư/versionCode."
           fi
 
       # Android NDK đôi lúc được SDK Manager tải thành tệp ZIP hỏng trên runner GitHub.
