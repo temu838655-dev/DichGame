@@ -68,6 +68,26 @@ class CatalogTests(unittest.TestCase):
             self.repo.import_feed(self.feed(download_permitted=True,
                 download_url="https://example.org/patch.zip"), confirm_authorized=True)
 
+    def test_permission_flags_must_be_json_booleans(self):
+        with self.assertRaises(CatalogValidationError):
+            self.repo.import_feed(self.feed(download_permitted="false"), confirm_authorized=True)
+
+    def test_unpermitted_download_url_is_rejected(self):
+        with self.assertRaises(CatalogValidationError):
+            self.repo.import_feed(self.feed(download_url="https://example.org/patch.zip"),
+                                  confirm_authorized=True)
+
+    def test_urls_reject_credentials_and_fragments(self):
+        bad = self.root / "bad-sources.json"
+        bad.write_text(json.dumps({"sources": [{
+            "source_id": "bad", "display_name": "Bad source",
+            "homepage_url": "https://user:pass@example.org/path",
+            "integration_mode": "link_only", "metadata_sync_allowed": False,
+            "content_download_allowed": False, "permission_note": "Test"
+        }]}), encoding="utf-8")
+        with self.assertRaises(CatalogValidationError):
+            self.repo.register_sources(bad)
+
     def test_duplicate_release_is_idempotent(self):
         first = self.repo.import_feed(self.feed(), confirm_authorized=True)
         second = self.repo.import_feed(self.feed(), confirm_authorized=True)
