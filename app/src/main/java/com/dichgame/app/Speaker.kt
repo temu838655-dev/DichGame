@@ -38,6 +38,19 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     private val diskCache = VoiceDiskCache(java.io.File(app.cacheDir, "ai-voice-v1"))
 
+    private fun offlinePcm(id: String, text: String, speed: Float): Pcm {
+        val actualSpeed = speed.coerceIn(0.5f, 2.2f)
+        val key = VoiceDiskCache.key("piper-v1", id, actualSpeed.toBits().toString(), text)
+        cache.get(key)?.let { return it }
+        diskCache.get(key)?.let { cache.put(key, it); return it }
+        return offline.synth(id, text, actualSpeed).also {
+            if (it.data.isNotEmpty()) {
+                cache.put(key, it)
+                diskCache.put(key, it)
+            }
+        }
+    }
+
     private fun aiPcm(text: String, style: String, voice: String): Pcm {
         val key = VoiceDiskCache.key("gemini-v1", voice, p.ttsModel, style, text)
         cache.get(key)?.let { return it }
@@ -264,10 +277,8 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         val speed = speedFor(text, d)
         submit {
             if (my != seq.get()) return@submit // đã có câu mới hơn, bỏ câu này
-            val key = "off|$id|${(speed * 10).toInt()}|$text"
-            val cached: Pcm? = cache.get(key)
-            val pcm: Pcm = cached ?: try {
-                offline.synth(id, text, speed).also { if (it.data.isNotEmpty()) cache.put(key, it) }
+            val pcm: Pcm = try {
+                offlinePcm(id, text, speed)
             } catch (e: Throwable) {
                 if (my == seq.get()) main.post { if (!disposed && my == seq.get()) fallback(text, d, e) }
                 return@submit
@@ -297,9 +308,8 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
             exec.execute {
                 if (my != tvSeq.get()) return@execute
                 if (useOffline) {
-                    val key = "off|$id|${(speed * 10).toInt()}|$text"
-                    val pcm: Pcm? = cache.get(key) ?: try {
-                        offline.synth(id, text, speed).also { if (it.data.isNotEmpty()) cache.put(key, it) }
+                    val pcm: Pcm? = try {
+                        offlinePcm(id, text, speed)
                     } catch (_: Throwable) { null }
                     if (!disposed && my == tvSeq.get()) cb(pcm, 1f) // tốc độ đã nằm trong âm thanh
                 } else {
