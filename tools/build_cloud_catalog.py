@@ -3,6 +3,7 @@
 import argparse
 import csv
 import hashlib
+import io
 import json
 import pathlib
 import re
@@ -30,17 +31,19 @@ def build(spec, base, out):
         seen.add(game.casefold())
         ids.add(slug)
         src = pathlib.Path(item["csv"])
-        if src.stat().st_size > 24 * 1024 * 1024:
+        if src.stat().st_size > 24_000_000:
             raise ValueError("CSV too large")
         data = src.read_bytes()
-        with src.open(encoding="utf-8-sig", newline="") as f:
+        if not 1 <= len(data) <= 24_000_000:
+            raise ValueError("CSV size invalid")
+        with io.StringIO(data.decode("utf-8-sig"), newline="") as f:
             rows = csv.DictReader(f)
             if rows.fieldnames != ["source", "vi", "game"]:
                 raise ValueError("Expected source,vi,game")
             count = 0
             for row in rows:
                 count += 1
-                if count > 100000 or row["game"] != game or not row["source"] or not row["vi"] or None in row:
+                if count > 100000 or row["game"] != game or not (row["source"] or "").strip() or not (row["vi"] or "").strip() or None in row:
                     raise ValueError("Invalid row or game")
             if not count:
                 raise ValueError("Empty CSV")
