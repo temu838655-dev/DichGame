@@ -24,3 +24,14 @@ Cập nhật: 2026-11-26 06:05 (UTC+8)
 - BLOCKED: cần quyết định, quyền truy cập, bí mật hoặc thiết bị bên ngoài.
 
 Không đánh dấu VERIFIED chỉ dựa trên việc biên dịch thành công.
+
+## Audit bổ sung — dữ liệu kho game
+
+- [x] Main Catalog.kt có 201 tên game và 201 platform-code entries; đây chỉ là metadata chọn game, không phải số game đã Việt hóa.
+- [x] Built-in glossary: 33 nhóm trong VietHoa.kt và 81 nhóm trong VietHoaPlus.kt; built-in phrase memory có 58 dòng chung và 18 dòng riêng ở 6 franchise groups.
+- [ ] Chưa có bằng chứng 201 game đều có phrase packs. Không dùng nhãn “Có gói” cho trạng thái chỉ có glossary; PR #86 đổi nhãn UI thành “Thuật ngữ riêng”.
+- [ ] Python knowledge_base hiện độc lập với Android/desktop; chưa có hosted sync, account auth hoặc reviewer admin tích hợp.
+- [ ] Các pack do người dùng import/manifest HTTPS cần được kiểm kê riêng trên thiết bị/server; chưa có số liệu aggregate đáng tin cậy.
+- [x] Matcher bug: previous_sentence/next_sentence đã được nối vào context score và có regression test.
+- [x] Knowledge Base Tests #218 và #219 success.
+- [ ] Android build #1948 và emulator smoke #161 chưa có kết quả cuối ở thời điểm cập nhật.

@@ -47,3 +47,13 @@ Cập nhật: 2026-11-26 06:05 (UTC+8)
 - [ ] APK ký production key được xác minh fingerprint, cài đặt và tải lại sau phát hành.
 
 Không diễn giải CI build thành công thành ứng dụng production-ready.
+
+| Hạng mục | Trạng thái bổ sung | Bằng chứng / giới hạn |
+|---|---|---|
+| Danh sách game trong app | VERIFIED (source count) | Catalog.kt có 201 tên và 201 platform-code entries; không đồng nghĩa có 201 bộ dịch. |
+| Built-in glossary | VERIFIED (source inventory) | 33 nhóm VietHoa.kt và 81 nhóm VietHoaPlus.kt; không phải thoại đầy đủ. |
+| Built-in phrase memory | VERIFIED (source inventory) | 58 dòng dùng chung + 18 dòng riêng trên 6 franchise groups. |
+| Phrase packs 201 game | NOT VERIFIED | Không có bằng chứng toàn bộ 201 game có pack thoại riêng; user-imported/remote packs cần inventory riêng. |
+| Kho game label accuracy | FIXED IN PR #86 | “Có gói” đổi thành “Thuật ngữ riêng”; UI giải thích đây không phải bộ thoại đầy đủ. Android build đang chờ. |
+| Adjacent dialogue matching | VERIFIED (Python CI) | previous_sentence/next_sentence đã được dùng; Knowledge Base Tests #218/#219 success. |
+| Knowledge Base app integration | NOT COMPLETE | Python SQLite component và verified-only CSV bridge có; hosted sync/auth/reviewer admin và end-to-end app integration chưa có. |

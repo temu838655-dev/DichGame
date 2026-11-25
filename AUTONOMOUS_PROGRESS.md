@@ -85,3 +85,29 @@ Main commit được kiểm tra: a373a90212eab60788b51bb7bc64e74b29b3a627
 - PCNET: https://pcnetdl.com/pcnet-viet-hoa/
 - PS5 Tiếng Việt: https://ps5tiengviet.com/games.html
 - Hóng Sub: https://honggame.store/hong-sub/
+
+
+## Audit tiếp tục — kho game và dữ liệu dịch thực tế (2026-11-26 06:10 UTC+8)
+
+### Inventory source trên main
+- [x] Catalog.kt có 201 dòng tên game và 201 dòng platform-code tương ứng; đây là danh sách hard-code, không phải 201 bộ dịch hoàn chỉnh.
+- [x] VietHoa.kt có 33 nhóm thuật ngữ game/series; VietHoaPlus.kt có 81 nhóm thuật ngữ/nhân vật game/series.
+- [x] VietHoaPlus.kt có 58 cặp câu mẫu dùng chung và 18 cặp câu mẫu riêng nằm trong 6 nhóm franchise (Elden Ring, Dark Souls, Bloodborne, GTA, Assassin's Creed, Mortal Kombat).
+- [x] Các thuật ngữ và câu mẫu tích hợp không phải bộ thoại đầy đủ của từng game. App cũng hỗ trợ người dùng nhập bộ câu riêng và tải pack qua manifest HTTPS được cấp quyền.
+- [x] NguonVietHoa.kt là danh mục liên kết nguồn; không tự tải hoặc mirror patch. knowledge_base/catalog_sources.json chỉ cấu hình The Red Team ở chế độ link_only và catalog cộng đồng ở chế độ manual.
+- [x] knowledge_base là thành phần Python/SQLite FTS5 độc lập; có importer CSV/JSON/PO/XLIFF/TMX, provenance/license, matcher, moderation, backup/signed packs và verified-only CSV bridge.
+- [ ] Chưa có hosted sync/authentication/reviewer administration hoặc tích hợp end-to-end Knowledge Base vào Android/desktop app; README của knowledge_base nêu rõ các phần này còn thiếu.
+- [x] Đã chỉnh KhoGameActivity để đổi nhãn mơ hồ “Có gói” thành “Thuật ngữ riêng”, và nói rõ thuật ngữ/câu mẫu không phải bộ thoại Việt hóa đầy đủ.
+
+### Sửa lỗi Translation Memory
+- [x] TranslationMatcher trước đó nhận previous_sentence/next_sentence nhưng không sử dụng.
+- [x] Đã thêm hai trường này vào context scoring cho exact và fuzzy matching.
+- [x] Thêm regression test cho hai bản dịch cùng câu gốc nhưng khác câu thoại trước/sau.
+- [x] Knowledge Base Tests #218 (45710623279) và #219 (45710676116) success.
+- [ ] Android build #1948 (45710845532) đang pending tại thời điểm cập nhật; cần chờ kết quả vì nhánh cũng sửa KhoGameActivity.
+- [ ] Emulator smoke #161 (45708105649) đang chạy bước build debug; chưa xác minh emulator launch hoặc test pass.
+
+### PR audit
+- [x] PR #86 được tạo draft, mergeable=true; 7 files ở thời điểm kiểm tra.
+- [ ] Chưa merge PR #86 cho tới khi Android build #1948 pass và review diff cuối.
+- [ ] PR #85 vẫn open, mergeable=false; không merge security changes khi base cũ/conflicts và chưa review TLS trust-all.
