@@ -7,7 +7,7 @@ from .ai_fallback import (
 )
 from .moderation import CommunityModeration, ModerationPermissionError, ReviewOutcome
 from .backup import create_backup, restore_backup, validate_backup
-from .sync import export_game_pack, import_game_pack, PackIntegrityError
+from .sync import export_game_pack, import_game_pack, export_android_csv, PackIntegrityError
 from .providers import GeminiProvider, OpenAICompatibleProvider, ProviderHTTPError
 
 __all__ = [
@@ -17,6 +17,6 @@ __all__ = [
     "AIUnavailableError", "ProviderResponse",
     "CommunityModeration", "ModerationPermissionError", "ReviewOutcome",
     "create_backup", "restore_backup", "validate_backup",
-    "export_game_pack", "import_game_pack", "PackIntegrityError",
+    "export_game_pack", "import_game_pack", "export_android_csv", "PackIntegrityError",
     "GeminiProvider", "OpenAICompatibleProvider", "ProviderHTTPError",
 ]
