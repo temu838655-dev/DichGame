@@ -18,9 +18,10 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 - [ ] Workflow smoke test giả lập Android (run 45703102492) chưa kết thúc tại thời điểm cập nhật; bước chạy trên emulator đang in_progress.
 - [ ] Hoàn tất audit bảo mật toàn bộ luồng mạng, lưu trữ bí mật, backup, permissions và service lifecycle.
 - [x] Xác minh repository là public và keystore/dichgame.jks (2,636 bytes) đang được track trong Git; build-1872 xác nhận 4 signing secrets trống và dùng keystore trong repo. Đánh giá khóa ký đã lộ.
-- [x] Sửa workflow để từ chối Release công khai nếu thiếu đủ 4 signing secrets; build kiểm thử không phát hành vẫn được phép dùng keystore test.
+- [x] Sửa workflow: thiếu signing secrets thì vẫn chạy test/build và lưu artifact kiểm thử, nhưng bỏ qua bước tạo Release công khai; thiếu một phần secrets thì fail ngay.
 - [x] Cập nhật README cảnh báo compromise, phân biệt giữ khóa cũ (tương thích nhưng không an toàn) và đổi khóa mới (không cập nhật đè được; cần migration dữ liệu).
 - [ ] Audit toàn bộ module AI/OCR/ASR/TTS/UI và kiểm tra các đường đi lỗi/tích hợp còn thiếu.
+- [x] Sửa teardown ASR trong CaptureService: trước đây đợi worker tối đa 3 giây rồi đóng PCM queue dù nhận dạng có thể còn chạy; nay chờ worker dừng và giải phóng model xong mới đóng queue (dùng stopAndJoinUntilStopped đã có test).
 - [ ] Kiểm thử thực tế trên điện thoại Android arm64, Android TV và PS4/PS5/Xbox thật. Chưa có bằng chứng phần cứng trong CI.
 - [ ] Xác minh đầy đủ hành vi phát hành/cập nhật từ bản cài đặt cũ trên thiết bị người dùng.
 - [ ] Hoàn thiện tài liệu nền tảng và hướng dẫn khắc phục theo kết quả audit.
@@ -45,12 +46,13 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 ## Tiếp tục từ đây
 
 1. Đọc file này và kiểm tra trạng thái workflow 45703102330, 45703102492 cùng Release build-1872.
-2. Kiểm tra CI sau commit workflow/README: build kiểm thử có chạy được không; push main không được phát hành nếu secrets thiếu. Xác nhận run cũ #1873 không tạo thêm release sau khi policy mới vào main.
-3. Hoàn tất smoke test; nếu fail, lấy log, sửa nguyên nhân, chạy lại.
-4. Audit sâu các điểm bảo mật nêu trên, xem README, AndroidManifest, Prefs/ApiSecrets/KeyRing, network clients, CaptureService/RemotePlay.
-5. Thêm test cho các lỗi có thể tái hiện; chạy unit tests và build phone/TV.
-6. Cập nhật file này sau mỗi giai đoạn có bằng chứng.
-7. Chỉ kết luận production-ready khi có kiểm thử thiết bị thật; nếu không có thiết bị thì ghi rõ giới hạn.
+2. Kiểm tra workflow build #1878 và unit test #163 sau thay đổi ASR teardown; bảo đảm test/build pass và release được skip vì secrets chưa cấu hình.
+3. Kiểm tra CI sau commit workflow/README: build kiểm thử có chạy được không; push main không được phát hành nếu secrets thiếu. Xác nhận run cũ #1873 không tạo thêm release sau khi policy mới vào main.
+4. Hoàn tất smoke test; nếu fail, lấy log, sửa nguyên nhân, chạy lại.
+5. Audit sâu các điểm bảo mật nêu trên, xem README, AndroidManifest, Prefs/ApiSecrets/KeyRing, network clients, CaptureService/RemotePlay.
+6. Thêm test cho các lỗi có thể tái hiện; chạy unit tests và build phone/TV.
+7. Cập nhật file này sau mỗi giai đoạn có bằng chứng.
+8. Chỉ kết luận production-ready khi có kiểm thử thiết bị thật; nếu không có thiết bị thì ghi rõ giới hạn.
 
 ## Link xác minh
 
