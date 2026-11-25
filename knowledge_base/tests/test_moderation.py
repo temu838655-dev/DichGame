@@ -1,3 +1,4 @@
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,6 +18,19 @@ class CommunityModerationTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp_dir.cleanup()
+
+    def test_existing_database_gets_additive_contributor_migration(self):
+        with self.kb.connect() as db:
+            db.execute("ALTER TABLE translations DROP COLUMN contributor_id")
+            db.execute("DELETE FROM schema_migrations WHERE version=5")
+        upgraded = KnowledgeBase(self.kb.database_path)
+        with upgraded.connect() as db:
+            columns = {row[1] for row in db.execute("PRAGMA table_info(translations)")}
+            migration = db.execute(
+                "SELECT 1 FROM schema_migrations WHERE version=5"
+            ).fetchone()
+        self.assertIn("contributor_id", columns)
+        self.assertIsNotNone(migration)
 
     def test_submission_is_never_auto_verified(self):
         translation_id = self.service.submit(
