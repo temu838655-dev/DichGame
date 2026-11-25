@@ -154,16 +154,16 @@ def import_game_pack(
                 """INSERT INTO translations(
                     game_id, source_text, normalized_text, translated_text, text_sha256,
                     context, speaker, scene_id, mission_id, previous_sentence,
-                    next_sentence, source_id, translation_source, translation_status,
+                    next_sentence, source_id, contributor_id, translation_source, translation_status,
                     confidence_score, verified_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     game_id, source_text, normalize_text(source_text), translated_text,
                     hashlib.sha256(normalize_text(source_text).encode("utf-8")).hexdigest(),
                     item.get("context"), item.get("speaker"), item.get("scene_id"),
                     item.get("mission_id"), item.get("previous_sentence"),
                     item.get("next_sentence"), source_map.get(item.get("source_id")),
-                    "SYNC", status,
+                    item.get("contributor_id"), "SYNC", status,
                     item.get("confidence_score"),
                     item.get("verified_at") if status == "VERIFIED" and allow_verified else None,
                 ),
