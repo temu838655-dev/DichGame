@@ -66,3 +66,15 @@ Do not infer Android runtime success from Python tests. Re-poll the exact run ID
 - QA-006 Android bridge #173 (45711630980): VERIFIED — Android JVM unit tests completed successfully.
 - QA-005 Android Build #1961 (45711631124): OPEN — still running app unit tests; no APK success claim.
 - QA-001 Emulator Smoke #161 (45708105649): OPEN — emulator execution still running.
+
+## AI translation / narration regression — 2026-11-26
+
+| ID | Severity | Root cause / evidence | Files changed | Fix | Status |
+|---|---|---|---|---|---|
+| AI-400-01 | HIGH | Gemini 400 path retried without safety settings for every 400, even when provider error was an invalid key/model or unrelated request error. | `Ai.kt`, `AiRetry.kt`, `AiRetryTest.kt` | Parse provider error JSON; retry without safety settings only when response explicitly rejects that field; pass useful provider details to user. | FIXED IN BRANCH — CI pending |
+| AI-MODEL-01 | HIGH | Free-form model value was interpolated directly into the Gemini endpoint path; default alias was not explicitly pinned to a low-latency stable model. | `Ai.kt`, `Prefs.kt`, `GeminiRequestTest.kt` | Validate model identifier; use `gemini-3.5-flash-lite` for new installs; cap output tokens at 512. Existing saved model values remain unchanged. | FIXED IN BRANCH — live API validation pending |
+| TTS-01 | HIGH | `CaptureService.showCards` removed every translation marked uncertain before creating the TTS scene. A valid non-empty translation could appear on screen but never enter narration. | `CaptureService.kt`, `TranslationSpeechPolicy.kt`, `TranslationSpeechPolicyTest.kt` | Speak every non-empty translation regardless of confidence warning; retain speaker and delivery metadata; continue skipping empty text. | FIXED IN BRANCH — device playback pending |
+| TTS-02 | MEDIUM | Gemini TTS Interactions fallback retried all HTTP 400/404 responses, including invalid API key errors. | `AiSpeech.kt`, `AiRetry.kt`, `AiRetryTest.kt`, `Prefs.kt` | Validate TTS model ID; fallback only on 404 or explicit Interactions payload/endpoint incompatibility; default new installs to Flash-Lite TTS. | FIXED IN BRANCH — live TTS pending |
+| LAT-01 | HIGH | Translation queue allowed up to 12 waiting jobs and could display an old result while newer dialogue was already queued. | `CaptureService.kt` | Reduce cap to 6 and discard results older than 8 seconds only when newer work is waiting. | FIXED IN BRANCH — timing benchmark pending |
+
+Status rule: FIXED IN BRANCH is not VERIFIED. Reclassify only after CI, live API, and device evidence are available.
