@@ -49,6 +49,7 @@ class AiRetryTest {
 
     @Test fun ttsEndpointFallbackDoesNotHideInvalidApiKey() {
         assertTrue(AiRetry.shouldFallbackTtsEndpoint(404, """{"error":{"message":"Interactions endpoint not found"}}"""))
+        assertFalse(AiRetry.shouldFallbackTtsEndpoint(404, """{"error":{"message":"Model gemini-unknown not found"}}"""))
         assertTrue(AiRetry.shouldFallbackTtsEndpoint(400, """{"error":{"message":"Unknown field response_format in Interactions request"}}"""))
         assertFalse(AiRetry.shouldFallbackTtsEndpoint(400, """{"error":{"message":"API key not valid"}}"""))
         assertFalse(AiRetry.shouldFallbackTtsEndpoint(403, """{"error":{"message":"permission denied"}}"""))
