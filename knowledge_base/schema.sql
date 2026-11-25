@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS translations (
     previous_sentence TEXT,
     next_sentence TEXT,
     source_id INTEGER REFERENCES data_sources(source_id) ON DELETE SET NULL,
+    contributor_id TEXT,
     translation_source TEXT NOT NULL DEFAULT 'COMMUNITY',
     translation_status TEXT NOT NULL DEFAULT 'COMMUNITY'
         CHECK (translation_status IN ('VERIFIED','COMMUNITY','AI_REVIEWED','AI_UNVERIFIED','REJECTED')),
@@ -231,4 +232,5 @@ VALUES
     (1, 'Initial multi-game localization knowledge-base schema'),
     (2, 'Persistent leases for duplicate translation request suppression'),
     (3, 'Daily AI request and token usage accounting'),
-    (4, 'Community translation reviews and reports');
+    (4, 'Community translation reviews and reports'),
+    (5, 'Track community contributor identifiers');
