@@ -57,6 +57,26 @@ internal object RemotePack {
         return url.toExternalForm()
     }
 
+    /**
+     * Resolve an HTTP redirect without allowing HTTPS downgrade or credential-bearing URLs.
+     * The caller must disable HttpURLConnection's automatic redirect handling and bound hops.
+     */
+    fun safeHttpsRedirect(current: URL, location: String): URL {
+        require(current.protocol.equals("https", ignoreCase = true) &&
+            current.host.isNotBlank() && current.userInfo == null) {
+            "Current pack URL must be HTTPS."
+        }
+        require(location.isNotBlank() && location.none { it.isISOControl() }) {
+            "Redirect location is invalid."
+        }
+        val target = URL(current, location)
+        require(target.protocol.equals("https", ignoreCase = true) &&
+            target.host.isNotBlank() && target.userInfo == null && target.ref == null) {
+            "Pack redirects must remain on a valid HTTPS URL."
+        }
+        return target
+    }
+
     fun retryableHttp(code: Int): Boolean = code == 408 || code == 429 || code in 500..599
 
     fun versionDecision(oldVersion: Int?, oldHash: String?, version: Int, hash: String): Decision =
