@@ -1190,7 +1190,8 @@ class CaptureService : Service() {
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
         overlay?.apply { text = sb; visibility = if (pr.listenOnly) View.GONE else View.VISIBLE }
         val vi = cards.joinToString(" ") { it.tr.text }
-        // uncertainty là cảnh báo chất lượng, không phải lý do bỏ đọc một bản dịch đã có nội dung.\n        val scene = cards.filter {
+        // uncertainty là cảnh báo chất lượng, không phải lý do bỏ đọc một bản dịch đã có nội dung.
+        val scene = cards.filter {
             TranslationSpeechPolicy.isSpeakable(TranslationSpeechPolicy.Candidate(it.tr.text, it.unsure))
         }.map { VoiceLine(it.tr.text.trim(), it.speaker, it.tr.delivery) }
         val tvSpeaks = speak && tvSpeakOn() && !tvVoiceOn() && scene.size == cards.size
