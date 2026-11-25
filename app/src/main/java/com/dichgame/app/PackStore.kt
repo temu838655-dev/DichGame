@@ -207,17 +207,11 @@ object PackStore {
 
     @Synchronized
     private fun addLinesTo(f: File, add: List<Pair<String, String>>, preserveExisting: Boolean): Int {
-        val map = LinkedHashMap<String, Pair<String, String>>()
         // Read and write the same captured target; if reading fails do not overwrite it.
         val existing = readFile(f)
-        for (e in (if (preserveExisting) add + existing else existing + add)) {
-            val k = Canon.key(e.first)
-            val identity = Canon.literal(e.first)
-            if (Canon.usable(k) && e.second.isNotBlank()) map[identity] = e.first.replace('\t', ' ').replace('\n', ' ') to e.second.replace('\t', ' ').replace('\n', ' ')
-        }
-        if (map.size > PackText.MAX_LINES)
+        val list = TranslationLineMerge.merge(existing, add, preserveExisting)
+        if (list.size > PackText.MAX_LINES)
             throw java.io.IOException("Kho vượt giới hạn câu; không thay đổi dữ liệu đang lưu.")
-        val list = map.values.toList()
         require(RemotePack.mergeOffline(readCloud(f)?.lines.orEmpty(), list).size <= PackText.MAX_LINES) {
             "Kho vượt giới hạn số câu. Không thay đổi dữ liệu."
         }
