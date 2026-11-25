@@ -121,25 +121,26 @@ class Prefs(ctx: Context) {
         geminiKeyId(key) !in (sp.getStringSet("gemini_disabled_keys", emptySet()) ?: emptySet())
 
     /** Persist only one-way key fingerprints; never store another plaintext copy of credentials. */
-    fun setGeminiKeyEnabled(key: String, enabled: Boolean) {
+    fun setGeminiKeyEnabled(key: String, enabled: Boolean): Boolean {
         val disabled = (sp.getStringSet("gemini_disabled_keys", emptySet()) ?: emptySet()).toMutableSet()
         val id = geminiKeyId(key)
         if (enabled) disabled.remove(id) else disabled.add(id)
-        sp.edit().putStringSet("gemini_disabled_keys", disabled).apply()
+        return sp.edit().putStringSet("gemini_disabled_keys", disabled).commit()
     }
 
     /** Only enabled keys are eligible for translation and AI voice requests. */
     fun geminiKeys(): List<String> = geminiStoredKeys().filter { isGeminiKeyEnabled(it) }
 
     /** Save keys atomically; newly added keys become usable and removed keys lose their disabled marker. */
-    fun setGeminiKeys(list: List<String>) {
+    fun setGeminiKeys(list: List<String>): Boolean {
         val before = geminiStoredKeys().toSet()
         val k = list.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        if (!ApiSecrets.write(app, mapOf("key" to k.firstOrNull().orEmpty(), "keys2" to k.drop(1).joinToString("\n")))) return
+        if (!ApiSecrets.write(app, mapOf("key" to k.firstOrNull().orEmpty(), "keys2" to k.drop(1).joinToString("\n")))) return false
         val keepIds = k.map { geminiKeyId(it) }.toSet()
         val disabled = (sp.getStringSet("gemini_disabled_keys", emptySet()) ?: emptySet()).filter { it in keepIds }.toSet()
-        sp.edit().putStringSet("gemini_disabled_keys", disabled).apply()
+        if (!sp.edit().putStringSet("gemini_disabled_keys", disabled).commit()) return false
         for (n in k) if (n !in before) KeyRing.forget(n)
+        return true
     }
 
     var geminiModel: String
