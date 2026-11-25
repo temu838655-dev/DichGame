@@ -201,8 +201,34 @@ CREATE TABLE IF NOT EXISTS ai_usage_daily (
     output_tokens INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS translation_reviews (
+    review_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    translation_id INTEGER NOT NULL REFERENCES translations(translation_id) ON DELETE CASCADE,
+    reviewer_id TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK (decision IN ('APPROVE','REJECT','REQUEST_CHANGES')),
+    note TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_translation_reviews_item
+    ON translation_reviews(translation_id, created_at);
+
+CREATE TABLE IF NOT EXISTS translation_reports (
+    report_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    translation_id INTEGER NOT NULL REFERENCES translations(translation_id) ON DELETE CASCADE,
+    reporter_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    details TEXT,
+    status TEXT NOT NULL DEFAULT 'OPEN'
+        CHECK (status IN ('OPEN','RESOLVED','DISMISSED')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_translation_reports_status
+    ON translation_reports(status, translation_id);
+
 INSERT OR IGNORE INTO schema_migrations(version, description)
 VALUES
     (1, 'Initial multi-game localization knowledge-base schema'),
     (2, 'Persistent leases for duplicate translation request suppression'),
-    (3, 'Daily AI request and token usage accounting');
+    (3, 'Daily AI request and token usage accounting'),
+    (4, 'Community translation reviews and reports');
