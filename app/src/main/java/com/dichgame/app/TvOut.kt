@@ -6,6 +6,18 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONArray
 
+/** Parse persisted receiver tokens; null means corrupt JSON and allows safe legacy recovery. */
+internal fun parseWebReceiverTokens(json: String): Set<String>? = try {
+    val array = JSONArray(json)
+    buildSet {
+        for (i in 0 until array.length()) {
+            array.optString(i).takeIf { it.matches(Regex("[0-9a-f]{64}")) }?.let(::add)
+        }
+    }
+} catch (_: Exception) {
+    null
+}
+
 /**
  * Các đường đưa phụ đề ra ngoài điện thoại ngoài app Dịch game TV (Android TV):
  *  - Thông báo chữ trên TV LG qua [LgTv] (đã ghép ở trang "Phụ đề trên TV");
@@ -39,13 +51,15 @@ object TvOut {
         if (prefs != null && context != null) {
             val app = context.applicationContext
             val secureJson = ApiSecrets.read(app, "web_receiver_tokens_v2")
-            val savedTokens = if (secureJson.isNotBlank()) {
-                prefs.edit().remove("web_receiver_tokens").apply()
-                runCatching {
-                    val array = JSONArray(secureJson)
-                    buildSet { for (i in 0 until array.length()) array.optString(i).takeIf { it.matches(Regex("[0-9a-f]{64}")) }?.let(::add) }
-                }.getOrDefault(emptySet())
+            val encryptedTokens = secureJson.takeIf { it.isNotBlank() }?.let(::parseWebReceiverTokens)
+            val savedTokens = if (encryptedTokens != null) {
+                // A valid encrypted empty array is authoritative (for example after revokeAll).
+                // Remove the plaintext legacy copy only after successfully parsing ciphertext.
+                prefs.edit().remove("web_receiver_tokens").commit()
+                encryptedTokens
             } else {
+                // Corrupt encrypted JSON must not cause an otherwise recoverable legacy token set
+                // to be deleted. Re-encrypt it first, then remove the plaintext preference.
                 val legacy = runCatching { prefs.getStringSet("web_receiver_tokens", emptySet()).orEmpty() }.getOrDefault(emptySet())
                 if (legacy.isNotEmpty()) {
                     val array = JSONArray().apply { legacy.forEach { put(it) } }
