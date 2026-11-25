@@ -83,8 +83,10 @@ object AiRetry {
                 if (kind == Kind.BLOCKED || kind == Kind.BAD) throw e
                 if (attempt >= plan.maxAttempts) throw e
                 val shift = (attempt - 1).coerceIn(0, 20)
-                val exponential = (plan.backoffMs.coerceAtLeast(0L) * (1L shl shift))
-                    .coerceAtMost(plan.maxBackoffMs.coerceAtLeast(0L))
+                val baseBackoff = plan.backoffMs.coerceAtLeast(0L)
+                val backoffCap = plan.maxBackoffMs.coerceAtLeast(0L)
+                val multiplier = 1L shl shift
+                val exponential = if (baseBackoff > backoffCap / multiplier) backoffCap else baseBackoff * multiplier
                 val told = if (kind == Kind.QUOTA) (e as? AiException)?.retryAfterMs ?: 0L else 0L
                 if (told > plan.maxWaitMs) throw e
 
@@ -99,9 +101,7 @@ object AiRetry {
                 } else {
                     val spread = (base * ratio).toLong()
                     val low = (base - spread).coerceAtLeast(0L)
-                    val high = (base + spread).coerceAtMost(
-                        if (kind == Kind.QUOTA) Long.MAX_VALUE else plan.maxBackoffMs.coerceAtLeast(0L)
-                    )
+                    val high = (base + spread).coerceAtMost(backoffCap)
                     if (high <= low) low else java.util.concurrent.ThreadLocalRandom.current().nextLong(low, high + 1)
                 }
                 if (now() - start + wait > plan.budgetMs) throw e
