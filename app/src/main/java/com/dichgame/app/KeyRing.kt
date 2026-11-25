@@ -105,6 +105,9 @@ object KeyRing {
     @Synchronized fun billingWaitMs(scope: String, now: Long = System.currentTimeMillis()): Long =
         ((billingUntil[scope] ?: 0L) - now).coerceAtLeast(0L)
 
+    /** Clear account-wide billing cooldowns after the user changes CloudAPI credentials. */
+    @Synchronized fun clearBilling() { billingUntil.clear() }
+
     /** Khóa sai (hoặc bị thu hồi): bỏ qua một lúc ở mọi model. */
     @Synchronized fun blockBad(key: String, now: Long = System.currentTimeMillis()) { bad[key] = now + BAD_MS }
 
