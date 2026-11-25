@@ -480,11 +480,11 @@ object PackStore {
         } finally { c.disconnect() }
     }
 
-    fun catalogSource(link: String, game: String): String? {
+    fun catalogSource(link: String, game: String, platform: String? = null): String? {
         val url = URL(link)
         require(url.protocol == "https" && url.host.isNotBlank() && url.userInfo == null && url.ref == null)
         return RemotePack.catalogSource(fetchWithRetry(url, 512_000) { !Thread.currentThread().isInterrupted }
-            .toString(Charsets.UTF_8), game)
+            .toString(Charsets.UTF_8), game, platform)
     }
 
     /** Download a user-authorized direct pack link, including ZIP and MO, with a bounded temporary file. */
