@@ -47,7 +47,8 @@ class SessionStats {
     @Synchronized fun machineReasons(): String {
         val parts = ArrayList<String>()
         fun add(label: String, key: String) { val n = get(key); if (n > 0) parts.add("$label $n") }
-        add("hết lượt", "may_het_luot"); add("mạng hoặc máy chủ AI quá tải", "may_mang"); add("bộ lọc nội dung chặn", "may_chan")
+        add("hết lượt", "may_het_luot"); add("giới hạn thanh toán/chi tiêu", "may_billing")
+        add("mạng hoặc máy chủ AI quá tải", "may_mang"); add("bộ lọc nội dung chặn", "may_chan")
         add("khóa hoặc model sai", "may_khoa"); add("dữ liệu lạ", "may_khac"); add("bản dịch AI bị loại hai lần", "may_loai")
         return parts.joinToString(", ")
     }

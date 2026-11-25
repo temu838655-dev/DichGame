@@ -10,6 +10,14 @@ class Prefs(ctx: Context) {
     private val app: Context = ctx.applicationContext
     val sp: SharedPreferences = app.getSharedPreferences("dg", Context.MODE_PRIVATE)
 
+    init {
+        // Migrate legacy plaintext credentials as soon as app preferences are opened,
+        // not only when the player first enters the AI settings screen.
+        ApiSecrets.read(app, "key")
+        ApiSecrets.read(app, "keys2")
+        ApiSecrets.read(app, "ckey")
+    }
+
     companion object {
         const val ENGINE_LOCAL = "local"
         const val ENGINE_CLOUD = "cloud"
@@ -98,28 +106,51 @@ class Prefs(ctx: Context) {
         set(v) = sp.edit().putString("langc", v).apply()
 
     var engine: String
-        get() = sp.getString("engine", null) ?: if (sp.getString("key", "").isNullOrEmpty()) ENGINE_LOCAL else ENGINE_GEMINI
+        get() = sp.getString("engine", null) ?: if (geminiKeys().isEmpty()) ENGINE_LOCAL else ENGINE_GEMINI
         set(v) = sp.edit().putString("engine", v).apply()
 
     var geminiKey: String
-        get() = sp.getString("key", "").orEmpty()
-        set(v) = sp.edit().putString("key", v.trim()).apply()
+        get() = ApiSecrets.read(app, "key")
+        set(v) { ApiSecrets.write(app, mapOf("key" to v.trim())) }
     /** Khóa dự phòng (mỗi dòng một khóa). Khóa chính ở [geminiKey]. */
     var geminiSpare: String
-        get() = sp.getString("keys2", "").orEmpty()
-        set(v) = sp.edit().putString("keys2", v).apply()
+        get() = ApiSecrets.read(app, "keys2")
+        set(v) { ApiSecrets.write(app, mapOf("keys2" to v)) }
 
-    /** Tất cả khóa Gemini theo thứ tự: khóa chính rồi các khóa dự phòng. */
-    fun geminiKeys(): List<String> =
+    /** All Gemini keys in display order, including keys manually disabled by the player. */
+    fun geminiStoredKeys(): List<String> =
         (listOf(geminiKey) + geminiSpare.lines()).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
 
-    /** Lưu danh sách khóa. Khóa mới thêm (kể cả khóa vừa bị gỡ rồi thêm lại) được dùng thử ngay, không mang theo tình trạng cũ. */
-    fun setGeminiKeys(list: List<String>) {
-        val before = geminiKeys().toSet()
+    private fun geminiKeyId(key: String): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+
+    fun isGeminiKeyEnabled(key: String): Boolean =
+        geminiKeyId(key) !in (sp.getStringSet("gemini_disabled_keys", emptySet()) ?: emptySet())
+
+    /** Persist only one-way key fingerprints; never store another plaintext copy of credentials. */
+    fun setGeminiKeyEnabled(key: String, enabled: Boolean): Boolean {
+        val disabled = (sp.getStringSet("gemini_disabled_keys", emptySet()) ?: emptySet()).toMutableSet()
+        val id = geminiKeyId(key)
+        if (enabled) disabled.remove(id) else disabled.add(id)
+        return sp.edit().putStringSet("gemini_disabled_keys", disabled).commit()
+    }
+
+    /** Only enabled keys are eligible for translation and AI voice requests. */
+    fun geminiKeys(): List<String> = geminiStoredKeys().filter { isGeminiKeyEnabled(it) }
+
+    /** Save keys atomically; newly added keys become usable and removed keys lose their disabled marker. */
+    fun setGeminiKeys(list: List<String>): Boolean {
+        val before = geminiStoredKeys().toSet()
         val k = list.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        geminiKey = k.firstOrNull().orEmpty()
-        geminiSpare = k.drop(1).joinToString("\n")
+        if (!ApiSecrets.write(app, mapOf("key" to k.firstOrNull().orEmpty(), "keys2" to k.drop(1).joinToString("\n")))) return false
+        val keepIds = k.map { geminiKeyId(it) }.toSet()
+        val disabled = (sp.getStringSet("gemini_disabled_keys", emptySet()) ?: emptySet()).filter { it in keepIds }.toSet()
+        if (!sp.edit().putStringSet("gemini_disabled_keys", disabled).commit()) {
+            android.util.Log.w("DG_PREFS", "Could not update disabled-key metadata.")
+        }
         for (n in k) if (n !in before) KeyRing.forget(n)
+        return true
     }
 
     var geminiModel: String
@@ -153,8 +184,10 @@ class Prefs(ctx: Context) {
         get() = sp.getString("curl", "").orEmpty()
         set(v) = sp.edit().putString("curl", v.trim()).apply()
     var cloudKey: String
-        get() = sp.getString("ckey", "").orEmpty()
-        set(v) = sp.edit().putString("ckey", v.trim()).apply()
+        get() = ApiSecrets.read(app, "ckey")
+        set(v) {
+            if (ApiSecrets.write(app, mapOf("ckey" to v.trim()))) KeyRing.clearBilling()
+        }
     var cloudModel: String
         get() = sp.getString("cmodel", "gemini-3.1-flash-lite").orEmpty()
         set(v) = sp.edit().putString("cmodel", v.trim()).apply()

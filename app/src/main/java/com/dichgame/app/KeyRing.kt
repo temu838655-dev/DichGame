@@ -20,6 +20,10 @@ object KeyRing {
     private val until = HashMap<String, Long>()
     private val bad = HashMap<String, Long>()
     private val current = HashMap<String, String>()
+    /** Provider/model-wide billing cap shared by every key in the same scope. */
+    private val billingUntil = HashMap<String, Long>()
+    /** Keys leased to in-flight requests, independently per provider/model scope. */
+    private val inFlight = HashMap<String, MutableSet<String>>()
 
     private fun id(key: String, scope: String) = scope + "|" + key
 
@@ -31,9 +35,42 @@ object KeyRing {
     @Synchronized fun status(key: String, scope: String, now: Long = System.currentTimeMillis()): Status {
         val b = (bad[key] ?: 0L) - now
         if (b > 0) return Status(State.BAD, b, false)
+        val billing = (billingUntil[scope] ?: 0L) - now
+        if (billing > 0) return Status(State.QUOTA, billing, false)
         val q = (until[id(key, scope)] ?: 0L) - now
         if (q > 0) return Status(State.QUOTA, q, false)
         return Status(State.OK, 0L, current[scope] == key)
+    }
+
+    /**
+     * Atomically reserve one usable key for a request. The reservation prevents concurrent
+     * callers in the same provider/model scope from selecting the same key.
+     */
+    @Synchronized fun acquire(keys: List<String>, scope: String, now: Long = System.currentTimeMillis()): String? {
+        if (keys.isEmpty()) return null
+        val busy = inFlight[scope] ?: emptySet<String>()
+        val start = current[scope]?.let { keys.indexOf(it) }?.takeIf { it >= 0 } ?: 0
+        for (i in keys.indices) {
+            val key = keys[(start + i) % keys.size]
+            if (key !in busy && status(key, scope, now).state == State.OK) {
+                inFlight.getOrPut(scope) { HashSet() }.add(key)
+                return key
+            }
+        }
+        return null
+    }
+
+    /** Release a request reservation; safe to call from every success and failure path. */
+    @Synchronized fun release(key: String, scope: String) {
+        val busy = inFlight[scope] ?: return
+        busy.remove(key)
+        if (busy.isEmpty()) inFlight.remove(scope)
+    }
+
+    /** True when usable keys exist but are currently leased by other requests. */
+    @Synchronized fun hasInFlight(keys: List<String>, scope: String, now: Long = System.currentTimeMillis()): Boolean {
+        val busy = inFlight[scope] ?: return false
+        return keys.any { it in busy && status(it, scope, now).state == State.OK }
     }
 
     /** Khóa dùng được cho lần gọi này, hoặc null nếu mọi khóa đang hết lượt hay sai. Khóa vừa chạy tốt được thử trước. */
@@ -59,6 +96,18 @@ object KeyRing {
         if (t > (until[id(key, scope)] ?: 0L)) until[id(key, scope)] = t
     }
 
+    /** Billing/spend caps apply to every key in the same provider/model scope. */
+    @Synchronized fun blockBilling(scope: String, ms: Long, now: Long = System.currentTimeMillis()) {
+        val t = now + ms
+        if (t > (billingUntil[scope] ?: 0L)) billingUntil[scope] = t
+    }
+
+    @Synchronized fun billingWaitMs(scope: String, now: Long = System.currentTimeMillis()): Long =
+        ((billingUntil[scope] ?: 0L) - now).coerceAtLeast(0L)
+
+    /** Clear account-wide billing cooldowns after the user changes CloudAPI credentials. */
+    @Synchronized fun clearBilling() { billingUntil.clear() }
+
     /** Khóa sai (hoặc bị thu hồi): bỏ qua một lúc ở mọi model. */
     @Synchronized fun blockBad(key: String, now: Long = System.currentTimeMillis()) { bad[key] = now + BAD_MS }
 
@@ -68,7 +117,7 @@ object KeyRing {
         until.keys.removeAll { it.endsWith("|$key") }
     }
 
-    @Synchronized fun reset() { until.clear(); bad.clear(); current.clear() }
+    @Synchronized fun reset() { until.clear(); bad.clear(); current.clear(); inFlight.clear(); billingUntil.clear() }
 
     /**
      * Mọi khóa đều đang nghỉ: còn bao lâu nữa khóa sớm nhất dùng lại được (mili giây). 0 nếu có khóa dùng được ngay;
@@ -94,6 +143,19 @@ object KeyRing {
         keys.count { status(it, scope, now).state == State.OK }
 
     // ---- đọc lỗi từ máy chủ
+
+    /** Provider/account-wide billing caps; rotating another key in the same account will not fix these. */
+    fun isBillingLimit(body: String): Boolean {
+        val b = body.lowercase()
+        return listOf(
+            "insufficient_quota",
+            "credit_balance_exhausted",
+            "billing_hard_limit_reached",
+            "organization_spend_limit_exceeded",
+            "project_spend_limit_exceeded",
+            "billing_not_active",
+        ).any { b.contains(it) }
+    }
 
     /** Phản hồi lỗi 429 nói hạn mức theo ngày (GenerateRequestsPerDay...). */
     fun isDailyQuota(body: String): Boolean = body.contains("PerDay", ignoreCase = true) || body.contains("per day", ignoreCase = true)
@@ -129,6 +191,7 @@ object KeyRing {
      */
     fun report(key: String, scope: String, e: AiException, now: Long = System.currentTimeMillis()): Boolean = when {
         e.badKey -> { blockBad(key, now); true }
+        e.billingLimit -> { blockBilling(scope, maxOf(60 * 60_000L, e.retryAfterMs), now); true }
         e.code == 429 -> { blockQuota(key, scope, quotaBlockMs(e.retryAfterMs, e.perDay, now), now); true }
         else -> false
     }

@@ -1,6 +1,7 @@
 package com.dichgame.app
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -172,7 +173,17 @@ class TranslateActivity : Activity() {
     /** Khóa Gemini: danh sách khóa (khóa dự phòng tự dùng khi khóa trước hết lượt), thêm khóa, model, thử kết nối. */
     private fun geminiBlock(c: LinearLayout) {
         val a = this
-        val keys = p.geminiKeys()
+        val keys = p.geminiStoredKeys()
+        if (keys.isNotEmpty()) {
+            val enabledCount = keys.count { p.isGeminiKeyEnabled(it) }
+            val usableCount = keys.count { p.isGeminiKeyEnabled(it) && KeyRing.status(it, p.geminiModel).state == KeyRing.State.OK }
+            val cooldownCount = keys.count { p.isGeminiKeyEnabled(it) && KeyRing.status(it, p.geminiModel).state == KeyRing.State.QUOTA }
+            val invalidCount = keys.count { p.isGeminiKeyEnabled(it) && KeyRing.status(it, p.geminiModel).state == KeyRing.State.BAD }
+            c.addView(
+                Ui.tv(a, "Tổng ${keys.size} khóa · bật ${enabledCount} · khả dụng ${usableCount} · tạm nghỉ ${cooldownCount} · cần kiểm tra ${invalidCount} · tắt ${keys.size - enabledCount}", 12.5f, Ui.SUB),
+                Ui.lpm(a, 0, 8)
+            )
+        }
         if (keys.isEmpty()) {
             c.addView(Ui.tv(a, "Chưa có khóa. Lấy khóa miễn phí rồi dán vào ô bên dưới.", 13f, Ui.SUB), Ui.lpm(a, 0, 8))
         }
@@ -183,17 +194,55 @@ class TranslateActivity : Activity() {
             col.addView(Ui.tv(a, "Khóa ${i + 1}", 15f, Ui.TEXT, true))
             col.addView(Ui.tv(a, mask(k), 12.5f, Ui.SUB))
             row.addView(col, Ui.lp(0, WRAP_CONTENT, 1f))
+            val enabled = p.isGeminiKeyEnabled(k)
             val st = KeyRing.status(k, p.geminiModel)
-            val (label, color) = when (st.state) {
-                KeyRing.State.BAD -> "KHÓA SAI" to Ui.DANGER
-                KeyRing.State.QUOTA -> "HẾT LƯỢT · ${AiRetry.humanWait(st.leftMs)}" to Ui.DANGER
+            val (label, color) = if (!enabled) "ĐÃ TẮT" to Ui.SUB else when (st.state) {
+                KeyRing.State.BAD -> "CẦN KIỂM TRA" to Ui.DANGER
+                KeyRing.State.QUOTA -> "TẠM NGHỈ · ${AiRetry.humanWait(st.leftMs)}" to Ui.DANGER
                 KeyRing.State.OK -> if (st.active) "ĐANG DÙNG" to Ui.OK else "SẴN SÀNG" to Ui.GOLD
             }
             row.addView(Ui.badge(a, label, color))
+            row.addView(Ui.tv(a, if (enabled) "TẮT" else "BẬT", 12f, Ui.GOLD, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(Ui.dp(a, 8), Ui.dp(a, 6), Ui.dp(a, 6), Ui.dp(a, 6))
+                setOnClickListener {
+                    if (p.setGeminiKeyEnabled(k, !enabled)) render()
+                    else Toast.makeText(a, "Không lưu được trạng thái khóa. Hãy thử lại.", Toast.LENGTH_SHORT).show()
+                }
+            })
+            row.addView(Ui.tv(a, "✎", 18f, Ui.TEXT, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(Ui.dp(a, 6), Ui.dp(a, 6), Ui.dp(a, 6), Ui.dp(a, 6))
+                setOnClickListener {
+                    val edit = Ui.field(a, "Khóa Gemini", k, true)
+                    AlertDialog.Builder(a)
+                        .setTitle("Sửa khóa ${i + 1}")
+                        .setView(edit)
+                        .setNegativeButton("Hủy", null)
+                        .setPositiveButton("Lưu") { _, _ ->
+                            val updated = edit.text.toString().trim()
+                            if (updated.isBlank()) {
+                                Toast.makeText(a, "Khóa không được để trống.", Toast.LENGTH_SHORT).show()
+                            } else if (updated != k) {
+                                val next = keys.toMutableList().also { it[i] = updated }
+                                if (p.setGeminiKeys(next)) {
+                                    KeyRing.forget(k)
+                                    render()
+                                } else {
+                                    Toast.makeText(a, "Không lưu được khóa mã hóa. Khóa cũ vẫn được giữ.", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                        .show()
+                }
+            })
             row.addView(Ui.tv(a, "✕", 18f, Ui.DANGER, true).apply {
                 gravity = Gravity.CENTER
-                setPadding(Ui.dp(a, 14), Ui.dp(a, 6), Ui.dp(a, 4), Ui.dp(a, 6))
-                setOnClickListener { p.setGeminiKeys(keys.filterIndexed { j, _ -> j != i }); render() }
+                setPadding(Ui.dp(a, 8), Ui.dp(a, 6), Ui.dp(a, 4), Ui.dp(a, 6))
+                setOnClickListener {
+                    if (p.setGeminiKeys(keys.filterIndexed { j, _ -> j != i })) render()
+                    else Toast.makeText(a, "Không xóa được khóa. Dữ liệu cũ vẫn được giữ.", Toast.LENGTH_LONG).show()
+                }
             })
             c.addView(row)
             c.divide()
@@ -203,10 +252,10 @@ class TranslateActivity : Activity() {
         c.addView(Ui.button(a, "＋  Thêm khóa") {
             val v = add.text.toString().trim()
             if (v.isEmpty()) { Toast.makeText(a, "Hãy dán khóa vào ô trên.", Toast.LENGTH_SHORT).show(); return@button }
-            p.setGeminiKeys(p.geminiKeys() + v)
-            render()
+            if (p.setGeminiKeys(p.geminiStoredKeys() + v)) render()
+            else Toast.makeText(a, "Không lưu được khóa mã hóa. Hãy kiểm tra bộ nhớ thiết bị.", Toast.LENGTH_LONG).show()
         }, Ui.lpm(a, 0, 4))
-        c.addView(Ui.tv(a, "Thêm nhiều khóa: khi một khóa hết lượt (lỗi 429) hoặc bị từ chối, app tự chuyển sang khóa kế tiếp và tạm bỏ khóa đó tới giờ hồi (hết lượt theo ngày thì tới nửa đêm giờ Thái Bình Dương). Lưu ý: Google tính hạn mức theo dự án, các khóa tạo trong cùng một dự án dùng chung hạn mức nên không thêm lượt; hãy tạo khóa ở dự án khác.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 4))
+        c.addView(Ui.tv(a, "Thêm nhiều khóa: có thể sửa, bật hoặc tắt riêng từng khóa. Khi một khóa hết lượt (lỗi 429) hoặc bị từ chối, app tự chuyển sang khóa kế tiếp và tạm bỏ khóa đó tới giờ hồi (hết lượt theo ngày thì tới nửa đêm giờ Thái Bình Dương). Lưu ý: Google tính hạn mức theo dự án, các khóa tạo trong cùng một dự án dùng chung hạn mức nên không thêm lượt; hãy tạo khóa ở dự án khác.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 4))
         c.addView(Ui.button(a, "Lấy khóa miễn phí ở aistudio.google.com") {
             try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/apikey"))) }
             catch (_: Exception) { Toast.makeText(a, "Không mở được trình duyệt.", Toast.LENGTH_SHORT).show() }

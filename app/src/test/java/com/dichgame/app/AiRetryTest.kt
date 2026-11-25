@@ -21,6 +21,7 @@ class AiRetryTest {
 
     @Test fun classifiesErrors() {
         assertEquals(AiRetry.Kind.QUOTA, AiRetry.kindOf(ex(429)))
+        assertEquals(AiRetry.Kind.BILLING, AiRetry.kindOf(AiException(429, "insufficient_quota", billingLimit = true)))
         assertEquals(AiRetry.Kind.NETWORK, AiRetry.kindOf(ex(503)))
         assertEquals(AiRetry.Kind.NETWORK, AiRetry.kindOf(ex(500)))
         assertEquals(AiRetry.Kind.NETWORK, AiRetry.kindOf(ex(408)))
@@ -36,6 +37,7 @@ class AiRetryTest {
 
     @Test fun fallbackOnlyForProviderFailures() {
         assertTrue(AiRetry.canFallback(ex(429)))
+        assertTrue(AiRetry.canFallback(AiException(429, "insufficient_quota", billingLimit = true)))
         assertTrue(AiRetry.canFallback(ex(503)))
         assertTrue(AiRetry.canFallback(ex(401)))
         assertTrue(AiRetry.canFallback(SocketTimeoutException("timeout")))
@@ -66,7 +68,41 @@ class AiRetryTest {
         }
         assertEquals("ok", r)
         assertEquals(3, n)
-        assertEquals(listOf(500L, 1000L), c.sleeps)
+        assertEquals(2, c.sleeps.size)
+        assertTrue("first retry jitter range", c.sleeps[0] in 400L..600L)
+        assertTrue("second exponential retry jitter range", c.sleeps[1] in 800L..1200L)
+    }
+
+
+    @Test fun exponentialBackoffIsCappedAndJittered() {
+        val c = Clock()
+        var n = 0
+        try {
+            AiRetry.run(AiRetry.Plan(maxAttempts = 5, backoffMs = 500, maxBackoffMs = 1200), c::sleep, c::now) {
+                n++
+                throw ex(503)
+            }
+            fail("phải ném lỗi")
+        } catch (e: AiException) {
+            assertEquals(503, e.code)
+        }
+        assertEquals(4, c.sleeps.size)
+        assertTrue(c.sleeps[0] in 400L..600L)
+        assertTrue(c.sleeps[1] in 800L..1200L)
+        assertTrue(c.sleeps[2] in 900L..1200L)
+        assertTrue(c.sleeps[3] in 900L..1200L)
+    }
+
+    @Test fun serverRetryAfterIsNeverShortenedByJitter() {
+        val c = Clock()
+        var n = 0
+        val r = AiRetry.run(AiRetry.Plan(), c::sleep, c::now) {
+            n++
+            if (n == 1) throw ex(429, after = 2000)
+            "ok"
+        }
+        assertEquals("ok", r)
+        assertEquals(listOf(2000L), c.sleeps)
     }
 
     @Test fun retriesTimeouts() {
@@ -203,7 +239,7 @@ class AiRetryTest {
 
     @Test fun explainMentionsWhatToDo() {
         assertTrue(AiRetry.explain(AiRetry.Kind.QUOTA, 429, 21_000).contains("21 giây"))
-        assertTrue(AiRetry.explain(AiRetry.Kind.QUOTA, 429, 0).contains("hết lượt"))
+        assertTrue(AiRetry.explain(AiRetry.Kind.QUOTA, 429, 0).contains("hạn mức"))
         assertTrue(AiRetry.explain(AiRetry.Kind.BAD, 401, 0).contains("Khóa AI"))
         assertTrue(AiRetry.explain(AiRetry.Kind.BAD, 404, 0).contains("model"))
         assertTrue(AiRetry.explain(AiRetry.Kind.BLOCKED, -1, 0).contains("bộ lọc"))
@@ -216,11 +252,32 @@ class AiRetryTest {
         assertEquals("", s.machineReasons())
         s.inc(AiRetry.statKey(AiRetry.Kind.QUOTA), 5)
         s.inc(AiRetry.statKey(AiRetry.Kind.NETWORK), 2)
+        s.inc(AiRetry.statKey(AiRetry.Kind.BILLING))
         s.inc("may_loai")
         val why = s.machineReasons()
         assertTrue(why, why.contains("hết lượt 5"))
         assertTrue(why, why.contains("mạng hoặc máy chủ AI quá tải 2"))
+        assertTrue(why, why.contains("giới hạn thanh toán/chi tiêu 1"))
         assertTrue(why, why.contains("bị loại hai lần 1"))
         assertTrue(s.report(2_000, 80), s.report(2_000, 80).contains("Dịch trên máy vì AI không dùng được"))
     }
+
+    @Test fun billingLimitIsNotRetriedAndHasSeparateExplanation() {
+        val c = Clock()
+        var calls = 0
+        try {
+            AiRetry.run(AiRetry.Plan(), c::sleep, c::now) {
+                calls++
+                throw AiException(429, "insufficient_quota", billingLimit = true)
+            }
+            fail("billing limit should not be retried")
+        } catch (e: AiException) {
+            assertTrue(e.billingLimit)
+        }
+        assertEquals(1, calls)
+        assertTrue(c.sleeps.isEmpty())
+        assertTrue(AiRetry.explain(AiRetry.Kind.BILLING, 429, 0).contains("thanh toán"))
+    }
+
+
 }

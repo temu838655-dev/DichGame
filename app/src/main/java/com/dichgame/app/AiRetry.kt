@@ -10,8 +10,10 @@ import org.json.JSONObject
  */
 object AiRetry {
     enum class Kind {
-        /** 429: hết lượt (theo phút hoặc theo ngày). */
+        /** 429 per-key/project quota with a provider-supplied reset window. */
         QUOTA,
+        /** Provider/account-wide billing or spend cap; rotating another key will not fix it. */
+        BILLING,
         /** Mạng chập chờn, quá thời gian, máy chủ quá tải (5xx): thử lại thường được. */
         NETWORK,
         /** AI từ chối câu này vì bộ lọc nội dung: thử lại vô ích. */
@@ -27,6 +29,7 @@ object AiRetry {
 
     fun kindOf(e: Throwable): Kind = when (e) {
         is AiException -> when {
+            e.billingLimit -> Kind.BILLING
             e.code == 429 -> Kind.QUOTA
             e.code == CODE_BLOCKED -> Kind.BLOCKED
             e.code == 408 || e.code in 500..599 -> Kind.NETWORK
@@ -39,13 +42,14 @@ object AiRetry {
 
     /** Chỉ chuyển nhà cung cấp khi lỗi kết nối, hạn mức hoặc cấu hình; không thử vượt bộ lọc nội dung. */
     fun canFallback(e: Throwable): Boolean = when (kindOf(e)) {
-        Kind.QUOTA, Kind.NETWORK, Kind.BAD -> true
+        Kind.QUOTA, Kind.BILLING, Kind.NETWORK, Kind.BAD -> true
         else -> false
     }
 
     /** Tên bộ đếm thống kê cho mỗi loại lỗi (xem [SessionStats]). */
     fun statKey(k: Kind): String = when (k) {
         Kind.QUOTA -> "may_het_luot"
+        Kind.BILLING -> "may_billing"
         Kind.NETWORK -> "may_mang"
         Kind.BLOCKED -> "may_chan"
         Kind.BAD -> "may_khoa"
@@ -57,8 +61,12 @@ object AiRetry {
         val maxAttempts: Int = 3,
         /** Hết lượt mà máy chủ bảo chờ lâu hơn mức này thì bỏ cuộc ngay (không treo câu phụ đề), nhường dịch máy. */
         val maxWaitMs: Long = 3000,
-        /** Chờ giữa các lần thử: backoffMs × số lần đã thử. */
+        /** Base delay for exponential backoff. */
         val backoffMs: Long = 500,
+        /** Maximum exponential delay before jitter. */
+        val maxBackoffMs: Long = 4000,
+        /** Randomized delay ratio for transient network failures (0.2 = +/-20%). */
+        val jitterRatio: Double = 0.2,
         /** Quá chừng này kể từ lần gọi đầu thì không thử thêm. */
         val budgetMs: Long = 22000,
     )
@@ -76,13 +84,29 @@ object AiRetry {
                 return call()
             } catch (e: Exception) {
                 val kind = kindOf(e)
-                if (kind == Kind.BLOCKED || kind == Kind.BAD) throw e
+                if (kind == Kind.BLOCKED || kind == Kind.BAD || kind == Kind.BILLING) throw e
                 if (attempt >= plan.maxAttempts) throw e
-                var wait = plan.backoffMs * attempt
-                if (kind == Kind.QUOTA) {
-                    val told = (e as? AiException)?.retryAfterMs ?: 0L
-                    if (told > plan.maxWaitMs) throw e
-                    wait = maxOf(wait, told)
+                val shift = (attempt - 1).coerceIn(0, 20)
+                val baseBackoff = plan.backoffMs.coerceAtLeast(0L)
+                val backoffCap = plan.maxBackoffMs.coerceAtLeast(0L)
+                val multiplier = 1L shl shift
+                val exponential = if (baseBackoff > backoffCap / multiplier) backoffCap else baseBackoff * multiplier
+                val told = if (kind == Kind.QUOTA) (e as? AiException)?.retryAfterMs ?: 0L else 0L
+                if (told > plan.maxWaitMs) throw e
+
+                // Honor Retry-After as a lower bound. Otherwise apply bounded jitter so
+                // many game clients do not synchronize retries against a recovering API.
+                val base = maxOf(exponential, told)
+                val ratio = plan.jitterRatio.coerceIn(0.0, 1.0)
+                val wait = if (kind == Kind.QUOTA && told > 0L) {
+                    base
+                } else if (ratio == 0.0 || base == 0L) {
+                    base
+                } else {
+                    val spread = (base * ratio).toLong()
+                    val low = (base - spread).coerceAtLeast(0L)
+                    val high = (base + spread).coerceAtMost(backoffCap)
+                    if (high <= low) low else java.util.concurrent.ThreadLocalRandom.current().nextLong(low, high + 1)
                 }
                 if (now() - start + wait > plan.budgetMs) throw e
                 sleep(wait)
@@ -140,8 +164,10 @@ object AiRetry {
     /** Câu báo cho người dùng khi một câu phải dịch bằng dịch máy vì AI lỗi. [coolMs]: còn bao lâu nữa mới thử lại AI. */
     fun explain(kind: Kind, code: Int, coolMs: Long): String = when (kind) {
         Kind.QUOTA ->
-            "Gemini báo hết lượt dùng (hạn mức tính theo dự án Google, các khóa cùng dự án dùng chung)." +
+            "Nhà cung cấp AI báo hết lượt hoặc đã chạm hạn mức sử dụng; các khóa cùng dự án hoặc tài khoản có thể dùng chung hạn mức." +
                 if (coolMs > 0) " Tạm dịch bằng dịch máy khoảng ${humanWait(coolMs)} rồi thử lại AI." else " Câu này tạm dịch bằng dịch máy."
+        Kind.BILLING ->
+            "Tài khoản hoặc dự án AI đã chạm giới hạn thanh toán/chi tiêu. Hãy kiểm tra gói thanh toán hoặc hạn mức chi tiêu; app tạm dùng dịch máy."
         Kind.NETWORK -> "Không gọi được AI sau vài lần thử (mạng chậm hoặc máy chủ AI quá tải). Câu này tạm dịch bằng dịch máy."
         Kind.BLOCKED -> "AI từ chối câu này (bộ lọc nội dung). Câu này dịch bằng dịch máy."
         Kind.BAD -> when (code) {
