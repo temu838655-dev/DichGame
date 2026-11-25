@@ -42,7 +42,7 @@ Feed UTF-8 JSON có cấu trúc:
 }
 ```
 
-Trường `source_platform` ghi **nền tảng của bản Việt hóa nguồn** (ví dụ PC/Steam); `target_platforms` ghi các console được phép sử dụng dữ liệu đó. Nếu bỏ qua `target_platforms`, mặc định dữ liệu được khai báo phục vụ PS5, PS4 và Xbox. Bộ lọc console chỉ kiểm tra danh sách đích, không loại dữ liệu chỉ vì nguồn là PC/Steam. Trường `platform` cũ vẫn được chấp nhận như bí danh tương thích ngược. `download_permitted` chỉ được bật nếu registry của nguồn cũng cho phép tải nội dung.
+Trường `source_platform` ghi **nền tảng của bản Việt hóa nguồn** (ví dụ PC/Steam); `target_platforms` ghi các console được phép sử dụng dữ liệu đó. `target_platforms` là trường bắt buộc để xác nhận rõ những console được phép sử dụng dữ liệu; hệ thống không tự suy đoán quyền dùng chéo nền tảng. Bộ lọc console chỉ kiểm tra danh sách đích, không loại dữ liệu chỉ vì nguồn là PC/Steam. Trường `platform` cũ vẫn được chấp nhận như bí danh tương thích ngược. `download_permitted` chỉ được bật nếu registry của nguồn cũng cho phép tải nội dung.
 
 ## Chạy
 
