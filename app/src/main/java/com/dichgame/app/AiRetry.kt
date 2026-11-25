@@ -35,9 +35,12 @@ object AiRetry {
 
     /** Chỉ chuyển từ Interactions sang generateContent khi endpoint/JSON Interactions không tương thích. */
     fun shouldFallbackTtsEndpoint(code: Int, body: String): Boolean {
-        if (code == 404) return true
-        if (code != 400) return false
         val s = body.lowercase(java.util.Locale.ROOT)
+        if (code == 404) {
+            return s.contains("interactions") &&
+                listOf("not found", "unknown", "unsupported", "not supported").any { s.contains(it) }
+        }
+        if (code != 400) return false
         val mentionsInteractionsShape = listOf("interactions", "response_format", "generation_config", "speech_metadata", "user_input")
             .any { s.contains(it) }
         val rejectsShape = listOf("unknown", "unsupported", "not supported", "not found", "unrecognized", "invalid")
