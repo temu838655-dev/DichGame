@@ -10,8 +10,10 @@ import org.json.JSONObject
  */
 object AiRetry {
     enum class Kind {
-        /** 429: hết lượt (theo phút hoặc theo ngày). */
+        /** 429 per-key/project quota with a provider-supplied reset window. */
         QUOTA,
+        /** Provider/account-wide billing or spend cap; rotating another key will not fix it. */
+        BILLING,
         /** Mạng chập chờn, quá thời gian, máy chủ quá tải (5xx): thử lại thường được. */
         NETWORK,
         /** AI từ chối câu này vì bộ lọc nội dung: thử lại vô ích. */
@@ -27,6 +29,7 @@ object AiRetry {
 
     fun kindOf(e: Throwable): Kind = when (e) {
         is AiException -> when {
+            e.billingLimit -> Kind.BILLING
             e.code == 429 -> Kind.QUOTA
             e.code == CODE_BLOCKED -> Kind.BLOCKED
             e.code == 408 || e.code in 500..599 -> Kind.NETWORK
@@ -39,13 +42,14 @@ object AiRetry {
 
     /** Chỉ chuyển nhà cung cấp khi lỗi kết nối, hạn mức hoặc cấu hình; không thử vượt bộ lọc nội dung. */
     fun canFallback(e: Throwable): Boolean = when (kindOf(e)) {
-        Kind.QUOTA, Kind.NETWORK, Kind.BAD -> true
+        Kind.QUOTA, Kind.BILLING, Kind.NETWORK, Kind.BAD -> true
         else -> false
     }
 
     /** Tên bộ đếm thống kê cho mỗi loại lỗi (xem [SessionStats]). */
     fun statKey(k: Kind): String = when (k) {
         Kind.QUOTA -> "may_het_luot"
+        Kind.BILLING -> "may_billing"
         Kind.NETWORK -> "may_mang"
         Kind.BLOCKED -> "may_chan"
         Kind.BAD -> "may_khoa"
@@ -80,7 +84,7 @@ object AiRetry {
                 return call()
             } catch (e: Exception) {
                 val kind = kindOf(e)
-                if (kind == Kind.BLOCKED || kind == Kind.BAD) throw e
+                if (kind == Kind.BLOCKED || kind == Kind.BAD || kind == Kind.BILLING) throw e
                 if (attempt >= plan.maxAttempts) throw e
                 val shift = (attempt - 1).coerceIn(0, 20)
                 val baseBackoff = plan.backoffMs.coerceAtLeast(0L)
@@ -160,8 +164,10 @@ object AiRetry {
     /** Câu báo cho người dùng khi một câu phải dịch bằng dịch máy vì AI lỗi. [coolMs]: còn bao lâu nữa mới thử lại AI. */
     fun explain(kind: Kind, code: Int, coolMs: Long): String = when (kind) {
         Kind.QUOTA ->
-            "Gemini báo hết lượt dùng (hạn mức tính theo dự án Google, các khóa cùng dự án dùng chung)." +
+            "Nhà cung cấp AI báo đã chạm hạn mức sử dụng; các khóa cùng dự án hoặc tài khoản có thể dùng chung hạn mức." +
                 if (coolMs > 0) " Tạm dịch bằng dịch máy khoảng ${humanWait(coolMs)} rồi thử lại AI." else " Câu này tạm dịch bằng dịch máy."
+        Kind.BILLING ->
+            "Tài khoản hoặc dự án AI đã chạm giới hạn thanh toán/chi tiêu. Hãy kiểm tra gói thanh toán hoặc hạn mức chi tiêu; app tạm dùng dịch máy."
         Kind.NETWORK -> "Không gọi được AI sau vài lần thử (mạng chậm hoặc máy chủ AI quá tải). Câu này tạm dịch bằng dịch máy."
         Kind.BLOCKED -> "AI từ chối câu này (bộ lọc nội dung). Câu này dịch bằng dịch máy."
         Kind.BAD -> when (code) {
