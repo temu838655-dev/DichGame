@@ -39,18 +39,21 @@ object TvLink {
                 "[${address.hostAddress.replace("%", "%25")}]"
             } else address.hostAddress
             val c = URL("http://$numericHost:8765/audio").openConnection() as HttpURLConnection
-            c.requestMethod = "POST"
-            c.connectTimeout = 2000
-            c.readTimeout = 6000
-            c.doOutput = true
-            c.setFixedLengthStreamingMode(pcm.data.size)
-            c.setRequestProperty("X-Token", token)
-            c.setRequestProperty("X-Rate", pcm.rate.toString())
-            c.setRequestProperty("X-Speed", speed.toString())
-            c.outputStream.use { it.write(pcm.data) }
-            val code = c.responseCode
-            c.disconnect()
-            if (code == 200) null else "TV trả mã $code"
+            try {
+                c.requestMethod = "POST"
+                c.connectTimeout = 2000
+                c.readTimeout = 6000
+                c.doOutput = true
+                c.setFixedLengthStreamingMode(pcm.data.size)
+                c.setRequestProperty("X-Token", token)
+                c.setRequestProperty("X-Rate", pcm.rate.toString())
+                c.setRequestProperty("X-Speed", speed.toString())
+                c.outputStream.use { it.write(pcm.data) }
+                val code = c.responseCode
+                if (code == 200) null else "TV trả mã $code"
+            } finally {
+                c.disconnect()
+            }
         } catch (e: Exception) {
             e.message ?: "lỗi mạng"
         }
