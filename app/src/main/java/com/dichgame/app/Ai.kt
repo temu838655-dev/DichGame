@@ -124,7 +124,7 @@ object Ai {
             val code = c.responseCode
             val txt = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
             if (code !in 200..299) throw AiException(
-                code, txt.take(200), AiRetry.retryDelayMs(c.getHeaderField("Retry-After"), txt),
+                code, AiRetry.providerErrorMessage(txt), AiRetry.retryDelayMs(c.getHeaderField("Retry-After"), txt),
                 perDay = code == 429 && KeyRing.isDailyQuota(txt), badKey = KeyRing.isBadKey(code, txt),
                 billingLimit = code == 429 && metric == "api_dich_cloud" && KeyRing.isBillingLimit(txt),
             )
