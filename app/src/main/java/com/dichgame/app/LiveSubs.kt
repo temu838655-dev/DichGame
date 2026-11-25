@@ -411,8 +411,11 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         }
         val scanAt = System.currentTimeMillis()
         val ocrStarted = android.os.SystemClock.elapsedRealtime()
-        o.read(bmp, { m -> ocrFail(m) }) { r ->
-            if (running && ocr === o) stats.ocrLatency(o.isCloud, android.os.SystemClock.elapsedRealtime() - ocrStarted)
+        val scope = activeGameContext
+        val valid = { running && ocr === o && activeGameContext == scope && gameContext(Prefs(act)) == scope }
+        o.read(bmp, { m -> if (valid()) ocrFail(m) else finishBusy() }) { r ->
+            if (!valid()) { finishBusy(); return@read }
+            stats.ocrLatency(o.isCloud, android.os.SystemClock.elapsedRealtime() - ocrStarted)
             try { onOcrResult(r, scanAt) } catch (t: Throwable) { Log.e(TAG, "ocr xu ly loi", t); busy = false }
         }
     }
