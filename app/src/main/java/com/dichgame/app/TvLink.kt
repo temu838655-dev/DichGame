@@ -5,20 +5,22 @@ import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.URL
 
-/** Only send live game audio to a TV on a local/private network, never an arbitrary public host. */
-internal fun isLocalTvHost(host: String): Boolean {
+/** Resolve exactly once and return a private/local address; callers must connect to this address,
+ * not re-resolve the original hostname (which would allow DNS-rebinding between validation and use). */
+internal fun resolveLocalTvAddress(host: String): InetAddress? {
     val clean = host.trim().removePrefix("[").removeSuffix("]")
-    if (clean.isEmpty() || clean.any { it.isWhitespace() || it.isISOControl() || it == '/' || it == '@' }) return false
+    if (clean.isEmpty() || clean.any { it.isWhitespace() || it.isISOControl() || it == '/' || it == '@' }) return null
     return try {
-        val addresses = InetAddress.getAllByName(clean)
-        addresses.isNotEmpty() && addresses.all { address ->
+        InetAddress.getAllByName(clean).firstOrNull { address ->
             address.isLoopbackAddress || address.isSiteLocalAddress || address.isLinkLocalAddress ||
                 (address is Inet6Address && (address.address[0].toInt() and 0xfe) == 0xfc)
         }
     } catch (_: Exception) {
-        false
+        null
     }
 }
+
+internal fun isLocalTvHost(host: String): Boolean = resolveLocalTvAddress(host) != null
 
 /** Nói chuyện với app Dịch game TV đã ghép (cổng 8765). */
 object TvLink {
@@ -29,10 +31,14 @@ object TvLink {
     fun postAudio(ip: String, token: String, pcm: Pcm, speed: Float = 1f): String? {
         if (pcm.data.isEmpty()) return "không có âm thanh"
         if (pcm.channels != 1) return "âm thanh không phải một kênh"
-        if (!isLocalTvHost(ip)) return "Chỉ gửi âm thanh tới TV trong mạng nội bộ."
+        val address = resolveLocalTvAddress(ip) ?: return "Chỉ gửi âm thanh tới TV trong mạng nội bộ."
         return try {
-            val host = if (ip.contains(':') && !ip.startsWith("[")) "[$ip]" else ip
-            val c = URL("http://$host:8765/audio").openConnection() as HttpURLConnection
+            // Use the already-validated numeric address. Reusing the original hostname here
+            // would perform a second DNS lookup and permit DNS-rebinding to a public endpoint.
+            val numericHost = if (address is Inet6Address) {
+                "[${address.hostAddress.replace("%", "%25")}]"
+            } else address.hostAddress
+            val c = URL("http://$numericHost:8765/audio").openConnection() as HttpURLConnection
             c.requestMethod = "POST"
             c.connectTimeout = 2000
             c.readTimeout = 6000
