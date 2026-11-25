@@ -92,6 +92,7 @@ class SessionStats {
         sb.append("; ghép với chữ đọc dở: ${get("ghep")}\n")
         sb.append("Dịch: AI ${get("dich_ai")}, bộ nhớ đệm ${get("dich_cache")}, gói Việt hoá ${get("dich_goi")}" + (if (get("dich_goi_gan") > 0) " (trong đó ${get("dich_goi_gan")} khớp gần đúng)" else "") + ", dịch trên máy ${get("dich_may")}")
         sb.append("; AI bị loại rồi dịch lại ${get("dich_loai")}; còn nghi ngờ ${get("dich_nghi")}\n")
+        sb.append("Giọng đọc: cache RAM ${get("giong_cache_ram")}, cache đĩa ${get("giong_cache_disk")}, thử tổng hợp offline ${get("giong_offline_synth")} lần.\n")
         val gemini = get("api_dich_gemini")
         val cloud = get("api_dich_cloud")
         val voice = get("api_giong_gemini")
