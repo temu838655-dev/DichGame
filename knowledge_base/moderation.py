@@ -50,6 +50,7 @@ class CommunityModeration:
         return self.kb.add_translation(
             game_id, source_text, translated_text,
             context=context, speaker=speaker, source_id=source_id,
+            contributor_id=contributor_id.strip(),
             translation_source="COMMUNITY",
             translation_status="COMMUNITY",
         )
@@ -140,7 +141,7 @@ class CommunityModeration:
                    FROM translations t
                    LEFT JOIN translation_reports r
                      ON r.translation_id=t.translation_id AND r.status='OPEN'
-                   WHERE t.translation_status IN ('COMMUNITY','AI_UNVERIFIED')
+                   WHERE t.translation_status IN ('COMMUNITY','AI_UNVERIFIED','AI_REVIEWED')
                    GROUP BY t.translation_id
                    ORDER BY open_reports DESC, t.created_at ASC
                    LIMIT ?""",
