@@ -48,21 +48,25 @@ object Voices {
     fun sizeMb(ctx: Context, id: String): Int =
         ((dir(ctx, id).listFiles()?.sumOf { it.length() } ?: 0L) / (1024 * 1024)).toInt()
 
-    @Synchronized
+    private val operations = java.util.concurrent.locks.ReentrantLock()
+
     fun delete(ctx: Context, id: String) {
         if (pack(id) == null) return
-        File(ctx.filesDir, "voices/$id.bak").deleteRecursively()
-        dir(ctx, id).deleteRecursively()
-        File(ctx.filesDir, "voices/$id.tmp").deleteRecursively()
+        if (!operations.tryLock()) return
+        try {
+            File(ctx.filesDir, "voices/$id.bak").deleteRecursively()
+            dir(ctx, id).deleteRecursively()
+            File(ctx.filesDir, "voices/$id.tmp").deleteRecursively()
+        } finally { operations.unlock() }
     }
 
     /**
      * Tải gói rồi giải nén thẳng từ luồng mạng (không tốn chỗ cho file nén). Chạy ở luồng nền.
      * Trả về null nếu xong, hoặc câu báo lỗi. [onProgress] nhận 0..100.
      */
-    @Synchronized
     fun download(ctx: Context, pack: VoicePack, cancel: AtomicBoolean, onProgress: (Int) -> Unit): String? {
         if (Voices.pack(pack.id) !== pack) return "Gói giọng không hợp lệ."
+        if (!operations.tryLock()) return "Đang xử lý gói giọng khác."
         val root = File(ctx.filesDir, "voices")
         val tmp = File(root, pack.id + ".tmp")
         val dst = dir(ctx, pack.id)
@@ -104,10 +108,15 @@ object Voices {
             var haveModel = false
             var haveTokens = false
             var extracted = 0L
+            var entries = 0
             val seen = HashSet<String>()
             TarArchiveInputStream(BZip2CompressorInputStream(counted.buffered(1 shl 16))).use { tar ->
                 while (true) {
                     val e = tar.nextEntry ?: break
+                    if (cancel.get()) throw CancelledException()
+                    if (++entries > 10000 || e.size < 0 || e.size > maxExtract - extracted)
+                        throw java.io.IOException("Gói giọng quá lớn")
+                    extracted += e.size
                     if (e.isDirectory) continue
                     val base = e.name.substringAfterLast('/')
                     val out = when {
@@ -116,9 +125,8 @@ object Voices {
                         base == "MODEL_CARD" -> "MODEL_CARD"
                         else -> null
                     } ?: continue
-                    if (!e.isFile || !seen.add(out) || e.size < 0 || e.size > maxExtract - extracted)
+                    if (!e.isFile || !seen.add(out))
                         throw java.io.IOException("Gói giọng không hợp lệ")
-                    extracted += e.size
                     File(tmp, out).outputStream().buffered(1 shl 16).use { o -> copy(tar, o, cancel) }
                     if (out == "model.onnx") haveModel = true
                     if (out == "tokens.txt") haveTokens = true
@@ -147,7 +155,7 @@ object Voices {
             return "Tải giọng lỗi: " + (e.message ?: e.javaClass.simpleName)
         } finally {
             connection?.disconnect()
-            tmp.deleteRecursively()
+            try { tmp.deleteRecursively() } finally { operations.unlock() }
         }
     }
 
