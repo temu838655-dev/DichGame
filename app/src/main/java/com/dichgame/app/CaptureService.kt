@@ -97,7 +97,7 @@ class CaptureService : Service() {
     private class Payload(val cards: List<Card>, val seenAt: Long)
     /** Các câu đã qua bộ hợp nhất, chờ dịch (mỗi lúc chỉ dịch một việc để giữ đúng thứ tự). */
     private val jobs = java.util.ArrayDeque<Job>()
-    private val maxJobs = 12
+    private val maxJobs = 6
     private var translating = false
     private var translatingSince = 0L
     private var translateToken = 0
@@ -1190,7 +1190,7 @@ class CaptureService : Service() {
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
         overlay?.apply { text = sb; visibility = if (pr.listenOnly) View.GONE else View.VISIBLE }
         val vi = cards.joinToString(" ") { it.tr.text }
-        val scene = cards.filterNot { it.tr.uncertain }.map { VoiceLine(it.tr.text, it.speaker, it.tr.delivery) }
+        // uncertainty là cảnh báo chất lượng, không phải lý do bỏ đọc một bản dịch đã có nội dung.\n        val scene = cards.filter { it.tr.text.isNotBlank() }.map { VoiceLine(it.tr.text, it.speaker, it.tr.delivery) }
         val tvSpeaks = speak && tvSpeakOn() && !tvVoiceOn() && scene.size == cards.size
         // TV tự đọc thì chỉ gửi lời dịch; không đọc thì gửi kèm tên người nói
         val tvText = if (tvSpeaks || cards.none { it.speaker != null }) cards.joinToString(" ") { it.tr.caption }
