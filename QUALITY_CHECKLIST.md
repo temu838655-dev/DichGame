@@ -89,3 +89,11 @@ Không diễn giải build success thành production-ready.
 | PR #86 | Draft/open; mergeable=true ở lần kiểm tra | CHƯA MERGE — chờ Android checks và review |
 
 Links: [Build #1961](https://github.com/temu838655-dev/DichGame/actions/runs/45711631124), [Bridge #173](https://github.com/temu838655-dev/DichGame/actions/runs/45711630980), [Smoke #161](https://github.com/temu838655-dev/DichGame/actions/runs/45708105649), [KB #227](https://github.com/temu838655-dev/DichGame/actions/runs/45711631198).
+
+
+### Correction — latest CI re-poll (2026-11-26)
+| Hạng mục | Bằng chứng mới | Trạng thái |
+|---|---|---|
+| Android knowledge-base bridge | Run #173 (45711630980) completed success | VERIFIED (Android JVM tests) |
+| Android APK build | Run #1961 still running app unit tests | PENDING |
+| Emulator smoke | Run #161 still running emulator execution | NOT VERIFIED |
