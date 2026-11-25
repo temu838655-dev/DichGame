@@ -21,8 +21,7 @@ class CloudRefresh(ctx: Context) {
             val p = Prefs(app)
             val profile = p.profile
             val game = PackStore.gameName(p)
-            val platform = p.selectedPlatform
-            val context = profile + "\u0000" + game + "\u0000" + platform
+            val context = profile + "\u0000" + game
             if (context != lastContext) { lastContext = context; generation++; next = 0L }
             val now = android.os.SystemClock.elapsedRealtime()
             if (p.autoPackRefresh && game.isNotBlank() && !busy && now >= next) {
@@ -34,7 +33,7 @@ class CloudRefresh(ctx: Context) {
                     exec.execute {
                         try {
                             val source = PackStore.cloudInfo(app, profile, game)?.source
-                                ?: p.packCatalogUrl.takeIf { it.isNotBlank() }?.let { PackStore.catalogSource(it, game, platform) }
+                                ?: p.packCatalogUrl.takeIf { it.isNotBlank() }?.let { PackStore.catalogSource(it, game) }
                             if (source != null) PackStore.importLink(app, p, source, profile, game, autoEpoch = epoch) {
                                 generation == token && p.autoPackRefresh && !Thread.currentThread().isInterrupted
                             }
