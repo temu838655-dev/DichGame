@@ -10,7 +10,7 @@ import json
 import re
 import sqlite3
 import unicodedata
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -46,7 +46,7 @@ class KnowledgeBase:
 
     def _initialize(self) -> None:
         schema = SCHEMA_PATH.read_text(encoding="utf-8")
-        with self.connect() as connection:
+        with closing(self.connect()) as connection:
             connection.execute("PRAGMA journal_mode = WAL")
             connection.executescript(schema)
             # Fail early and clearly if SQLite was built without FTS5.
@@ -164,7 +164,7 @@ class KnowledgeBase:
 
     def lookup_exact(self, game_id: str, source_text: str) -> dict[str, Any] | None:
         normalized = normalize_text(source_text)
-        with self.connect() as db:
+        with closing(self.connect()) as db:
             row = db.execute(
                 """SELECT * FROM translations
                    WHERE game_id = ? AND normalized_text = ?
