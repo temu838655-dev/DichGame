@@ -181,5 +181,20 @@ CREATE TRIGGER IF NOT EXISTS translations_fts_update AFTER UPDATE ON translation
     VALUES (new.translation_id, new.source_text, new.translated_text, new.context, new.speaker);
 END;
 
+CREATE TABLE IF NOT EXISTS translation_request_locks (
+    game_id TEXT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+    text_hash TEXT NOT NULL,
+    context_hash TEXT NOT NULL DEFAULT '',
+    owner_token TEXT NOT NULL,
+    lease_until TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    PRIMARY KEY(game_id, text_hash, context_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_translation_cache_last_used
+    ON translation_cache(last_used);
+
 INSERT OR IGNORE INTO schema_migrations(version, description)
-VALUES (1, 'Initial multi-game localization knowledge-base schema');
+VALUES
+    (1, 'Initial multi-game localization knowledge-base schema'),
+    (2, 'Persistent leases for duplicate translation request suppression');
