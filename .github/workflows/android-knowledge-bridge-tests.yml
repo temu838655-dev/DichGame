@@ -43,6 +43,8 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
 
       - name: Run Android unit tests without native Remote Play build
-        run: ./gradlew :app:testDebugUnitTest -PnoNative --no-daemon --stacktrace
+        run: gradle :app:testDebugUnitTest -PnoNative --no-daemon --stacktrace
