@@ -10,15 +10,31 @@ internal object RemotePack {
     data class Manifest(val game: String, val version: Int, val url: URL, val bytes: Int, val sha256: String)
     enum class Decision { INSTALL, SAME, REJECT }
 
-    fun catalogSource(raw: String, game: String): String? {
+    /**
+     * Resolve a game/platform-specific manifest from an authorized catalog.
+     * Schema 1 remains readable for callers that explicitly omit platform;
+     * automatic refresh supplies a platform and therefore requires an exact match.
+     */
+    fun catalogSource(raw: String, game: String, platform: String? = null): String? {
         require(game.isNotBlank())
+        val allowedPlatforms = setOf("PC", "STEAM", "PS5", "PS4", "XBOX", "SWITCH", "ANDROID", "IOS")
+        val wantedPlatform = platform?.uppercase(Locale.ROOT)
+        require(wantedPlatform == null || wantedPlatform in allowedPlatforms) { "Nền tảng không được hỗ trợ." }
         val obj = JSONObject(raw)
-        require(obj.getInt("schema") == 1)
+        val schema = obj.getInt("schema")
+        require(schema in 1..2) { "Phiên bản danh mục chưa được hỗ trợ." }
         val entries = obj.getJSONArray("games")
         require(entries.length() <= 2000)
         val matches = (0 until entries.length()).map { entries.getJSONObject(it) }
-            .filter { GamePackMatch.selected(game, it.getString("game")) }
-        require(matches.size <= 1) { "Danh mục có nhiều nguồn cho cùng game." }
+            .filter { entry ->
+                if (!GamePackMatch.selected(game, entry.getString("game"))) false
+                else if (wantedPlatform == null) true
+                else {
+                    val declared = entry.optString("platform").uppercase(Locale.ROOT)
+                    declared in allowedPlatforms && declared == wantedPlatform
+                }
+            }
+        require(matches.size <= 1) { "Danh mục có nhiều nguồn cho cùng game và nền tảng." }
         val entry = matches.singleOrNull() ?: return null
         val url = URL(entry.getString("manifest"))
         require(url.protocol == "https" && url.host.isNotBlank() && url.userInfo == null &&
