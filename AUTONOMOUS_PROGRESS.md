@@ -273,3 +273,8 @@ Links: [KB #227](https://github.com/temu838655-dev/DichGame/actions/runs/4571163
 ### CI evidence
 - Branch head at documentation update: see latest commit in GitHub.
 - PR checks have not yet been observed to completion. Do not mark the above changes VERIFIED until the corresponding jobs finish successfully.
+
+### Additional TTS initialization-race repair — 2026-11-26
+- `Speaker.kt`: system-voice utterances arriving before Android TextToSpeech initialization completes are now buffered (maximum 5) and drained after the engine reports SUCCESS. Duplicate pending text is suppressed; an explicit interrupt clears pending text; stop/shutdown clears the buffer.
+- Rationale: the prior `speakSystem()` returned immediately when `ready == false`, silently dropping translations during the engine initialization window. This repair prevents that race from losing early narration.
+- Verification: source change committed; await Android JVM/Gradle CI. Physical TTS initialization and actual Vietnamese audio still require a device test.
