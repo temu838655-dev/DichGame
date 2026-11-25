@@ -50,4 +50,25 @@ class UpdateTest {
         assertEquals("Tính năng mới\n\nSửa lỗi", clean)
         assertTrue(Update.cleanNotes("x".repeat(900)).length <= 701)
     }
+    @Test fun resumedDownloadRangeMustMatchRequestedOffsetAndBounds() {
+        val valid = DownloadRangeParser.parse("bytes 100-199/500", 100, 100, 1000, 500)
+        assertNotNull(valid)
+        assertEquals(200L, valid!!.endExclusive)
+        assertEquals(500L, valid.total)
+        assertNull(DownloadRangeParser.parse("bytes 99-199/500", 100, 101, 1000, 500))
+        assertNull(DownloadRangeParser.parse("bytes 100-199/500", 100, 99, 1000, 500))
+        assertNull(DownloadRangeParser.parse("bytes 100-199/150", 100, 100, 1000, 500))
+        assertNull(DownloadRangeParser.parse("bytes 100-1200/1500", 100, 1101, 1000, -1))
+    }
+
+    @Test fun resumedDownloadAllowsUnknownTotalButRejectsMalformedHeaders() {
+        val valid = DownloadRangeParser.parse("bytes 64-127/*", 64, 64, 1024, -1)
+        assertNotNull(valid)
+        assertEquals(128L, valid!!.endExclusive)
+        assertEquals(-1L, valid.total)
+        assertNull(DownloadRangeParser.parse("bytes 64-127/128", 64, -1, 1024, 256))
+        assertNull(DownloadRangeParser.parse("not-a-range", 64, 64, 1024, -1))
+        assertNull(DownloadRangeParser.parse("bytes 64-63/128", 64, 0, 1024, -1))
+    }
+
 }
