@@ -177,7 +177,7 @@ class CaptureService : Service() {
         pacer.cleared()
         RecentLines.clear()
         last = ""; cand = ""; stable = 0; prevVi = ""; prevOrig = ""
-        lastFine = null; lastSig = null
+        lastFine = null; lastSig = null; skipRun = 0
         textOnScreen = false
         menuUntil = 0L; autoShown = false; autoCand = ""; autoDone = ""; autoStable = 0
         speaker?.stop()
@@ -813,7 +813,8 @@ class CaptureService : Service() {
             2 -> if (ocr?.isCloud == true) 1.0 else 0.7
             else -> 1.0
         }
-        return (pr.scanMs * f).toLong().coerceIn(100L, 4000L)
+        val base = (pr.scanMs * f).toLong().coerceIn(100L, 4000L)
+        return ScanCadence.delay(base, skipRun, cand.isNotEmpty() && cand != last, pr.perf == 2)
     }
 
     private fun batteryPct(): Int = try {
@@ -946,7 +947,7 @@ class CaptureService : Service() {
     /** Lỗi đọc chữ: mở khóa để quét lại, chỉ hiện thông báo lỗi của Gemini (không báo lỗi đọc trên máy), tối đa 8 giây một lần. */
     private fun ocrFail(m: String) {
         finishBusy()
-        lastSig = null; lastFine = null
+        lastSig = null; lastFine = null; skipRun = 0
         overlay?.let { if (it.visibility != View.VISIBLE) it.visibility = View.VISIBLE }
         if (m.isNotEmpty() && System.currentTimeMillis() - lastErrAt > 8000) { lastErrAt = System.currentTimeMillis(); show(m) }
     }
