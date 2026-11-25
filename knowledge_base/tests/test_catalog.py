@@ -29,7 +29,7 @@ class CatalogTests(unittest.TestCase):
 
     def feed(self, source_id="feed", **overrides):
         entry = {
-            "game_id": "game-1", "title": "Game One", "platform": "PC",
+            "game_id": "game-1", "title": "Game One", "platform": "PC",\n            "target_platforms": ["PS5", "PS4", "XBOX"],
             "source_url": "https://example.org/game-one", "license_id": "PERMISSION-GRANTED",
             "translation_version": "1.0", "game_version": "1.2.3",
             "author_name": "Translator", "download_permitted": False
