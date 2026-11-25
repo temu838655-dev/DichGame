@@ -1456,7 +1456,8 @@ class CaptureService : Service() {
         if (o.isCloud) {
             // Gemini: chỉ gửi khi hình trong khung thật sự đổi, để khỏi tốn lượt dùng.
             val sig = Ocr.thumb(crop)
-            if (Ocr.same(sig, lastSig)) {
+            if (Ocr.same(sig, lastSig) && (cand.isEmpty() || cand == last) && skipRun < 12) {
+                skipRun++
                 // Không gửi ảnh trùng lên Gemini thì cũng phải giải phóng crop,
                 // vì nhánh này không chuyển quyền sở hữu cho Ocr.read().
                 if (!crop.isRecycled) runCatching { crop.recycle() }
@@ -1464,6 +1465,7 @@ class CaptureService : Service() {
                 return
             }
             lastSig = sig
+            skipRun = 0
         } else if (Prefs(this).skipStatic) {
             // Đọc chữ trên máy: hình đứng yên y hệt lần đọc trước thì không đọc lại (đỡ pin, đỡ nóng). Nhưng không bỏ qua khi đang chờ
             // xác nhận một câu, và cứ vài lần lại đọc một lần để chắc chắn không sót thay đổi rất nhỏ.
