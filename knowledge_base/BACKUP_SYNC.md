@@ -51,3 +51,25 @@ Do not hard-code the key in source code or commit it to Git.
 - Do not use untrusted packs with `allow_verified=True`.
 - API keys, cache entries, daily AI usage counters, feedback and moderation
   reports are not exported in game packs.
+
+
+## Export a verified pack for the Android app
+
+The Android app already supports importing a scoped CSV file from its existing
+Import Pack screen. To bridge this Python knowledge base to that importer:
+
+```python
+from knowledge_base import KnowledgeBase, export_android_csv
+
+kb = KnowledgeBase("translations.db")
+export_android_csv(kb, "my-game", "exports/my-game-verified.csv")
+```
+
+The export uses the app's `source,vi,game` CSV header. It includes only
+`VERIFIED` translations, and if a translation points to an imported source,
+that source must also have `verification_status='VERIFIED'`. AI-unverified
+and pending community entries are deliberately omitted. Transfer the CSV to
+the phone and import it with the app's existing file-import flow.
+
+This is a file-based bridge, not automatic live synchronization. The Python
+knowledge base still does not run inside the Android app process.
