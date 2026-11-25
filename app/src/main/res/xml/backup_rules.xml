@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
+    <!-- API credentials are encrypted with a device-bound Android Keystore key. -->
+    <exclude domain="sharedpref" path="dg_api_secrets.xml" />
     <!-- Remote Play secrets are encrypted with a device-bound Android Keystore key. -->
     <exclude domain="sharedpref" path="ps.xml" />
     <!-- Legacy preferences may still contain unencrypted pairing keys before migration. -->
