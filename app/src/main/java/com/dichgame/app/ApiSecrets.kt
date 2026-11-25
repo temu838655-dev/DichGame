@@ -73,8 +73,12 @@ object ApiSecrets {
                     .edit().remove(name).commit()
                 plain
             } catch (_: Exception) {
-                Log.w("DG_SECRETS", "Encrypted credential unavailable; re-enter it in Settings.")
-                ""
+                // A device restore or Keystore reset can make ciphertext unreadable. Preserve
+                // an old plaintext value if one still exists rather than silently losing it.
+                Log.w("DG_SECRETS", "Encrypted credential unavailable; checking legacy migration value.")
+                val legacy = context.getSharedPreferences("dg", Context.MODE_PRIVATE)
+                    .getString(name, "").orEmpty()
+                if (legacy.isNotEmpty()) legacy else ""
             }
         }
 
