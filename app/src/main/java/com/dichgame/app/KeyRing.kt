@@ -128,6 +128,19 @@ object KeyRing {
 
     // ---- đọc lỗi từ máy chủ
 
+    /** Provider/account-wide billing caps; rotating another key in the same account will not fix these. */
+    fun isBillingLimit(body: String): Boolean {
+        val b = body.lowercase()
+        return listOf(
+            "insufficient_quota",
+            "credit_balance_exhausted",
+            "billing_hard_limit_reached",
+            "organization_spend_limit_exceeded",
+            "project_spend_limit_exceeded",
+            "billing_not_active",
+        ).any { b.contains(it) }
+    }
+
     /** Phản hồi lỗi 429 nói hạn mức theo ngày (GenerateRequestsPerDay...). */
     fun isDailyQuota(body: String): Boolean = body.contains("PerDay", ignoreCase = true) || body.contains("per day", ignoreCase = true)
 
@@ -162,6 +175,7 @@ object KeyRing {
      */
     fun report(key: String, scope: String, e: AiException, now: Long = System.currentTimeMillis()): Boolean = when {
         e.badKey -> { blockBad(key, now); true }
+        e.billingLimit -> { blockQuota(key, scope, maxOf(60 * 60_000L, e.retryAfterMs), now); true }
         e.code == 429 -> { blockQuota(key, scope, quotaBlockMs(e.retryAfterMs, e.perDay, now), now); true }
         else -> false
     }
