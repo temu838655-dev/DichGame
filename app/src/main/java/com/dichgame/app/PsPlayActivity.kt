@@ -111,7 +111,12 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
     private var scanIcon: ToolIcon? = null
     private var adjustBar: View? = null
     // Hai nút "Dịch hết chữ" (một lần) và "Dịch menu" (liên tục) dưới thanh công cụ
-    private class PillUi(val box: View, val icon: ToolIcon, val label: TextView, val kind: ToolIcon.Kind, val next: ToolIcon?)
+    private class PillUi(val box: View, val icon: ToolIcon, val label: TextView, val kind: ToolIcon.Kind, val next: ToolIcon?, val badge: TextView, val desc: String) {
+        var mode: PillMode? = null
+    }
+
+    /** Trạng thái hai nút dưới thanh công cụ: tắt (xám) / đang xử lý (vàng) / đang chạy (cam, chữ BẬT xanh lá). */
+    private enum class PillMode { OFF, BUSY, ON }
     private var pillOnce: PillUi? = null
     private var pillMenu: PillUi? = null
     private var pillsView: View? = null
@@ -366,6 +371,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         live = null
         runCatching { uiTr?.release() }
         uiTr = null
+        pillPolling = false
         shutdownSession()
         ui.removeCallbacksAndMessages(null)
         CrashLog.mark("choi:xong")
@@ -916,50 +922,96 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         row.gravity = Gravity.END or Gravity.CENTER_VERTICAL
         fun pill(kind: ToolIcon.Kind, text: String, desc: String, trailing: Boolean, onLong: (() -> Unit)?, onClick: () -> Unit): PillUi {
             val ic = ToolIcon(this, kind, Color.WHITE)
-            val tv = Ui.tv(this, text, 15f, Color.WHITE, true).apply { maxLines = 1 }
+            val tv = Ui.tv(this, text, 14f, Color.WHITE, true).apply { maxLines = 1 }
             val next = if (trailing) ToolIcon(this, ToolIcon.Kind.NEXT, Color.WHITE) else null
+            val badge = Ui.tv(this, "", 10f, PlayTheme.ICON_DIM, true).apply {
+                maxLines = 1
+                setPadding(dpi(7), dpi(1), dpi(7), dpi(1))
+            }
+            // tên nút ở trên, huy hiệu trạng thái ngay dưới: hai nút cạnh nhau vẫn vừa màn dọc hẹp
+            val col = Ui.vbox(this).apply {
+                addView(tv, Ui.lp(WRAP_CONTENT, WRAP_CONTENT))
+                addView(badge, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = dpi(2) })
+            }
             val box = Ui.hbox(this).apply {
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dpi(14), dpi(9), dpi(if (trailing) 10 else 16), dpi(9))
+                setPadding(dpi(12), dpi(7), dpi(if (trailing) 8 else 14), dpi(7))
                 isClickable = true
                 isFocusable = true
                 contentDescription = desc
                 setOnClickListener { onClick(); afterAction() }
                 if (onLong != null) setOnLongClickListener { onLong(); true }
                 addView(ic, Ui.lp(dpi(20), dpi(20)).apply { rightMargin = dpi(8) })
-                addView(tv, Ui.lp(WRAP_CONTENT, WRAP_CONTENT))
+                addView(col, Ui.lp(WRAP_CONTENT, WRAP_CONTENT))
                 if (next != null) addView(next, Ui.lp(dpi(18), dpi(18)).apply { leftMargin = dpi(2) })
             }
             row.addView(box, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dpi(10) })
-            return PillUi(box, ic, tv, kind, next)
+            return PillUi(box, ic, tv, kind, next, badge, desc)
         }
         pillOnce = pill(ToolIcon.Kind.SCAN, "Dịch hết chữ",
             "Đọc và dịch toàn bộ chữ đang có trên hình một lần, giữ vài giây rồi tự tắt", false, null) { translateOnce() }
         pillMenu = pill(ToolIcon.Kind.BOLT, "Dịch menu",
             "Dịch liên tục chữ trong menu và giao diện game. Giữ nút để xem chuỗi chưa dịch được", true, { showUiMissed() }) { toggleUiTr() }
-        stylePill(pillOnce, false)
-        stylePill(pillMenu, false)
+        stylePill(pillOnce, PillMode.OFF, "1 LẦN")
+        stylePill(pillMenu, PillMode.OFF, "TẮT")
         return row
     }
 
     /**
-     * "Dịch hết chữ": kính tối viền mảnh chữ trắng. "Dịch menu ›": nút chính, nền chuyển màu cam → đỏ hồng chữ trắng.
-     * Nút đang bật (cả hai) = nền trắng chữ tối, để nhìn là biết đang chạy.
+     * Hai nút dịch báo trạng thái bằng cả màu lẫn chữ (người khó phân biệt màu vẫn đọc được):
+     * TẮT = kính tối, chữ xám, huy hiệu xám ("TẮT"; với "Dịch hết chữ" là "1 LẦN" vì nút chạy một lần rồi tự tắt).
+     * ĐANG TẢI/ĐANG DỊCH = nền cam, huy hiệu vàng. BẬT = nền cam, huy hiệu xanh lá (kèm số chữ đã dịch).
      */
-    private fun stylePill(p: PillUi?, on: Boolean) {
+    private fun stylePill(p: PillUi?, mode: PillMode, badge: String) {
         p ?: return
-        val menu = p.kind == ToolIcon.Kind.BOLT
-        p.box.background = when {
-            on -> Ui.bg(this, Color.parseColor("#F5FFFFFF"), 22)
-            menu -> android.graphics.drawable.GradientDrawable(
+        if (p.mode != mode) {
+            p.mode = mode
+            val lit = mode != PillMode.OFF
+            p.box.background = if (lit) android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(PlayTheme.ORANGE, PlayTheme.ORANGE_HOT)
             ).apply { cornerRadius = dpi(22).toFloat() }
-            else -> Ui.glass(this, 22, strong = true, edge = Color.parseColor("#66FFFFFF"))
+            else Ui.glass(this, 22, strong = true, edge = Color.parseColor("#44FFFFFF"))
+            val fg = if (lit) Color.WHITE else PlayTheme.ICON_DIM
+            p.icon.set(p.kind, fg)
+            p.next?.set(ToolIcon.Kind.NEXT, fg)
+            p.label.setTextColor(fg)
+            p.badge.setTextColor(when (mode) {
+                PillMode.OFF -> PlayTheme.ICON_DIM
+                PillMode.BUSY -> Color.parseColor("#2B1A00")
+                PillMode.ON -> Color.parseColor("#052E18")
+            })
+            p.badge.background = Ui.bg(this, when (mode) {
+                PillMode.OFF -> Color.parseColor("#33FFFFFF")
+                PillMode.BUSY -> PlayTheme.AMBER
+                PillMode.ON -> Color.parseColor("#3DDC84")
+            }, 10)
         }
-        val c = if (on) Color.parseColor("#17120D") else Color.WHITE
-        p.icon.set(p.kind, c)
-        p.next?.set(ToolIcon.Kind.NEXT, c)
-        p.label.setTextColor(c)
+        if (p.badge.text.toString() != badge) p.badge.text = badge
+        p.box.contentDescription = p.desc + " — " + badge
+    }
+
+    private var pillPolling = false
+    private val pillTick = Runnable { pillPolling = false; syncPills() }
+
+    /** Cập nhật hai nút dịch theo trạng thái thật của [UiTranslate]. Khi một nút đang chạy thì tự làm mới mỗi giây (số chữ đã dịch, đếm ngược). */
+    private fun syncPills() {
+        val u = uiTr?.takeIf { it.running }
+        val once = u != null && u.once
+        if (u != null && once) {
+            when (u.phase) {
+                UiTranslate.Phase.SHOWING -> stylePill(pillOnce, PillMode.ON, "ĐÃ DỊCH · " + ((u.holdLeftMs + 999) / 1000) + "s")
+                UiTranslate.Phase.PREPARING -> stylePill(pillOnce, PillMode.BUSY, "ĐANG TẢI…")
+                else -> stylePill(pillOnce, PillMode.BUSY, "ĐANG DỊCH…")
+            }
+        } else stylePill(pillOnce, PillMode.OFF, "1 LẦN")
+        if (u != null && !once) {
+            if (u.phase == UiTranslate.Phase.PREPARING) stylePill(pillMenu, PillMode.BUSY, "ĐANG TẢI…")
+            else stylePill(pillMenu, PillMode.ON, if (u.shown > 0) "BẬT · ${u.shown} chữ" else "BẬT · tìm chữ…")
+        } else stylePill(pillMenu, PillMode.OFF, "TẮT")
+        if (u != null && !pillPolling && activityStarted && !isFinishing && !isDestroyed) {
+            pillPolling = true
+            ui.postDelayed(pillTick, 1000)
+        }
     }
 
     /** Vẽ lại trạng thái các nút công cụ (bật = cam có nền sáng, tắt = trắng/xám). */
@@ -978,9 +1030,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         mark(speakIcon, if (sp) ToolIcon.Kind.SPEAKER_ON else ToolIcon.Kind.SPEAKER_OFF, sp, PlayTheme.ICON_DIM)
         mark(zoomIcon, ToolIcon.Kind.ZOOM, zoomLevel > 0)
         padIcon?.set(ToolIcon.Kind.GAMEPAD, if (padOn) PlayTheme.ORANGE else PlayTheme.ICON_DIM)
-        val u = uiTr
-        stylePill(pillOnce, u != null && u.running && u.once)
-        stylePill(pillMenu, u != null && u.running && !u.once)
+        syncPills()
     }
 
     private fun togglePad() {
@@ -1145,7 +1195,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     "Khi xoay ngang, thanh có thêm nút ⌂ (màu cam) ngay sau nút xoay: nút PS (Home) của tay cầm, mở trung tâm điều khiển của máy chơi game. Xoay dọc thì bấm nút Home cam ở giữa tay cầm ảo.\n\n" +
                     "Hai nút dưới thanh công cụ:\n" +
                     "• Dịch hết chữ: đọc và dịch toàn bộ chữ đang có trên hình MỘT lần (kể cả phụ đề), giữ vài giây rồi tự tắt, hoặc tắt ngay khi cảnh đổi.\n" +
-                    "• Dịch menu: dịch liên tục chữ trong menu, vật phẩm, kỹ năng, nhiệm vụ… Bản dịch hiện đè đúng chỗ chữ gốc; viền vàng là bản dịch còn nghi ngờ. Giữ nút này để xem chuỗi chưa dịch được.\n\n" +
+                    "• Dịch menu: dịch liên tục chữ trong menu, vật phẩm, kỹ năng, nhiệm vụ… Bản dịch hiện đè đúng chỗ chữ gốc; viền vàng là bản dịch còn nghi ngờ. Giữ nút này để xem chuỗi chưa dịch được.\n" +
+                    "Cách nhìn trạng thái của hai nút: nền xám tối, huy hiệu xám (TẮT hoặc 1 LẦN) là đang tắt. Nền cam, huy hiệu vàng (ĐANG TẢI…, ĐANG DỊCH…) là đang xử lý, chờ chút. Nền cam, huy hiệu xanh lá (BẬT, ĐÃ DỊCH) là đang chạy: Dịch menu kèm số chữ đã dịch trên hình (\"tìm chữ…\" nghĩa là đang quét mà chưa thấy chữ nào), Dịch hết chữ kèm số giây nữa tự tắt. Bấm lần nữa để tắt.\n\n" +
                     "Tự thu gọn: bấm xong một nút thì thanh tự thu lại cho khỏi vướng; khi xoay ngang, để yên vài giây thanh cũng tự thu lại. Chạm chấm nhỏ ở giữa mép trên để mở lại.\n\n" +
                     "• Nút tay cầm ở góc trên: ẩn hoặc hiện tay cầm ảo (tay cầm thật nối với điện thoại vẫn dùng được).\n" +
                     "• Ô ở góc trên (tên game đang dịch, chấm xanh là đã kết nối): bấm để đổi sang tài khoản đã ghép khác.\n" +

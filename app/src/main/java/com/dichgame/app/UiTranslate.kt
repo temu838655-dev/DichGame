@@ -153,7 +153,7 @@ class UiTranslate(
         ov.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, orr, ob ->
             if (r - l != orr - ol || b - t != ob - ot) {
                 if (BuildConfig.DEBUG) Log.i(TAG, "khung doi kich thuoc ${orr - ol}x${ob - ot} -> ${r - l}x${b - t}, xoa lop phu cu")
-                items = emptyList(); ov.clear(); lastFine = null
+                items = emptyList(); ov.clear(); lastFine = null; shown = 0
             }
         }
     }
@@ -163,6 +163,25 @@ class UiTranslate(
     private val copyHandler = Handler(Looper.getMainLooper())
 
     var running = false
+        private set
+
+    /** Giai đoạn để nút trên thanh công cụ báo đúng: tắt / đang tải mô hình / đang quét và dịch / (một lần) đang giữ bản dịch chờ tự tắt. */
+    enum class Phase { OFF, PREPARING, WORKING, SHOWING }
+
+    val phase: Phase
+        get() = when {
+            !running -> Phase.OFF
+            !ready -> Phase.PREPARING
+            once && holdUntil > 0L -> Phase.SHOWING
+            else -> Phase.WORKING
+        }
+
+    /** Chế độ một lần: còn bao lâu nữa (ms) bản dịch tự tắt; 0 nếu chưa tới giai đoạn giữ. */
+    val holdLeftMs: Long
+        get() = if (once && holdUntil > 0L) (holdUntil - SystemClock.uptimeMillis()).coerceAtLeast(0L) else 0L
+
+    /** Số khối chữ đang hiện bản dịch trên hình (cho biết "Dịch menu" đang chạy thật). */
+    @Volatile var shown = 0
         private set
 
     /**
@@ -282,6 +301,7 @@ class UiTranslate(
         handler.removeCallbacksAndMessages(null)
         overlay.clear()
         items = emptyList()
+        shown = 0
         // khối đang chờ hoặc đang dịch dở khi tắt: bỏ khỏi bộ nhớ để lần bật sau được xin dịch lại (không thì nằm trống mãi)
         queue.clear()
         cache.entries.removeAll { it.value.vi == null && !it.value.failed }
@@ -409,7 +429,7 @@ class UiTranslate(
             return
         }
         // cảnh đổi hẳn (đóng menu, vào cảnh khác): xoá lớp phủ ngay, khỏi để bản dịch cũ nằm đè lên hình mới
-        if (prev != null && meanDiff(prev, fine) > 18) { items = emptyList(); overlay.clear() }
+        if (prev != null && meanDiff(prev, fine) > 18) { items = emptyList(); overlay.clear(); shown = 0 }
         lastFine = fine
         skipRun = 0
         // Ocr.read giải phóng ảnh đầu vào khi xong; giữ một bản để lấy màu nền quanh khối chữ
@@ -586,6 +606,7 @@ class UiTranslate(
             if (!e.unsure && !e.failed) list.add(UiOverlay.Draw(it.box, vi, it.bg, it.fg, false, it.corners, it.lines))
         }
         overlay.set(list)
+        shown = list.size
     }
 
     /** Danh sách chuỗi chưa dịch được hoặc còn nghi ngờ, để sao chép bổ sung vào gói Việt hoá. */
