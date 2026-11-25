@@ -49,16 +49,20 @@ incompatible rights. Keep author attribution and the original source URL.
    persistent duplicate-request leases. See [TRANSLATION_MEMORY.md](TRANSLATION_MEMORY.md).
 5. Provider-neutral AI fallback with persistent daily request budgets, bounded
    retries, input/output limits and offline mode. See [AI_FALLBACK.md](AI_FALLBACK.md).
+6. Community submissions, authorized human review, rejection, report queues and
+   moderation history. See [MODERATION.md](MODERATION.md).
+7. Integrity-checked SQLite backup/restore and HMAC-signed per-game export/import
+   packs for trusted offline synchronization. See [BACKUP_SYNC.md](BACKUP_SYNC.md).
 
 ## Remaining phases
 
 1. Concrete provider adapters (Gemini/OpenAI-compatible/local) with provider-specific
    timeout and output-token enforcement.
-2. Signed incremental packs, synchronization and backup recovery.
-3. Community review workflow and performance/quality benchmarks.
-4. Integrate the Python knowledge base into the Android/desktop app translation
-   pipeline and validate end-to-end OCR-to-subtitle behavior.
+2. Network synchronization service, incremental delta protocol and conflict UI.
+3. Community account authentication, abuse/rate controls and reviewer administration.
+4. Performance/quality benchmarks and end-to-end Android/desktop app integration
+   through OCR, translation, subtitle display and audio.
 
-The package remains a standalone Python component. The provider adapter,
-application integration, sync, backups and community moderation are not yet
-implemented.
+The package remains a standalone Python component. The provider adapter, hosted
+sync service, account authentication, reviewer administration and end-to-end
+Android/desktop app integration are not yet implemented.
