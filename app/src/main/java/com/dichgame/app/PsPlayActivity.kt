@@ -1493,7 +1493,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
             try { s.dispose() } catch (_: Throwable) {}
             // The worker owns copied PCM and may still be decoding a long segment.
             // Wait off the UI thread, then close the queue only after the final drain.
-            try { asrWorker?.stopAndJoin(0L) } catch (_: Throwable) {}
+            try { asrWorker?.stopAndJoinUntilStopped() } catch (_: Throwable) {}
             try { audioQueue?.close() } catch (_: Throwable) {}
             ui.post {
                 stopping = false
