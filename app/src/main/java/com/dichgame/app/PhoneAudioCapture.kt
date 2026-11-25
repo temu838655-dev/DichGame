@@ -43,6 +43,7 @@ class PhoneAudioCapture(
     @Volatile var mode = "none"
         private set
     private var thread: Thread? = null
+    @Volatile private var activeRecorder: AudioRecord? = null
 
     fun start() {
         if (running) return
@@ -52,6 +53,9 @@ class PhoneAudioCapture(
 
     fun stop() {
         running = false
+        // AudioRecord.read() may block; stopping the active recorder unblocks it so the
+        // capture thread can reach finally and release native audio resources promptly.
+        runCatching { activeRecorder?.stop() }
         val t = thread ?: return
         if (t !== Thread.currentThread()) runCatching { t.join(2_000L) }
     }
@@ -65,6 +69,7 @@ class PhoneAudioCapture(
             if (!granted()) { mode = "none"; onMode("none:permission"); return }
             var system = true
             rec = openSystem()
+            activeRecorder = rec
             if (rec == null) {
                 if (!allowMic) { onMode("none:system"); return }
                 rec = openMic()
@@ -77,10 +82,12 @@ class PhoneAudioCapture(
             var blocked = loop(rec, system)
             while (blocked && running) {
                 // âm thanh trong bị game chặn: chuyển sang micro nếu được phép
+                activeRecorder = null
                 runCatching { rec!!.stop() }; runCatching { rec!!.release() }
                 rec = null
                 if (!allowMic) { onMode("none:system"); return }
                 rec = openMic()
+                activeRecorder = rec
                 if (rec == null) { onMode("none:mic"); return }
                 mode = "mic"; onMode("mic-fallback")
                 blocked = loop(rec, false)
@@ -88,6 +95,7 @@ class PhoneAudioCapture(
         } catch (_: Throwable) {
             // lỗi âm thanh không được làm hỏng phần dịch chữ
         } finally {
+            activeRecorder = null
             mode = "none"
             runCatching { rec?.stop() }
             runCatching { rec?.release() }
