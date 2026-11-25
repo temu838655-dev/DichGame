@@ -74,3 +74,18 @@ Chỉ chuyển sang VERIFIED khi có test/log/bằng chứng cụ thể. NOT VER
 - [ ] APK production-signed, fingerprint xác minh và download link kiểm tra được.
 
 Không diễn giải build success thành production-ready.
+
+
+---
+
+## CI refresh — 2026-11-26
+
+| Hạng mục | Bằng chứng mới | Trạng thái |
+|---|---|---|
+| Knowledge Base Python suite | PR head c41a6a3, run #227 (45711631198) success | VERIFIED — chỉ phạm vi Python tests |
+| Android APK build | Run #1961 (45711631124) đang in_progress ở lần kiểm tra | PENDING |
+| Android knowledge-base bridge | Run #173 (45711630980) đang in_progress ở lần kiểm tra | PENDING |
+| Emulator smoke | Run #161 (45708105649) vẫn in_progress | NOT VERIFIED |
+| PR #86 | Draft/open; mergeable=true ở lần kiểm tra | CHƯA MERGE — chờ Android checks và review |
+
+Links: [Build #1961](https://github.com/temu838655-dev/DichGame/actions/runs/45711631124), [Bridge #173](https://github.com/temu838655-dev/DichGame/actions/runs/45711630980), [Smoke #161](https://github.com/temu838655-dev/DichGame/actions/runs/45708105649), [KB #227](https://github.com/temu838655-dev/DichGame/actions/runs/45711631198).
