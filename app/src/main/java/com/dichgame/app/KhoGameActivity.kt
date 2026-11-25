@@ -184,7 +184,7 @@ class KhoGameActivity : Activity() {
             val info = Ui.vbox(this@KhoGameActivity)
             info.addView(Ui.tv(this@KhoGameActivity, name, 21f, Ui.TEXT, true))
             if (g.isNotEmpty()) info.addView(Ui.tv(this@KhoGameActivity, g.replaceFirstChar { it.uppercase() }, 13.5f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 2, 0))
-            val ps = Catalog.platformsOf(name)
+            val ps = Catalog.platformsOf(name).intersect(consolePlatforms.toSet())
             if (ps.isNotEmpty()) {
                 val r = Ui.hbox(this@KhoGameActivity)
                 for (x in ps) r.addView(Ui.badge(this@KhoGameActivity, x.label), Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = Ui.dp(this@KhoGameActivity, 6) })
