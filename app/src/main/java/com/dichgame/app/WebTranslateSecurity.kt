@@ -1,14 +1,16 @@
 package com.dichgame.app
 
-import java.net.URI
+import java.net.URL
 
 /** Only permit ordinary web pages in the in-app browser; never load local files or custom schemes. */
 internal fun isAllowedWebTranslateUrl(raw: String): Boolean {
-    val uri = try { URI(raw.trim()) } catch (_: Exception) { return false }
-    val scheme = uri.scheme?.lowercase() ?: return false
-    return (scheme == "http" || scheme == "https") &&
-        !uri.host.isNullOrBlank() && uri.userInfo.isNullOrEmpty() &&
-        (uri.port == -1 || uri.port in 1..65535)
+    val value = raw.trim()
+    val url = try { URL(value) } catch (_: Exception) { return false }
+    val scheme = url.protocol.lowercase()
+    if ((scheme != "http" && scheme != "https") || url.host.isBlank()) return false
+    val authority = value.substringAfter("://", "").substringBefore('/').substringBefore('?').substringBefore('#')
+    if (authority.contains('@') || authority.endsWith(':')) return false
+    return url.port == -1 || url.port in 1..65535
 }
 
 /** Bounds text entering the JavaScript bridge so untrusted pages cannot flood AI requests. */
