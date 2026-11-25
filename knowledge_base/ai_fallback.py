@@ -89,7 +89,7 @@ class AIFallback:
                 raise AIUnavailableError("Offline mode: no cached translation is available")
             last_error: Exception | None = None
             for attempt in range(self.max_retries + 1):
-                self._reserve_request()
+                usage_date = self._reserve_request()
                 try:
                     response = self.provider.translate(
                         text, context_text, model=self.model,
@@ -101,7 +101,7 @@ class AIFallback:
                         raise ValueError("Provider returned empty translation")
                     if response.input_tokens < 0 or response.output_tokens < 0:
                         raise ValueError("Provider token counts cannot be negative")
-                    self._record_tokens(response.input_tokens, response.output_tokens)
+                    self._record_tokens(response.input_tokens, response.output_tokens, usage_date)
                     return response.translated_text.strip()
                 except AIBudgetExceededError:
                     raise
@@ -118,7 +118,7 @@ class AIFallback:
             game_id, source_text, call_provider, model=self.model, context=context,
         )
 
-    def _reserve_request(self) -> None:
+    def _reserve_request(self) -> str:
         usage_date = datetime.now(timezone.utc).date().isoformat()
         with self.kb.transaction() as db:
             cursor = db.execute(
@@ -131,9 +131,9 @@ class AIFallback:
             )
             if cursor.rowcount != 1:
                 raise AIBudgetExceededError("Daily AI request budget has been reached")
+        return usage_date
 
-    def _record_tokens(self, input_tokens: int, output_tokens: int) -> None:
-        usage_date = datetime.now(timezone.utc).date().isoformat()
+    def _record_tokens(self, input_tokens: int, output_tokens: int, usage_date: str) -> None:
         with self.kb.transaction() as db:
             db.execute(
                 """UPDATE ai_usage_daily
