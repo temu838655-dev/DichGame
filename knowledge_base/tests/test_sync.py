@@ -21,7 +21,7 @@ class SignedPackTests(unittest.TestCase):
         )
         self.source.add_translation(
             "pack-game", "Open inventory", "Mở túi đồ", source_id=self.authorized_source_id,
-            translation_status="VERIFIED",
+            contributor_id="translator-42", translation_status="VERIFIED",
         )
         self.pack = self.root / "game-pack.json"
 
@@ -37,6 +37,9 @@ class SignedPackTests(unittest.TestCase):
                 "SELECT translation_status FROM translations"
             ).fetchone()[0]
         self.assertEqual(status, "COMMUNITY")
+        with self.target.connect() as db:
+            contributor = db.execute("SELECT contributor_id FROM translations").fetchone()[0]
+        self.assertEqual(contributor, "translator-42")
 
     def test_trusted_pack_can_preserve_verified_status_explicitly(self):
         export_game_pack(self.source, "pack-game", self.key, self.pack)
