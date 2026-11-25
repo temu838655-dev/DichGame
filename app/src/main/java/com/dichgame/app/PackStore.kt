@@ -99,9 +99,21 @@ object PackStore {
     @Synchronized
     fun deleteCloud(ctx: Context, profile: String, game: String) {
         deletionEpoch++
+        markCloudDeleted(linesFileForGame(ctx, profile, game))
         AtomicFile(cloudFile(linesFileForGame(ctx, profile, game))).delete()
         mem = null; memKey = ""
     }
+
+    private fun cloudDeleted(local: File) = File(local.path + ".cloud-disabled")
+
+    private fun markCloudDeleted(local: File) {
+        val marker = cloudDeleted(local)
+        marker.parentFile?.mkdirs()
+        marker.writeText("1")
+    }
+
+    @Synchronized fun autoCloudEpoch(ctx: Context, profile: String, game: String): Long? =
+        if (cloudDeleted(linesFileForGame(ctx, profile, game)).exists()) null else deletionEpoch
 
     private fun readCloud(local: File): CloudData? {
         val f = cloudFile(local)
@@ -133,7 +145,8 @@ object PackStore {
     }
 
     @Synchronized
-    private fun saveCloud(local: File, manifest: RemotePack.Manifest, rows: List<Pair<String, String>>, source: String, epoch: Long): String {
+    private fun saveCloud(local: File, manifest: RemotePack.Manifest, rows: List<Pair<String, String>>, source: String, epoch: Long, current: () -> Boolean): String {
+        require(current()) { "Đồng bộ đã bị hủy." }
         require(epoch == deletionEpoch) { "Kho đã được xóa trong lúc tải. Hãy tải lại nếu cần." }
         val previous = readCloud(local)?.info
         require(previous?.source == null || previous.source == source) { "Nguồn Cloud khác nguồn đã lưu. Hãy xuất bản sao và xóa riêng kho Cloud trước khi đổi nguồn." }
@@ -160,11 +173,13 @@ object PackStore {
                 writer.newLine()
             }
             writer.flush()
+            require(current()) { "Đồng bộ đã bị hủy." }
             atomic.finishWrite(output)
         } catch (e: Exception) {
             atomic.failWrite(output)
             throw e
         }
+        cloudDeleted(local).delete()
         mem = null; memKey = ""
         return "Đã lưu kho Cloud ${manifest.game} v${manifest.version} (${unique.size} câu Cloud, $total câu tổng). Bản dịch cá nhân được ưu tiên."
     }
@@ -217,6 +232,7 @@ object PackStore {
     fun deleteLines(ctx: Context, profile: String) {
         deletionEpoch++
         val f = linesFile(ctx, profile)
+        markCloudDeleted(f)
         AtomicFile(f).delete()
         AtomicFile(cloudFile(f)).delete()
         mem = null; memKey = ""
@@ -418,7 +434,7 @@ object PackStore {
     }
 
     /** Download a user-authorized direct pack link, including ZIP and MO, with a bounded temporary file. */
-    fun importLink(ctx: Context, p: Prefs, link: String, expectedProfile: String = p.profile, expectedGame: String = gameName(p)): String {
+    fun importLink(ctx: Context, p: Prefs, link: String, expectedProfile: String = p.profile, expectedGame: String = gameName(p), autoEpoch: Long? = null, active: () -> Boolean = { true }): String {
         val profile = expectedProfile
         val game = expectedGame
         require(p.profile == profile && gameName(p) == game) { "Game hoặc hồ sơ đã thay đổi." }
@@ -434,7 +450,9 @@ object PackStore {
             require(source.length <= 2048 && source.none { it.isISOControl() }) { "Link Cloud không hợp lệ." }
             val (previous, epoch) = synchronized(this) { readCloud(target)?.info to deletionEpoch }
             require(previous?.source == null || previous.source == source) { "Nguồn Cloud khác nguồn đã lưu. Hãy sao lưu và xóa riêng kho Cloud trước khi đổi nguồn." }
-            fun current(): Boolean = p.profile == profile && gameName(p) == game && synchronized(this) { epoch == deletionEpoch }
+            fun current(): Boolean = active() && p.profile == profile && gameName(p) == game && synchronized(this) {
+                epoch == deletionEpoch && (autoEpoch == null || (autoEpoch == epoch && !cloudDeleted(target).exists()))
+            }
             val manifest = RemotePack.parse(fetchWithRetry(url, 64_000, ::current).toString(Charsets.UTF_8), game)
             when (RemotePack.versionDecision(previous?.version, previous?.sha256, manifest.version, manifest.sha256)) {
                 RemotePack.Decision.SAME -> if (previous?.source != null) return "Kho Cloud đã ở phiên bản ${manifest.version}; không cần tải lại."
@@ -446,7 +464,7 @@ object PackStore {
             if (p.profile != profile || gameName(p) != game) throw java.io.IOException("Game hoặc hồ sơ đã thay đổi. Hãy chọn lại game.")
             val filtered = LocFormat.filter(pack.lines, "cloud")
             require(filtered.pairs.isNotEmpty()) { "Không có câu Việt hóa hợp lệ." }
-            return saveCloud(target, manifest, filtered.pairs, source, epoch)
+            return saveCloud(target, manifest, filtered.pairs, source, epoch, ::current)
         }
         val tmp = File.createTempFile("remote-pack", ".tmp", ctx.cacheDir)
         try {
