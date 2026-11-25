@@ -167,12 +167,16 @@ class Ocr(private val p: Prefs, private val lang: String) {
     }
 
     private fun errorText(e: Exception): String =
-        if (e is AiException) when (e.code) {
-            400 -> "Gemini lỗi 400: sai tên model. Kiểm tra lại ở Cách dịch."
-            401, 403 -> "Gemini lỗi ${e.code}: khóa API sai hoặc không có quyền."
-            429 -> "Mọi khóa Gemini đang hết lượt (429)" + (if (e.retryAfterMs > 0) ", khóa sớm nhất dùng lại sau ${AiRetry.humanWait(e.retryAfterMs)}" else "") + ". Thêm khóa từ dự án Google khác hoặc chờ."
-            else -> "Gemini lỗi ${e.code}."
-        } else "Không kết nối được Gemini để đọc chữ."
+        if (e is AiException) when {
+            e.billingLimit -> "Tài khoản hoặc dự án AI đã chạm giới hạn thanh toán/chi tiêu. Hãy kiểm tra billing; ứng dụng sẽ dùng phương án dịch dự phòng."
+            e.code == 400 -> "AI lỗi 400: yêu cầu hoặc cấu hình không hợp lệ. Kiểm tra model và nội dung đầu vào."
+            e.code == 401 || e.code == 403 -> "AI lỗi ${e.code}: khóa API sai, hết hiệu lực hoặc không có quyền. Kiểm tra khóa đang cấu hình."
+            e.code == 404 -> "AI lỗi 404: không tìm thấy model hoặc endpoint. Kiểm tra cấu hình nhà cung cấp."
+            e.code == 408 -> "AI hết thời gian chờ phản hồi. Kiểm tra kết nối rồi thử lại."
+            e.code == 429 -> "Nhà cung cấp AI đã giới hạn tốc độ hoặc hết quota" + (if (e.retryAfterMs > 0) ", thử lại sau ${AiRetry.humanWait(e.retryAfterMs)}" else "") + ". Ứng dụng sẽ thử phương án dự phòng nếu đã cấu hình."
+            e.code in 500..599 -> "Máy chủ AI đang gặp sự cố (HTTP ${e.code}). Ứng dụng sẽ thử phương án dự phòng nếu có."
+            else -> "Nhà cung cấp AI trả về lỗi HTTP ${e.code}."
+        } else "Không kết nối được dịch vụ AI để đọc chữ; kiểm tra mạng hoặc dùng phương án offline."
 
     private fun confOf(b: com.google.mlkit.vision.text.Text.TextBlock): Float = try {
         var sum = 0f
