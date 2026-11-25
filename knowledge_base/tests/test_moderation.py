@@ -29,6 +29,12 @@ class CommunityModerationTests(unittest.TestCase):
                 (translation_id,),
             ).fetchone()[0]
         self.assertEqual(status, "COMMUNITY")
+        with self.kb.connect() as db:
+            contributor = db.execute(
+                "SELECT contributor_id FROM translations WHERE translation_id=?",
+                (translation_id,),
+            ).fetchone()[0]
+        self.assertEqual(contributor, "community-user")
 
     def test_only_authorized_reviewer_can_approve(self):
         translation_id = self.service.submit(
@@ -47,6 +53,13 @@ class CommunityModerationTests(unittest.TestCase):
                 (translation_id,),
             ).fetchone()[0]
         self.assertIsNotNone(verified_at)
+
+    def test_ai_reviewed_entries_are_visible_in_pending_queue(self):
+        translation_id = self.kb.add_translation(
+            "moderation-game", "Continue", "Tiếp tục",
+            translation_source="AI", translation_status="AI_REVIEWED",
+        )
+        self.assertEqual(self.service.pending_queue()[0]["translation_id"], translation_id)
 
     def test_reports_are_queued_and_resolved_by_review(self):
         translation_id = self.service.submit(
