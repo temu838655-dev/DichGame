@@ -14,6 +14,12 @@ class TvLinkSecurityTest {
         assertTrue(isLocalTvHost("fe80::1"))
     }
 
+    @Test fun resolverReturnsTheNumericAddressUsedForTheConnection() {
+        val resolved = resolveLocalTvAddress("192.168.1.100")
+        assertNotNull(resolved)
+        assertEquals("192.168.1.100", resolved!!.hostAddress)
+    }
+
     @Test fun rejectsPublicAndMalformedHostsBeforeSendingAudio() {
         assertFalse(isLocalTvHost("8.8.8.8"))
         assertFalse(isLocalTvHost("1.1.1.1"))
