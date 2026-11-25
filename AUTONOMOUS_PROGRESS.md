@@ -129,3 +129,28 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 - PR #85 build: https://github.com/temu838655-dev/DichGame/actions/runs/45706828589
 - PR #85 JVM unit tests: https://github.com/temu838655-dev/DichGame/actions/runs/45706828580
 - Smoke test attempt 2 (cancelled before emulator): https://github.com/temu838655-dev/DichGame/actions/runs/45703102492
+
+
+## Audit tiếp tục — 2026-11-26 06:00 UTC+8
+
+### Bằng chứng CI mới trên main
+- [x] Main run #1913 (ID 45708105647) hoàn tất success.
+- [x] Build phone release và Android TV release thành công; unit tests, build TV receiver, build phone, đóng gói APK, kiểm tra chữ ký/zipalign/package IDs đều success.
+- [x] Artifact `DichGame-APKs` đã upload (ID 15066127993, SHA-256 `a15db18ad5e150f9d11dd7de4c51a18f14ab46378dc9d0bd5cfbadb4801cf722`).
+- [x] Public Release đúng cách bị skip: log xác nhận `IS_PUBLIC_RELEASE=true`, `CAN_PUBLISH_RELEASE=false`; signing secrets chưa được cấu hình đầy đủ. Không tạo release chính thức từ khóa test.
+- [ ] Smoke test run #161 (ID 45708105649) vẫn pending, chưa có job/runner; attempt cũ #159 bị cancelled ở bước build debug. Đã đổi concurrency `cancel-in-progress: false` để không tự hủy smoke run khi có commit mới.
+
+### PR #85 — security/credential-hardening
+- [x] Bổ sung HTTPS validation CloudAPI, encrypted API/TV/receiver secrets, local TV host check, backup exclusions, migration fallback, DNS-rebinding mitigation, OCR bounding box validation.
+- [x] CI run #1926 phát hiện test import thiếu `assertEquals`/`assertNotNull`; đã sửa bằng commit `233d3cd98a663197b3c0a0f7156dc4b7232d8ecd`.
+- [ ] CI run #1927 (ID 45709164698) đang chạy; bước Android unit tests chưa kết thúc. Chưa xác minh compile/test pass cho toàn bộ PR.
+- [ ] Cần thêm SEC-009: luôn disconnect HTTP connection khi gửi PCM lỗi; đã sửa bằng try/finally.
+- [ ] Cần thêm SEC-010: validate/clamp bounding box OCR Gemini để tránh tọa độ sai/NaN; đã thêm helper và regression tests.
+- [ ] SEC-006 trust-all TLS của LG TV vẫn là rủi ro mở, cần TOFU/pinning có UX xác minh thiết bị.
+- [ ] SEC-001 keystore cũ public vẫn cần quyết định của chủ sở hữu; không tự thay certificate gây mất khả năng cập nhật app đã cài.
+
+### Link kiểm thử
+- Main build #1913: https://github.com/temu838655-dev/DichGame/actions/runs/45708105647
+- Smoke #161 (pending): https://github.com/temu838655-dev/DichGame/actions/runs/45708105649
+- PR #85 build #1927: https://github.com/temu838655-dev/DichGame/actions/runs/45709164698
+- PR #85: https://github.com/temu838655-dev/DichGame/pull/85
