@@ -50,7 +50,7 @@ class CatalogRepository:
                     game_id TEXT NOT NULL REFERENCES game_catalog(game_id) ON DELETE CASCADE,
                     platform TEXT NOT NULL,
                     source_platform TEXT NOT NULL DEFAULT 'OTHER',
-                    target_platforms_json TEXT NOT NULL DEFAULT '["PS5","PS4","XBOX"]',
+                    target_platforms_json TEXT NOT NULL DEFAULT '[]',
                     region TEXT, edition TEXT, game_version TEXT, translation_version TEXT,
                     author_name TEXT, source_id TEXT NOT NULL REFERENCES catalog_sources(source_id),
                     source_url TEXT NOT NULL, license_id TEXT NOT NULL, license_url TEXT,
