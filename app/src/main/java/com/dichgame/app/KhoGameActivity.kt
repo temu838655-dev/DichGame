@@ -220,7 +220,10 @@ class KhoGameActivity : Activity() {
                     "Tải file Việt hoá (en.json + vi.json, strings.xml, .srt...) rồi nhập vào đây: khi chơi, câu nào trên màn hình khớp câu trong file thì hiện đúng bản đó, như chơi bản Việt hoá trên máy tính.",
                 12f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 6, 0))
             // Cách chơi theo nền tảng
-            val start = ps.firstOrNull() ?: Plat.PS5
+            val defaultPlatform = ps.firstOrNull() ?: Plat.PS5
+            val start = if (PackStore.gameName(p).equals(name, ignoreCase = true))
+                Plat.values().firstOrNull { it.name == p.selectedPlatform && (ps.isEmpty() || it in ps) } ?: defaultPlatform
+            else defaultPlatform
             var selectedPlatform = start
             val guide = Ui.tv(this@KhoGameActivity, RemotePlay.guide(start), 13f, Ui.TEXT)
             val appsBox = Ui.vbox(this@KhoGameActivity)
