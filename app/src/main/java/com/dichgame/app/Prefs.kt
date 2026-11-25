@@ -10,6 +10,14 @@ class Prefs(ctx: Context) {
     private val app: Context = ctx.applicationContext
     val sp: SharedPreferences = app.getSharedPreferences("dg", Context.MODE_PRIVATE)
 
+    init {
+        // Migrate legacy plaintext credentials as soon as app preferences are opened,
+        // not only when the player first enters the AI settings screen.
+        ApiSecrets.read(app, "key")
+        ApiSecrets.read(app, "keys2")
+        ApiSecrets.read(app, "ckey")
+    }
+
     companion object {
         const val ENGINE_LOCAL = "local"
         const val ENGINE_CLOUD = "cloud"
