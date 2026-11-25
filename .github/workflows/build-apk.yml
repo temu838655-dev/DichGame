@@ -226,15 +226,17 @@ jobs:
               PREVIOUS_TV_VERSION="$("$AAPT" dump badging "$PREVIOUS_TV" | sed -n "s/^package:.*versionCode='\([0-9][0-9]*\)'.*/\1/p" | head -n1)"
               test -n "$PREVIOUS_PHONE_VERSION"
               test -n "$PREVIOUS_TV_VERSION"
-              if [ "$PHONE_VERSION_CODE" -le "$PREVIOUS_PHONE_VERSION" ] || [ "$TV_VERSION_CODE" -le "$PREVIOUS_TV_VERSION" ]; then
-                echo "::error::versionCode mới phải tăng cho cả điện thoại và TV. Cũ: phone=$PREVIOUS_PHONE_VERSION TV=$PREVIOUS_TV_VERSION; mới: phone=$PHONE_VERSION_CODE TV=$TV_VERSION_CODE."
+              EXPECTED_PHONE_VERSION=$((PREVIOUS_PHONE_VERSION + GITHUB_RUN_NUMBER - PREVIOUS_BUILD_NO))
+              EXPECTED_TV_VERSION=$((PREVIOUS_TV_VERSION + GITHUB_RUN_NUMBER - PREVIOUS_BUILD_NO))
+              if [ "$PHONE_VERSION_CODE" -ne "$EXPECTED_PHONE_VERSION" ] || [ "$TV_VERSION_CODE" -ne "$EXPECTED_TV_VERSION" ]; then
+                echo "::error::versionCode không khớp quy tắc cập nhật trong app. Dự kiến phone=$EXPECTED_PHONE_VERSION TV=$EXPECTED_TV_VERSION; thực tế phone=$PHONE_VERSION_CODE TV=$TV_VERSION_CODE."
                 exit 1
               fi
               {
                 echo "Đối chiếu Release trước: $LATEST_TAG"
-                echo "versionCode điện thoại: $PREVIOUS_PHONE_VERSION → $PHONE_VERSION_CODE"
-                echo "versionCode Android TV: $PREVIOUS_TV_VERSION → $TV_VERSION_CODE"
-                echo "Chứng thư ký SHA-256 không đổi."
+                echo "versionCode điện thoại: $PREVIOUS_PHONE_VERSION → $PHONE_VERSION_CODE (đúng delta build)"
+                echo "versionCode Android TV: $PREVIOUS_TV_VERSION → $TV_VERSION_CODE (đúng delta build)"
+                echo "Chứng thư ký SHA-256 không đổi cho cả hai APK."
               } >> "$GITHUB_STEP_SUMMARY"
             else
               echo "::warning::Chưa có bản build-* trước đó để đối chiếu chứng thư/versionCode."
