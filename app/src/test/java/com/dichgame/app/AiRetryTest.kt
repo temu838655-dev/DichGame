@@ -21,6 +21,7 @@ class AiRetryTest {
 
     @Test fun classifiesErrors() {
         assertEquals(AiRetry.Kind.QUOTA, AiRetry.kindOf(ex(429)))
+        assertEquals(AiRetry.Kind.BILLING, AiRetry.kindOf(AiException(429, "insufficient_quota", billingLimit = true)))
         assertEquals(AiRetry.Kind.NETWORK, AiRetry.kindOf(ex(503)))
         assertEquals(AiRetry.Kind.NETWORK, AiRetry.kindOf(ex(500)))
         assertEquals(AiRetry.Kind.NETWORK, AiRetry.kindOf(ex(408)))
@@ -36,6 +37,7 @@ class AiRetryTest {
 
     @Test fun fallbackOnlyForProviderFailures() {
         assertTrue(AiRetry.canFallback(ex(429)))
+        assertTrue(AiRetry.canFallback(AiException(429, "insufficient_quota", billingLimit = true)))
         assertTrue(AiRetry.canFallback(ex(503)))
         assertTrue(AiRetry.canFallback(ex(401)))
         assertTrue(AiRetry.canFallback(SocketTimeoutException("timeout")))
@@ -257,4 +259,23 @@ class AiRetryTest {
         assertTrue(why, why.contains("bị loại hai lần 1"))
         assertTrue(s.report(2_000, 80), s.report(2_000, 80).contains("Dịch trên máy vì AI không dùng được"))
     }
+
+    @Test fun billingLimitIsNotRetriedAndHasSeparateExplanation() {
+        val c = Clock()
+        var calls = 0
+        try {
+            AiRetry.run(AiRetry.Plan(), c::sleep, c::now) {
+                calls++
+                throw AiException(429, "insufficient_quota", billingLimit = true)
+            }
+            fail("billing limit should not be retried")
+        } catch (e: AiException) {
+            assertTrue(e.billingLimit)
+        }
+        assertEquals(1, calls)
+        assertTrue(c.sleeps.isEmpty())
+        assertTrue(AiRetry.explain(AiRetry.Kind.BILLING, 429, 0).contains("thanh toán"))
+    }
+
+
 }
