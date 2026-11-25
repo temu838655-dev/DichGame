@@ -74,6 +74,23 @@ class CommunityModerationTests(unittest.TestCase):
         )
         self.assertEqual(self.service.pending_queue()[0]["translation_id"], translation_id)
 
+    def test_reported_verified_translation_can_be_rejected_after_review(self):
+        translation_id = self.kb.add_translation(
+            "moderation-game", "Open the vault", "Mở kho báu",
+            translation_status="VERIFIED",
+        )
+        with self.assertRaises(ValueError):
+            self.service.review(translation_id, "trusted-reviewer", "REJECT")
+        self.service.report(translation_id, "player-9", "WRONG_CONTEXT")
+        outcome = self.service.review(translation_id, "trusted-reviewer", "REJECT")
+        self.assertEqual(outcome.translation_status, "REJECTED")
+        with self.kb.connect() as db:
+            status = db.execute(
+                "SELECT translation_status FROM translations WHERE translation_id=?",
+                (translation_id,),
+            ).fetchone()[0]
+        self.assertEqual(status, "REJECTED")
+
     def test_reports_are_queued_and_resolved_by_review(self):
         translation_id = self.service.submit(
             "moderation-game", "Wrong line", "Sai dòng",
