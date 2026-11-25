@@ -206,17 +206,24 @@ object Updater {
                 if (code == 416 && attempt < 3) { part.delete(); continue }
                 if (code != 200 && code != 206) throw IOException("HTTP $code")
                 val append = code == 206
+                var expectedFileLength = info.size
                 if (append) {
-                    val range = c.getHeaderField("Content-Range").orEmpty()
-                    val start = Regex("^bytes (\\d+)-\\d+/(?:\\d+|\\*)$").matchEntire(range)?.groupValues?.get(1)?.toLongOrNull()
-                    if (start != have) {
+                    if (have <= 0L) throw IOException("Máy chủ trả dữ liệu tải tiếp không hợp lệ")
+                    val parsed = DownloadRangeParser.parse(
+                        c.getHeaderField("Content-Range").orEmpty(), have, c.contentLengthLong, maxBytes, info.size
+                    )
+                    if (parsed == null) {
                         part.delete()
                         if (attempt < 3) continue
-                        throw IOException("Máy chủ trả sai vị trí tải tiếp")
+                        throw IOException("Máy chủ trả phạm vi tải tiếp không hợp lệ")
                     }
+                    expectedFileLength = parsed.endExclusive
+                    if (parsed.total > 0) expectedFileLength = parsed.total
+                } else {
+                    have = 0L
+                    if (expectedFileLength <= 0L && c.contentLengthLong > 0L) expectedFileLength = c.contentLengthLong
                 }
-                if (!append) have = 0L
-                val total = if (info.size > 0) info.size else c.contentLengthLong.let { if (it > 0) it + have else -1L }
+                val total = if (info.size > 0) info.size else expectedFileLength
                 var done = have
                 var lastTick = 0L
                 FileOutputStream(part, append).use { out ->
@@ -234,6 +241,9 @@ object Updater {
                             if (now - lastTick > 250) { lastTick = now; post(S.Downloading(info, done, total)) }
                         }
                     }
+                }
+                if (expectedFileLength > 0 && part.length() != expectedFileLength) {
+                    throw IOException("Dữ liệu tải tiếp bị thiếu hoặc sai kích thước")
                 }
                 post(S.Downloading(info, done, total))
             } finally {
@@ -338,7 +348,7 @@ object Updater {
         val text = when (status) {
             PackageInstaller.STATUS_SUCCESS -> return
             PackageInstaller.STATUS_FAILURE_ABORTED -> "Bạn đã hủy cài đặt. Bấm Thử lại khi sẵn sàng."
-            PackageInstaller.STATUS_FAILURE_CONFLICT -> "Android báo xung đột với bản đang cài (thường do khác chữ ký). Gỡ app cũ rồi cài bản mới từ trang phát hành."
+            PackageInstaller.STATUS_FAILURE_CONFLICT -> "Android báo xung đột với bản đang cài (có thể khác chữ ký hoặc phiên bản). Đừng gỡ app cũ nếu chưa sao lưu dữ liệu; hãy gửi mã lỗi để kiểm tra trước."
             PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> "Bản mới không tương thích với máy này."
             PackageInstaller.STATUS_FAILURE_STORAGE -> "Máy hết bộ nhớ. Giải phóng dung lượng rồi thử lại."
             PackageInstaller.STATUS_FAILURE_BLOCKED -> "Android đang chặn việc cài đặt (chưa cho phép cài ứng dụng từ nguồn này, hoặc thiết bị bị khóa)."
