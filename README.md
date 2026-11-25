@@ -61,9 +61,14 @@ Mỗi bản dựng trên nhánh `main` có số thứ tự (`build-N`), số nà
 
 ### Khóa ký
 
-Bản build thử nghiệm trên Pull Request có thể dùng khóa mặc định công khai trong repo; **không cài bản thử nghiệm này làm bản phát hành chính thức**.
-Trước khi phát hành công khai, bắt buộc tạo 4 GitHub Actions secrets: `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. Workflow sẽ từ chối tạo Release nếu thiếu bất kỳ secret nào.
-Khóa riêng phải được sao lưu an toàn và giữ nguyên cho mọi phiên bản sau để Android cho phép cập nhật đè, không mất dữ liệu. Nếu thay khóa ký, người dùng phải gỡ app cũ rồi cài lại.
+**CẢNH BÁO BẢO MẬT (2026-11-26):** repository này đang ở chế độ public và `keystore/dichgame.jks` đã được commit vào Git. Vì vậy khóa ký dùng cho các bản APK cũ (bao gồm build-1872) phải được coi là **đã lộ/không còn bí mật**. Không dùng khóa này để ký một sản phẩm mới có yêu cầu bảo mật cao; người có bản sao keystore có thể ký APK giả cùng package và cùng chứng thư.
+
+Workflow đã được sửa theo nguyên tắc fail-closed: **Release công khai mới sẽ bị từ chối nếu thiếu đủ 4 GitHub Actions secrets**: `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. Build kiểm thử PR vẫn có thể dùng keystore test trong repo; không cài APK PR làm bản phát hành.
+
+Lưu ý tương thích quan trọng:
+- Nếu đưa chính keystore cũ đã lộ vào Secrets, người dùng vẫn cập nhật đè được, nhưng rủi ro khóa ký bị lộ **không được khắc phục**.
+- Nếu chuyển sang khóa mới, Android sẽ không cho cài đè APK cũ bằng cùng package ID/chứng thư khác. Người dùng hiện tại cần một kế hoạch chuyển đổi có sao lưu/khôi phục dữ liệu và cài đặt lại; không được tự ý đổi khóa trước khi có kế hoạch này.
+- Không commit keystore hoặc mật khẩu ký vào Git. Khóa bí mật phải được lưu ngoài repository, giới hạn quyền truy cập và có bản sao lưu an toàn.
 
 ## Ghép TV
 
