@@ -57,6 +57,7 @@ class KnowledgeBase:
                 "INSERT OR IGNORE INTO schema_migrations(version, description) VALUES (?, ?)",
                 (5, "Track community contributor identifiers"),
             )
+            connection.commit()
             # Fail early and clearly if SQLite was built without FTS5.
             connection.execute("SELECT count(*) FROM translations_fts").fetchone()
 
