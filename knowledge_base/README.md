@@ -47,10 +47,13 @@ incompatible rights. Keep author attribution and the original source URL.
 3. Conservative OCR dictionary correction and bounded fuzzy matching.
 4. Cache-first translation memory with context isolation, optional expiry and
    persistent duplicate-request leases. See [TRANSLATION_MEMORY.md](TRANSLATION_MEMORY.md).
+5. Provider-neutral AI fallback with persistent daily request budgets, bounded
+   retries, input/output limits and offline mode. See [AI_FALLBACK.md](AI_FALLBACK.md).
 
 ## Remaining phases
 
-1. Provider-neutral AI adapters with budget controls, retries and timeouts.
+1. Concrete provider adapters (Gemini/OpenAI-compatible/local) with provider-specific
+   timeout and output-token enforcement.
 2. Signed incremental packs, synchronization and backup recovery.
 3. Community review workflow and performance/quality benchmarks.
 4. Integrate the Python knowledge base into the Android/desktop app translation
