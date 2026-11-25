@@ -24,6 +24,34 @@ object AiRetry {
         OTHER,
     }
 
+    /** Chỉ thử lại request Gemini 400 khi response chỉ rõ safetySettings không được model/endpoint chấp nhận. */
+    fun shouldRetryWithoutSafetySettings(code: Int, body: String): Boolean {
+        if (code != 400) return false
+        val s = body.lowercase(java.util.Locale.ROOT)
+        if (!s.contains("safetysettings")) return false
+        return listOf("unknown", "unsupported", "not supported", "not allowed", "unrecognized", "invalid field")
+            .any { s.contains(it) }
+    }
+
+    /** Lấy thông báo có ích từ response body của Google; giữ status và details nhưng không làm lộ request headers. */
+    fun providerErrorMessage(body: String, maxChars: Int = 1200): String {
+        val root = runCatching { JSONObject(body) }.getOrNull()
+        val error = root?.optJSONObject("error")
+        val message = error?.optString("message").orEmpty().trim()
+        val status = error?.optString("status").orEmpty().trim()
+        val details = error?.optJSONArray("details")?.let { arr ->
+            (0 until arr.length()).mapNotNull { i ->
+                arr.optJSONObject(i)?.let { d ->
+                    val reason = d.optString("reason").takeIf { it.isNotBlank() }
+                    val domain = d.optString("domain").takeIf { it.isNotBlank() }
+                    listOfNotNull(reason, domain).joinToString("/")
+                }
+            }.filter { it.isNotBlank() }.distinct().joinToString(", ")
+        }.orEmpty()
+        val summary = listOf(message, status, details).filter { it.isNotBlank() }.distinct().joinToString(" · ")
+        return (summary.ifBlank { body.trim() }).take(maxChars)
+    }
+
     /** Mã giả cho lỗi "AI từ chối vì bộ lọc nội dung" (không phải mã HTTP). */
     const val CODE_BLOCKED = -1
 
