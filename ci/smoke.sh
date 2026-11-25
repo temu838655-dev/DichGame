@@ -187,6 +187,22 @@ adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OU
 [ -s "$OUT/toolsp-fail.txt" ] || rm -f "$OUT/toolsp-fail.txt"
 adb shell am force-stop "$PKG"
 
+# Hai nút "Dịch hết chữ" / "Dịch menu" phải báo đúng trạng thái: tắt -> bấm -> đang chạy -> bấm lại -> tắt (huy hiệu chữ trên nút)
+adb logcat -c
+adb shell am start -W -n "$PKG/.PsPlayActivity" --es dg_demo pills >/dev/null 2>&1
+waitlogp() { for i in $(seq 1 $2); do adb logcat -d -s DG_PLAY:I > "$OUT/pills.txt" 2>&1; grep -q "$1" "$OUT/pills.txt" && return 0; sleep 0.5; done; return 1; }
+waitlogp "pills-dau" 40; shot pills-off
+waitlogp "pills-vua-bam" 40
+waitlogp "pills-sau" 40; shot pills-on
+waitlogp "pills-tat-lai" 40; shot pills-off-again
+cat "$OUT/pills.txt"
+grep -q "pills-dau once=1 LẦN menu=TẮT" "$OUT/pills.txt" || echo "Nút dịch: lúc đầu không báo TẮT / 1 LẦN" >> "$OUT/pills-fail.txt"
+grep -qE "pills-sau once=1 LẦN menu=(BẬT|ĐANG)" "$OUT/pills.txt" || echo "Nút Dịch menu: bấm bật mà huy hiệu không đổi sang BẬT / ĐANG" >> "$OUT/pills-fail.txt"
+grep -q "pills-tat-lai once=1 LẦN menu=TẮT" "$OUT/pills.txt" || echo "Nút Dịch menu: bấm lần nữa mà không về TẮT" >> "$OUT/pills-fail.txt"
+adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/pills-fail.txt"
+[ -s "$OUT/pills-fail.txt" ] || rm -f "$OUT/pills-fail.txt"
+adb shell am force-stop "$PKG"
+
 # "Dịch hết chữ" thử thật: SurfaceView vẽ menu tiếng Anh -> PixelCopy -> OCR (không loại vùng phụ đề) -> lọc -> dịch -> giữ bản dịch -> tự tắt (nhật ký DG_UITR)
 adb logcat -c
 adb shell am start -W -n "$PKG/.LiveDemoActivity" --es mode uionce >/dev/null 2>&1

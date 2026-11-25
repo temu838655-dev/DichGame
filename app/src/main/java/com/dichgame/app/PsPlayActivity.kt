@@ -259,9 +259,21 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     at(14000) { handleView?.performClick() }
                     at(15000) { st("mo-lai") }
                     at(21000) { pillOnce?.box?.performClick() }
-                    at(21500) { android.util.Log.i("DG_PLAY", "mot-lan chay=${uiTr?.running} once=${uiTr?.once}") }
+                    at(21500) { android.util.Log.i("DG_PLAY", "mot-lan chay=${uiTr?.running} once=${uiTr?.once} " + pillState()) }
                     at(23500) { st("sau-bam") }
                     at(24000) { homeCell?.performClick() }
+                }
+                "pills" -> {
+                    // Hai nút dịch báo trạng thái: lúc đầu tắt (xám) → bấm "Dịch menu" → đang tải/bật (cam, huy hiệu) → bấm lại → tắt
+                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    fun st(tag: String) = android.util.Log.i("DG_PLAY", "pills-$tag " + pillState())
+                    fun at(ms: Long, f: () -> Unit) { ui.postDelayed({ if (!isFinishing && !isDestroyed) f() }, ms) }
+                    at(1500) { st("dau") }
+                    at(2000) { pillMenu?.box?.performClick() }
+                    at(2600) { st("vua-bam") }
+                    at(5000) { st("sau") }
+                    at(6000) { pillMenu?.box?.performClick() }
+                    at(6600) { st("tat-lai") }
                 }
                 "toolsp" -> {
                     // Xoay dọc: thanh tự thu lại khi để yên (nút kéo giữa màn hình mở lại được), cả khi chưa kết nối máy chơi game
@@ -989,6 +1001,9 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         if (p.badge.text.toString() != badge) p.badge.text = badge
         p.box.contentDescription = p.desc + " — " + badge
     }
+
+    /** Chữ huy hiệu hiện trên hai nút (cho nhật ký thử). */
+    private fun pillState() = "once=${pillOnce?.badge?.text} menu=${pillMenu?.badge?.text}"
 
     private var pillPolling = false
     private val pillTick = Runnable { pillPolling = false; syncPills() }
