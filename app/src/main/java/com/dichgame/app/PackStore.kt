@@ -194,6 +194,17 @@ object PackStore {
         return readAvailable(f).size
     }
 
+    /**
+     * Nhập bản xuất VERIFIED từ knowledge base như lớp dữ liệu nền:
+     * không ghi đè câu đã có, vì câu đó có thể là bản người chơi tự hiệu chỉnh.
+     */
+    @Synchronized
+    fun addVerifiedLines(ctx: Context, profile: String, add: List<Pair<String, String>>): Int {
+        val f = linesFile(ctx, profile)
+        addLinesTo(f, add, true)
+        return readAvailable(f).size
+    }
+
     @Synchronized
     private fun addLinesTo(f: File, add: List<Pair<String, String>>, preserveExisting: Boolean): Int {
         val map = LinkedHashMap<String, Pair<String, String>>()
@@ -274,7 +285,10 @@ object PackStore {
 
     /** Nhập một gói (văn bản) vào hồ sơ hiện tại. Phần đã có được giữ nguyên. Trả về câu báo kết quả. */
     fun importText(ctx: Context, p: Prefs, text: String, fileName: String = ""): String {
-        val pack = PackText.parseScopedCsv(text) ?: PackText.parseAny(text)
+        // CSV riêng này chỉ được xuất từ các mục VERIFIED của knowledge base.
+        // Giữ ưu tiên cho bản đã có trên máy (nhất là bản người chơi tự sửa).
+        val verifiedKnowledgePack = PackText.parseScopedCsv(text)
+        val pack = verifiedKnowledgePack ?: PackText.parseAny(text)
         if (pack.isEmpty) {
             // file có cả chữ gốc lẫn bản Việt hoá bên trong (cột en + vi, XLIFF, TMX, .srt hai dòng, Ren'Py...)
             Bilingual.parse(text, fileName)?.let { return importFound(ctx, p, it) }
@@ -296,7 +310,8 @@ object PackStore {
         p.cast = Cast.merge(p.cast, pack.cast)
         val beforeL = lineCount(ctx, p.profile)
         val j = LocFormat.filter(pack.lines, "file")
-        val total = if (j.pairs.isEmpty()) beforeL else addLines(ctx, p.profile, j.pairs)
+        val total = if (j.pairs.isEmpty()) beforeL else if (verifiedKnowledgePack != null)
+            addVerifiedLines(ctx, p.profile, j.pairs) else addLines(ctx, p.profile, j.pairs)
         val who = if (pack.name.isNotBlank()) " \"${pack.name}\"" else ""
         return "Đã nhập gói$who vào hồ sơ ${p.profile}: thêm $addedTerms thuật ngữ, ${pack.cast.size} nhân vật, ${total - beforeL} câu thoại." + skipNote(j)
     }
