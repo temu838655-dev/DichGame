@@ -52,6 +52,10 @@ python -m knowledge_base.catalog_cli --db data/catalog.sqlite --registry knowled
 
 Feed không được nhập nếu thiếu xác nhận quyền, nguồn chưa đăng ký, nguồn là link-only, nền tảng không hợp lệ hoặc giấy phép không rõ. Import lặp lại cùng release không tạo bản ghi trùng.
 
+## Danh mục Cloud cho ứng dụng Android
+
+Định dạng danh mục HTTPS theo tên game + nền tảng, manifest CSV có hash và quy tắc không hạ phiên bản được mô tả tại [mobile-pack-catalog.md](../docs/mobile-pack-catalog.md). Đây là định dạng phân phối riêng của Android, không phải feed metadata của kho Python.
+
 ## Quy trình áp dụng trong game
 
 1. Người chơi chọn game và nền tảng.
