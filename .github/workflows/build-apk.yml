@@ -210,10 +210,16 @@ jobs:
               PREVIOUS_TV="$RUNNER_TEMP/previous-release/DichGame-TV.apk"
               test -s "$PREVIOUS_PHONE"
               test -s "$PREVIOUS_TV"
-              PREVIOUS_CERT="$("$APKSIGNER" verify --print-certs "$PREVIOUS_PHONE" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1)"
-              test -n "$PREVIOUS_CERT"
-              if [ "$PHONE_CERT" != "$PREVIOUS_CERT" ]; then
-                echo "::error::Chứng thư APK mới khác bản phát hành $LATEST_TAG. Dừng phát hành để tránh làm người dùng không thể cập nhật."
+              PREVIOUS_PHONE_CERT="$("$APKSIGNER" verify --print-certs "$PREVIOUS_PHONE" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1)"
+              PREVIOUS_TV_CERT="$("$APKSIGNER" verify --print-certs "$PREVIOUS_TV" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1)"
+              test -n "$PREVIOUS_PHONE_CERT"
+              test -n "$PREVIOUS_TV_CERT"
+              if [ "$PREVIOUS_PHONE_CERT" != "$PREVIOUS_TV_CERT" ]; then
+                echo "::error::Hai APK của Release cũ $LATEST_TAG không cùng chứng thư ký. Cần kiểm tra thủ công trước khi phát hành."
+                exit 1
+              fi
+              if [ "$PHONE_CERT" != "$PREVIOUS_PHONE_CERT" ] || [ "$TV_CERT" != "$PREVIOUS_TV_CERT" ]; then
+                echo "::error::Chứng thư APK mới khác Release $LATEST_TAG (điện thoại hoặc TV). Dừng phát hành để tránh làm người dùng không thể cập nhật."
                 exit 1
               fi
               PREVIOUS_PHONE_VERSION="$("$AAPT" dump badging "$PREVIOUS_PHONE" | sed -n "s/^package:.*versionCode='\([0-9][0-9]*\)'.*/\1/p" | head -n1)"
