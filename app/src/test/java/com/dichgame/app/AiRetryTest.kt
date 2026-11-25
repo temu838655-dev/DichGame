@@ -41,6 +41,12 @@ class AiRetryTest {
         assertTrue(message.contains("API_KEY_INVALID"))
     }
 
+    @Test fun invalidRequestExplanationIncludesProviderDetail() {
+        val message = AiRetry.explain(AiRetry.Kind.BAD, 400, 0, "API key not valid · INVALID_ARGUMENT")
+        assertTrue(message.contains("API key not valid"))
+        assertTrue(message.contains("INVALID_ARGUMENT"))
+    }
+
     @Test fun classifiesErrors() {
         assertEquals(AiRetry.Kind.QUOTA, AiRetry.kindOf(ex(429)))
         assertEquals(AiRetry.Kind.BILLING, AiRetry.kindOf(AiException(429, "insufficient_quota", billingLimit = true)))
