@@ -41,8 +41,9 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     private fun offlinePcm(id: String, text: String, speed: Float): Pcm {
         val actualSpeed = speed.coerceIn(0.5f, 2.2f)
         val key = VoiceDiskCache.key("piper-v2", id, Voices.revision(app, id), actualSpeed.toBits().toString(), text)
-        cache.get(key)?.let { return it }
-        diskCache.get(key)?.let { cache.put(key, it); return it }
+        cache.get(key)?.let { SessionStats.live.inc("giong_cache_ram"); return it }
+        diskCache.get(key)?.let { SessionStats.live.inc("giong_cache_disk"); cache.put(key, it); return it }
+        SessionStats.live.inc("giong_offline_synth")
         return offline.synth(id, text, actualSpeed).also {
             if (it.data.isNotEmpty()) {
                 cache.put(key, it)
@@ -53,8 +54,8 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     private fun aiPcm(text: String, style: String, voice: String): Pcm {
         val key = VoiceDiskCache.key("gemini-v1", voice, p.ttsModel, style, text)
-        cache.get(key)?.let { return it }
-        diskCache.get(key)?.let { cache.put(key, it); return it }
+        cache.get(key)?.let { SessionStats.live.inc("giong_cache_ram"); return it }
+        diskCache.get(key)?.let { SessionStats.live.inc("giong_cache_disk"); cache.put(key, it); return it }
         return AiSpeech.synth(p, text, style, voice).also {
             if (it.data.isNotEmpty()) {
                 cache.put(key, it)
