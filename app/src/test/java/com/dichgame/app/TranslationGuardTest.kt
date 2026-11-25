@@ -9,6 +9,22 @@ class TranslationGuardTest {
     private fun lv(src: String, out: String, names: List<Pair<String, String>> = emptyList()) =
         TranslationGuard.check(src, TranslationGuard.clean(out, src), names).level
 
+
+    @Test fun runtimePlaceholdersMustBePreservedExactly() {
+        assertEquals(Level.OK, lv("Hello {player}, you have %s gold.", "Xin chào {player}, bạn có %s vàng."))
+        assertEquals(Level.OK, lv("Press \${player} to continue.", "Nhấn \${player} để tiếp tục."))
+        assertEquals(Level.REJECT, lv("Hello {player}.", "Xin chào người chơi."))
+        assertEquals(Level.REJECT, lv("Hello {player}.", "Xin chào {hero}."))
+        assertEquals(Level.REJECT, lv("You have %1$s.", "Bạn có %s."))
+    }
+
+    @Test fun escapedNewlinesColorAndMarkupTagsMustBePreserved() {
+        assertEquals(Level.OK, lv("Hello\\n<color=#FF0000>{player}</color>", "Xin chào\\n<color=#FF0000>{player}</color>"))
+        assertEquals(Level.REJECT, lv("Hello\\n{player}", "Xin chào {player}"))
+        assertEquals(Level.REJECT, lv("Press [b]A[/b]", "Nhấn A"))
+        assertEquals(Level.REJECT, lv("Press §aA§r", "Nhấn A"))
+    }
+
     @Test fun goodTranslationsPass() {
         assertEquals(Level.OK, lv("I don't think that's a good idea.", "Tôi không nghĩ đó là ý hay."))
         assertEquals(Level.OK, lv("Don't move!", "Đứng yên!"))
