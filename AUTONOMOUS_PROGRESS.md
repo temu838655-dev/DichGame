@@ -121,3 +121,10 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 - [x] Thêm WebReceiverTokenStorageTest: valid token filtering, malformed JSON fallback, valid empty payload remains authoritative after revokeAll.
 - [ ] CI cho commit cuối PR chưa hoàn tất; run #1915 đang queued lúc cập nhật.
 - [ ] MiniWs trust-all TLS vẫn là rủi ro mở cần thiết kế pinning.
+
+
+### Review bảo vệ địa chỉ TV — chống DNS rebinding
+- [x] Phát hiện TvLink kiểm tra host resolve tới mạng riêng nhưng sau đó mở URL bằng hostname gốc, khiến HTTP client có thể resolve lần hai.
+- [x] Sửa TvLink resolve một lần, chọn IP private/local và tạo URL bằng địa chỉ số đã xác thực (IPv6 scope được encode).
+- [x] Bổ sung regression test xác nhận resolver trả đúng numeric IP dùng để kết nối.
+- [ ] CI cho commit mới chưa có kết quả; run mới nhất sẽ chạy sau các push của PR branch.
