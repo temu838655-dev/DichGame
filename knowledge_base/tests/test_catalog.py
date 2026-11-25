@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -110,6 +111,38 @@ class CatalogTests(unittest.TestCase):
     def test_invalid_target_platform_in_feed_is_rejected(self):
         with self.assertRaises(CatalogValidationError):
             self.repo.import_feed(self.feed(target_platforms=["PC"]), confirm_authorized=True)
+
+    def test_legacy_catalog_migration_does_not_assume_cross_platform_rights(self):
+        legacy_path = self.root / "legacy.sqlite"
+        with sqlite3.connect(legacy_path) as db:
+            db.executescript("""
+                PRAGMA foreign_keys=ON;
+                CREATE TABLE catalog_sources (
+                    source_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, homepage_url TEXT NOT NULL,
+                    integration_mode TEXT NOT NULL, metadata_sync_allowed INTEGER NOT NULL DEFAULT 0,
+                    content_download_allowed INTEGER NOT NULL DEFAULT 0, permission_note TEXT NOT NULL
+                );
+                CREATE TABLE game_catalog (game_id TEXT PRIMARY KEY, title TEXT NOT NULL);
+                CREATE TABLE localization_releases (
+                    release_id INTEGER PRIMARY KEY AUTOINCREMENT, game_id TEXT NOT NULL REFERENCES game_catalog(game_id),
+                    platform TEXT NOT NULL, region TEXT, edition TEXT, game_version TEXT, translation_version TEXT,
+                    author_name TEXT, source_id TEXT NOT NULL REFERENCES catalog_sources(source_id),
+                    source_url TEXT NOT NULL, license_id TEXT NOT NULL, license_url TEXT, attribution TEXT,
+                    download_url TEXT, download_permitted INTEGER NOT NULL DEFAULT 0, content_sha256 TEXT,
+                    status TEXT NOT NULL DEFAULT 'LINK_ONLY', updated_at TEXT,
+                    UNIQUE(game_id, platform, region, edition, translation_version, source_id)
+                );
+                INSERT INTO catalog_sources VALUES ('legacy','Legacy','https://example.org','manual',1,0,'legacy');
+                INSERT INTO game_catalog VALUES ('legacy-game','Legacy Game');
+                INSERT INTO localization_releases(game_id, platform, source_id, source_url, license_id)
+                    VALUES ('legacy-game','PC','legacy','https://example.org/pc','PERMISSION-GRANTED');
+                INSERT INTO localization_releases(game_id, platform, source_id, source_url, license_id)
+                    VALUES ('legacy-game','PS5','legacy','https://example.org/ps5','PERMISSION-GRANTED');
+            """)
+        migrated = CatalogRepository(legacy_path)
+        self.assertEqual(migrated.releases_for_target("legacy-game", "PS5")[0]["source_platform"], "PS5")
+        self.assertEqual(migrated.releases_for_target("legacy-game", "PS5")[0]["target_platforms_json"], '["PS5"]')
+        self.assertEqual(migrated.releases_for_target("legacy-game", "PS4"), [])
 
     def test_duplicate_release_is_idempotent(self):
         first = self.repo.import_feed(self.feed(), confirm_authorized=True)
