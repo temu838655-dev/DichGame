@@ -40,13 +40,22 @@ incompatible rights. Keep author attribution and the original source URL.
 - `AI_UNVERIFIED`: AI output not yet verified.
 - `REJECTED`: excluded from normal lookup.
 
-## Next phases
+## Implemented phases
 
-1. Legal-format importers (CSV, JSON, PO, XLIFF, TMX and supported game text formats).
-2. OCR correction and conservative fuzzy matching.
-3. Translation-memory orchestration and duplicate-request suppression.
-4. Provider-neutral AI fallback with budget controls and retries.
-5. Signed incremental packs, synchronization and backup recovery.
-6. Community review workflow and performance/quality benchmarks.
+1. SQLite knowledge base, provenance, licensing fields and FTS5.
+2. Legal-format importers for CSV, JSON, singular PO, XLIFF and TMX.
+3. Conservative OCR dictionary correction and bounded fuzzy matching.
+4. Cache-first translation memory with context isolation, optional expiry and
+   persistent duplicate-request leases. See [TRANSLATION_MEMORY.md](TRANSLATION_MEMORY.md).
 
-This initial package does not claim that those later phases are already complete.
+## Remaining phases
+
+1. Provider-neutral AI adapters with budget controls, retries and timeouts.
+2. Signed incremental packs, synchronization and backup recovery.
+3. Community review workflow and performance/quality benchmarks.
+4. Integrate the Python knowledge base into the Android/desktop app translation
+   pipeline and validate end-to-end OCR-to-subtitle behavior.
+
+The package remains a standalone Python component. The provider adapter,
+application integration, sync, backups and community moderation are not yet
+implemented.
