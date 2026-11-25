@@ -109,15 +109,36 @@ class Prefs(ctx: Context) {
         get() = ApiSecrets.read(app, "keys2")
         set(v) { ApiSecrets.write(app, mapOf("keys2" to v)) }
 
-    /** Tất cả khóa Gemini theo thứ tự: khóa chính rồi các khóa dự phòng. */
-    fun geminiKeys(): List<String> =
+    /** All Gemini keys in display order, including keys manually disabled by the player. */
+    fun geminiStoredKeys(): List<String> =
         (listOf(geminiKey) + geminiSpare.lines()).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
 
-    /** Lưu danh sách khóa. Khóa mới thêm (kể cả khóa vừa bị gỡ rồi thêm lại) được dùng thử ngay, không mang theo tình trạng cũ. */
+    private fun geminiKeyId(key: String): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+
+    fun isGeminiKeyEnabled(key: String): Boolean =
+        geminiKeyId(key) !in (sp.getStringSet("gemini_disabled_keys", emptySet()) ?: emptySet())
+
+    /** Persist only one-way key fingerprints; never store another plaintext copy of credentials. */
+    fun setGeminiKeyEnabled(key: String, enabled: Boolean) {
+        val disabled = (sp.getStringSet("gemini_disabled_keys", emptySet()) ?: emptySet()).toMutableSet()
+        val id = geminiKeyId(key)
+        if (enabled) disabled.remove(id) else disabled.add(id)
+        sp.edit().putStringSet("gemini_disabled_keys", disabled).apply()
+    }
+
+    /** Only enabled keys are eligible for translation and AI voice requests. */
+    fun geminiKeys(): List<String> = geminiStoredKeys().filter { isGeminiKeyEnabled(it) }
+
+    /** Save keys atomically; newly added keys become usable and removed keys lose their disabled marker. */
     fun setGeminiKeys(list: List<String>) {
-        val before = geminiKeys().toSet()
+        val before = geminiStoredKeys().toSet()
         val k = list.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         if (!ApiSecrets.write(app, mapOf("key" to k.firstOrNull().orEmpty(), "keys2" to k.drop(1).joinToString("\n")))) return
+        val keepIds = k.map { geminiKeyId(it) }.toSet()
+        val disabled = (sp.getStringSet("gemini_disabled_keys", emptySet()) ?: emptySet()).filter { it in keepIds }.toSet()
+        sp.edit().putStringSet("gemini_disabled_keys", disabled).apply()
         for (n in k) if (n !in before) KeyRing.forget(n)
     }
 
