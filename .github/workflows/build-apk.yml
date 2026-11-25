@@ -88,11 +88,16 @@ jobs:
             echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
             echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-            echo "Đang ký bằng khóa riêng đã cấu hình."
+            echo "CAN_PUBLISH_RELEASE=true" >> "$GITHUB_ENV"
+            echo "Đang ký bằng khóa trong GitHub Secrets; kiểm tra tương thích chứng thư sẽ quyết định có phát hành được hay không."
           else
             if [ "$IS_PUBLIC_RELEASE" = "true" ]; then
-              echo "::error::Từ chối phát hành công khai: phải cấu hình đầy đủ KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS và KEY_PASSWORD trong GitHub Actions Secrets."
-              exit 1
+              echo "::warning::Không phát hành Release công khai vì thiếu signing secrets. Vẫn chạy test/build và lưu artifact để không chặn CI."
+              echo "CAN_PUBLISH_RELEASE=false" >> "$GITHUB_ENV"
+              echo "### Chưa phát hành Release" >> "$GITHUB_STEP_SUMMARY"
+              echo "Thiếu signing secrets. APK trong artifact chỉ là bản kiểm thử, không phải bản cài đặt/cập nhật chính thức." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "CAN_PUBLISH_RELEASE=false" >> "$GITHUB_ENV"
             fi
             test -s keystore/dichgame.jks
             echo "Dùng keystore test trong repo chỉ cho build không phát hành."
@@ -259,7 +264,7 @@ jobs:
       # Ghi chú "Có gì mới" hiện trong app khi có bản cập nhật: lấy từ lời nhắn commit của lần đẩy này, bỏ các dòng ký tên tự động.
       # Một commit thì lấy cả lời nhắn; nhiều commit thì liệt kê dòng đầu của từng commit.
       - name: Soạn ghi chú bản phát hành
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+        if: env.CAN_PUBLISH_RELEASE == 'true'
         env:
           BEFORE: ${{ github.event.before }}
         run: |
@@ -274,7 +279,7 @@ jobs:
       # Tag của bản phát hành luôn có dạng build-<số lần chạy> (cũng là số bản dựng ghi trong app) để app biết bản nào mới hơn;
       # app cũ tự đối chiếu số này rồi báo cập nhật ngay trong app. Bản gắn tag v* thì số nằm ở tên "Bản dựng <số> · v...".
       - name: Tạo bản phát hành (Releases)
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+        if: env.CAN_PUBLISH_RELEASE == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('build-{0}', github.run_number) }}"
