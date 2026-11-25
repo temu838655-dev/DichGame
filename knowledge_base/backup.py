@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import tempfile
+from contextlib import closing
 from pathlib import Path
 
 REQUIRED_TABLES = {
@@ -26,8 +27,8 @@ def create_backup(database_path: str | Path, backup_path: str | Path) -> Path:
     os.close(fd)
     temporary = Path(temporary_name)
     try:
-        with sqlite3.connect(str(source), timeout=15) as live:
-            with sqlite3.connect(str(temporary)) as target:
+        with closing(sqlite3.connect(str(source), timeout=15)) as live:
+            with closing(sqlite3.connect(str(temporary))) as target:
                 live.backup(target)
                 result = target.execute("PRAGMA integrity_check").fetchone()[0]
                 if result != "ok":
@@ -42,7 +43,7 @@ def validate_backup(backup_path: str | Path) -> None:
     path = Path(backup_path).expanduser().resolve()
     if not path.is_file():
         raise FileNotFoundError(path)
-    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
+    with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as db:
         result = db.execute("PRAGMA integrity_check").fetchone()[0]
         if result != "ok":
             raise sqlite3.DatabaseError(f"Backup integrity check failed: {result}")
@@ -75,8 +76,8 @@ def restore_backup(backup_path: str | Path, database_path: str | Path) -> Path:
     os.close(fd)
     temporary = Path(temporary_name)
     try:
-        with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as backup_db:
-            with sqlite3.connect(str(temporary)) as restored:
+        with closing(sqlite3.connect(f"file:{source}?mode=ro", uri=True)) as backup_db:
+            with closing(sqlite3.connect(str(temporary))) as restored:
                 backup_db.backup(restored)
                 if restored.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                     raise sqlite3.DatabaseError("Restored database failed integrity check")
