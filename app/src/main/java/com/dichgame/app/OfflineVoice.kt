@@ -18,13 +18,15 @@ class OfflineVoice(private val ctx: Context) {
     private var tts: OfflineTts? = null
     private var phon: ViPhon? = null
     private var loadedId: String? = null
+    private var loadedRevision = ""
 
     /** Giọng đã tải về máy chưa. */
     fun available(id: String): Boolean = Voices.installed(ctx, id)
 
     @Synchronized
     private fun load(id: String) {
-        if (tts != null && loadedId == id && phon != null) return
+        val revision = Voices.revision(ctx, id)
+        if (tts != null && loadedId == id && loadedRevision == revision && phon != null && available(id)) return
         close()
         val dir = Voices.dir(ctx, id)
         val model = File(dir, "model.onnx")
@@ -44,6 +46,7 @@ class OfflineVoice(private val ctx: Context) {
             )
             tts = OfflineTts(null, cfg)
             loadedId = id
+            loadedRevision = revision
         } catch (e: Throwable) {
             tts = null
             loadedId = null
