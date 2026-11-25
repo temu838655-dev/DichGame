@@ -96,3 +96,36 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 ### Smoke test
 - [x] Đã gửi yêu cầu rerun job smoke bị cancelled (GitHub trả success cho thao tác rerun).
 - [ ] Công cụ hiện vẫn trả kết quả step cũ với “Chạy trên máy giả lập: cancelled”; chưa có attempt mới được xác nhận. Giữ QA-001 ở OPEN, không đánh dấu pass.
+
+
+## Tiếp tục audit — 2026-11-26 05:40 UTC+8
+
+### Đọc lại trạng thái repository mới nhất
+- Main hiện ở commit 084659b171de80fba857f8d05284dc3d0508095b (không còn ở commit c72454d như lần audit trước).
+- Có PR #85 `security/credential-hardening` (draft/open, 10 commits, 9 files): mã hóa TV token/LG key/browser receiver token bằng AES-GCM Android Keystore; yêu cầu HTTPS cho CloudAPI; giới hạn gửi PCM tới TV private/local; phân loại billing errors; bổ sung AiSecurityTest và TvLinkSecurityTest.
+- PR #85 JVM unit-test check 139530840625 đã success. Build PR run 45706828589 vẫn in_progress ở build phone sau khi unit test và TV receiver build đã success.
+- Main build run 45707264385 (#1897) đang in_progress; bước kiểm tra/nạp signing key đã success; unit tests đang chạy. Chưa xác nhận release skip.
+- Smoke run 45703102492 attempt 2 bị cancelled tại bước Build bản debug; emulator chưa chạy. Đã gửi rerun job ID 139527252026, chờ attempt tiếp theo.
+
+### Kết quả audit bảo mật bổ sung
+- Các HTTP endpoint nhìn thấy trong module app: CloudAPI (đã được PR #85 buộc HTTPS), PackStore (chỉ nhận HTTPS), TV PCM endpoint `http://<TV>:8765/audio` (PR #85 chỉ cho phép IP private/local), WebSubServer/receiver và LG WebSocket có giao thức riêng.
+- Vì receiver TV trong LAN cần HTTP cleartext và địa chỉ có thể là IP động, chưa thể tắt `usesCleartextTraffic` toàn app mà không thay đổi kiến trúc hoặc làm hỏng pairing. SEC-002 giữ OPEN; không đánh dấu xong chỉ vì CloudAPI đã được harden.
+- MiniWs có custom TLS trust manager; cần review cách pin/verify thiết bị TV thay vì tin cậy tất cả certificate. Chưa sửa vì có thể phá pairing TV tự ký nếu không thiết kế pinning tương thích.
+- PR #85 còn draft/open, chưa merge. Không merge trước khi build phone và security migration được kiểm tra đủ.
+
+### Hạng mục còn lại
+- [ ] Chờ và xác minh build PR #85; review kỹ TLS trust-all, migration credentials, local-host validation, receiver token storage.
+- [ ] Xác minh main build #1897: unit tests, phone/TV builds, APK checks và Release skip khi thiếu secrets.
+- [ ] Hoàn tất smoke emulator; attempt 2 bị cancel trước khi chạy app.
+- [ ] SEC-001: chủ sở hữu phải chọn chiến lược khóa ký đã lộ. Không thể tự thay khóa mà không làm mất khả năng cập nhật đè app đã cài.
+- [ ] SEC-002: thiết kế network security policy an toàn mà vẫn hỗ trợ LAN HTTP; xem xét custom socket/local host routing.
+- [ ] Review MiniWs TLS trust manager; thiết kế trust-on-first-use/pinning hoặc xác minh cert theo thiết bị nếu tương thích.
+- [ ] Test AI/Gemini runtime, OCR, ASR, TTS, UI, persistence/backup, updater, performance.
+- [ ] Kiểm thử thiết bị Android arm64, Android TV, LG/Samsung và console thực.
+
+### Link run
+- Main build #1897: https://github.com/temu838655-dev/DichGame/actions/runs/45707264385
+- PR #85: https://github.com/temu838655-dev/DichGame/pull/85
+- PR #85 build: https://github.com/temu838655-dev/DichGame/actions/runs/45706828589
+- PR #85 JVM unit tests: https://github.com/temu838655-dev/DichGame/actions/runs/45706828580
+- Smoke test attempt 2 (cancelled before emulator): https://github.com/temu838655-dev/DichGame/actions/runs/45703102492
