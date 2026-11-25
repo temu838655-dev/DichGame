@@ -49,6 +49,14 @@ class KnowledgeBase:
         with closing(self.connect()) as connection:
             connection.execute("PRAGMA journal_mode = WAL")
             connection.executescript(schema)
+            # Additive upgrade for databases created before contributor attribution.
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(translations)")}
+            if "contributor_id" not in columns:
+                connection.execute("ALTER TABLE translations ADD COLUMN contributor_id TEXT")
+            connection.execute(
+                "INSERT OR IGNORE INTO schema_migrations(version, description) VALUES (?, ?)",
+                (5, "Track community contributor identifiers"),
+            )
             # Fail early and clearly if SQLite was built without FTS5.
             connection.execute("SELECT count(*) FROM translations_fts").fetchone()
 
@@ -140,6 +148,7 @@ class KnowledgeBase:
         previous_sentence: str | None = None,
         next_sentence: str | None = None,
         source_id: int | None = None,
+        contributor_id: str | None = None,
         translation_source: str = "COMMUNITY",
         translation_status: str = "COMMUNITY",
         confidence_score: float | None = None,
@@ -150,9 +159,9 @@ class KnowledgeBase:
                 """INSERT INTO translations(
                     game_id, source_text, normalized_text, translated_text, text_sha256,
                     context, speaker, scene_id, mission_id, previous_sentence,
-                    next_sentence, source_id, translation_source, translation_status,
+                    next_sentence, source_id, contributor_id, translation_source, translation_status,
                     confidence_score
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     game_id, source_text, normalized, translated_text,
                     sha256_text(normalized), context, speaker, scene_id, mission_id,
