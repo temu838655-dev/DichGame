@@ -122,6 +122,32 @@ class KeyRingTest {
         assertFalse(KeyRing.allBad(emptyList(), 0))
     }
 
+
+    @Test fun acquireReservesKeysAcrossConcurrentRequestsAndReleasesThem() {
+        assertEquals("A", KeyRing.acquire(keys, m, 0))
+        assertEquals("B", KeyRing.acquire(keys, m, 0))
+        assertEquals("C", KeyRing.acquire(keys, m, 0))
+        assertNull(KeyRing.acquire(keys, m, 0))
+        assertTrue(KeyRing.hasInFlight(keys, m, 0))
+        // A failed request must still release its lease through finally in Ai.withGeminiKey.
+        KeyRing.release("B", m)
+        assertEquals("B", KeyRing.acquire(keys, m, 0))
+        KeyRing.release("A", m)
+        KeyRing.release("B", m)
+        KeyRing.release("C", m)
+        assertFalse(KeyRing.hasInFlight(keys, m, 0))
+        assertEquals("A", KeyRing.acquire(keys, m, 0))
+    }
+
+    @Test fun quotaReportWhileReservedReleasesKeyForCooldownNotReuse() {
+        assertEquals("A", KeyRing.acquire(keys, m, 0))
+        assertTrue(KeyRing.report("A", m, quota(60_000), now = 0))
+        KeyRing.release("A", m)
+        assertEquals("B", KeyRing.acquire(keys, m, 1))
+        assertEquals(KeyRing.State.QUOTA, KeyRing.status("A", m, 1).state)
+        KeyRing.release("B", m)
+    }
+
     @Test fun humanWait() {
         assertEquals("21 giây", AiRetry.humanWait(21_000))
         assertEquals("5 phút", AiRetry.humanWait(5 * 60_000L))
