@@ -113,3 +113,11 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 - [ ] SEC-001: khóa ký cũ đã public; quyết định chuyển khóa vẫn thuộc chủ sở hữu.
 - [ ] SEC-002: usesCleartextTraffic vẫn bật toàn app vì HTTP receiver LAN; CloudAPI và gửi PCM đã có kiểm soát trong PR nhưng cần cô lập transport sâu hơn.
 - [ ] QA-001: smoke run attempt 3 đang build debug, emulator chưa chạy.
+
+
+### Review sâu migration browser receiver token
+- [x] Phát hiện TvOut trước đây xóa legacy token trước khi parse JSON ciphertext thành công; JSON hỏng có thể làm mất pairing token còn có thể phục hồi.
+- [x] Sửa thứ tự: parse encrypted JSON trước; chỉ xóa legacy sau khi parse thành công. Khi payload hỏng, giữ legacy và thử mã hóa lại trước khi cleanup.
+- [x] Thêm WebReceiverTokenStorageTest: valid token filtering, malformed JSON fallback, valid empty payload remains authoritative after revokeAll.
+- [ ] CI cho commit cuối PR chưa hoàn tất; run #1915 đang queued lúc cập nhật.
+- [ ] MiniWs trust-all TLS vẫn là rủi ro mở cần thiết kế pinning.
