@@ -15,14 +15,15 @@ Nguồn:
 - https://pcnetdl.com/pcnet-viet-hoa/grounded-2/
 
 Tính năng quan sát được:
-- PCNET Việt Hóa là ứng dụng Windows 10/11 miễn phí, mã nguồn mở, hướng tới game Steam.
-- Một file app nhỏ, tự tìm game Steam cài trên máy.
-- Cài Việt hóa và gỡ Việt hóa bằng thao tác một nút.
-- Game detail công bố game build/version tương thích, nội dung đã dịch/giữ nguyên, ngày cập nhật và hướng dẫn cài.
-- Có kiểm tra/cập nhật bản dịch khi game thay phiên bản; người dùng có thể yêu cầu cập nhật.
-- Có báo lỗi dịch kèm ảnh chụp.
-- PCNET Dịch Game cho PS5 được giới thiệu riêng; trang chính chủ tại thời điểm kiểm tra ghi PC build sắp có/chưa phát hành bản tải. Không suy diễn từ video/livestream rằng desktop app đã phát hành.
-- Chưa thấy bằng chứng đủ rõ về backup/restore file gốc, checksum integrity, rollback transaction hoặc multi-store ngoài Steam.
+- PCNET Việt Hóa là ứng dụng Windows 10/11 miễn phí, mã nguồn mở, hướng tới game Steam; trang tải mô tả một file khoảng 2 MB.
+- Trang kho công khai hiển thị 14 game Steam tại lần kiểm tra 2026-11-26; mỗi trang game công bố build/version tương thích, phạm vi đã dịch/giữ nguyên, ngày cập nhật và hướng dẫn.
+- App tự tìm game Steam; cài Việt hóa và gỡ Việt hóa bằng thao tác một nút; app báo khi có bản dịch mới.
+- Có báo lỗi dịch kèm ảnh chụp/Discord; người dùng có thể yêu cầu game mới.
+- PCNET Dịch Game đã phát hành Windows installer 0.7.16 (khoảng 103 MB) cho PS5. Nguồn hình là Sony PS Remote Play hoặc capture card/OBS; có thể chơi PS5 trên máy tính qua Remote Play và hiện phụ đề lên hình.
+- PCNET Dịch Game tự thông báo/cập nhật trong app. Trang chính thức hướng dẫn kiểm tra SHA-256 bằng PowerShell; họ ghi chú bộ cài chưa có chữ ký số nên Windows SmartScreen có thể cảnh báo.
+- PC game trong PCNET Dịch Game vẫn được ghi là “sắp có” tại trang tải ngày 2026-11-26.
+- Website gắn nhãn mã nguồn mở và liên kết GitHub pcnetdl/dich-game cùng pcnet-viet-hoa, nhưng cả hai URL repository trả 404 khi kiểm tra; không thể xác minh source/installer internals ở lần audit này.
+- Chưa thấy bằng chứng đủ rõ trong tài liệu công khai về backup/restore file gốc, checksum integrity của từng file game, rollback transaction hoặc multi-store ngoài Steam cho PCNET Việt Hóa.
 
 ## 2. PS5 TIẾNG VIỆT / CONSOLE TRANSLATOR
 
@@ -71,7 +72,7 @@ Tính năng quan sát được:
 | Kho cộng đồng | Báo lỗi/đề nghị thêm game | Bot/nhóm yêu cầu game | Kho dịch chung | CommunityLocalStore; moderation/sync chưa xác minh |
 | Giọng đọc | Không phải điểm chính installer | Có TTS/voice theo website | Nhiều giọng, voice nhân vật | Có TTS/AI speech source; chất lượng/sync chưa xác minh |
 | Đồng bộ TV | Chưa thấy bằng chứng | Có phụ đề TV theo website | Có hướng dẫn TV/audio sync | Có Android TV/TV link source; chưa test TV thật |
-| PC/Steam | Có installer Steam Windows | Website công bố desktop app | Có window/capture | GAP: chưa xác minh native PC/Steam trên main |
+| PC/Steam | PCNET Việt Hóa có installer Steam; PCNET Dịch Game PC vẫn sắp có | Website công bố desktop app | Có window/capture | GAP: chưa xác minh native PC/Steam trên main |
 | Cài/gỡ file game | Một nút cài/gỡ | Bộ câu trong app | Không phải installer game files | Chưa xác minh installer/backup/rollback PC |
 | Version compatibility | Có game build/version | Pack/scope theo game | Chọn game/profile | Cần audit metadata và pack validator |
 | Hướng dẫn game | Có | Có | Có | Catalog/profile có; độ bao phủ chưa xác minh |
@@ -139,6 +140,7 @@ Không lấy số lượng game của đối thủ làm số liệu của dự �
 ## Nguồn công khai
 - PCNET: https://pcnetdl.com/
 - PCNET Việt Hóa: https://pcnetdl.com/pcnet-viet-hoa/
+- PCNET Dịch Game PS5: https://pcnetdl.com/pcnet-dich-game/
 - PCNET Grounded 2: https://pcnetdl.com/pcnet-viet-hoa/grounded-2/
 - PS5 Tiếng Việt: https://ps5tiengviet.com/
 - PS5 Tiếng Việt games: https://ps5tiengviet.com/games.html
