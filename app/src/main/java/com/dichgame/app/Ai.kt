@@ -11,7 +11,7 @@ import org.json.JSONObject
  * [badKey]: chính khóa này sai, hết hạn hoặc bị thu hồi.
  */
 class AiException(
-    val code: Int, message: String, val retryAfterMs: Long = 0L, val perDay: Boolean = false, val badKey: Boolean = false,
+    val code: Int, message: String, val retryAfterMs: Long = 0L, val perDay: Boolean = false, val badKey: Boolean = false, val billingLimit: Boolean = false,
 ) : Exception(message)
 
 /** Dịch bằng AI đám mây: Google Gemini hoặc CloudAPI (chuẩn OpenAI /chat/completions). Hàm ở đây chặn luồng, hãy gọi từ luồng nền. */
@@ -126,6 +126,7 @@ object Ai {
             if (code !in 200..299) throw AiException(
                 code, txt.take(200), AiRetry.retryDelayMs(c.getHeaderField("Retry-After"), txt),
                 perDay = code == 429 && KeyRing.isDailyQuota(txt), badKey = KeyRing.isBadKey(code, txt),
+                billingLimit = code == 429 && KeyRing.isBillingLimit(txt),
             )
             runCatching {
                 val json = JSONObject(txt)
@@ -161,6 +162,7 @@ object Ai {
             } catch (e: AiException) {
                 last = e
                 if (!KeyRing.report(k, scope, e)) throw e
+                if (e.billingLimit) throw e
             } finally {
                 KeyRing.release(k, scope)
             }
@@ -261,8 +263,15 @@ object Ai {
                 if (!usesGemini(p)) cooldownUntil = 0L
                 r
             } catch (e: Exception) {
-                if (!usesGemini(p) && AiRetry.kindOf(e) == AiRetry.Kind.QUOTA) {
-                    cooldownUntil = System.currentTimeMillis() + AiRetry.cooldownMs((e as? AiException)?.retryAfterMs ?: 0L)
+                if (!usesGemini(p) && AiRetry.kindOf(e) in setOf(AiRetry.Kind.QUOTA, AiRetry.Kind.BILLING)) {
+                    val apiError = e as? AiException
+                    if (apiError?.code == 429) KeyRing.report(p.cloudKey, cloudScope(p), apiError)
+                    val cooldown = if (AiRetry.kindOf(e) == AiRetry.Kind.BILLING) {
+                        maxOf(60 * 60_000L, apiError?.retryAfterMs ?: 0L)
+                    } else {
+                        AiRetry.cooldownMs(apiError?.retryAfterMs ?: 0L)
+                    }
+                    cooldownUntil = System.currentTimeMillis() + cooldown
                 }
                 throw e
             }
