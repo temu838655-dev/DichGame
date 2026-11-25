@@ -1499,7 +1499,7 @@ class CaptureService : Service() {
         if (cap != null || wk != null || aq != null) {
             Thread {
                 runCatching { cap?.stop() }
-                runCatching { wk?.stopAndJoin(3_000L) }
+                runCatching { wk?.stopAndJoinUntilStopped() }
                 runCatching { aq?.close() }
             }.start()
         }
