@@ -59,6 +59,11 @@ object ApiSecrets {
         return String(cipher.doFinal(Base64.decode(parts[1], Base64.NO_WRAP)), Charsets.UTF_8)
     }
 
+    private fun cleanupLegacy(context: Context, name: String) {
+        val legacy = context.getSharedPreferences("dg", Context.MODE_PRIVATE)
+        if (legacy.contains(name)) legacy.edit().remove(name).commit()
+    }
+
     @Synchronized
     fun read(context: Context, name: String): String {
         val encryptedPrefs = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -66,15 +71,14 @@ object ApiSecrets {
         if (encrypted != null) {
             cache[name]?.takeIf { it.first == encrypted }?.let {
                 // Retry cleanup even when the decrypted value is served from the in-memory cache.
-                context.getSharedPreferences("dg", Context.MODE_PRIVATE).edit().remove(name).commit()
+                cleanupLegacy(context, name)
                 return it.second
             }
             return try {
                 val plain = decode(name, encrypted)
                 cache[name] = encrypted to plain
                 // Retry cleanup if a previous migration committed ciphertext but legacy cleanup failed.
-                context.getSharedPreferences("dg", Context.MODE_PRIVATE)
-                    .edit().remove(name).commit()
+                cleanupLegacy(context, name)
                 plain
             } catch (_: Exception) {
                 // A device restore or Keystore reset can make ciphertext unreadable. Preserve
