@@ -8,6 +8,7 @@ from .ai_fallback import (
 from .moderation import CommunityModeration, ModerationPermissionError, ReviewOutcome
 from .backup import create_backup, restore_backup, validate_backup
 from .sync import export_game_pack, import_game_pack, PackIntegrityError
+from .providers import GeminiProvider, OpenAICompatibleProvider, ProviderHTTPError
 
 __all__ = [
     "KnowledgeBase", "normalize_text", "sha256_text",
@@ -17,4 +18,5 @@ __all__ = [
     "CommunityModeration", "ModerationPermissionError", "ReviewOutcome",
     "create_backup", "restore_backup", "validate_backup",
     "export_game_pack", "import_game_pack", "PackIntegrityError",
+    "GeminiProvider", "OpenAICompatibleProvider", "ProviderHTTPError",
 ]
