@@ -105,6 +105,27 @@ class PackActivity : Activity() {
             }, Ui.lpm(this@PackActivity, 8, 0))
             put(m, 0, 12)
 
+            // Đóng góp cộng đồng: bản nháp và báo lỗi chỉ lưu trên máy, không giả vờ đã gửi lên máy chủ.
+            val communityDrafts = CommunityLocalStore.drafts(this@PackActivity, p.profile, name)
+            val communityReports = CommunityLocalStore.reports(this@PackActivity, p.profile, name)
+            val community = Ui.card(this@PackActivity)
+            community.addView(Ui.section(this@PackActivity, "🤝", "Đóng góp cộng đồng"))
+            community.addView(Ui.tv(this@PackActivity,
+                "Gửi bản dịch và báo câu sai để chuẩn bị đóng góp cho kho chung. Hiện tại dữ liệu được lưu riêng trên thiết bị; chưa gửi lên máy chủ và chưa được tính là VERIFIED.",
+                12.5f, Ui.SUB), Ui.lpm(this@PackActivity, 0, 8))
+            community.addView(Ui.tv(this@PackActivity,
+                "${communityDrafts.size} bản nháp · ${communityReports.size} báo lỗi · Game: " + name.ifBlank { "chưa chọn" },
+                13f, Ui.TEXT), Ui.lpm(this@PackActivity, 0, 8))
+            community.addView(Ui.button(this@PackActivity, "＋  Soạn bản dịch đóng góp") { addCommunityDraft() })
+            community.addView(Ui.button(this@PackActivity, "⚑  Báo câu dịch sai") { addCommunityReport() }, Ui.lpm(this@PackActivity, 8, 0))
+            if (communityDrafts.isNotEmpty()) community.addView(Ui.button(this@PackActivity, "Xem bản nháp (${communityDrafts.size})") {
+                showCommunityDrafts()
+            }, Ui.lpm(this@PackActivity, 8, 0))
+            if (communityReports.isNotEmpty()) community.addView(Ui.button(this@PackActivity, "Xem báo lỗi đã lưu (${communityReports.size})") {
+                showCommunityReports()
+            }, Ui.lpm(this@PackActivity, 8, 0))
+            put(community, 0, 12)
+
             val cloud = PackStore.cloudInfo(this@PackActivity, p.profile, name)
             val cloudCard = Ui.card(this@PackActivity)
             cloudCard.addView(Ui.section(this@PackActivity, "☁", "Kho Cloud · offline"))
@@ -279,6 +300,115 @@ class PackActivity : Activity() {
     }
 
     /** Quản lý các câu đã nhập trên máy, tách biệt với kho Cloud và bộ nhớ AI. */
+    private fun addCommunityDraft() {
+        val game = PackStore.gameName(p).trim()
+        if (game.isBlank()) {
+            Toast.makeText(this, "Hãy chọn game trong Kho game trước khi đóng góp.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val source = Ui.field(this, "Câu gốc trong game", "")
+        val translation = Ui.field(this, "Bản dịch tiếng Việt", "")
+        val contributor = Ui.field(this, "Tên đóng góp (không bắt buộc)", "")
+        source.minLines = 2
+        translation.minLines = 3
+        val box = Ui.vbox(this)
+        val pad = Ui.dp(this, 18)
+        box.setPadding(pad, pad / 2, pad, 0)
+        box.addView(Ui.tv(this, "Bản nháp sẽ gắn với game và hồ sơ hiện tại. Chưa gửi lên máy chủ, chưa công khai và không thay thế bản dịch đã xác minh.", 12.5f, Ui.SUB))
+        box.addView(source, Ui.lpm(this, 0, 8))
+        box.addView(translation, Ui.lpm(this, 0, 8))
+        box.addView(contributor)
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Soạn đóng góp · $game")
+            .setView(box)
+            .setPositiveButton("Lưu bản nháp") { _, _ ->
+                runCatching {
+                    CommunityLocalStore.addDraft(this, p.profile, game, source.text.toString(),
+                        translation.text.toString(), contributor.text.toString())
+                }.onSuccess {
+                    Toast.makeText(this, "Đã lưu bản nháp trên thiết bị. Chưa gửi lên kho cộng đồng.", Toast.LENGTH_LONG).show()
+                    render()
+                }.onFailure {
+                    Toast.makeText(this, it.message ?: "Không lưu được bản nháp.", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("Hủy", null).show()
+    }
+
+    private fun addCommunityReport() {
+        val game = PackStore.gameName(p).trim()
+        if (game.isBlank()) {
+            Toast.makeText(this, "Hãy chọn game trong Kho game trước khi báo lỗi.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val source = Ui.field(this, "Câu gốc hoặc câu cần báo lỗi", "")
+        val reason = Ui.field(this, "Lý do (dịch sai, sai ngữ cảnh, sai tên riêng…)", "")
+        source.minLines = 2
+        reason.minLines = 2
+        val box = Ui.vbox(this)
+        val pad = Ui.dp(this, 18)
+        box.setPadding(pad, pad / 2, pad, 0)
+        box.addView(Ui.tv(this, "Báo lỗi được lưu cục bộ để bạn kiểm tra lại trước khi gửi. Không làm thay đổi câu trong kho.", 12.5f, Ui.SUB))
+        box.addView(source, Ui.lpm(this, 0, 8))
+        box.addView(reason)
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Báo bản dịch sai · $game")
+            .setView(box)
+            .setPositiveButton("Lưu báo lỗi") { _, _ ->
+                runCatching {
+                    CommunityLocalStore.addReport(this, p.profile, game, source.text.toString(), reason.text.toString())
+                }.onSuccess {
+                    Toast.makeText(this, "Đã lưu báo lỗi trên thiết bị. Chưa gửi cho người kiểm duyệt.", Toast.LENGTH_LONG).show()
+                    render()
+                }.onFailure {
+                    Toast.makeText(this, it.message ?: "Không lưu được báo lỗi.", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("Hủy", null).show()
+    }
+
+    private fun showCommunityDrafts() {
+        val game = PackStore.gameName(p)
+        val entries = CommunityLocalStore.drafts(this, p.profile, game)
+        if (entries.isEmpty()) { render(); return }
+        val labels = entries.map { "BẢN NHÁP · ${it.source.take(54)}\\n→ ${it.translation.take(72)}" }.toTypedArray()
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Bản nháp trên thiết bị · ${entries.size}")
+            .setItems(labels) { _, index ->
+                val item = entries[index]
+                AlertDialog.Builder(this, R.style.DgDialog)
+                    .setTitle("Bản nháp đóng góp")
+                    .setMessage("Game: ${item.game}\\nNgười đóng góp: ${item.contributor.ifBlank { "Không ghi tên" }}\\n\\n${item.source}\\n\\n→ ${item.translation}\\n\\nTrạng thái: CHƯA GỬI · CHƯA XÁC MINH")
+                    .setPositiveButton("Xóa bản nháp") { _, _ ->
+                        CommunityLocalStore.deleteDraft(this, p.profile, game, item.id)
+                        render()
+                    }
+                    .setNegativeButton("Đóng", null).show()
+            }
+            .setNegativeButton("Đóng", null).show()
+    }
+
+    private fun showCommunityReports() {
+        val game = PackStore.gameName(p)
+        val entries = CommunityLocalStore.reports(this, p.profile, game)
+        if (entries.isEmpty()) { render(); return }
+        val labels = entries.map { "CHƯA GỬI · ${it.source.take(55)}\\n${it.reason.take(72)}" }.toTypedArray()
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Báo lỗi lưu trên thiết bị · ${entries.size}")
+            .setItems(labels) { _, index ->
+                val item = entries[index]
+                AlertDialog.Builder(this, R.style.DgDialog)
+                    .setTitle("Chi tiết báo lỗi")
+                    .setMessage("Game: ${item.game}\\nCâu: ${item.source}\\nLý do: ${item.reason}\\n\\nTrạng thái: CHƯA GỬI")
+                    .setPositiveButton("Xóa báo lỗi") { _, _ ->
+                        CommunityLocalStore.deleteReport(this, p.profile, game, item.id)
+                        render()
+                    }
+                    .setNegativeButton("Đóng", null).show()
+            }
+            .setNegativeButton("Đóng", null).show()
+    }
+
     private fun reviewPackLines(search: String = "") {
         val all = PackStore.localLines(this, p.profile)
         val q = search.trim().lowercase(java.util.Locale.ROOT)
