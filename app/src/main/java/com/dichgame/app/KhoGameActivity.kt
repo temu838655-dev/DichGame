@@ -206,6 +206,10 @@ class KhoGameActivity : Activity() {
                 "Áp dụng khi dịch AI và dịch trên máy nhằm giữ cách gọi nhất quán. Một số gói dành cho cả series hoặc thể loại, không bảo đảm mọi câu đều chính xác. Gói do người làm app soạn theo cách gọi phổ biến, " +
                     "không phải bản dịch chính thức của nhà phát hành. Sửa hoặc nhập thêm gói trong mục Gói Việt hoá.", 12f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 6, 0))
             addView(c, Ui.lpm(this@KhoGameActivity, 12, 0))
+            val defaultPlatform = ps.firstOrNull() ?: Plat.PS5
+            var selectedPlatform = if (PackStore.gameName(p).equals(name, ignoreCase = true))
+                Plat.values().firstOrNull { it.name == p.selectedPlatform && (ps.isEmpty() || it in ps) } ?: defaultPlatform
+            else defaultPlatform
             // File Việt hoá tải về: áp vào game này để khi chơi hiện đúng câu trong file
             val mine = PackStore.lineCount(this@KhoGameActivity, name)
             addView(Ui.button(this@KhoGameActivity, "📥  Nhập file Việt hoá của game này") {
@@ -220,11 +224,7 @@ class KhoGameActivity : Activity() {
                     "Tải file Việt hoá (en.json + vi.json, strings.xml, .srt...) rồi nhập vào đây: khi chơi, câu nào trên màn hình khớp câu trong file thì hiện đúng bản đó, như chơi bản Việt hoá trên máy tính.",
                 12f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 6, 0))
             // Cách chơi theo nền tảng
-            val defaultPlatform = ps.firstOrNull() ?: Plat.PS5
-            val start = if (PackStore.gameName(p).equals(name, ignoreCase = true))
-                Plat.values().firstOrNull { it.name == p.selectedPlatform && (ps.isEmpty() || it in ps) } ?: defaultPlatform
-            else defaultPlatform
-            var selectedPlatform = start
+            val start = selectedPlatform
             val guide = Ui.tv(this@KhoGameActivity, RemotePlay.guide(start), 13f, Ui.TEXT)
             val appsBox = Ui.vbox(this@KhoGameActivity)
             val nguonBox = Ui.vbox(this@KhoGameActivity)
