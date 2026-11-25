@@ -64,7 +64,11 @@ object ApiSecrets {
         val encryptedPrefs = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
         val encrypted = encryptedPrefs.getString(name, null)
         if (encrypted != null) {
-            cache[name]?.takeIf { it.first == encrypted }?.let { return it.second }
+            cache[name]?.takeIf { it.first == encrypted }?.let {
+                // Retry cleanup even when the decrypted value is served from the in-memory cache.
+                context.getSharedPreferences("dg", Context.MODE_PRIVATE).edit().remove(name).commit()
+                return it.second
+            }
             return try {
                 val plain = decode(name, encrypted)
                 cache[name] = encrypted to plain
