@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import sqlite3
+from contextlib import closing
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -260,7 +261,7 @@ class TranslationImporter:
             raise ImportValidationError("A specific reuse license or permission identifier is required; unknown rights are not imported.")
         if not confirm_rights:
             raise ImportValidationError("Confirm that you have the right to import and reuse this content.")
-        with self.kb.connect() as db:
+        with closing(self.kb.connect()) as db:
             game = db.execute("SELECT game_id FROM games WHERE game_id=?", (game_id,)).fetchone()
         if game is None:
             raise ImportValidationError(f"Unknown game_id: {game_id}")
