@@ -88,6 +88,28 @@ class CatalogTests(unittest.TestCase):
         with self.assertRaises(CatalogValidationError):
             self.repo.register_sources(bad)
 
+    def test_pc_localization_source_is_available_to_all_supported_consoles(self):
+        report = self.repo.import_feed(self.feed(source_platform="PC"), confirm_authorized=True)
+        self.assertEqual(report.imported, 1)
+        for target in ("PS5", "PS4", "XBOX"):
+            releases = self.repo.releases_for_target("game-1", target)
+            self.assertEqual(len(releases), 1)
+            self.assertEqual(releases[0]["source_platform"], "PC")
+            self.assertEqual(json.loads(releases[0]["target_platforms_json"]), ["PS4", "PS5", "XBOX"])
+
+    def test_target_platforms_can_limit_a_source_to_one_console(self):
+        self.repo.import_feed(self.feed(source_platform="STEAM", target_platforms=["PS5"]), confirm_authorized=True)
+        self.assertEqual(len(self.repo.releases_for_target("game-1", "PS5")), 1)
+        self.assertEqual(self.repo.releases_for_target("game-1", "PS4"), [])
+
+    def test_non_console_gameplay_target_is_rejected(self):
+        with self.assertRaises(CatalogValidationError):
+            self.repo.releases_for_target("game-1", "PC")
+
+    def test_invalid_target_platform_in_feed_is_rejected(self):
+        with self.assertRaises(CatalogValidationError):
+            self.repo.import_feed(self.feed(target_platforms=["PC"]), confirm_authorized=True)
+
     def test_duplicate_release_is_idempotent(self):
         first = self.repo.import_feed(self.feed(), confirm_authorized=True)
         second = self.repo.import_feed(self.feed(), confirm_authorized=True)
