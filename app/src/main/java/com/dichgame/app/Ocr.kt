@@ -166,7 +166,7 @@ class Ocr(private val p: Prefs, private val lang: String) {
         return out
     }
 
-    private fun errorText(e: Exception): String =
+    internal fun errorText(e: Exception): String =
         if (e is AiException) when {
             e.billingLimit -> "Tài khoản hoặc dự án AI đã chạm giới hạn thanh toán/chi tiêu. Hãy kiểm tra billing; ứng dụng sẽ dùng phương án dịch dự phòng."
             e.code == 400 -> "AI lỗi 400: yêu cầu hoặc cấu hình không hợp lệ. Kiểm tra model và nội dung đầu vào."
