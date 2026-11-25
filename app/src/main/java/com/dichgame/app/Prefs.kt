@@ -138,7 +138,9 @@ class Prefs(ctx: Context) {
         if (!ApiSecrets.write(app, mapOf("key" to k.firstOrNull().orEmpty(), "keys2" to k.drop(1).joinToString("\n")))) return false
         val keepIds = k.map { geminiKeyId(it) }.toSet()
         val disabled = (sp.getStringSet("gemini_disabled_keys", emptySet()) ?: emptySet()).filter { it in keepIds }.toSet()
-        if (!sp.edit().putStringSet("gemini_disabled_keys", disabled).commit()) return false
+        if (!sp.edit().putStringSet("gemini_disabled_keys", disabled).commit()) {
+            android.util.Log.w("DG_PREFS", "Could not update disabled-key metadata.")
+        }
         for (n in k) if (n !in before) KeyRing.forget(n)
         return true
     }
