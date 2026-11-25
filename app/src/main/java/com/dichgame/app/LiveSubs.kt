@@ -48,6 +48,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     private val handler = Handler(Looper.getMainLooper())
     private val stats = SessionStats.live
+    private val cloudRefresh = CloudRefresh(act)
 
     /** Khung chọn vùng phụ đề (cùng loại khung với dịch video web), mặc định ở dải dưới của hình. */
     val box = RegionBox(act).apply {
@@ -210,6 +211,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         stats.reset(System.currentTimeMillis(), batteryPct())
         RecentLines.clear()
         running = true
+        cloudRefresh.start()
         active = true
         ready = false; busy = false; translating = false
         cand = ""; stable = 0; last = ""; prevVi = ""
@@ -255,6 +257,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     fun stop() {
         val was = running
         running = false
+        cloudRefresh.stop()
         active = false
         ready = false
         handler.removeCallbacksAndMessages(null)
@@ -280,6 +283,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     fun release() {
         stop()
+        cloudRefresh.close()
         runCatching { tvExec.shutdown() }
     }
 
