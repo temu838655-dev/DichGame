@@ -198,7 +198,10 @@ class KnowledgeBase:
             ).fetchall()
             return [dict(row) for row in rows]
 
-    def cache_get(\n        self, game_id: str, text: str, context: str = "",\n        max_age_seconds: int | None = None,\n    ) -> str | None:
+    def cache_get(
+        self, game_id: str, text: str, context: str = "",
+        max_age_seconds: int | None = None,
+    ) -> str | None:
         text_hash = sha256_text(normalize_text(text))
         context_hash = sha256_text(normalize_text(context)) if context else ""
         with self.transaction() as db:
