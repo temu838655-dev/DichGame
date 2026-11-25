@@ -86,3 +86,13 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 - Emulator smoke (cancelled): https://github.com/temu838655-dev/DichGame/actions/runs/45703102492
 - Commits mới nhất trước audit: 07da9260cfa4e403c9a0fb788d90958e91e568d8.
 - Chưa tuyên bố app production-ready; chưa có kiểm thử thiết bị thật.
+
+
+### Đối chiếu sản phẩm tham chiếu
+- [x] Tạo COMPETITIVE_GAP_ANALYSIS.md dựa trên trang chủ, hướng dẫn Android, trang desktop và kho game công khai.
+- [x] Xác định các GAP có bằng chứng: đối thủ công bố iOS/Windows/macOS và PC/Steam native; repository hiện tại là Android phone/TV và README chưa công bố PC/Steam native. LG/Samsung trong repo chưa được xác minh tương đương TV support của đối thủ.
+- [ ] Không triển khai mở rộng nền tảng trong đợt này trước khi ổn định Android core.
+
+### Smoke test
+- [x] Đã gửi yêu cầu rerun job smoke bị cancelled (GitHub trả success cho thao tác rerun).
+- [ ] Công cụ hiện vẫn trả kết quả step cũ với “Chạy trên máy giả lập: cancelled”; chưa có attempt mới được xác nhận. Giữ QA-001 ở OPEN, không đánh dấu pass.
