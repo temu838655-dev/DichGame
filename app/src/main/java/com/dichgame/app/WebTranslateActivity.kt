@@ -166,6 +166,7 @@ class RegionBox(c: Context) : View(c) {
 class WebTranslateActivity : Activity() {
     private val TAG = "DG_OCR"
     private lateinit var p: Prefs
+    private val cloudRefresh by lazy { CloudRefresh(this) }
     private lateinit var sp: SharedPreferences
     private lateinit var web: WebView
     private lateinit var urlField: EditText
@@ -620,6 +621,7 @@ class WebTranslateActivity : Activity() {
 
     private fun beginRun() {
         running = true
+        cloudRefresh.start()
         everStarted = true
         lastProcessed = ""; lastShown = ""; lastCand = ""; miss = 0; lastThumb = null
         resetScanDiag()
@@ -631,6 +633,7 @@ class WebTranslateActivity : Activity() {
 
     private fun pause() {
         running = false
+        cloudRefresh.stop()
         seq++
         ui.removeCallbacks(scanTask)
         ui.removeCallbacks(pendingRun)
@@ -981,10 +984,12 @@ class WebTranslateActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (running) cloudRefresh.start()
         if (running && source == "ocr") scheduleScan(500)
     }
 
     override fun onPause() {
+        cloudRefresh.stop()
         ui.removeCallbacks(scanTask)
         super.onPause()
     }
@@ -999,6 +1004,7 @@ class WebTranslateActivity : Activity() {
     }
 
     override fun onDestroy() {
+        cloudRefresh.close()
         ui.removeCallbacksAndMessages(null)
         try { web.destroy() } catch (_: Exception) {}
         translator?.close()
