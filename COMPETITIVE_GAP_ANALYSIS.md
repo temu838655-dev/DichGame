@@ -7,7 +7,7 @@ Chỉ ghi nhận thông tin quan sát được trên website công khai; không 
 
 | Hạng mục | Console Translator (website công khai) | Dịch Game (repository hiện tại) | Đánh giá |
 |---|---|---|---|
-| Nền tảng app | Website công bố iOS/iPadOS, Android, Windows và macOS. | Repository này chứa app Android phone và Android TV; chưa thấy app iOS/Windows/macOS trong README/cấu trúc đã kiểm tra. | GAP lớn về độ phủ nền tảng. |
+| Nền tảng app | Website công bố iOS/iPadOS, Android, Windows và macOS. | Repository có app Android phone/TV và app SwiftUI iOS/iPadOS. iOS hiện là bản dịch ảnh chụp màn hình + kết nối TV; workflow preview phát IPA chưa ký và simulator ZIP. IPA ký Ad Hoc cần Apple Developer certificate/profile qua GitHub Secrets. Chưa thấy app Windows/macOS. | Có nền tảng iOS ở mức preview, chưa tương đương trải nghiệm dịch trực tiếp/Remote Play; Windows/macOS vẫn là GAP lớn. |
 | Console | Website công bố PS4/PS5 kết nối qua Remote Play; Xbox dùng app Android/Windows/Mac đọc hình từ app remote play/cửa sổ game. | Android app có engine Chiaki-ng cho Remote Play; README công bố PS5/PS4/Xbox. Cần xác minh console thật. | Phạm vi công bố gần nhau ở PS4/PS5; cơ chế Xbox/compatibility cần thử. |
 | PC / Steam | Website công bố dịch game PC/Steam trên Windows/macOS. | README nói rõ chưa hỗ trợ dịch trực tiếp PC/Steam; PC chỉ là nguồn dữ liệu Việt hóa. | GAP chức năng trực tiếp. |
 | Nguồn hình và OCR | Website công bố OCR phụ đề, dịch vùng chữ/menu và capture card ở bản desktop. | Android app có MediaProjection/OCR, vùng dịch/menu và Remote Play PixelCopy theo README/source; capture card desktop chưa có. | Có các luồng tương tự trên Android; capture card/desktop là GAP. |
