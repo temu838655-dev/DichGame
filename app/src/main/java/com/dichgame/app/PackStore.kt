@@ -186,6 +186,51 @@ object PackStore {
 
     fun lineCount(ctx: Context, profile: String): Int = readLines(ctx, profile).size
 
+    /** Chỉ đọc các câu được lưu trực tiếp trên máy; không trộn dữ liệu từ kho Cloud. */
+    @Synchronized
+    fun localLines(ctx: Context, profile: String): List<Pair<String, String>> =
+        readFile(linesFile(ctx, profile))
+
+    /** Sửa một câu đã nhập trên máy. Dữ liệu Cloud cùng game không bị thay đổi. */
+    @Synchronized
+    fun editLocalLine(ctx: Context, profile: String, oldSource: String, newSource: String, newTranslation: String): Boolean {
+        val f = linesFile(ctx, profile)
+        val updated = TranslationLineMerge.edit(readFile(f), oldSource, newSource, newTranslation) ?: return false
+        require(RemotePack.mergeOffline(readCloud(f)?.lines.orEmpty(), updated).size <= PackText.MAX_LINES) {
+            "Kho vượt giới hạn số câu. Không thay đổi dữ liệu."
+        }
+        writeManagedLocalLines(f, updated)
+        mem = null; memKey = ""
+        return true
+    }
+
+    /** Xóa một câu lưu trên máy; bản cùng nội dung trong kho Cloud không bị xóa. */
+    @Synchronized
+    fun deleteLocalLine(ctx: Context, profile: String, source: String): Boolean {
+        val f = linesFile(ctx, profile)
+        val updated = TranslationLineMerge.delete(readFile(f), source) ?: return false
+        writeManagedLocalLines(f, updated)
+        mem = null; memKey = ""
+        return true
+    }
+
+    private fun writeManagedLocalLines(f: File, rows: List<Pair<String, String>>) {
+        f.parentFile?.mkdirs()
+        val atomic = AtomicFile(f)
+        val output = atomic.startWrite()
+        try {
+            val writer = output.bufferedWriter(Charsets.UTF_8)
+            for ((original, vi) in rows) {
+                writer.write(original); writer.write("\t"); writer.write(vi); writer.newLine()
+            }
+            writer.flush()
+            atomic.finishWrite(output)
+        } catch (e: Exception) {
+            atomic.failWrite(output)
+            throw e
+        }
+    }
+
     /** Thêm câu thoại vào hồ sơ (trùng câu gốc thì lấy bản mới). Trả về số câu sau khi gộp. */
     @Synchronized
     fun addLines(ctx: Context, profile: String, add: List<Pair<String, String>>): Int {
