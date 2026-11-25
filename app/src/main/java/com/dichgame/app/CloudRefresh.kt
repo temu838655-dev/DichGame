@@ -21,7 +21,8 @@ class CloudRefresh(ctx: Context) {
             val p = Prefs(app)
             val profile = p.profile
             val game = PackStore.gameName(p)
-            val context = profile + "\u0000" + game
+            val platform = p.selectedPlatform
+            val context = profile + "\u0000" + game + "\u0000" + platform
             if (context != lastContext) { lastContext = context; generation++; next = 0L }
             val now = android.os.SystemClock.elapsedRealtime()
             if (p.autoPackRefresh && game.isNotBlank() && !busy && now >= next) {
@@ -32,10 +33,18 @@ class CloudRefresh(ctx: Context) {
                     busy = true
                     exec.execute {
                         try {
-                            val source = PackStore.cloudInfo(app, profile, game)?.source
-                                ?: p.packCatalogUrl.takeIf { it.isNotBlank() }?.let { PackStore.catalogSource(it, game) }
+                            // When a catalog is configured, resolve it for the currently
+                            // selected console. A saved manifest URL alone does not carry the
+                            // catalog's target-platform grant.
+                            val catalogUrl = p.packCatalogUrl.takeIf { it.isNotBlank() }
+                            val source = if (catalogUrl != null) {
+                                PackStore.catalogSource(catalogUrl, game, platform)
+                            } else {
+                                PackStore.cloudInfo(app, profile, game)?.source
+                            }
                             if (source != null) PackStore.importLink(app, p, source, profile, game, autoEpoch = epoch) {
-                                generation == token && p.autoPackRefresh && !Thread.currentThread().isInterrupted
+                                generation == token && p.autoPackRefresh && p.selectedPlatform == platform &&
+                                    !Thread.currentThread().isInterrupted
                             }
                         } catch (_: Exception) {
                             // Keep existing offline data.
