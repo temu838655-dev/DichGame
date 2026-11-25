@@ -238,3 +238,10 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 - These are live CI observations, not a claim that tests or runtime validation have completed.
 
 Links: [KB #227](https://github.com/temu838655-dev/DichGame/actions/runs/45711631198) · [Android Build #1961](https://github.com/temu838655-dev/DichGame/actions/runs/45711631124) · [Bridge #173](https://github.com/temu838655-dev/DichGame/actions/runs/45711630980) · [Smoke #161](https://github.com/temu838655-dev/DichGame/actions/runs/45708105649)
+
+
+### Correction — live CI re-poll (2026-11-26)
+- Android bridge tests #173 (45711630980) have now COMPLETED SUCCESSFULLY. This supersedes the earlier in-progress observation above.
+- Android Build #1961 (45711631124) remains IN_PROGRESS at the app unit-test step.
+- Emulator Smoke #161 (45708105649) remains IN_PROGRESS at emulator execution.
+- Knowledge Base Tests #227 (45711631198) remain SUCCESS.
