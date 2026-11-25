@@ -61,36 +61,35 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      # Release công khai bắt buộc dùng khóa riêng trong GitHub Secrets.
-      # Build PR vẫn có thể dùng khóa thử nghiệm; tuyệt đối không phát hành khóa mặc định công khai.
+      # Ưu tiên khóa riêng trong GitHub Secrets; nếu chưa cấu hình thì giữ cơ chế keystore hiện hữu
+      # như workflow main trước đây. Bước xác minh phía dưới bắt buộc chứng thư phải khớp Release cũ.
       - name: Kiểm tra và nạp khóa ký
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          IS_PUBLIC_RELEASE: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ "$IS_PUBLIC_RELEASE" = "true" ]; then
+          if [ -n "${KEYSTORE_BASE64}${KEYSTORE_PASSWORD}${KEY_ALIAS}${KEY_PASSWORD}" ]; then
             for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
               if [ -z "${!name}" ]; then
-                echo "::error::Thiếu GitHub Secret $name. Không phát hành APK bằng khóa ký công khai."
+                echo "::error::Bộ khóa riêng chưa đầy đủ ($name đang trống)."
                 exit 1
               fi
             done
-          fi
-          if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
             test -s "$RUNNER_TEMP/release.jks"
             echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
             echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
             echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-            echo "Đang ký bằng khóa riêng."
+            echo "Đang ký bằng khóa riêng đã cấu hình."
           else
-            echo "::warning::Build thử nghiệm dùng khóa mặc định công khai; không dùng APK này làm bản phát hành."
+            test -s keystore/dichgame.jks
+            echo "Dùng keystore hiện hữu trong repo theo cơ chế tương thích trước đây."
+            echo "::warning::Bước xác minh chứng thư sẽ chặn phát hành nếu khóa này không khớp APK Release gần nhất."
           fi
 
       # Android NDK đôi lúc được SDK Manager tải thành tệp ZIP hỏng trên runner GitHub.
