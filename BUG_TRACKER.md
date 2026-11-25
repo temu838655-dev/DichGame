@@ -46,3 +46,17 @@ Không đánh dấu VERIFIED chỉ dựa trên việc source code biên dịch.
 | REL-003 | MEDIUM | PR #86 draft, mergeable=true; Android Build #1960 pending. | OPEN — đợi CI latest head, review và merge sau đó. |
 
 Không đánh dấu VERIFIED cho các hạng mục chỉ mới có source code; phải có CI/runtime evidence phù hợp.
+
+
+---
+
+## CI follow-up — 2026-11-26
+
+| ID | Latest evidence | Current state |
+|---|---|---|
+| QA-004 | Knowledge Base Tests #227 (45711631198) succeeded on PR head c41a6a35290c547680cac5d7b68de0378b1971c7. | VERIFIED — Python knowledge-base suite only. |
+| QA-005 | Android Build #1961 (45711631124) was IN_PROGRESS; JVM/unit-test step running at last poll. | OPEN — no APK build pass claim. |
+| QA-006 | Android bridge #173 (45711630980) was IN_PROGRESS; Android JVM tests running at last poll. | OPEN — no test conclusion yet. |
+| QA-001 | Emulator Smoke #161 (45708105649) remains IN_PROGRESS. | OPEN — no emulator runtime conclusion. |
+
+Do not infer Android runtime success from Python tests. Re-poll the exact run IDs before changing these statuses.
