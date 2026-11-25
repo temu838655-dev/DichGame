@@ -49,9 +49,19 @@ def export_game_pack(
             "tables": {},
         }
         for table in TABLES:
-            rows = db.execute(
-                f"SELECT * FROM {table} WHERE game_id=? ORDER BY 1", (game_id,),
-            ).fetchall()
+            if table == "data_sources":
+                rows = db.execute(
+                    """SELECT DISTINCT s.* FROM data_sources s
+                       LEFT JOIN translations t ON t.source_id=s.source_id
+                       LEFT JOIN glossary g ON g.source_id=s.source_id
+                       WHERE t.game_id=? OR g.game_id=?
+                       ORDER BY s.source_id""",
+                    (game_id, game_id),
+                ).fetchall()
+            else:
+                rows = db.execute(
+                    f"SELECT * FROM {table} WHERE game_id=? ORDER BY 1", (game_id,),
+                ).fetchall()
             payload["tables"][table] = [dict(row) for row in rows]
     signature = hmac.new(signing_key, _canonical(payload), hashlib.sha256).hexdigest()
     document = {"payload": payload, "signature": signature}
