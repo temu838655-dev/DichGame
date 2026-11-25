@@ -30,6 +30,22 @@ internal fun ocrAiErrorText(e: Exception): String =
             else -> "Nhà cung cấp AI trả về lỗi HTTP ${e.code}."
         } else "Không kết nối được dịch vụ AI để đọc chữ; kiểm tra mạng hoặc dùng phương án offline."
 
+/** Convert Gemini's [ymin, xmin, ymax, xmax] normalized box into safe pixel bounds. */
+internal fun normalizedOcrBounds(values: List<Double>, width: Int, height: Int): IntArray? {
+    if (values.size != 4 || width <= 0 || height <= 0 || values.any { !it.isFinite() }) return null
+    val topN = values[0].coerceIn(0.0, 1000.0)
+    val leftN = values[1].coerceIn(0.0, 1000.0)
+    val bottomN = values[2].coerceIn(0.0, 1000.0)
+    val rightN = values[3].coerceIn(0.0, 1000.0)
+    if (bottomN <= topN || rightN <= leftN) return null
+    val left = (leftN * width / 1000.0).toInt().coerceIn(0, width)
+    val top = (topN * height / 1000.0).toInt().coerceIn(0, height)
+    val right = (rightN * width / 1000.0).toInt().coerceIn(0, width)
+    val bottom = (bottomN * height / 1000.0).toInt().coerceIn(0, height)
+    if (right <= left || bottom <= top) return null
+    return intArrayOf(left, top, right, bottom)
+}
+
 /** Một khối chữ đọc được trên màn hình, kèm khung bao (có thể null). */
 /** [conf] là độ tin cậy 0..1 do ML Kit báo (trung bình các dòng, có trọng số theo độ dài); 1 nếu bộ đọc không báo. */
 class Blk(val text: String, val box: Rect?, val conf: Float = 1f, val corners: FloatArray? = null, val lineCount: Int = 1)
@@ -169,10 +185,10 @@ class Ocr(private val p: Prefs, private val lang: String) {
             val t = o.optString("t").trim()
             if (t.isEmpty()) continue
             val b = o.optJSONArray("b")
-            val box = if (b != null && b.length() == 4) Rect(
-                (b.optDouble(1) * w / 1000).toInt(), (b.optDouble(0) * h / 1000).toInt(),
-                (b.optDouble(3) * w / 1000).toInt(), (b.optDouble(2) * h / 1000).toInt()
+            val bounds = if (b != null && b.length() == 4) normalizedOcrBounds(
+                (0 until 4).map { b.optDouble(it, Double.NaN) }, w, h
             ) else null
+            val box = bounds?.let { Rect(it[0], it[1], it[2], it[3]) }
             out.add(Blk(t, box, lineCount = t.lines().size.coerceAtLeast(1)))
         }
         return out
