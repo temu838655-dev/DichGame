@@ -17,3 +17,16 @@ Từ bản cập nhật này, gói Cloud lưu riêng theo game/hồ sơ và thay
 
 ## Kiểm tra cập nhật ngay trong app
 Thẻ Kho Cloud · offline hiển thị phiên bản đã lưu. Sau lần nhập manifest thành công, app nhớ URL manifest trong kho nội bộ, cho phép kiểm tra bản mới bằng một nút. Không tự gửi bản dịch cá nhân lên server. Có thể xóa riêng lớp Cloud mà không xóa bản nhập tay. Đổi nguồn Cloud cần sao lưu và xóa riêng kho Cloud trước. Manifest cũ chưa lưu URL cần nhập lại một lần. Không hỗ trợ cập nhật định kỳ trong nền ở thay đổi này.
+
+## Tạo danh mục và cập nhật tự động (bản mới)
+
+Tạo file spec.json dạng mảng: [{"game":"Game A","id":"game-a","version":1,"csv":"game-a.csv"}]. Chạy từ thư mục repo:
+
+```sh
+python3 tools/build_cloud_catalog.py spec.json https://YOUR_HOST packs-out
+python3 -m unittest discover -s tools -p test_build_cloud_catalog.py
+```
+
+Thư mục đầu ra phải chưa tồn tại. Chỉ xuất bản khi lệnh thành công. Đưa CSV có tên chứa hash lên R2 trước, rồi manifest và cuối cùng catalog.json. Giữ CSV phiên bản cũ để lượt tải đang chạy không bị lỗi. Dùng HTTPS trực tiếp, không redirect; cấu hình cache ngắn cho manifest và catalog. Chỉ xuất bản bản dịch có quyền phân phối. Không đưa dữ liệu cá nhân hoặc khóa API vào kho công khai.
+
+Trong app bật tự cập nhật và nhập URL HTTPS catalog.json. App kiểm tra khoảng 30 phút một lần trong phiên dịch đang hoạt động; không upload dữ liệu cá nhân. Xóa kho Cloud sẽ chặn tự tải lại cho đến khi nhập thủ công thành công. Nguồn đã lưu được ưu tiên; đổi nhà cung cấp cần xóa kho cũ rồi nhập nguồn mới. Các mô tả cũ phía trên về chưa có tự cập nhật áp dụng cho phiên bản trước. Chưa triển khai tài nguyên Cloudflare thật.
