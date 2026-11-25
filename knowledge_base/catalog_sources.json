@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "source_id": "the-red-team",
+      "display_name": "The Red Team",
+      "homepage_url": "https://www.theredteam.vn/",
+      "integration_mode": "link_only",
+      "metadata_sync_allowed": false,
+      "content_download_allowed": false,
+      "permission_note": "Official source-page link only. No public API or explicit automated metadata/content reuse permission has been configured. Open the original page; do not scrape, mirror, or download patches automatically."
+    },
+    {
+      "source_id": "dichgame-community",
+      "display_name": "DịchGame Community Catalog",
+      "homepage_url": "https://github.com/temu838655-dev/DichGame",
+      "integration_mode": "manual",
+      "metadata_sync_allowed": false,
+      "content_download_allowed": false,
+      "permission_note": "Maintainer-curated metadata only. Each translation release still requires its own source, license, attribution, platform and version review."
+    }
+  ]
+}
