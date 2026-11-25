@@ -44,12 +44,12 @@ object KeyRing {
      */
     @Synchronized fun acquire(keys: List<String>, scope: String, now: Long = System.currentTimeMillis()): String? {
         if (keys.isEmpty()) return null
-        val busy = inFlight.getOrPut(scope) { HashSet() }
+        val busy = inFlight[scope] ?: emptySet<String>()
         val start = current[scope]?.let { keys.indexOf(it) }?.takeIf { it >= 0 } ?: 0
         for (i in keys.indices) {
             val key = keys[(start + i) % keys.size]
             if (key !in busy && status(key, scope, now).state == State.OK) {
-                busy.add(key)
+                inFlight.getOrPut(scope) { HashSet() }.add(key)
                 return key
             }
         }
