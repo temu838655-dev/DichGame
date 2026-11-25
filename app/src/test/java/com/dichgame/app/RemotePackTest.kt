@@ -15,6 +15,42 @@ class RemotePackTest {
         assertEquals("Mở cửa", RemotePack.verify(m, bytes).lines.single().second)
     }
 
+    @Test fun catalogSelectsOnlyTheExactGamePlatform() {
+        val catalog = JSONObject().put("schema", 2).put("games", org.json.JSONArray()
+            .put(JSONObject().put("game", "GTA VI").put("platform", "PC")
+                .put("manifest", "https://packs.example.org/gta-pc.dichgame.json"))
+            .put(JSONObject().put("game", "GTA VI").put("platform", "PS5")
+                .put("manifest", "https://packs.example.org/gta-ps5.dichgame.json")))
+        assertEquals("https://packs.example.org/gta-ps5.dichgame.json",
+            RemotePack.catalogSource(catalog.toString(), "GTA VI", "PS5"))
+        assertEquals("https://packs.example.org/gta-pc.dichgame.json",
+            RemotePack.catalogSource(catalog.toString(), "GTA VI", "PC"))
+        assertNull(RemotePack.catalogSource(catalog.toString(), "GTA VI", "SWITCH"))
+    }
+
+    @Test fun catalogNeverFallsBackToAnotherPlatformOrUnscopedLegacyEntry() {
+        val catalog = JSONObject().put("schema", 1).put("games", org.json.JSONArray()
+            .put(JSONObject().put("game", "GTA VI").put("manifest", "https://packs.example.org/gta.dichgame.json")))
+        assertEquals("https://packs.example.org/gta.dichgame.json",
+            RemotePack.catalogSource(catalog.toString(), "GTA VI"))
+        assertNull(RemotePack.catalogSource(catalog.toString(), "GTA VI", "PS5"))
+    }
+
+    @Test fun catalogRejectsDuplicateGamePlatformEntries() {
+        val entry = JSONObject().put("game", "GTA VI").put("platform", "PC")
+            .put("manifest", "https://packs.example.org/gta.dichgame.json")
+        val catalog = JSONObject().put("schema", 2).put("games", org.json.JSONArray().put(entry).put(JSONObject(entry.toString())))
+        assertTrue(runCatching { RemotePack.catalogSource(catalog.toString(), "GTA VI", "PC") }.isFailure)
+    }
+
+    @Test fun catalogRejectsUnknownPlatformAndNonHttpsManifest() {
+        val catalog = JSONObject().put("schema", 2).put("games", org.json.JSONArray()
+            .put(JSONObject().put("game", "GTA VI").put("platform", "PC")
+                .put("manifest", "http://packs.example.org/gta.dichgame.json")))
+        assertTrue(runCatching { RemotePack.catalogSource(catalog.toString(), "GTA VI", "PLAYSTATION") }.isFailure)
+        assertTrue(runCatching { RemotePack.catalogSource(catalog.toString(), "GTA VI", "PC") }.isFailure)
+    }
+
     @Test fun transientCloudFailuresMayRetryButPermanentFailuresDoNot() {
         for (code in listOf(408, 429, 500, 502, 503, 504)) assertTrue(RemotePack.retryableHttp(code))
         for (code in listOf(200, 301, 400, 401, 403, 404, 413)) assertFalse(RemotePack.retryableHttp(code))
