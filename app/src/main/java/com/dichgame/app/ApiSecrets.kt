@@ -66,7 +66,12 @@ object ApiSecrets {
         if (encrypted != null) {
             cache[name]?.takeIf { it.first == encrypted }?.let { return it.second }
             return try {
-                decode(name, encrypted).also { cache[name] = encrypted to it }
+                val plain = decode(name, encrypted)
+                cache[name] = encrypted to plain
+                // Retry cleanup if a previous migration committed ciphertext but legacy cleanup failed.
+                context.getSharedPreferences("dg", Context.MODE_PRIVATE)
+                    .edit().remove(name).commit()
+                plain
             } catch (_: Exception) {
                 Log.w("DG_SECRETS", "Encrypted credential unavailable; re-enter it in Settings.")
                 ""
