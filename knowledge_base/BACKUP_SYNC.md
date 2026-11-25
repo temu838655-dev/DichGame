@@ -81,3 +81,18 @@ existing replace-newer behavior.
 
 This is a file-based bridge, not automatic live synchronization. The Python
 knowledge base still does not run inside the Android app process.
+
+## Review imported translations on Android
+
+The app's **Gói Việt hoá → Của bạn** section now separates the count of
+locally stored lines from the total lookup count (which can include Cloud lines).
+For locally stored lines, users can open the list, search source or Vietnamese
+text, edit both sides of a phrase, or delete an individual row. Changes are
+written atomically to the per-profile/per-game local file and invalidate the
+in-memory translation index so the next OCR lookup sees the edit immediately.
+
+This manager deliberately edits only local rows. Cloud-pack rows remain in the
+Cloud cache and can be removed only through the separate Cloud controls. The
+AI learned-translation memory is also a separate store and is not changed by
+editing or deleting an imported pack line. This avoids accidentally deleting
+remote data or confusing verified-pack entries with AI-generated translations.
