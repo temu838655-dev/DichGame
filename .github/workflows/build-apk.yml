@@ -61,21 +61,36 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      # Nếu đã tạo secrets KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD thì ký bằng khóa riêng của bạn,
-      # không thì dùng khóa mặc định trong thư mục keystore/.
-      - name: Dùng khóa ký riêng (nếu có)
+      # Release công khai bắt buộc dùng khóa riêng trong GitHub Secrets.
+      # Build PR vẫn có thể dùng khóa thử nghiệm; tuyệt đối không phát hành khóa mặc định công khai.
+      - name: Kiểm tra và nạp khóa ký
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          IS_PUBLIC_RELEASE: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
+        shell: bash
         run: |
+          set -euo pipefail
+          if [ "$IS_PUBLIC_RELEASE" = "true" ]; then
+            for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+              if [ -z "${!name}" ]; then
+                echo "::error::Thiếu GitHub Secret $name. Không phát hành APK bằng khóa ký công khai."
+                exit 1
+              fi
+            done
+          fi
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            test -s "$RUNNER_TEMP/release.jks"
             echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-            echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
-            echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> "$GITHUB_ENV"
-            echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> "$GITHUB_ENV"
+            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
             echo "Đang ký bằng khóa riêng."
           else
-            echo "Đang ký bằng khóa mặc định trong keystore/."
+            echo "::warning::Build thử nghiệm dùng khóa mặc định công khai; không dùng APK này làm bản phát hành."
           fi
 
       # Android NDK đôi lúc được SDK Manager tải thành tệp ZIP hỏng trên runner GitHub.
