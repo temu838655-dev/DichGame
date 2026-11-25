@@ -232,7 +232,7 @@ class SettingsActivity : Activity() {
                 AlertDialog.Builder(this, R.style.DgDialog)
                     .setTitle("Xóa giọng đọc?")
                     .setMessage("Giọng sẽ bị xóa khỏi máy, muốn dùng lại phải tải lần nữa. Trong lúc đó app đọc bằng giọng cơ bản.")
-                    .setPositiveButton("Xóa") { _, _ -> speaker?.release(); Voices.delete(this, pack.id); render() }
+                    .setPositiveButton("Xóa") { _, _ -> speaker?.release(); if (!Voices.delete(this, pack.id)) android.widget.Toast.makeText(this, "Chưa xóa được giọng. Hãy đợi tải xong rồi thử lại.", android.widget.Toast.LENGTH_LONG).show(); render() }
                     .setNegativeButton("Giữ lại", null).show()
             }, Ui.lpm(this, 0, 6))
         } else {
