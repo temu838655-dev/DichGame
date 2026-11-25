@@ -63,12 +63,33 @@ internal object TranslationLineMerge {
         val ordered = if (preserveExisting) incoming + existing else existing + incoming
         for ((source, translated) in ordered) {
             if (Canon.usable(Canon.key(source)) && translated.isNotBlank()) {
-                merged[Canon.literal(source)] =
-                    source.replace('\t', ' ').replace('\n', ' ') to
-                        translated.replace('\t', ' ').replace('\n', ' ')
+                val cleanSource = source.replace('\t', ' ').replace('\r', ' ').replace('\n', ' ').trim()
+                val cleanTranslation = translated.replace('\t', ' ').replace('\r', ' ').replace('\n', ' ').trim()
+                if (cleanSource.isNotEmpty() && cleanTranslation.isNotEmpty()) {
+                    merged[Canon.literal(cleanSource)] = cleanSource to cleanTranslation
+                }
             }
         }
         return merged.values.toList()
+    }
+
+    fun edit(existing: List<Pair<String, String>>, oldSource: String, newSource: String, newTranslation: String): List<Pair<String, String>>? {
+        val oldKey = Canon.literal(oldSource)
+        if (oldKey.isBlank()) return null
+        val index = existing.indexOfFirst { Canon.literal(it.first) == oldKey }
+        if (index < 0) return null
+        val source = newSource.replace('\t', ' ').replace('\r', ' ').replace('\n', ' ').trim()
+        val translation = newTranslation.replace('\t', ' ').replace('\r', ' ').replace('\n', ' ').trim()
+        if (!Canon.usable(Canon.key(source)) || translation.isBlank()) return null
+        val withoutOld = existing.toMutableList().also { it.removeAt(index) }
+        return merge(withoutOld, listOf(source to translation), preserveExisting = false)
+    }
+
+    fun delete(existing: List<Pair<String, String>>, source: String): List<Pair<String, String>>? {
+        val key = Canon.literal(source)
+        if (key.isBlank()) return null
+        val filtered = existing.filterNot { Canon.literal(it.first) == key }
+        return if (filtered.size == existing.size) null else filtered
     }
 }
 
