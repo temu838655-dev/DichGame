@@ -13,7 +13,8 @@ permissions:
 
 concurrency:
   group: smoke-${{ github.ref }}
-  cancel-in-progress: true
+  # Emulator builds are expensive; do not cancel an in-flight smoke run when another commit arrives.
+  cancel-in-progress: false
 
 jobs:
   smoke:
