@@ -112,7 +112,7 @@ jobs:
           if [ -s shots/live-fail.txt ]; then
             echo "Dịch phụ đề trong màn chơi lỗi:"; cat shots/live-fail.txt; cat shots/live.txt; exit 1
           fi
-          for f in narrate adjust settings tools toolsp uionce; do
+          for f in narrate adjust settings tools toolsp pills uionce; do
             if [ -s shots/$f-fail.txt ]; then
               echo "Lỗi ở bước $f:"; cat shots/$f-fail.txt; exit 1
             fi
