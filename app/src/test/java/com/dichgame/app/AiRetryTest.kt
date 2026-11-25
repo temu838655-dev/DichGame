@@ -252,10 +252,12 @@ class AiRetryTest {
         assertEquals("", s.machineReasons())
         s.inc(AiRetry.statKey(AiRetry.Kind.QUOTA), 5)
         s.inc(AiRetry.statKey(AiRetry.Kind.NETWORK), 2)
+        s.inc(AiRetry.statKey(AiRetry.Kind.BILLING))
         s.inc("may_loai")
         val why = s.machineReasons()
         assertTrue(why, why.contains("hết lượt 5"))
         assertTrue(why, why.contains("mạng hoặc máy chủ AI quá tải 2"))
+        assertTrue(why, why.contains("giới hạn thanh toán/chi tiêu 1"))
         assertTrue(why, why.contains("bị loại hai lần 1"))
         assertTrue(s.report(2_000, 80), s.report(2_000, 80).contains("Dịch trên máy vì AI không dùng được"))
     }
