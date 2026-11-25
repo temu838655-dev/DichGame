@@ -82,9 +82,15 @@ class PackActivity : Activity() {
             val terms = p.glossary.lines().count { it.contains('=') }
             val cast = p.cast.lines().count { it.contains('=') }
             val lines = PackStore.lineCount(this@PackActivity, p.profile)
+            val localLines = PackStore.localLines(this@PackActivity, p.profile)
             val m = Ui.card(this@PackActivity)
             m.addView(Ui.section(this@PackActivity, "✏️", "Của bạn · ${p.profile}"))
-            m.addView(Ui.tv(this@PackActivity, "$terms thuật ngữ · $cast nhân vật · $lines câu thoại đã nhập. Phần của bạn luôn được ưu tiên hơn gói có sẵn.", 13f, Ui.SUB), Ui.lpm(this@PackActivity, 0, 10))
+            m.addView(Ui.tv(this@PackActivity,
+                "$terms thuật ngữ · $cast nhân vật · ${localLines.size} câu lưu trên máy · $lines câu có thể tra (gồm Cloud). Bản của bạn luôn được ưu tiên hơn gói có sẵn.",
+                13f, Ui.SUB), Ui.lpm(this@PackActivity, 0, 10))
+            if (localLines.isNotEmpty()) m.addView(Ui.button(this@PackActivity, "Xem / sửa câu thoại đã nhập (${localLines.size})") {
+                reviewPackLines()
+            }, Ui.lpm(this@PackActivity, 0, 8))
             m.addView(Ui.button(this@PackActivity, "Sửa từ điển (gốc = tiếng Việt)") {
                 editDialog("Từ điển · ${p.profile}", "Mỗi dòng một từ: gốc = tiếng Việt", "Ví dụ:\nBonfire = Lửa trại\nTarnished = Kẻ Hoen Ố", p.glossary) { p.glossary = it }
             })
@@ -270,6 +276,75 @@ class PackActivity : Activity() {
             t.addView(Ui.tv(this@PackActivity, NguonVietHoa.SAFETY, 11.5f, Ui.SUB), Ui.lpm(this@PackActivity, 10, 0))
             put(t, 0, 0)
         }
+    }
+
+    /** Quản lý các câu đã nhập trên máy, tách biệt với kho Cloud và bộ nhớ AI. */
+    private fun reviewPackLines(search: String = "") {
+        val all = PackStore.localLines(this, p.profile)
+        val q = search.trim().lowercase(java.util.Locale.ROOT)
+        val entries = all.filter { q.isBlank() ||
+            it.first.lowercase(java.util.Locale.ROOT).contains(q) ||
+            it.second.lowercase(java.util.Locale.ROOT).contains(q)
+        }.take(100)
+        if (entries.isEmpty()) {
+            Toast.makeText(this, "Không có câu đã nhập nào khớp.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val choices = entries.map { it.first.take(68) + "\n→ " + it.second.take(88) }.toTypedArray()
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Câu đã nhập trên máy · ${entries.size}/${all.size}")
+            .setItems(choices) { _, index -> editPackLine(entries[index]) }
+            .setPositiveButton("Tìm") { _, _ -> searchPackLines() }
+            .setNegativeButton("Đóng", null).show()
+    }
+
+    private fun searchPackLines() {
+        val field = Ui.field(this, "Tìm trong câu gốc hoặc tiếng Việt", "")
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Tìm câu đã nhập")
+            .setView(field)
+            .setPositiveButton("Tìm") { _, _ -> reviewPackLines(field.text.toString()) }
+            .setNegativeButton("Hủy", null).show()
+    }
+
+    private fun editPackLine(entry: Pair<String, String>) {
+        val source = Ui.field(this, "Câu gốc", entry.first).apply {
+            minLines = 2
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        }
+        val translation = Ui.field(this, "Bản tiếng Việt", entry.second).apply {
+            minLines = 3
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        }
+        val box = Ui.vbox(this)
+        val pad = Ui.dp(this, 18)
+        box.setPadding(pad, pad / 2, pad, 0)
+        box.addView(Ui.tv(this, "Chỉ sửa dữ liệu đã lưu trên máy. Kho Cloud không bị thay đổi.", 12.5f, Ui.SUB),
+            Ui.lpm(this, 0, 8))
+        box.addView(source)
+        box.addView(translation, Ui.lpm(this, 0, 8))
+        AlertDialog.Builder(this, R.style.DgDialog)
+            .setTitle("Sửa câu Việt hóa")
+            .setView(box)
+            .setPositiveButton("Lưu") { _, _ ->
+                val ok = runCatching {
+                    PackStore.editLocalLine(this, p.profile, entry.first, source.text.toString(), translation.text.toString())
+                }.getOrDefault(false)
+                if (!ok) Toast.makeText(this, "Không thể lưu. Hãy kiểm tra câu gốc và bản dịch.", Toast.LENGTH_LONG).show()
+                render()
+            }
+            .setNeutralButton("Xóa câu") { _, _ ->
+                AlertDialog.Builder(this, R.style.DgDialog)
+                    .setMessage("Xóa câu này khỏi dữ liệu lưu trên máy? Bản cùng câu trong kho Cloud (nếu có) vẫn được giữ.")
+                    .setPositiveButton("Xóa") { _, _ ->
+                        if (!PackStore.deleteLocalLine(this, p.profile, entry.first))
+                            Toast.makeText(this, "Không tìm thấy câu để xóa.", Toast.LENGTH_SHORT).show()
+                        render()
+                    }
+                    .setNegativeButton("Hủy", null).show()
+            }
+            .setNegativeButton("Hủy", null).show()
     }
 
     private fun searchLearnedTranslations() {
