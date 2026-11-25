@@ -168,6 +168,10 @@ object Ai {
             }
         }
         if (KeyRing.allBad(keys)) throw last ?: AiException(401, "Mọi khóa Gemini đều sai hoặc bị thu hồi", badKey = true)
+        val billingWait = KeyRing.billingWaitMs(scope)
+        if (billingWait > 0L) {
+            throw AiException(429, "Tài khoản/dự án AI đã chạm giới hạn thanh toán hoặc chi tiêu.", billingWait, billingLimit = true)
+        }
         if (KeyRing.hasInFlight(keys, scope)) {
             throw AiException(503, "Các khóa API đang được request khác sử dụng; thử lại sau.", retryAfterMs = 500L)
         }
