@@ -136,7 +136,9 @@ class UiTranslate(
     companion object {
         private const val TAG = "DG_UITR"
         private const val MAX_SIDE = 1280
-        private const val MAX_INFLIGHT = 3
+        private const val MAX_INFLIGHT = UiBatch.MAX_ITEMS
+        /** Một chữ đang hiện bản dịch máy chỉ được xin AI dịch lại tối đa chừng này lần. */
+        private const val MAX_UPGRADES = 2
         private const val MAX_CACHE = 600
         private const val MAX_QUEUE = 80
         /** Chế độ một lần: giữ bản dịch bấy nhiêu mili giây rồi tự tắt. */
@@ -211,7 +213,7 @@ class UiTranslate(
     private var pumping = false
 
     /** [via]/[at]: bản dịch đang hiện do đâu và từ lúc nào; bản dịch máy (AI đang lỗi) được dịch lại bằng AI khi AI dùng được ([upgrading]: đang chờ bản mới). */
-    private class Entry(var vi: String? = null, var unsure: Boolean = false, var failed: Boolean = false, var via: String = "", var at: Long = 0L, var upgrading: Boolean = false)
+    private class Entry(var vi: String? = null, var unsure: Boolean = false, var failed: Boolean = false, var via: String = "", var at: Long = 0L, var upgrading: Boolean = false, var upgrades: Int = 0)
     private class Item(val src: String, val key: String, val box: RectF, val bg: Int, val fg: Int, val corners: FloatArray?, val lines: Int)
 
     private val cache = LinkedHashMap<String, Entry>(64, 0.75f, true)
@@ -528,9 +530,11 @@ class UiTranslate(
         val old = cache[key]
         if (old != null) {
             // khối này đang hiện bản dịch máy vì AI lỗi: sau ít giây (và AI không còn nghỉ) xin dịch lại bằng AI, bản cũ vẫn hiện trong lúc chờ
-            if ((old.via == "may" || old.failed || old.unsure) && !old.upgrading && tt != null && prefs?.let { Ai.enabled(it) && Ai.coolingMs(it) == 0L } == true &&
+            // chỉ xin lại khi bản trước là dịch máy; AI đã trả lời rồi thì hỏi lại chỉ tốn lượt
+            if (old.via == "may" && old.upgrades < MAX_UPGRADES && !old.upgrading && tt != null && prefs?.let { Ai.enabled(it) && Ai.coolingMs(it) == 0L } == true &&
                 SystemClock.uptimeMillis() - old.at > UPGRADE_AFTER_MS && queue.size < MAX_QUEUE) {
                 old.upgrading = true
+                old.upgrades++
                 queue.addLast(src to key)
                 pump()
             }
@@ -578,6 +582,7 @@ class UiTranslate(
             if (upgrading && e.vi != null && !e.unsure && (!valid || tr.via == "may")) {
                 pump(); return@translateFull
             }
+            e.via = tr.via
             if (BuildConfig.DEBUG) Log.i(TAG, "dich: ${src.take(60)} => ${restored ?: "(mat ma giu cho)"} [${tr.via}]")
             val same = UiText.key(tr.text) == UiText.key(prot.text)
             when {

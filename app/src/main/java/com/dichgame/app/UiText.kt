@@ -102,7 +102,7 @@ object UiText {
 
     fun safeTranslation(source: String, translated: String, uncertain: Boolean, lang: String): Boolean =
         !uncertain && translated.isNotBlank() && key(source) != key(translated) &&
-            samePlaceholders(source, translated) && TranslationGuard.check(source, translated, sourceLang = lang).ok
+            samePlaceholders(source, translated) && TranslationGuard.check(source, translated, sourceLang = lang).usable
 
     private fun String.count(sub: String): Int {
         var n = 0

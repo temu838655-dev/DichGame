@@ -12,6 +12,10 @@ object TranslationGuard {
 
     class Verdict(val level: Level, val text: String, val reasons: List<String>) {
         val ok: Boolean get() = level == Level.OK
+        /** Nghi ngờ nặng (mất/đổi/thêm số, lẫn chữ lạ). Nghi ngờ nhẹ chỉ là độ dài hay cách gọi thuật ngữ khác. */
+        val severe: Boolean get() = reasons.any { it == "mất hoặc đổi số" || it == "thêm số không có trong câu gốc" || it == "lẫn chữ lạ" }
+        /** Dùng được để hiện cho người chơi: không bị loại và không nghi ngờ nặng. */
+        val usable: Boolean get() = level != Level.REJECT && !severe
     }
 
     private val LABEL = Regex("^\\s*(bản dịch|dịch|translation|translated|vietnamese|tiếng việt|vi)\\s*[:：]\\s*", RegexOption.IGNORE_CASE)

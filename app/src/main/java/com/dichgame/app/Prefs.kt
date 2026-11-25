@@ -111,19 +111,19 @@ class Prefs(ctx: Context) {
 
     /** Tất cả khóa Gemini theo thứ tự: khóa chính rồi các khóa dự phòng. */
     fun geminiKeys(): List<String> =
-        (listOf(geminiKey) + geminiSpare.lines()).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        KeyRing.splitKeys(geminiKey + "\n" + geminiSpare)
 
     /** Lưu danh sách khóa. Khóa mới thêm (kể cả khóa vừa bị gỡ rồi thêm lại) được dùng thử ngay, không mang theo tình trạng cũ. */
     fun setGeminiKeys(list: List<String>) {
         val before = geminiKeys().toSet()
-        val k = list.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val k = KeyRing.splitKeys(list.joinToString("\n"))
         geminiKey = k.firstOrNull().orEmpty()
         geminiSpare = k.drop(1).joinToString("\n")
         for (n in k) if (n !in before) KeyRing.forget(n)
     }
 
     var geminiModel: String
-        get() = sp.getString("gmodel", "gemini-flash-latest").orEmpty().ifBlank { "gemini-flash-latest" }
+        get() = sp.getString("gmodel", ModelChain.DEFAULT).orEmpty().ifBlank { ModelChain.DEFAULT }
         set(v) = sp.edit().putString("gmodel", v.trim()).apply()
 
     /** CloudAPI: dịch vụ AI đám mây theo chuẩn OpenAI (/chat/completions), cần địa chỉ, khóa và tên model. */

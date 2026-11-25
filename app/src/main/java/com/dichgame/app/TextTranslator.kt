@@ -38,6 +38,9 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     )
 
     companion object {
+        /** Chờ chừng này để gom các chữ giao diện của cùng một lượt đọc màn hình. */
+        private const val UI_BATCH_WAIT_MS = 120L
+
         /** Mã ngôn ngữ của ML Kit cho ngôn ngữ trong game. */
         fun mlCode(lang: String): String = when (lang) {
             "ja" -> TranslateLanguage.JAPANESE
@@ -126,7 +129,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      * Kết quả một lần dịch. [uncertain]: bản dịch đã qua kiểm tra nhưng còn nghi ngờ (mất số, đổi tên, dài ngắn bất thường)
      * hoặc dịch dự phòng cũng không đạt; giao diện đánh dấu "(?)" thay vì khẳng định. [via]: goi (gói Việt hoá), cache, ai, may.
      */
-    class Tr(val text: String, val delivery: Delivery?, val uncertain: Boolean, val via: String) {
+    class Tr(val text: String, val delivery: Delivery?, val uncertain: Boolean, val via: String, val learnable: Boolean = true) {
         val caption get() = if (uncertain) "$text (?)" else text
     }
 
@@ -210,13 +213,14 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             if (!stillCurrent()) return
             // Chỉ tự lưu bản Gemini/CloudAPI chắc chắn đạt TranslationGuard.OK.
             // Không ghi bản dịch máy dự phòng hoặc bản dịch AI bị nghi ngờ.
-            val saved = p.learnTranslations && t.via == "ai" && !t.uncertain &&
+            val saved = p.learnTranslations && t.via == "ai" && !t.uncertain && t.learnable &&
                 LearnedTranslationRules.canRemember(text, t.text)
             if (saved) LearnedTranslations.remember(ctx, profile, game, lang, speaker, ui, text, t.text)
             if (t.uncertain) st.inc("dich_nghi")
             // Câu đã lưu lâu dài không giữ thêm trong cache: khi người dùng xóa bộ nhớ
             // sẽ không bị trả lại bản cũ từ cache trong cùng phiên chơi.
-            else if (!saved && (t.via != "may" || !aiOn)) cache[key] = t
+            // Bản AI còn nghi ngờ vẫn giữ trong phiên, để khung hình lặp lại không gọi AI thêm.
+            if (!saved && (t.via == "ai" || (!t.uncertain && (t.via != "may" || !aiOn)))) cache[key] = t
             emit(t)
         }
         fun fallbackLocal() {
@@ -234,47 +238,112 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         if (lang == "vi") { emit(Tr(text, null, false, "may")); return }
         if (!aiOn) { fallbackLocal(); return }
         val emo = p.emoTr && !ui
-        try { aiExecutor.execute {
-            if (!stillCurrent()) return@execute
-            var chosen: Tr? = null
-            var strict: String? = null
-            val cool = Ai.coolingMs(p)
-            if (cool > 0) {
-                // vừa hết lượt: dịch máy ngay cho câu này, khỏi chờ AI vô ích; hết thời gian nghỉ sẽ thử AI lại
-                st.inc(AiRetry.statKey(AiRetry.Kind.QUOTA))
-                warn(AiRetry.explain(AiRetry.Kind.QUOTA, 429, cool))
-            } else for (attempt in 0..1) {
+        fun complete(res: Tr?) {
+            if (!stillCurrent()) return
+            if (res != null) finish(res) else fallbackLocal()
+        }
+        fun single() {
+            try { aiExecutor.execute {
                 if (!stillCurrent()) return@execute
-                val prompt = Ai.prompt(p, srcName(), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui)
-                var raw: String? = null
-                try {
-                    raw = Ai.translateRetry(p, prompt)
-                } catch (e: Exception) {
-                    val kind = AiRetry.kindOf(e)
-                    st.inc(AiRetry.statKey(kind))
-                    warn(AiRetry.explain(kind, (e as? AiException)?.code ?: 0, Ai.coolingMs(p)))
+                var chosen: Tr? = null
+                // bản AI nghi ngờ nặng: hỏi lại một lần; lần sau không hơn thì vẫn dùng nó kèm dấu (?), tốt hơn dịch máy
+                var doubtful: Tr? = null
+                var strict: String? = null
+                if (!skipWhileCooling()) for (attempt in 0..1) {
+                    if (!stillCurrent()) return@execute
+                    val prompt = Ai.prompt(p, srcName(), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui)
+                    val raw = askAi(prompt)
+                    if (raw.isNullOrEmpty()) break
+                    val parsed = if (emo) Emo.parse(raw) else Emo.Parsed(raw, null)
+                    val fixed = terms.fixOutput(TranslationGuard.clean(parsed.text, text))
+                    val v = TranslationGuard.check(text, fixed, names, lang)
+                    if (v.level != TranslationGuard.Level.REJECT) {
+                        val d = if (emo) parsed.delivery ?: Emo.detect(text, fixed, pace) else null
+                        if (v.usable) {
+                            chosen = Tr(fixed, d, false, "ai", learnable = v.ok)
+                            st.inc("dich_ai")
+                            break
+                        }
+                        doubtful = Tr(fixed, d, true, "ai")
+                    }
+                    st.inc("dich_loai")
+                    strict = v.reasons.joinToString("; ")
                 }
-                if (raw.isNullOrEmpty()) break
-                val parsed = if (emo) Emo.parse(raw) else Emo.Parsed(raw, null)
-                val fixed = terms.fixOutput(TranslationGuard.clean(parsed.text, text))
-                val v = TranslationGuard.check(text, fixed, names, lang)
-                if (v.ok) {
-                    val d = if (emo) parsed.delivery ?: Emo.detect(text, fixed, pace) else null
-                    chosen = Tr(fixed, d, false, "ai")
-                    st.inc("dich_ai")
-                    break
+                val res = chosen ?: doubtful
+                if (res == null && strict != null) st.inc("may_loai")
+                main.post { complete(res) }
+            } } catch (_: java.util.concurrent.RejectedExecutionException) {
+                complete(null)
+            }
+        }
+        if (ui) queueUi(UiJob(text, gameDescription, terms, names, ::single, ::complete))
+        else single()
+    }
+
+    /** AI đang nghỉ (hết lượt hoặc khóa bị từ chối): báo đúng lý do, câu này dùng dịch máy ngay. Gọi từ luồng nền. */
+    private fun skipWhileCooling(): Boolean {
+        val cool = Ai.coolingMs(p)
+        if (cool <= 0L) return false
+        val kind = Ai.coolingKind(p)
+        SessionStats.live.inc(AiRetry.statKey(kind))
+        warn(AiRetry.explain(kind, if (kind == AiRetry.Kind.BAD) 401 else 429, cool))
+        return true
+    }
+
+    private fun askAi(prompt: String): String? = try {
+        Ai.translateRetry(p, prompt)
+    } catch (e: Exception) {
+        val kind = AiRetry.kindOf(e)
+        SessionStats.live.inc(AiRetry.statKey(kind))
+        warn(AiRetry.explain(kind, (e as? AiException)?.code ?: 0, Ai.coolingMs(p)))
+        null
+    }
+
+    // ---- gom chữ giao diện thành một lượt gọi AI
+
+    private class UiJob(
+        val text: String, val game: String, val terms: TermMap, val names: List<Pair<String, String>>,
+        val single: () -> Unit, val complete: (Tr?) -> Unit,
+    )
+
+    /** Chỉ đụng tới trên luồng chính. */
+    private val uiPending = ArrayList<UiJob>()
+    private val uiFlush = Runnable { flushUi() }
+
+    private fun queueUi(job: UiJob) {
+        if (uiPending.isNotEmpty() && (uiPending[0].game != job.game || uiPending.sumOf { it.text.length } + job.text.length > UiBatch.MAX_CHARS)) flushUi()
+        uiPending.add(job)
+        if (uiPending.size >= UiBatch.MAX_ITEMS) flushUi()
+        else if (uiPending.size == 1) main.postDelayed(uiFlush, UI_BATCH_WAIT_MS)
+    }
+
+    private fun flushUi() {
+        main.removeCallbacks(uiFlush)
+        if (closed || uiPending.isEmpty()) return
+        val jobs = ArrayList(uiPending)
+        uiPending.clear()
+        if (jobs.size == 1) { jobs[0].single(); return }
+        try { aiExecutor.execute {
+            if (closed) return@execute
+            val results = arrayOfNulls<Tr>(jobs.size)
+            if (!skipWhileCooling()) {
+                val first = jobs[0]
+                val raw = askAi(Ai.uiBatchPrompt(p, srcName(), first.game, jobs.map { it.text }, first.terms))
+                if (raw != null) UiBatch.parse(raw, jobs.size).forEachIndexed { i, out ->
+                    if (out == null) return@forEachIndexed
+                    val job = jobs[i]
+                    val fixed = job.terms.fixOutput(TranslationGuard.clean(out, job.text))
+                    val v = TranslationGuard.check(job.text, fixed, job.names, lang)
+                    if (v.level == TranslationGuard.Level.REJECT) SessionStats.live.inc("dich_loai")
+                    else {
+                        results[i] = Tr(fixed, null, !v.usable, "ai", learnable = v.ok)
+                        SessionStats.live.inc("dich_ai")
+                    }
                 }
-                st.inc("dich_loai")
-                strict = v.reasons.joinToString("; ")
-                if (attempt == 1) st.inc("may_loai")
             }
-            val res = chosen
-            main.post {
-                if (!stillCurrent()) return@post
-                if (res != null) finish(res) else fallbackLocal()
-            }
+            main.post { jobs.forEachIndexed { i, job -> job.complete(results[i]) } }
         } } catch (_: java.util.concurrent.RejectedExecutionException) {
-            if (stillCurrent()) fallbackLocal()
+            jobs.forEach { it.complete(null) }
         }
     }
 
@@ -322,6 +391,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
 
     fun close() {
         closed = true
+        main.removeCallbacks(uiFlush)
         aiExecutor.shutdownNow()
         try { local?.close() } catch (_: Exception) {}
     }

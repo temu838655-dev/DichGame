@@ -515,7 +515,7 @@ class CaptureService : Service() {
         }
         fun pump() {
             if (finished || !current()) return
-            while (pending < 3 && next < items.size) {
+            while (pending < UiBatch.MAX_ITEMS && next < items.size) {
                 val i = next++
                 val item = items[i]
                 val protected = UiText.protect(item.source)

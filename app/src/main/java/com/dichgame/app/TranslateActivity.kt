@@ -203,10 +203,12 @@ class TranslateActivity : Activity() {
         c.addView(Ui.button(a, "＋  Thêm khóa") {
             val v = add.text.toString().trim()
             if (v.isEmpty()) { Toast.makeText(a, "Hãy dán khóa vào ô trên.", Toast.LENGTH_SHORT).show(); return@button }
+            val before = p.geminiKeys().size
             p.setGeminiKeys(p.geminiKeys() + v)
+            Toast.makeText(a, "Đã thêm ${p.geminiKeys().size - before} khóa.", Toast.LENGTH_SHORT).show()
             render()
         }, Ui.lpm(a, 0, 4))
-        c.addView(Ui.tv(a, "Thêm nhiều khóa: khi một khóa hết lượt (lỗi 429) hoặc bị từ chối, app tự chuyển sang khóa kế tiếp và tạm bỏ khóa đó tới giờ hồi (hết lượt theo ngày thì tới nửa đêm giờ Thái Bình Dương). Lưu ý: Google tính hạn mức theo dự án, các khóa tạo trong cùng một dự án dùng chung hạn mức nên không thêm lượt; hãy tạo khóa ở dự án khác.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 4))
+        c.addView(Ui.tv(a, "Thêm nhiều khóa: khi một khóa hết lượt (lỗi 429) hoặc bị từ chối, app tự chuyển sang khóa kế tiếp và tạm bỏ khóa đó tới giờ hồi (hết lượt theo ngày thì tới nửa đêm giờ Thái Bình Dương). Lưu ý: Google tính hạn mức theo dự án, các khóa tạo trong cùng một dự án dùng chung hạn mức nên không thêm lượt; hãy tạo khóa ở dự án khác. Khi mọi khóa hết lượt ở model đang chọn, app thử tiếp model Flash-Lite dự phòng. Nên dùng model Flash-Lite vì lượt miễn phí cao hơn Flash.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 4))
         c.addView(Ui.button(a, "Lấy khóa miễn phí ở aistudio.google.com") {
             try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/apikey"))) }
             catch (_: Exception) { Toast.makeText(a, "Không mở được trình duyệt.", Toast.LENGTH_SHORT).show() }

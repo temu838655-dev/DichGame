@@ -104,8 +104,21 @@ object KeyRing {
         if (code != 400 && code != 403) return false
         val b = body.lowercase()
         return b.contains("api_key_invalid") || b.contains("api key not valid") || b.contains("api key expired") ||
-            b.contains("api key was reported as leaked") || b.contains("reported as leaked") || b.contains("api key is invalid")
+            b.contains("api key was reported as leaked") || b.contains("reported as leaked") || b.contains("api key is invalid") ||
+            (code == 403 && PROJECT_DENIED.any { b.contains(it) })
     }
+
+    /** Lỗi 403 do chính dự án của khóa (bị khóa, chưa bật API, vướng thanh toán, khóa bị giới hạn): khóa dự án khác vẫn chạy được. */
+    private val PROJECT_DENIED = listOf(
+        "denied access", "consumer_suspended", "has been suspended", "service_disabled", "has not been used in project",
+        "api_key_service_blocked", "api_key_android_app_blocked", "api_key_http_referrer_blocked", "api_key_ip_address_blocked",
+        "billing_disabled", "billing account",
+    )
+
+    private val KEY_SEPARATOR = Regex("[\\s,;|\"']+")
+
+    /** Tách ô nhập khóa: dán nhiều khóa một lần (cách nhau bằng dấu cách, xuống dòng, phẩy...) thì ra từng khóa. */
+    fun splitKeys(text: String): List<String> = text.split(KEY_SEPARATOR).filter { it.isNotEmpty() }.distinct()
 
     /** Mốc 0 giờ sáng kế tiếp theo giờ Thái Bình Dương (Gemini hồi hạn mức theo ngày vào lúc đó), thêm một phút cho chắc. */
     fun nextPacificMidnight(now: Long): Long {

@@ -62,14 +62,25 @@ object Ai {
 
     /** Lời nhắc cho chữ giao diện (menu, vật phẩm, kỹ năng, nhiệm vụ...): ngắn gọn, đúng thuật ngữ, giữ nguyên mã và số liệu. */
     private fun uiPrompt(p: Prefs, srcName: String, game: String, text: String, terms: TermMap?, strict: String?): String =
-        "Bạn Việt hoá chữ trong giao diện game từ $srcName sang tiếng Việt (menu, cài đặt, vật phẩm, trang bị, kỹ năng, nhiệm vụ, mục tiêu, thông báo, hướng dẫn, mô tả)." +
-            (if (game.isNotEmpty()) " Game: $game." else "") +
+        uiRules(srcName, game) +
             glossaryLine(terms, p, text) +
-            " Tên vật phẩm, kỹ năng, chiêu thức: ngắn gọn, dễ hiểu, đúng phong cách game. Mô tả: rõ ràng, giữ đúng ý và cơ chế gameplay, không dịch từng chữ máy móc." +
-            " Giữ nguyên các mã dạng ⟦số⟧ (đúng vị trí tương ứng), các con số, đơn vị, ký hiệu, chữ viết tắt chỉ số (HP, MP, ATK, XP...), tên riêng và tên thương hiệu." +
+            UI_KEEP +
             " Không thêm giải thích. Chỉ trả về bản dịch." +
             "\nCần dịch: $text" +
             (if (strict != null) "\nLƯU Ý NGHIÊM: bản dịch trước bị loại vì $strict. Chỉ trả về đúng một bản dịch tiếng Việt, giữ nguyên các mã ⟦số⟧, số và tên riêng." else "")
+
+    /** Lời nhắc dịch NHIỀU chữ giao diện trong một lượt gọi (đỡ tốn lượt dùng). [items] đã được thay mã giữ chỗ. */
+    fun uiBatchPrompt(p: Prefs, srcName: String, game: String, items: List<String>, terms: TermMap?): String {
+        val all = items.joinToString("\n")
+        return uiRules(srcName, game) + glossaryLine(terms, p, all) + UI_KEEP + UiBatch.instruction(items)
+    }
+
+    private fun uiRules(srcName: String, game: String): String =
+        "Bạn Việt hoá chữ trong giao diện game từ $srcName sang tiếng Việt (menu, cài đặt, vật phẩm, trang bị, kỹ năng, nhiệm vụ, mục tiêu, thông báo, hướng dẫn, mô tả)." +
+            (if (game.isNotEmpty()) " Game: $game." else "")
+
+    private const val UI_KEEP = " Tên vật phẩm, kỹ năng, chiêu thức: ngắn gọn, dễ hiểu, đúng phong cách game. Mô tả: rõ ràng, giữ đúng ý và cơ chế gameplay, không dịch từng chữ máy móc." +
+        " Giữ nguyên các mã dạng ⟦số⟧ (đúng vị trí tương ứng), các con số, đơn vị, ký hiệu, chữ viết tắt chỉ số (HP, MP, ATK, XP...), tên riêng và tên thương hiệu."
 
     private fun glossaryLine(terms: TermMap?, p: Prefs, text: String): String {
         val list = terms?.relevant(text, 30)
@@ -131,8 +142,11 @@ object Ai {
         val keys = p.geminiKeys()
         if (keys.isEmpty()) throw AiException(401, "Chưa có khóa Gemini", badKey = true)
         var last: AiException? = null
+        // mỗi khóa chỉ thử một lần trong một lượt gọi: khóa nghỉ rất ngắn không được kéo vòng lặp quay mãi, đốt thêm lượt
+        val tried = HashSet<String>()
         while (true) {
-            val k = KeyRing.pick(keys, scope) ?: break
+            val k = KeyRing.pick(keys.filter { it !in tried }, scope) ?: break
+            tried.add(k)
             try {
                 val r = call(k)
                 if (KeyRing.success(k, scope)) SessionStats.live.inc("khoa_doi")
@@ -146,8 +160,25 @@ object Ai {
         throw AiException(429, "Mọi khóa Gemini đều hết lượt", KeyRing.waitMs(keys, scope), perDay = last?.perDay == true)
     }
 
-    private fun geminiPost(p: Prefs, url: String, body: JSONObject): String =
-        withGeminiKey(p, p.geminiModel) { key -> post(url, body, mapOf("x-goog-api-key" to key)) }
+    private fun geminiPost(p: Prefs, model: String, body: JSONObject): String =
+        withGeminiKey(p, model) { key ->
+            post("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent", body, mapOf("x-goog-api-key" to key))
+        }
+
+    /** Một lần gọi Gemini bằng [model], tự bỏ safetySettings nếu model không nhận. */
+    private fun geminiCall(p: Prefs, model: String, prompt: String): String {
+        val r = try {
+            geminiPost(p, model, geminiBody(prompt, safetyAccepted))
+        } catch (e: AiException) {
+            if (e.code == 400 && !e.badKey && safetyAccepted) {
+                // chỉ khi gửi lại KHÔNG có safetySettings mà được thì mới ghi nhớ là model này không nhận
+                val r2 = geminiPost(p, model, geminiBody(prompt, false))
+                safetyAccepted = false
+                r2
+            } else throw e
+        }
+        return AiRetry.geminiText(r)
+    }
 
     /** Tắt bộ lọc nội dung của Gemini: lời thoại game hay có cảnh đánh nhau, chửi thề... mà bị chặn thì câu đó rơi sang dịch máy. */
     private val SAFETY_CATEGORIES = listOf(
@@ -175,18 +206,9 @@ object Ai {
             val r = post(cloudEndpoint(p.cloudUrl), body, mapOf("Authorization" to "Bearer " + p.cloudKey), metric = "api_dich_cloud")
             JSONObject(r).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
         } else {
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/${p.geminiModel}:generateContent"
-            val r = try {
-                geminiPost(p, url, geminiBody(prompt, safetyAccepted))
-            } catch (e: AiException) {
-                if (e.code == 400 && safetyAccepted) {
-                    // 400 cũng là lỗi khi khóa sai: chỉ khi gửi lại KHÔNG có safetySettings mà được thì mới ghi nhớ là model này không nhận
-                    val r2 = geminiPost(p, url, geminiBody(prompt, false))
-                    safetyAccepted = false
-                    r2
-                } else throw e
-            }
-            AiRetry.geminiText(r)
+            val keys = p.geminiKeys()
+            if (keys.isEmpty()) throw AiException(401, "Chưa có khóa Gemini", badKey = true)
+            ModelChain.run(keys, p.geminiModel) { model -> geminiCall(p, model, prompt) }
         }
         val t = out.trim()
         if (t.isEmpty()) throw AiException(0, "Phản hồi rỗng")
@@ -203,9 +225,13 @@ object Ai {
     fun coolingMs(p: Prefs): Long =
         if (p.aiAuto && autoCloud(p)) {
             if (p.geminiKeys().isEmpty()) cloudWait(p)
-            else minOf(KeyRing.waitMs(p.geminiKeys(), p.geminiModel), cloudWait(p))
-        } else if (usesGemini(p)) KeyRing.waitMs(p.geminiKeys(), p.geminiModel)
+            else minOf(ModelChain.waitMs(p.geminiKeys(), p.geminiModel), cloudWait(p))
+        } else if (usesGemini(p)) ModelChain.waitMs(p.geminiKeys(), p.geminiModel)
         else (cooldownUntil - System.currentTimeMillis()).coerceAtLeast(0L)
+
+    /** Vì sao AI đang nghỉ: khóa sai/bị từ chối hết thì báo lỗi khóa, không báo nhầm là hết lượt. */
+    fun coolingKind(p: Prefs): AiRetry.Kind =
+        if (usesGemini(p) && KeyRing.allBad(p.geminiKeys())) AiRetry.Kind.BAD else AiRetry.Kind.QUOTA
 
     /**
      * Dịch một câu, tự thử lại khi lỗi tạm thời (hết lượt ngắn hạn, 5xx, quá thời gian, mạng chập chờn). Hết lượt kéo dài thì ghi
@@ -214,7 +240,7 @@ object Ai {
     fun translateRetry(p: Prefs, prompt: String): String {
         if (p.aiAuto && autoCloud(p)) {
             var primaryError: Exception? = null
-            if (p.geminiKeys().isNotEmpty() && KeyRing.waitMs(p.geminiKeys(), p.geminiModel) == 0L) {
+            if (p.geminiKeys().isNotEmpty() && ModelChain.waitMs(p.geminiKeys(), p.geminiModel) == 0L) {
                 try { return translate(p, prompt) }
                 catch (e: Exception) {
                     if (!AiRetry.canFallback(e)) throw e
