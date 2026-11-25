@@ -96,3 +96,20 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 ### Smoke test
 - [x] Đã gửi yêu cầu rerun job smoke bị cancelled (GitHub trả success cho thao tác rerun).
 - [ ] Công cụ hiện vẫn trả kết quả step cũ với “Chạy trên máy giả lập: cancelled”; chưa có attempt mới được xác nhận. Giữ QA-001 ở OPEN, không đánh dấu pass.
+
+
+## Bổ sung hardening sau review PR #85 — 2026-11-26
+
+### Phát hiện và sửa mới trên branch security/credential-hardening
+- [x] SEC-004: backup rules trước đó bỏ sót legacy `dg.xml`, nơi credential plaintext có thể còn tồn tại trước lần migration đầu. Đã loại trừ file này khỏi full backup, cloud backup và device transfer. Trade-off: các cài đặt trong dg.xml không tự khôi phục từ Android backup; dữ liệu trên máy hiện tại không bị xóa.
+- [x] Thêm `ci/test_backup_rules_security.py` kiểm tra các file SharedPreferences nhạy cảm bị loại khỏi cả cloud/device backup.
+- [x] Thêm CI step chạy regression test backup rules.
+- [x] Cập nhật README giải thích rõ tác động sao lưu.
+- [x] SEC-005: khi ciphertext không đọc được do Keystore reset nhưng legacy plaintext còn, ApiSecrets.read giờ thử mã hóa lại bằng khóa Keystore hiện tại; chỉ cleanup plaintext sau khi commit encrypted prefs thành công.
+- [ ] CI cho các thay đổi trên chưa có kết quả cuối. Các push liên tiếp đã làm một số workflow attempts cũ bị cancelled; đợi run mới nhất theo commit cuối.
+
+### Rủi ro vẫn mở
+- [ ] SEC-006: MiniWs chấp nhận self-signed TLS certificate bằng trust-all. Có giới hạn kết nối private/local, nhưng chưa xác thực danh tính TV; cần thiết kế trust-on-first-use/pinning có UX xác nhận fingerprint và tương thích TV LG.
+- [ ] SEC-001: khóa ký cũ đã public; quyết định chuyển khóa vẫn thuộc chủ sở hữu.
+- [ ] SEC-002: usesCleartextTraffic vẫn bật toàn app vì HTTP receiver LAN; CloudAPI và gửi PCM đã có kiểm soát trong PR nhưng cần cô lập transport sâu hơn.
+- [ ] QA-001: smoke run attempt 3 đang build debug, emulator chưa chạy.
