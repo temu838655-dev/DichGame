@@ -78,3 +78,5 @@ Do not infer Android runtime success from Python tests. Re-poll the exact run ID
 | LAT-01 | HIGH | Translation queue allowed up to 12 waiting jobs and could display an old result while newer dialogue was already queued. | `CaptureService.kt` | Reduce cap to 6 and discard results older than 8 seconds only when newer work is waiting. | FIXED IN BRANCH — timing benchmark pending |
 
 Status rule: FIXED IN BRANCH is not VERIFIED. Reclassify only after CI, live API, and device evidence are available.
+
+| TTS-03 | HIGH | `Speaker.speakSystem()` returned when Android TextToSpeech was not yet ready, silently discarding early translated lines during asynchronous engine initialization. | `Speaker.kt` | Buffer up to 5 pending system-voice utterances, suppress duplicates, drain after successful initialization, clear on stop/shutdown. | FIXED IN BRANCH — Android/device test pending |
