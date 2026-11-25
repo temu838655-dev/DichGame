@@ -199,3 +199,41 @@ def import_game_pack(
                 )
                 counts[table] += 1
     return counts
+
+def export_android_csv(
+    knowledge_base: KnowledgeBase,
+    game_id: str,
+    output_path: str | Path,
+) -> Path:
+    """Export only human-verified translations in the app's scoped CSV format.
+
+    The Android app can import this file through its existing Import Pack flow.
+    Community and AI-unverified rows are intentionally excluded.
+    """
+    import csv
+
+    with knowledge_base.connect() as db:
+        game = db.execute(
+            "SELECT game_name FROM games WHERE game_id=?", (game_id,),
+        ).fetchone()
+        if game is None:
+            raise ValueError("game does not exist")
+        rows = db.execute(
+            """SELECT t.source_text, t.translated_text
+               FROM translations t
+               LEFT JOIN data_sources s ON s.source_id=t.source_id
+               WHERE t.game_id=? AND t.translation_status='VERIFIED'
+                 AND (t.source_id IS NULL OR s.verification_status='VERIFIED')
+               ORDER BY t.translation_id""",
+            (game_id,),
+        ).fetchall()
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8-sig", newline="") as stream:
+        writer = csv.writer(stream, lineterminator="\\r\\n")
+        writer.writerow(["source", "vi", "game"])
+        for row in rows:
+            source = str(row["source_text"]).replace("\\r", " ").replace("\\n", " ").replace("\\t", " ")
+            translated = str(row["translated_text"]).replace("\\r", " ").replace("\\n", " ").replace("\\t", " ")
+            writer.writerow([source, translated, str(game["game_name"])])
+    return path
