@@ -128,3 +128,14 @@ Commit nền đã xác minh: 3fa577b18c14862c8ad4677736a84edc5b36ddd5
 - [x] Sửa TvLink resolve một lần, chọn IP private/local và tạo URL bằng địa chỉ số đã xác thực (IPv6 scope được encode).
 - [x] Bổ sung regression test xác nhận resolver trả đúng numeric IP dùng để kết nối.
 - [ ] CI cho commit mới chưa có kết quả; run mới nhất sẽ chạy sau các push của PR branch.
+
+
+### Kết quả PR #85 sau sửa lỗi test import
+- [x] Commit `233d3cd98a663197b3c0a0f7156dc4b7232d8ecd` bổ sung import assertEquals/assertNotNull cho TvLinkSecurityTest sau lỗi compile ở run #1926.
+- [x] PR build #1927 (ID 45709164698) hoàn tất success: backup regression, Android JVM unit tests, TV receiver build, phone build, APK signature/zipalign/package checks và upload artifact đều success.
+- [x] Artifact PR #1927: `DichGame-APKs`, ID 15066607357, SHA-256 `f712745c1044012cdcb56720d29004cdde8f67d7f79062eb3ffd9b71ccb497a5`. Release step được skip do thiếu signing secrets.
+- [x] SEC-009: TvLink luôn disconnect HttpURLConnection trong finally.
+- [x] SEC-010: Gemini OCR bounding box được kiểm tra finite, clamp về kích thước ảnh, loại tọa độ đảo/empty; OcrBoundsTest pass trong #1927.
+- [x] SEC-011: PhoneAudioCapture giữ tham chiếu AudioRecord hiện tại, gọi stop() khi service dừng để unblock read; áp dụng cả system capture và mic fallback.
+- [ ] Các thay đổi SEC-009/SEC-011 được commit sau run #1927, cần run CI mới để xác minh; không đánh dấu VERIFIED.
+- [ ] Smoke emulator run #161 trên main vẫn pending, chưa được runner cấp job.
