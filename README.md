@@ -139,3 +139,20 @@ Lần đầu dùng mỗi thứ tiếng, app tải mô hình dịch nên cần m�
 - **Ảnh bìa** chỉ có cho game có trên Steam (khớp theo tên tiếng Anh); game chỉ có trên PlayStation, Xbox, Switch dùng ảnh vẽ sẵn. Ảnh không đóng gói trong app, thuộc về nhà phát hành.
 - Không có phần trả phí, không có mạng xã hội.
 - **Bản vá Việt hoá (mod) của cộng đồng** sửa chữ trong file game, mỗi nhóm giữ quyền riêng: app chỉ dẫn tới trang gốc, không tải hộ, không cài vào game. Gói Việt hoá trong app là dữ liệu cho phụ đề trên màn hình, soạn bởi người làm app, không chép từ các trang đó.
+
+
+## Kho dữ liệu Việt hóa tập trung (đang phát triển)
+
+Mã nguồn nền tảng dữ liệu độc lập với giao diện Android nằm trong `knowledge_base/`.
+
+- SQLite: dữ liệu game, bản dịch, nguồn/giấy phép, thuật ngữ, nhân vật, từ điển OCR, cache và phản hồi.
+- FTS5: chỉ mục tìm kiếm toàn văn.
+- Bộ nhập dữ liệu hiện hỗ trợ CSV, JSON, PO (bản số ít), XLIFF/XLF và TMX.
+- Yêu cầu khai báo nguồn, giấy phép/permission và xác nhận quyền sử dụng trước khi nhập. Nguồn được ghi trạng thái PENDING; không tự động coi là đã xác minh.
+- Dữ liệu nhập được giữ ở trạng thái COMMUNITY, không tự động nâng thành VERIFIED.
+- Công cụ nhập: `python -m knowledge_base.import_cli --help`.
+- Hướng dẫn: [knowledge_base/IMPORTING.md](knowledge_base/IMPORTING.md).
+
+Chạy kiểm thử: `python -m unittest discover -s knowledge_base/tests -v`.
+
+Các tính năng fuzzy matching, sửa OCR theo ngữ cảnh, điều phối AI, đồng bộ máy chủ và kiểm duyệt cộng đồng vẫn là các giai đoạn tiếp theo; không được xem là đã hoàn thành chỉ vì đã có schema dữ liệu.
