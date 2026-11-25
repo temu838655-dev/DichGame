@@ -194,7 +194,15 @@ CREATE TABLE IF NOT EXISTS translation_request_locks (
 CREATE INDEX IF NOT EXISTS idx_translation_cache_last_used
     ON translation_cache(last_used);
 
+CREATE TABLE IF NOT EXISTS ai_usage_daily (
+    usage_date TEXT PRIMARY KEY,
+    request_count INTEGER NOT NULL DEFAULT 0,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0
+);
+
 INSERT OR IGNORE INTO schema_migrations(version, description)
 VALUES
     (1, 'Initial multi-game localization knowledge-base schema'),
-    (2, 'Persistent leases for duplicate translation request suppression');
+    (2, 'Persistent leases for duplicate translation request suppression'),
+    (3, 'Daily AI request and token usage accounting');
