@@ -141,6 +141,13 @@ class TranslationMatcher:
                 float(row.get("confidence_score") or 0),
             ), reverse=True)
             best = rows[0]
+            # If identical source text has multiple different translations but
+            # none matches the supplied dialogue context, do not guess based on
+            # status or insertion order. Let the caller fall back to AI.
+            distinct_translations = {str(row["translated_text"]) for row in rows}
+            if (any(context_data.values()) and len(distinct_translations) > 1
+                    and _context_score(best, context_data) == 0.0):
+                return None
             return MatchResult(best, "OCR_CORRECTED_EXACT" if corrections else "EXACT",
                                1.0, corrected, corrections)
 
