@@ -66,7 +66,41 @@ class AiRetryTest {
         }
         assertEquals("ok", r)
         assertEquals(3, n)
-        assertEquals(listOf(500L, 1000L), c.sleeps)
+        assertEquals(2, c.sleeps.size)
+        assertTrue("first retry jitter range", c.sleeps[0] in 400L..600L)
+        assertTrue("second exponential retry jitter range", c.sleeps[1] in 800L..1200L)
+    }
+
+
+    @Test fun exponentialBackoffIsCappedAndJittered() {
+        val c = Clock()
+        var n = 0
+        try {
+            AiRetry.run(AiRetry.Plan(maxAttempts = 5, backoffMs = 500, maxBackoffMs = 1200), c::sleep, c::now) {
+                n++
+                throw ex(503)
+            }
+            fail("phải ném lỗi")
+        } catch (e: AiException) {
+            assertEquals(503, e.code)
+        }
+        assertEquals(4, c.sleeps.size)
+        assertTrue(c.sleeps[0] in 400L..600L)
+        assertTrue(c.sleeps[1] in 800L..1200L)
+        assertTrue(c.sleeps[2] in 900L..1200L)
+        assertTrue(c.sleeps[3] in 900L..1200L)
+    }
+
+    @Test fun serverRetryAfterIsNeverShortenedByJitter() {
+        val c = Clock()
+        var n = 0
+        val r = AiRetry.run(AiRetry.Plan(), c::sleep, c::now) {
+            n++
+            if (n == 1) throw ex(429, after = 2000)
+            "ok"
+        }
+        assertEquals("ok", r)
+        assertEquals(listOf(2000L), c.sleeps)
     }
 
     @Test fun retriesTimeouts() {
