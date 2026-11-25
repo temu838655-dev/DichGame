@@ -162,7 +162,7 @@ class CatalogRepository:
                 source_platform = (item.get("source_platform") or item.get("platform") or "").strip().upper()
                 if source_platform not in SOURCE_PLATFORMS:
                     raise CatalogValidationError(f"Unsupported source platform: {source_platform or '(missing)'}")
-                raw_targets = item.get("target_platforms", sorted(SUPPORTED_TARGETS))
+                raw_targets = item.get("target_platforms")
                 if (not isinstance(raw_targets, list) or not raw_targets or
                     any(not isinstance(x, str) or x.strip().upper() not in SUPPORTED_TARGETS for x in raw_targets)):
                     raise CatalogValidationError("target_platforms must be a non-empty list containing only PS5, PS4 and XBOX.")
