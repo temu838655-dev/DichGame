@@ -37,11 +37,11 @@ class CloudRefresh(ctx: Context) {
                             // selected console. A saved manifest URL alone does not carry the
                             // catalog's target-platform grant.
                             val catalogUrl = p.packCatalogUrl.takeIf { it.isNotBlank() }
-                            val source = if (catalogUrl != null) {
-                                PackStore.catalogSource(catalogUrl, game, platform)
-                            } else {
-                                PackStore.cloudInfo(app, profile, game)?.source
-                            }
+                            val source = CloudRefreshPolicy.resolveSource(
+                                catalogConfigured = catalogUrl != null,
+                                catalog = { PackStore.catalogSource(catalogUrl.orEmpty(), game, platform) },
+                                saved = { PackStore.cloudInfo(app, profile, game)?.source }
+                            )
                             if (source != null) PackStore.importLink(app, p, source, profile, game, autoEpoch = epoch) {
                                 generation == token && p.autoPackRefresh && p.selectedPlatform == platform &&
                                     !Thread.currentThread().isInterrupted
@@ -68,4 +68,14 @@ class CloudRefresh(ctx: Context) {
         handler.removeCallbacks(tick)
     }
     fun close() { stop(); exec.shutdownNow() }
+}
+
+
+/** A configured catalog is authoritative: a denied/missing game must not fall back to a saved URL. */
+internal object CloudRefreshPolicy {
+    fun resolveSource(
+        catalogConfigured: Boolean,
+        catalog: () -> String?,
+        saved: () -> String?
+    ): String? = if (catalogConfigured) catalog() else saved()
 }
