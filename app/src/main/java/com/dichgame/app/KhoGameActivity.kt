@@ -210,7 +210,7 @@ class KhoGameActivity : Activity() {
             val mine = PackStore.lineCount(this@KhoGameActivity, name)
             addView(Ui.button(this@KhoGameActivity, "📥  Nhập file Việt hoá của game này") {
                 d.dismiss()
-                this@KhoGameActivity.select(name)
+                this@KhoGameActivity.select(name, selectedPlatform)
                 setResult(RESULT_OK)
                 Toast.makeText(this@KhoGameActivity, "Đã chọn $name. File nhập vào sẽ áp dụng cho game này.", Toast.LENGTH_SHORT).show()
                 startActivity(Intent(this@KhoGameActivity, PackActivity::class.java).putExtra("import", true))
@@ -221,6 +221,7 @@ class KhoGameActivity : Activity() {
                 12f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 6, 0))
             // Cách chơi theo nền tảng
             val start = ps.firstOrNull() ?: Plat.PS5
+            var selectedPlatform = start
             val guide = Ui.tv(this@KhoGameActivity, RemotePlay.guide(start), 13f, Ui.TEXT)
             val appsBox = Ui.vbox(this@KhoGameActivity)
             val nguonBox = Ui.vbox(this@KhoGameActivity)
@@ -260,7 +261,7 @@ class KhoGameActivity : Activity() {
                         setTextColor(if (on) Color.parseColor("#2A1A08") else Ui.TEXT)
                         background = if (on) Ui.goldBg(this@KhoGameActivity, 16) else Ui.bg(this@KhoGameActivity, Ui.CARD2, 16, Ui.LINE, 1)
                         setPadding(Ui.dp(this@KhoGameActivity, 14), Ui.dp(this@KhoGameActivity, 6), Ui.dp(this@KhoGameActivity, 14), Ui.dp(this@KhoGameActivity, 6))
-                        setOnClickListener { drawPlat(x); showApps(x) }
+                        setOnClickListener { selectedPlatform = x; drawPlat(x); showApps(x) }
                     }, Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = Ui.dp(this@KhoGameActivity, 6) })
                 }
             }
@@ -279,8 +280,8 @@ class KhoGameActivity : Activity() {
             addView(nguonBox, Ui.lpm(this@KhoGameActivity, 4, 0))
             addView(Ui.tv(this@KhoGameActivity, NguonVietHoa.SAFETY, 11.5f, Ui.SUB), Ui.lpm(this@KhoGameActivity, 8, 0))
             // Chọn
-            addView(Ui.button(this@KhoGameActivity, "Chọn game này", true) { d.dismiss(); choose(name, false) }, Ui.lpm(this@KhoGameActivity, 16, 0))
-            addView(Ui.button(this@KhoGameActivity, "Chọn và dịch ngay") { d.dismiss(); choose(name, true) }, Ui.lpm(this@KhoGameActivity, 8, 0))
+            addView(Ui.button(this@KhoGameActivity, "Chọn game này", true) { d.dismiss(); choose(name, false, selectedPlatform) }, Ui.lpm(this@KhoGameActivity, 16, 0))
+            addView(Ui.button(this@KhoGameActivity, "Chọn và dịch ngay") { d.dismiss(); choose(name, true, selectedPlatform) }, Ui.lpm(this@KhoGameActivity, 8, 0))
             addView(Ui.button(this@KhoGameActivity, "Sao chép tên game") {
                 (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("game", name))
                 Toast.makeText(this@KhoGameActivity, "Đã sao chép: $name", Toast.LENGTH_SHORT).show()
@@ -303,16 +304,17 @@ class KhoGameActivity : Activity() {
     }
 
     /** Đặt game này làm game đang chơi: hồ sơ riêng của game, tên game và thể loại. */
-    private fun select(name: String) {
+    private fun select(name: String, platform: Plat? = null) {
         val g = genreOf(name)
         if (p.profiles.contains(name)) p.profile = name else p.addProfile(name)
         p.game = if (g.isEmpty()) name else "$name, $g"
         p.selectedGameTitle = name
+        p.selectedPlatform = platform?.name ?: Plat.values().firstOrNull { it in Catalog.platformsOf(name) }?.name ?: "PS5"
         p.addPlayed(name)
     }
 
-    private fun choose(name: String, go: Boolean) {
-        select(name)
+    private fun choose(name: String, go: Boolean, platform: Plat? = null) {
+        select(name, platform)
         Toast.makeText(this, "Đã chọn $name. Gói Việt hoá của game đang được dùng.", Toast.LENGTH_SHORT).show()
         setResult(RESULT_OK)
         if (go) startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("go", true))
