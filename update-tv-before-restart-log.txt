@@ -1,0 +1,12 @@
+--------- beginning of main
+11-25 20:35:54.182  5776  5776 I DG_UPD  : trang-thai dang-kiem-tra
+11-25 20:35:55.410  5776  5776 I DG_UPD  : trang-thai co-ban-moi build=2 size=1054418
+11-25 20:35:57.342  5776  5776 I DG_UPD  : trang-thai dang-kiem-tra
+11-25 20:35:57.705  5776  5776 I DG_UPD  : trang-thai co-ban-moi build=2 size=1054418
+11-25 20:36:06.778  5776  5776 I DG_UPD  : trang-thai dang-tai 0/1054418
+11-25 20:36:06.998  5776  5776 I DG_UPD  : trang-thai dang-tai 7972/1054418
+11-25 20:36:07.134  5776  5776 I DG_UPD  : trang-thai dang-tai 1054418/1054418
+11-25 20:36:07.153  5776  5776 I DG_UPD  : trang-thai can-quyen-cai-dat
+11-25 20:36:15.170  5776  5776 I DG_UPD  : trang-thai dang-cai build=2
+11-25 20:36:15.171  5776  5776 I DG_UPD  : da-giao-cho-trinh-cai-dat session=539972087
+11-25 20:36:19.999  6540  6540 I DG_UPD  : trinh-cai-dat status=0 msg=INSTALL_SUCCEEDED: Session installed

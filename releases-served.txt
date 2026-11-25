@@ -1,0 +1,1 @@
+[{"tag_name": "build-2", "name": "Bản dựng 2", "html_url": "http://10.0.2.2:8765/", "body": "Thử cập nhật trong app\n\nTải và cài ngay trong app, không cần mở trình duyệt.", "assets": [{"name": "DichGame.apk", "size": 154704781, "state": "uploaded", "browser_download_url": "htt

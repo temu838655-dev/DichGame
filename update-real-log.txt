@@ -1,0 +1,3 @@
+--------- beginning of main
+11-25 20:36:32.906  6812  6812 I DG_UPD  : trang-thai dang-kiem-tra
+11-25 20:36:36.401  6812  6812 I DG_UPD  : trang-thai co-ban-moi build=1753 size=68697040

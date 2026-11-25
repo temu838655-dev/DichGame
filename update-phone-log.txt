@@ -1,0 +1,4 @@
+--------- beginning of main
+11-25 20:35:40.696  5509  5509 I DG_UPD  : trang-thai dang-kiem-tra
+11-25 20:35:40.729  5509  5509 I DG_UPD  : trinh-cai-dat status=0 msg=INSTALL_SUCCEEDED: Session installed
+11-25 20:35:44.169  5509  5509 I DG_UPD  : trang-thai moi-nhat

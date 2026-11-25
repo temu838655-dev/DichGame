@@ -1,0 +1,10 @@
+[phone] bắt đầu 20:34:26
+[phone] mã phiên bản trước: 21
+[phone] mã phiên bản sau: 22
+[phone] xong 20:35:53
+[tv] bắt đầu 20:35:53
+[tv] mã phiên bản trước: 4
+[tv] mã phiên bản sau: 5
+[tv] xong 20:36:29
+[real] bắt đầu 20:36:29
+11-25 20:36:36.401  6812  6812 I DG_UPD  : trang-thai co-ban-moi build=1753 size=68697040
