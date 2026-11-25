@@ -11,6 +11,7 @@ Branch: `fix/ai-translation-tts-400-latency`
 - Bounded Gemini translation output to 512 tokens.
 - Selected low-latency defaults for new installations: `gemini-3.5-flash-lite` translation and `gemini-3.8-flash-lite-tts` narration. Existing saved model selections are not overwritten.
 - Ensured non-empty translations are eligible for narration even when marked low-confidence.
+- Buffered system-voice narration during asynchronous Android TextToSpeech initialization so early translated lines are not silently discarded.
 - Restricted TTS endpoint fallback so invalid API-key responses do not cause an unnecessary second request.
 - Reduced the waiting translation queue and prevented an old result from replacing current dialogue when newer work is pending.
 
