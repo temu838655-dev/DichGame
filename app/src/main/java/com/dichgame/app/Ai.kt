@@ -124,7 +124,7 @@ object Ai {
             val code = c.responseCode
             val txt = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
             if (code !in 200..299) throw AiException(
-                code, txt.take(200), AiRetry.retryDelayMs(c.getHeaderField("Retry-After"), txt),
+                code, AiRetry.providerErrorMessage(txt), AiRetry.retryDelayMs(c.getHeaderField("Retry-After"), txt),
                 perDay = code == 429 && KeyRing.isDailyQuota(txt), badKey = KeyRing.isBadKey(code, txt),
                 billingLimit = code == 429 && metric == "api_dich_cloud" && KeyRing.isBillingLimit(txt),
             )
@@ -188,10 +188,11 @@ object Ai {
     /** Model nào đó từ chối trường safetySettings (lỗi 400) thì thôi không gửi nữa trong phiên này. */
     @Volatile private var safetyAccepted = true
 
-    private fun geminiBody(prompt: String, withSafety: Boolean): JSONObject {
+    internal fun geminiBody(prompt: String, withSafety: Boolean): JSONObject {
         val body = JSONObject().put("contents", JSONArray().put(
             JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))
         ))
+        body.put("generationConfig", JSONObject().put("maxOutputTokens", 512))
         if (withSafety) body.put("safetySettings", JSONArray().apply {
             for (c in SAFETY_CATEGORIES) put(JSONObject().put("category", c).put("threshold", "BLOCK_NONE"))
         })
@@ -207,12 +208,14 @@ object Ai {
             val r = post(cloudEndpoint(p.cloudUrl), body, mapOf("Authorization" to "Bearer " + p.cloudKey), metric = "api_dich_cloud")
             JSONObject(r).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
         } else {
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/${p.geminiModel}:generateContent"
+            val model = p.geminiModel.trim()
+            if (!model.matches(Regex("[A-Za-z0-9._-]{1,100}"))) throw AiException(400, "Tên model Gemini không hợp lệ. Chỉ dùng mã model, không thêm URL hoặc tham số.")
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
             val r = try {
                 geminiPost(p, url, geminiBody(prompt, safetyAccepted))
             } catch (e: AiException) {
-                if (e.code == 400 && safetyAccepted) {
-                    // 400 cũng là lỗi khi khóa sai: chỉ khi gửi lại KHÔNG có safetySettings mà được thì mới ghi nhớ là model này không nhận
+                if (safetyAccepted && AiRetry.shouldRetryWithoutSafetySettings(e.code, e.message.orEmpty())) {
+                    // Chỉ fallback khi response nêu rõ safetySettings không tương thích; không retry lỗi key/model/request 400 chung chung.
                     val r2 = geminiPost(p, url, geminiBody(prompt, false))
                     safetyAccepted = false
                     r2

@@ -245,3 +245,36 @@ Links: [KB #227](https://github.com/temu838655-dev/DichGame/actions/runs/4571163
 - Android Build #1961 (45711631124) remains IN_PROGRESS at the app unit-test step.
 - Emulator Smoke #161 (45708105649) remains IN_PROGRESS at emulator execution.
 - Knowledge Base Tests #227 (45711631198) remain SUCCESS.
+
+## AI translation + narration repair — 2026-11-26 (branch: fix/ai-translation-tts-400-latency)
+
+### Changes implemented (CI/runtime verification pending)
+- `Ai.kt`: Gemini HTTP error bodies are summarized from the provider JSON (`error.message`, `status`, selected `details`) instead of truncating blindly to 200 characters.
+- `Ai.kt`: a 400 request is retried without `safetySettings` only when the provider body explicitly identifies that field as unsupported/unknown. Invalid API key, invalid model and unrelated malformed requests are not retried through this fallback.
+- `Ai.kt`: validates the configured model identifier before interpolating it into the endpoint path and sets `generationConfig.maxOutputTokens=512` to bound translation output.
+- `Prefs.kt`: new-install defaults use `gemini-3.5-flash-lite` for low-latency translation and `gemini-3.8-flash-lite-tts` for fast TTS. Existing user-selected model names are preserved.
+- `AiSpeech.kt`: validates TTS model identifiers and only falls back from Interactions to generateContent for a 404 or an explicit Interactions schema/endpoint rejection; API-key 400s no longer trigger a second TTS request.
+- `CaptureService.kt` + `TranslationSpeechPolicy.kt`: uncertainty markers no longer suppress speech for a non-empty translated line. Per-speaker metadata is preserved; blank translations are still excluded.
+- `CaptureService.kt`: translation job queue cap reduced from 12 to 6; a result older than 8 seconds is dropped only when a newer job is waiting, avoiding stale subtitles overtaking current dialogue.
+- Added JVM tests: Gemini error classification/detail extraction, TTS fallback decision, generateContent JSON shape/output cap, and uncertain/empty translation speech eligibility.
+
+### Root causes confirmed from source
+1. Gemini 400 handling previously retried every 400 without safety settings, obscuring invalid-key/model/request causes.
+2. TTS narration built its scene with `filterNot { it.tr.uncertain }`; low-confidence but non-empty translations therefore appeared as subtitles but were silently omitted from narration.
+3. TTS Interactions fallback previously retried every 400/404, including invalid API-key responses, wasting latency and masking the actual error.
+4. Translation jobs were bounded but could still retain up to 12 stale items; the new age check only drops old work when newer dialogue is waiting.
+
+### Still not verified
+- Android Gradle/JVM tests on this branch, APK build and APK inspection: awaiting GitHub Actions.
+- Real Gemini API authentication/model entitlement: requires a valid user API key and network access.
+- Device TTS output, audio focus, Android background behavior, PS/TV audio route and long-session soak: requires physical Android/TV/console testing.
+- No public Release has been created by this branch. Signing key safety is an existing repository blocker; inspect workflow results and certificate compatibility before publishing.
+
+### CI evidence
+- Branch head at documentation update: see latest commit in GitHub.
+- PR checks have not yet been observed to completion. Do not mark the above changes VERIFIED until the corresponding jobs finish successfully.
+
+### Additional TTS initialization-race repair — 2026-11-26
+- `Speaker.kt`: system-voice utterances arriving before Android TextToSpeech initialization completes are now buffered (maximum 5) and drained after the engine reports SUCCESS. Duplicate pending text is suppressed; an explicit interrupt clears pending text; stop/shutdown clears the buffer.
+- Rationale: the prior `speakSystem()` returned immediately when `ready == false`, silently dropping translations during the engine initialization window. This repair prevents that race from losing early narration.
+- Verification: source change committed; await Android JVM/Gradle CI. Physical TTS initialization and actual Vietnamese audio still require a device test.

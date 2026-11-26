@@ -97,3 +97,25 @@ Links: [Build #1961](https://github.com/temu838655-dev/DichGame/actions/runs/457
 | Android knowledge-base bridge | Run #173 (45711630980) completed success | VERIFIED (Android JVM tests) |
 | Android APK build | Run #1961 still running app unit tests | PENDING |
 | Emulator smoke | Run #161 still running emulator execution | NOT VERIFIED |
+
+## AI translation and TTS repair — 2026-11-26
+
+| Check | Current state | Evidence / next verification |
+|---|---|---|
+| Gemini error response body | FIXED IN BRANCH | Structured provider message/status/details retained; run unit tests. |
+| HTTP 400 retry policy | FIXED IN BRANCH | Only safetySettings compatibility errors get one fallback request; test invalid-key/model cases. |
+| Model path safety | FIXED IN BRANCH | Identifier regex rejects URL/path injection; real model entitlement still needs API key. |
+| Gemini request JSON | TEST ADDED | Test contents/parts and maxOutputTokens=512; await CI. |
+| Low-latency model default | CONFIGURED | New install defaults to Gemini 3.5 Flash-Lite; existing user model preserved. Verify live API access. |
+| TTS endpoint fallback | FIXED IN BRANCH | Invalid API key no longer triggers second endpoint attempt; await CI and live TTS. |
+| Uncertain translation narration | FIXED IN BRANCH | Non-empty text remains eligible for speech; policy unit test added. |
+| Subtitle/TTS independence | PARTIAL | Subtitle rendering occurs before asynchronous speech submission; verify on device. |
+| Translation backlog | PARTIAL | Queue cap 6 and stale-result guard; benchmark continuous dialogue and confirm no dropped critical lines. |
+| Vietnamese voice playback | NOT VERIFIED | Requires actual Android device, installed engine/voice or Gemini TTS and audio route. |
+| Audio focus / background playback | NOT VERIFIED | Requires Android physical-device test with game audio and screen-off/background scenarios. |
+| OCR / TV pairing / existing features | NOT REGRESSION-TESTED | Full Android suite and device regression required. |
+| Release APK / signing | PENDING | Await CI; signing compatibility/security blocker remains documented above. |
+
+Do not claim end-to-end completion from source edits or JVM tests alone.
+
+| Android TTS initialization race | FIXED IN BRANCH | Pending system-voice utterances are buffered up to 5 and drained on engine readiness; CI and physical device playback pending. |

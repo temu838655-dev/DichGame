@@ -19,6 +19,42 @@ class AiRetryTest {
 
     private fun ex(code: Int, after: Long = 0L) = AiException(code, "x", after)
 
+    @Test fun safetySettingsFallbackOnlyForExplicitCompatibilityErrors() {
+        assertTrue(AiRetry.shouldRetryWithoutSafetySettings(400,
+            """{"error":{"message":"Unknown name 'safetySettings' in request"}}"""))
+        assertTrue(AiRetry.shouldRetryWithoutSafetySettings(400,
+            """{"error":{"message":"safetySettings are not supported for this model"}}"""))
+        assertFalse(AiRetry.shouldRetryWithoutSafetySettings(400,
+            """{"error":{"message":"API key not valid. Please pass a valid API key."}}"""))
+        assertFalse(AiRetry.shouldRetryWithoutSafetySettings(400,
+            """{"error":{"message":"Invalid model name"}}"""))
+        assertFalse(AiRetry.shouldRetryWithoutSafetySettings(404,
+            """{"error":{"message":"safetySettings unsupported"}}"""))
+    }
+
+    @Test fun extractsUsefulProviderErrorDetails() {
+        val message = AiRetry.providerErrorMessage(
+            """{"error":{"code":400,"status":"INVALID_ARGUMENT","message":"API key not valid","details":[{"reason":"API_KEY_INVALID","domain":"googleapis.com"}]}}"""
+        )
+        assertTrue(message.contains("API key not valid"))
+        assertTrue(message.contains("INVALID_ARGUMENT"))
+        assertTrue(message.contains("API_KEY_INVALID"))
+    }
+
+    @Test fun invalidRequestExplanationIncludesProviderDetail() {
+        val message = AiRetry.explain(AiRetry.Kind.BAD, 400, 0, "API key not valid · INVALID_ARGUMENT")
+        assertTrue(message.contains("API key not valid"))
+        assertTrue(message.contains("INVALID_ARGUMENT"))
+    }
+
+    @Test fun ttsEndpointFallbackDoesNotHideInvalidApiKey() {
+        assertTrue(AiRetry.shouldFallbackTtsEndpoint(404, """{"error":{"message":"Interactions endpoint not found"}}"""))
+        assertFalse(AiRetry.shouldFallbackTtsEndpoint(404, """{"error":{"message":"Model gemini-unknown not found"}}"""))
+        assertTrue(AiRetry.shouldFallbackTtsEndpoint(400, """{"error":{"message":"Unknown field response_format in Interactions request"}}"""))
+        assertFalse(AiRetry.shouldFallbackTtsEndpoint(400, """{"error":{"message":"API key not valid"}}"""))
+        assertFalse(AiRetry.shouldFallbackTtsEndpoint(403, """{"error":{"message":"permission denied"}}"""))
+    }
+
     @Test fun classifiesErrors() {
         assertEquals(AiRetry.Kind.QUOTA, AiRetry.kindOf(ex(429)))
         assertEquals(AiRetry.Kind.BILLING, AiRetry.kindOf(AiException(429, "insufficient_quota", billingLimit = true)))

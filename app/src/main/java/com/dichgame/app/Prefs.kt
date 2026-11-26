@@ -154,7 +154,7 @@ class Prefs(ctx: Context) {
     }
 
     var geminiModel: String
-        get() = sp.getString("gmodel", "gemini-flash-latest").orEmpty().ifBlank { "gemini-flash-latest" }
+        get() = sp.getString("gmodel", "gemini-3.5-flash-lite").orEmpty().ifBlank { "gemini-3.5-flash-lite" }
         set(v) = sp.edit().putString("gmodel", v.trim()).apply()
 
     /** CloudAPI: dịch vụ AI đám mây theo chuẩn OpenAI (/chat/completions), cần địa chỉ, khóa và tên model. */
@@ -443,7 +443,7 @@ class Prefs(ctx: Context) {
         return stableAutoVoice(canonical, card?.names.orEmpty() + name, pool)
     }
     var ttsModel: String
-        get() = sp.getString("ttsmodel", "gemini-3.8-flash-tts").orEmpty().ifBlank { "gemini-3.8-flash-tts" }
+        get() = sp.getString("ttsmodel", "gemini-3.8-flash-lite-tts").orEmpty().ifBlank { "gemini-3.8-flash-lite-tts" }
         set(v) = sp.edit().putString("ttsmodel", v.trim()).apply()
     val aiVoiceOn: Boolean get() = voiceEngine == "ai" && geminiKeys().isNotEmpty()
     /** Mã gói giọng offline đang chọn (xem Voices.PACKS). */
