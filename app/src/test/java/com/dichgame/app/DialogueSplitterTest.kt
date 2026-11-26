@@ -107,7 +107,7 @@ class DialogueSplitterTest {
 
     @Test fun threeSubtitleLinesInOneOcrBlockAreAllKeptInReadingOrder() {
         val r = DialogueSplitter.split(
-            listOf(OcrLine("We have to get out\\nbefore they close\\nall the exits.", Box(100, 800, 700, 890))),
+            listOf(OcrLine("We have to get out\nbefore they close\nall the exits.", Box(100, 800, 700, 890))),
             cjk = false
         )
         assertEquals(1, r.size)
