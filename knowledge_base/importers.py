@@ -414,9 +414,9 @@ class TranslationImporter:
                             """SELECT external_id, source_text, translated_text FROM translations
                                WHERE game_id=? AND (
                                    (? IS NOT NULL AND external_id=?) OR
-                                   (text_sha256=? AND translated_text=?)
+                                   (? IS NULL AND text_sha256=? AND translated_text=?)
                                ) AND translation_status != 'REJECTED' LIMIT 1""",
-                            (game_id, row.external_id, row.external_id, digest, row.translated_text),
+                            (game_id, row.external_id, row.external_id, row.external_id, digest, row.translated_text),
                         ).fetchone()
                         if duplicate:
                             if (row.external_id and duplicate["external_id"] == row.external_id and
