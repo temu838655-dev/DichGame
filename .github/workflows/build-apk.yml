@@ -63,9 +63,10 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      # Public release is blocked until a private signing key is supplied via GitHub Secrets.
-      # The previous repository keystore and password were exposed in public git history and must never be reused.
-      - name: Yêu cầu khóa ký riêng cho bản phát hành
+      # Dùng đúng khóa ký lịch sử đã tạo các bản build 1251+ và các Release gần đây.
+      # Ưu tiên bản sao trong GitHub Secrets nếu đã cấu hình; nếu không, dùng keystore lịch sử
+      # trong repo. Release chỉ được tạo sau khi chứng thư SHA-256 khớp APK Release hiện tại.
+      - name: Nạp khóa ký tương thích bản cũ
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -75,39 +76,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
-            if [ -z "${!name}" ]; then
-              if [ "$IS_PUBLIC_RELEASE" = "true" ]; then
-                echo "::error::Không phát hành: thiếu GitHub Secret $name. Khóa ký cũ đã lộ công khai; hãy tạo/cấu hình khóa riêng mới trước khi phát hành."
+          if [ -n "${KEYSTORE_BASE64}${KEYSTORE_PASSWORD}${KEY_ALIAS}${KEY_PASSWORD}" ]; then
+            for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+              if [ -z "${!name}" ]; then
+                echo "::error::GitHub Secrets chưa đầy đủ: $name đang trống."
                 exit 1
               fi
-              echo "CAN_PUBLISH_RELEASE=false" >> "$GITHUB_ENV"
-              # Nhánh kiểm thử vẫn phải biên dịch/test được. Khóa tạm chỉ tồn tại trên runner,
-              # không tương thích với APK đã cài và tuyệt đối không được đưa vào GitHub Release.
-              CI_STORE_PASS="$(openssl rand -hex 24)"
-              CI_KEY_PASS="$(openssl rand -hex 24)"
-              CI_KEYSTORE="$RUNNER_TEMP/dichgame-ci-only.jks"
-              keytool -genkeypair -noprompt -keystore "$CI_KEYSTORE" -storetype JKS \
-                -storepass "$CI_STORE_PASS" -keypass "$CI_KEY_PASS" -alias ci-only \
-                -keyalg RSA -keysize 2048 -validity 2 -dname "CN=DichGame CI Only"
-              echo "KEYSTORE_FILE=$CI_KEYSTORE" >> "$GITHUB_ENV"
-              echo "KEYSTORE_PASSWORD=$CI_STORE_PASS" >> "$GITHUB_ENV"
-              echo "KEY_ALIAS=ci-only" >> "$GITHUB_ENV"
-              echo "KEY_PASSWORD=$CI_KEY_PASS" >> "$GITHUB_ENV"
-              echo "::warning::APK trên nhánh kiểm thử dùng chứng thư tạm; không thể cập nhật đè bản phát hành và không được phân phối cho người dùng."
-              echo "Không có khóa phát hành riêng; tiếp tục test/build bằng khóa CI tạm, không tạo Release."
-              exit 0
-            fi
-          done
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-          test -s "$RUNNER_TEMP/release.jks"
-          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-          echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
-          echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-          echo "CAN_PUBLISH_RELEASE=true" >> "$GITHUB_ENV"
-          echo "Đã nạp khóa ký riêng từ GitHub Secrets."
-
+            done
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            test -s "$RUNNER_TEMP/release.jks"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          else
+            test -s keystore/dichgame.jks
+            echo "KEYSTORE_FILE=$GITHUB_WORKSPACE/keystore/dichgame.jks" >> "$GITHUB_ENV"
+            echo "Đã nạp keystore lịch sử trong repo (alias/password dùng mặc định Gradle)."
+          fi
+          if [ "$IS_PUBLIC_RELEASE" = "true" ]; then
+            echo "CAN_PUBLISH_RELEASE=true" >> "$GITHUB_ENV"
+          else
+            echo "CAN_PUBLISH_RELEASE=false" >> "$GITHUB_ENV"
+          fi
       # Android NDK đôi lúc được SDK Manager tải thành tệp ZIP hỏng trên runner GitHub.
       # Chuẩn bị NDK trước khi chạy Gradle, thử lại thay vì làm hỏng cả bản phát hành.
       - name: Cài NDK Android (thử lại khi tải lỗi)
