@@ -183,7 +183,16 @@ def main() -> int:
                     stats["translation_failed"] += 1
                     print(f"TRANSLATION_FAILED {row['external_id']}: {exc}")
             pending_upload.append(row)
-            if len(pending_upload) >= 5:
+            batch_preview = {
+                "game": GAME, "rightsConfirmed": True,
+                "sourceName": args.source_name.strip() or args.file.name,
+                "licenseId": args.license_id.strip(),
+                "sourceUrl": args.source_url.strip(),
+                "licenseUrl": args.license_url.strip(),
+                "attribution": args.attribution.strip(),
+                "lines": pending_upload,
+            }
+            if len(pending_upload) >= 30 or len(json.dumps(batch_preview, ensure_ascii=False).encode("utf-8")) >= 14_000:
                 upload()
 
     try:
