@@ -75,17 +75,12 @@ python -m pip install -r knowledge_base/requirements.txt
 python -m knowledge_base.gta6_cloud_sync --file ./GTA6_text_EN.xlsx --confirm-rights --max-rows 50
 ```
 
-That command stages source rows only. To translate the blank cells with Gemini, add `--translate`. Repeat the command to resume; rows already `AI_UNVERIFIED` or `VERIFIED` are skipped. Use `--max-rows 0` only when intentionally processing every remaining row. AI output remains unverified until a human reviewer approves it through the authenticated admin API.
+That command stages source rows only. To translate the blank cells with Gemini, add `--translate`. Repeat the command to resume; rows already `AI_UNVERIFIED` or `VERIFIED` are skipped. Use `--max-rows 0` only when intentionally processing every remaining row. `--translate` makes one Gemini request per blank source row, so API quota and cost can be substantial; start with a small batch. AI output remains unverified until a human reviewer approves it in the authenticated `/admin` dashboard.
 
 ## Remaining phases
 
-1. Additional local-model adapters and provider-specific quota/pricing controls.
-2. Network synchronization service, incremental delta protocol and conflict UI.
-3. Community account authentication, abuse/rate controls and reviewer administration.
-4. Performance/quality benchmarks and automatic in-process Android/desktop app
-   integration through OCR, translation, subtitle display and audio. A verified-
-   only CSV bridge to the app's existing import screen is available now.
-
-The package remains a standalone Python component. Hosted sync service, account
-authentication, reviewer administration and end-to-end Android/desktop app
-integration are not yet implemented.
+1. Batch-oriented Gemini request packing, provider quota/cost controls and additional local-model adapters.
+2. Incremental offline pack download from the GTA VI API and conflict handling.
+3. Community account authentication and abuse/rate controls.
+4. A game-engine hook that supplies GTA VI string IDs at runtime. OCR-only text capture does not expose those IDs yet; it uses exact normalized text lookup instead.
+5. Full end-to-end benchmarks and broader Android/desktop integration.
