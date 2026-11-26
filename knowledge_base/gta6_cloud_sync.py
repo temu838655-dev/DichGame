@@ -144,6 +144,13 @@ def main() -> int:
         if not chunk or stop:
             return
         known = {}
+        unique = {}
+        for row in chunk:
+            previous = unique.get(row["external_id"])
+            if previous and previous["original"] != row["original"]:
+                raise RuntimeError(f"Duplicate external ID has conflicting English text: {row['external_id']}")
+            unique[row["external_id"]] = row
+        chunk = list(unique.values())
         if not args.dry_run:
             response = request_json(args.api.rstrip("/") + "/v1/admin/gta6/check", token,
                                     {"ids": [row["external_id"] for row in chunk]})
