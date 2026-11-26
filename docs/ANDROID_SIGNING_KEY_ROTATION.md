@@ -6,22 +6,31 @@ Keystore Android cũ `keystore/dichgame.jks` và thông tin mật khẩu mặc �
 
 **Xóa file khỏi `main` không xóa các commit cũ.** Coi khóa cũ là đã bị lộ vĩnh viễn. Không dùng nó để ký bất kỳ APK nào nữa.
 
-## Cần cấu hình GitHub Secrets
+## Tạo khóa mới và cấu hình GitHub Secrets
 
-Người quản trị repository phải tạo một keystore riêng mới (hoặc thiết lập quy trình ký/luân chuyển khóa có lineage phù hợp) và thêm đủ bốn Actions secrets tại:
+Trên máy có Java JDK (có thể dùng Termux hoặc terminal máy tính), tạo khóa mới. Hãy tự nhập mật khẩu mạnh khi `keytool` hỏi và lưu riêng an toàn:
+
+```bash
+keytool -genkeypair -v -keystore dichgame-release.jks -storetype JKS -alias dichgame-release -keyalg RSA -keysize 4096 -validity 10000
+base64 -w 0 dichgame-release.jks
+```
+
+Sao chép toàn bộ chuỗi Base64 đầu ra để đặt làm secret. Không đưa chuỗi này vào file trong repository hoặc chat công khai.
+
+Người quản trị repository phải thêm đủ bốn Actions secrets tại:
 
 Repository → Settings → Secrets and variables → Actions → New repository secret
 
 - `KEYSTORE_BASE64`: nội dung Base64 của file keystore mới.
 - `KEYSTORE_PASSWORD`: mật khẩu keystore.
-- `KEY_ALIAS`: alias của khóa.
+- `KEY_ALIAS`: `dichgame-release` (hoặc alias đã chọn khi tạo khóa).
 - `KEY_PASSWORD`: mật khẩu của alias.
 
 Không commit file keystore, mật khẩu, Base64 hoặc private key vào repository, issue, log hay chat công khai.
 
 ## Cảnh báo tương thích cập nhật
 
-APK build-2021 được ký bằng khóa cũ đã lộ. Nếu ký bản mới bằng một khóa hoàn toàn khác, Android sẽ không cho cài đè lên ứng dụng hiện tại. Trước khi phát hành cho người dùng hiện tại, phải có kế hoạch ký luân chuyển tương thích và kiểm thử cài đặt nâng cấp; nếu không có, cần thông báo người dùng sao lưu dữ liệu và gỡ bản cũ trước khi cài bản mới.
+APK build-2021 được ký bằng khóa cũ đã lộ. Nếu ký bản mới bằng một khóa hoàn toàn khác, Android sẽ không cho cài đè lên ứng dụng hiện tại. Với khóa cũ đã lộ, phương án an toàn cho người dùng thử nghiệm là sao lưu dữ liệu, gỡ bản cũ rồi cài bản mới đã ký khóa mới. Không tuyên bố cập nhật đè được cho tới khi kiểm thử được quy trình ký luân chuyển tương thích trên thiết bị thật.
 
 Không được bỏ qua kiểm tra chứng thư của workflow để ép phát hành.
 
