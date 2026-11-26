@@ -124,7 +124,11 @@ object SpeakerColor {
         0xFFFFD54F.toInt(), 0xFF80DEEA.toInt(), 0xFFA5D6A7.toInt(), 0xFFF48FB1.toInt(), 0xFFCE93D8.toInt(), 0xFFFFAB91.toInt(), 0xFF9FA8DA.toInt(), 0xFFE6EE9C.toInt(),
     )
 
-    fun of(name: String): Int {
+    val choices = listOf("Vàng", "Xanh ngọc", "Xanh lá", "Hồng", "Tím", "Cam", "Chàm", "Vàng chanh")
+        .zip(PALETTE.toList())
+
+    fun of(name: String, selected: Int? = null): Int {
+        if (selected != null && selected in PALETTE) return selected
         val k = SpeakerBook.key(name)
         var h = 0
         for (c in k) h = h * 31 + c.code

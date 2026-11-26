@@ -373,6 +373,23 @@ class Prefs(ctx: Context) {
         } catch (_: Exception) { null }
     }
 
+    private fun canonicalColorName(name: String): String =
+        Cast.byName(name, PackStore.cast(this))?.names?.firstOrNull() ?: name
+
+    private fun colorSetting(name: String) =
+        gameSettingKey("speaker_color_" + GamePackMatch.storageHash(SpeakerBook.key(name)))
+
+    fun speakerColor(name: String): Int {
+        val canonical = canonicalColorName(name)
+        return SpeakerColor.of(canonical, sp.getInt(colorSetting(canonical), 0))
+    }
+
+    fun setSpeakerColor(name: String, color: Int?) {
+        val key = colorSetting(canonicalColorName(name))
+        if (color == null) sp.edit().remove(key).apply()
+        else sp.edit().putInt(key, color).apply()
+    }
+
     /** Giọng thủ công hiệu lực cho tên gọi chính hoặc bất kỳ bí danh nào của cùng nhân vật. */
     fun effectiveManualVoice(name: String): String? {
         manualVoice(name)?.let { return it }

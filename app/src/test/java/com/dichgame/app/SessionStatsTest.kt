@@ -71,6 +71,8 @@ class SessionStatsTest {
     @Test fun speakerColorIsStable() {
         assertEquals(SpeakerColor.of("Geralt"), SpeakerColor.of("geralt"))
         assertNotEquals(SpeakerColor.of("Geralt"), SpeakerColor.of("Yennefer"))
+        for ((_, color) in SpeakerColor.choices) assertEquals(color, SpeakerColor.of("Geralt", color))
+        assertEquals(SpeakerColor.of("Geralt"), SpeakerColor.of("Geralt", 0))
     }
 
     @Test fun audioSourceIsReportedHonestly() {
