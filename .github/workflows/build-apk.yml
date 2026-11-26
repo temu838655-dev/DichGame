@@ -82,7 +82,20 @@ jobs:
                 exit 1
               fi
               echo "CAN_PUBLISH_RELEASE=false" >> "$GITHUB_ENV"
-              echo "Không có khóa phát hành riêng; chỉ cho phép kiểm tra trên nhánh không phát hành."
+              # Nhánh kiểm thử vẫn phải biên dịch/test được. Khóa tạm chỉ tồn tại trên runner,
+              # không tương thích với APK đã cài và tuyệt đối không được đưa vào GitHub Release.
+              CI_STORE_PASS="$(openssl rand -hex 24)"
+              CI_KEY_PASS="$(openssl rand -hex 24)"
+              CI_KEYSTORE="$RUNNER_TEMP/dichgame-ci-only.jks"
+              keytool -genkeypair -noprompt -keystore "$CI_KEYSTORE" -storetype JKS \
+                -storepass "$CI_STORE_PASS" -keypass "$CI_KEY_PASS" -alias ci-only \
+                -keyalg RSA -keysize 2048 -validity 2 -dname "CN=DichGame CI Only"
+              echo "KEYSTORE_FILE=$CI_KEYSTORE" >> "$GITHUB_ENV"
+              echo "KEYSTORE_PASSWORD=$CI_STORE_PASS" >> "$GITHUB_ENV"
+              echo "KEY_ALIAS=ci-only" >> "$GITHUB_ENV"
+              echo "KEY_PASSWORD=$CI_KEY_PASS" >> "$GITHUB_ENV"
+              echo "::warning::APK trên nhánh kiểm thử dùng chứng thư tạm; không thể cập nhật đè bản phát hành và không được phân phối cho người dùng."
+              echo "Không có khóa phát hành riêng; tiếp tục test/build bằng khóa CI tạm, không tạo Release."
               exit 0
             fi
           done
@@ -249,7 +262,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DichGame-APKs
+          name: DichGame-${{ env.CAN_PUBLISH_RELEASE == 'true' && 'APKs' || 'CI-Only-APKs' }}
           path: dist/*.apk
           if-no-files-found: error
 
