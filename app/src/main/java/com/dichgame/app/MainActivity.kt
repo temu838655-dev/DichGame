@@ -267,15 +267,26 @@ class MainActivity : Activity() {
     }
 
     private fun segment(): View {
-        return Ui.button(this, p.processingMode.label + " ▾") {
-            if (CaptureService.active) busyToast() else {
-                val modes = ProcessingMode.values()
-                Ui.pick(this, "Chế độ xử lý", modes.map { it.label }) { i ->
-                    p.processingMode = modes[i]
-                    render()
-                }
-            }
+        val seg = Ui.hbox(this)
+        seg.background = Ui.bg(this, Ui.CARD2, 22)
+        fun item(label: String, on: Boolean, glyph: Boolean, click: () -> Unit): View {
+            val b = Ui.hbox(this)
+            b.gravity = Gravity.CENTER
+            val fg = if (on) Color.parseColor("#2A1A08") else Ui.TEXT
+            if (on) b.background = Ui.goldBg(this, 20)
+            b.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8))
+            if (glyph) b.addView(GamepadGlyph(this, fg, Ui.GOLD), Ui.lp(Ui.dp(this, 20), Ui.dp(this, 14)).apply { rightMargin = Ui.dp(this@MainActivity, 6) })
+            b.addView(Ui.tv(this, label, 14f, fg).apply { maxLines = 1 })
+            b.setOnClickListener { click() }
+            return b
         }
+        seg.addView(item("Dịch", !p.narrate, true) {
+            if (!CaptureService.active) { p.mode = Prefs.MODE_TRANSLATE; render() } else busyToast()
+        }, Ui.lp(0, WRAP_CONTENT, 1f))
+        seg.addView(item("Thuyết minh", p.narrate, false) {
+            if (!CaptureService.active) { p.mode = Prefs.MODE_VIETSUB; render() } else busyToast()
+        }, Ui.lp(0, WRAP_CONTENT, 1f))
+        return seg
     }
 
     private fun busyToast() = Toast.makeText(this, "Hãy dừng trước khi đổi chế độ.", Toast.LENGTH_SHORT).show()
