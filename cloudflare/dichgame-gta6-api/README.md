@@ -1,12 +1,12 @@
 # GTA VI private translation API
 
-This Worker reads the `dichgame-community` D1 database and exposes only human-verified GTA VI translations. Source strings, pending work and AI-unverified translations are never returned by public routes.
+This Worker reads the `dichgame-community` D1 database and exposes only GTA VI translations whose text and source provenance are both administrator-verified. Source strings, pending work and AI-unverified translations are never returned by public routes.
 
 ## Routes
 
 - `GET /v1/gta6/health` — health check.
 - `GET /v1/gta6/manifest` — total and verified counts.
-- `GET /v1/gta6/lookup?id=<original-id>&text=<ocr-text>` — exact original ID first, then exact normalized text. Only `VERIFIED` rows are returned.
+- `GET /v1/gta6/lookup?id=<original-id>&text=<ocr-text>` — exact original ID first, then exact normalized text. Only rows with both `status='VERIFIED'` and `provenance_status='VERIFIED'` are returned.
 - `GET /v1/gta6/lines?after=<numeric-cursor>&limit=200` — paginated verified rows for offline pack download.
 
 ## Storage
