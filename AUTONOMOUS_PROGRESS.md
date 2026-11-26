@@ -315,3 +315,5 @@ Links: [KB #227](https://github.com/temu838655-dev/DichGame/actions/runs/4571163
 - [x] Hardened Gemini OCR bounding-box parser against NaN/Infinity, out-of-range, inverted/empty coordinates and invalid image dimensions.
 - [x] Added OcrGeometryTest with six geometry regression cases.
 - [ ] Await run #2047 before claiming tests pass.
+
+- [x] Hardened TV HTTP parser: max 32 headers / 16 KiB, max 8 KiB non-audio request body, reject empty subtitle body; PCM remains separately capped at 6 MB.
