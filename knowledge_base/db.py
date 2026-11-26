@@ -53,9 +53,15 @@ class KnowledgeBase:
             columns = {row[1] for row in connection.execute("PRAGMA table_info(translations)")}
             if "contributor_id" not in columns:
                 connection.execute("ALTER TABLE translations ADD COLUMN contributor_id TEXT")
+            if "external_id" not in columns:
+                connection.execute("ALTER TABLE translations ADD COLUMN external_id TEXT")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_translations_external_id "
+                "ON translations(game_id, external_id) WHERE external_id IS NOT NULL"
+            )
             connection.execute(
                 "INSERT OR IGNORE INTO schema_migrations(version, description) VALUES (?, ?)",
-                (5, "Track community contributor identifiers"),
+                (6, "Preserve source localization string identifiers"),
             )
             connection.commit()
             # Fail early and clearly if SQLite was built without FTS5.
@@ -153,6 +159,7 @@ class KnowledgeBase:
         translation_source: str = "COMMUNITY",
         translation_status: str = "COMMUNITY",
         confidence_score: float | None = None,
+        external_id: str | None = None,
     ) -> int:
         normalized = normalize_text(source_text)
         with self.transaction() as db:
@@ -161,13 +168,13 @@ class KnowledgeBase:
                     game_id, source_text, normalized_text, translated_text, text_sha256,
                     context, speaker, scene_id, mission_id, previous_sentence,
                     next_sentence, source_id, contributor_id, translation_source, translation_status,
-                    confidence_score
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    confidence_score, external_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     game_id, source_text, normalized, translated_text,
                     sha256_text(normalized), context, speaker, scene_id, mission_id,
                     previous_sentence, next_sentence, source_id, contributor_id, translation_source,
-                    translation_status, confidence_score,
+                    translation_status, confidence_score, external_id,
                 ),
             )
             return int(cursor.lastrowid)
