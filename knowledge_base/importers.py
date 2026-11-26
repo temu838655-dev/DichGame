@@ -19,7 +19,7 @@ from typing import Iterable, Iterator
 
 from .db import KnowledgeBase, normalize_text, sha256_text
 
-SUPPORTED_FORMATS = {"csv", "json", "po", "xliff", "xlf", "tmx"}
+SUPPORTED_FORMATS = {"csv", "json", "po", "xliff", "xlf", "tmx", "xlsx"}
 BLOCKED_LICENSE_IDS = {"", "unknown", "none", "n/a", "na", "unlicensed", "all-rights-reserved"}
 
 
@@ -35,6 +35,7 @@ class TranslationRow:
     speaker: str | None = None
     scene_id: str | None = None
     mission_id: str | None = None
+    external_id: str | None = None
 
 
 @dataclass
@@ -68,6 +69,8 @@ CONTEXT_KEYS = ("context", "extracomment", "developer_comment", "description")
 SPEAKER_KEYS = ("speaker", "character")
 SCENE_KEYS = ("scene_id", "scene")
 MISSION_KEYS = ("mission_id", "mission")
+ID_KEYS = ("external_id", "string_id", "id", "key")
+GROUP_KEYS = ("group", "nhom", "category")
 
 
 def _row(mapping: dict) -> TranslationRow | None:
@@ -81,6 +84,7 @@ def _row(mapping: dict) -> TranslationRow | None:
         _first(mapping, SPEAKER_KEYS) or None,
         _first(mapping, SCENE_KEYS) or None,
         _first(mapping, MISSION_KEYS) or None,
+        _first(mapping, ID_KEYS) or None,
     )
 
 
@@ -100,6 +104,36 @@ def parse_csv(path: Path) -> Iterator[TranslationRow]:
             if row:
                 yield row
 
+
+def parse_xlsx(path: Path) -> Iterator[TranslationRow]:
+    """Read all worksheets and preserve each source string ID."""
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:
+        raise ImportValidationError("Excel .xlsx import requires openpyxl.") from exc
+    try:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+    except Exception as exc:
+        raise ImportValidationError(f"Invalid Excel workbook: {exc}") from exc
+    try:
+        for sheet in workbook.worksheets:
+            rows = sheet.iter_rows(values_only=True)
+            headers = next(rows, None)
+            if not headers:
+                continue
+            names = [str(value).strip() if value is not None else "" for value in headers]
+            if not any(names):
+                continue
+            for values in rows:
+                mapping = {names[n]: values[n] for n in range(min(len(names), len(values))) if names[n]}
+                row = _row(mapping)
+                if row:
+                    group = _first(mapping, GROUP_KEYS)
+                    if group and not row.context:
+                        row = TranslationRow(row.source_text, row.translated_text, group, row.speaker, row.scene_id, row.mission_id, row.external_id)
+                    yield row
+    finally:
+        workbook.close()
 
 def parse_json(path: Path) -> Iterator[TranslationRow]:
     try:
@@ -229,6 +263,7 @@ def parse_tmx(path: Path) -> Iterator[TranslationRow]:
 PARSERS = {
     "csv": parse_csv, "json": parse_json, "po": parse_po,
     "xliff": parse_xliff, "xlf": parse_xliff, "tmx": parse_tmx,
+    "xlsx": parse_xlsx,
 }
 
 
