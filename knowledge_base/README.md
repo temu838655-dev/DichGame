@@ -43,7 +43,7 @@ incompatible rights. Keep author attribution and the original source URL.
 ## Implemented phases
 
 1. SQLite knowledge base, provenance, licensing fields and FTS5.
-2. Legal-format importers for CSV, JSON, singular PO, XLIFF and TMX.
+2. Legal-format importers for CSV, JSON, singular PO, XLIFF, TMX and Excel `.xlsx`; source IDs are retained for exact lookup. Blank Excel target cells can be staged in the source queue for later batch translation.
 3. Conservative OCR dictionary correction and bounded fuzzy matching.
 4. Cache-first translation memory with context isolation, optional expiry and
    persistent duplicate-request leases. See [TRANSLATION_MEMORY.md](TRANSLATION_MEMORY.md).
@@ -59,6 +59,16 @@ incompatible rights. Keep author attribution and the original source URL.
    See [BACKUP_SYNC.md](BACKUP_SYNC.md).
 
 9. Permission-aware game catalog registry and metadata-feed importer, with per-platform localization release records and link-only handling for sources without explicit integration rights. See [CATALOG.md](CATALOG.md). This does not scrape sites or download patch archives.
+
+## Excel source staging
+
+Install `knowledge_base/requirements.txt`, then stage an authorized workbook (including blank Vietnamese cells) with:
+
+```bash
+python -m knowledge_base.import_cli --db ./translations.db --game-id gta6 --file ./GTA6_text_EN.xlsx --source-name "Authorized GTA6 localization source" --license-id "PERMISSION-GRANTED" --confirm-rights --source-only
+```
+
+The source-only path stores each original `ID`, English string, sheet and group context in `source_strings`; it does not invent translations or mark any text verified. The ID lookup is available through `KnowledgeBase.lookup_external_id` after translated rows are imported.
 
 ## Remaining phases
 
