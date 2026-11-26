@@ -31,6 +31,7 @@ class TranslationMemoryTests(unittest.TestCase):
         self.assertEqual(first.translated_text, "Nhiệm vụ mới")
         self.assertFalse(first.cache_hit)
         self.assertTrue(second.cache_hit)
+        self.assertEqual(second.model, "fake-model")
 
     def test_concurrent_identical_requests_call_provider_once(self):
         memory = TranslationMemory(
@@ -94,6 +95,12 @@ class TranslationMemoryTests(unittest.TestCase):
         )
         self.assertFalse(result.cache_hit)
         self.assertEqual(result.translated_text, "Tiếp tục trò chơi")
+        hit = memory.get_or_translate(
+            "memory-game", "Continue", lambda *_: self.fail("refreshed entry expired immediately"),
+            model="another-model",
+        )
+        self.assertTrue(hit.cache_hit)
+        self.assertEqual(hit.model, "new-model")
 
 
 if __name__ == "__main__":

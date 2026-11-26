@@ -252,6 +252,13 @@ class KnowledgeBase:
         self, game_id: str, text: str, context: str = "",
         max_age_seconds: int | None = None,
     ) -> str | None:
+        entry = self.cache_get_with_model(game_id, text, context, max_age_seconds)
+        return entry[0] if entry else None
+
+    def cache_get_with_model(
+        self, game_id: str, text: str, context: str = "",
+        max_age_seconds: int | None = None,
+    ) -> tuple[str, str] | None:
         text_hash = sha256_text(normalize_text(text))
         context_hash = sha256_text(normalize_text(context)) if context else ""
         with self.transaction() as db:
@@ -260,7 +267,7 @@ class KnowledgeBase:
                 from datetime import datetime, timedelta, timezone
                 cutoff = (datetime.now(timezone.utc) - timedelta(seconds=max(0, max_age_seconds))).isoformat(timespec="milliseconds").replace("+00:00", "Z")
             row = db.execute(
-                """SELECT translated_text FROM translation_cache
+                """SELECT translated_text, model FROM translation_cache
                    WHERE game_id=? AND text_hash=? AND context_hash=?
                      AND (? IS NULL OR created_at >= ?)""",
                 (game_id, text_hash, context_hash, cutoff, cutoff),
@@ -274,7 +281,7 @@ class KnowledgeBase:
                    WHERE game_id=? AND text_hash=? AND context_hash=?""",
                 (game_id, text_hash, context_hash),
             )
-            return str(row["translated_text"])
+            return str(row["translated_text"]), str(row["model"])
 
     def cache_put(
         self, game_id: str, text: str, translated_text: str,
@@ -290,6 +297,7 @@ class KnowledgeBase:
                 ON CONFLICT(game_id, text_hash, context_hash) DO UPDATE SET
                     translated_text=excluded.translated_text,
                     model=excluded.model,
+                    created_at=excluded.created_at,
                     last_used=strftime('%Y-%m-%dT%H:%M:%fZ','now')""",
                 (game_id, text_hash, context_hash, text, translated_text, model),
             )
