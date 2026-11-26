@@ -80,7 +80,7 @@ class TranslateActivity : Activity() {
                         p.autoCloudFallback = it
                         render()
                     })
-                    if (p.autoCloudFallback) cloudBlock(this, true)
+                    if (p.autoCloudFallback) cloudBlock(this)
                 }
                 group("NGỮ CẢNH AI") { addView(ctxRow()) }
             } else if (!p.narrate) {
@@ -251,12 +251,13 @@ class TranslateActivity : Activity() {
         watch(model) { p.geminiModel = it }
         c.addView(Ui.tv(a, "Model", 15f, Ui.TEXT, true), Ui.lpm(a, 12, 6))
         c.addView(model)
+        modelPicker(c, model, true)
         val status = Ui.tv(a, "", 13f, Ui.SUB)
         c.addView(Ui.button(a, "Kiểm tra kết nối", true) { runTest(status) }, Ui.lpm(a, 12, 6))
         c.addView(status, Ui.lpm(a, 4, 0))
     }
 
-    private fun cloudBlock(c: LinearLayout, fallback: Boolean = false) {
+    private fun cloudBlock(c: LinearLayout) {
         val a = this
         val url = Ui.field(a, "Địa chỉ CloudAPI (vd https://api.example.com/v1)", p.cloudUrl)
         val key = Ui.field(a, "Khóa API CloudAPI", p.cloudKey, true)
@@ -267,9 +268,43 @@ class TranslateActivity : Activity() {
         c.addView(url, Ui.lpm(a, 0, 8))
         c.addView(key, Ui.lpm(a, 0, 8))
         c.addView(model, Ui.lpm(a, 0, 8))
+        modelPicker(c, model, false)
         val status = Ui.tv(a, "", 13f, Ui.SUB)
-        c.addView(Ui.button(a, "Kiểm tra kết nối", true) { runTest(status, fallback) }, Ui.lpm(a, 4, 6))
+        c.addView(Ui.button(a, "Kiểm tra kết nối", true) { runTest(status, true) }, Ui.lpm(a, 4, 6))
         c.addView(status, Ui.lpm(a, 4, 0))
+    }
+
+    private fun modelPicker(container: LinearLayout, field: EditText, gemini: Boolean) {
+        val button = Ui.button(this, "Chọn model từ API") {}
+        container.addView(button)
+        button.setOnClickListener {
+            button.isEnabled = false
+            button.text = "Đang tải danh sách…"
+            val key = if (gemini) p.geminiKeys().firstOrNull().orEmpty() else p.cloudKey
+            val base = if (gemini) "" else p.cloudUrl
+            Thread {
+                val result = runCatching { TranslationModelCatalog.list(gemini, base, key) }
+                runOnUiThread {
+                    if (!button.isAttachedToWindow || isFinishing || isDestroyed) return@runOnUiThread
+                    button.isEnabled = true
+                    button.text = "Chọn model từ API"
+                    if (!gemini && (base != p.cloudUrl || key != p.cloudKey)) return@runOnUiThread
+                    if (gemini && key != p.geminiKeys().firstOrNull().orEmpty()) return@runOnUiThread
+                    val models = result.getOrNull().orEmpty()
+                    if (models.isEmpty()) {
+                        val message = result.exceptionOrNull()?.let {
+                            if (it is IllegalStateException || it is IllegalArgumentException)
+                                it.localizedMessage else null
+                        } ?: "Không tìm thấy model hoặc máy chủ trả danh sách không hợp lệ."
+                        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                    } else {
+                        val title = if (models.any { it.id == field.text.toString().trim() }) "Chọn model"
+                            else "Model đang đặt chưa có trong danh sách. Chọn model khác"
+                        Ui.pick(this, title, models.map { it.label }) { field.setText(models[it].id) }
+                    }
+                }
+            }.start()
+        }
     }
 
     private fun runTest(status: TextView, forceCloud: Boolean = false) {
