@@ -30,3 +30,11 @@ Updated: 2026-11-26 (UTC+8)
 
 ## Reporting rule
 Do not mark a row PASS without a reproducible test result. Separate JVM tests, emulator tests, cloud-provider tests and physical-device tests.
+
+
+## Additional hardening — 2026-11-26
+- Cloud OCR normalized bounding boxes are now rejected when coordinates are non-finite, outside 0..1000, inverted, empty, or image dimensions are invalid.
+- Valid normalized boxes are clipped to image bounds and guaranteed to cover at least one pixel.
+- Added `OcrGeometryTest` for valid mapping, tiny boxes, inverted/empty boxes, NaN/Infinity, out-of-range coordinates, invalid dimensions and edge clipping.
+- Previous three-line regression test failed because its fixture encoded literal backslash-n text. Fixture corrected to contain actual line separators; do not count this as a production OCR failure.
+- Verification is pending GitHub Actions run #2047.
