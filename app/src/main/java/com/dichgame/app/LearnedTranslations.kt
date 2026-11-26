@@ -21,6 +21,9 @@ internal object LearnedTranslationRules {
         listOf(normalize(game), lang.lowercase(Locale.ROOT), if (ui) "menu" else "dialogue",
             normalize(speaker.orEmpty()), normalize(source)).joinToString("\u0001")
 
+    fun scopedKey(legacyKey: String, style: String, externalId: String?): String =
+        VoiceDiskCache.key("translation-v2", legacyKey, style, externalId.orEmpty())
+
     /** Evict oldest automatically learned entry, never a correction made by the user. */
     fun evictionKey(entries: Iterable<Pair<String, Boolean>>): String? =
         entries.firstOrNull { !it.second }?.first
@@ -133,17 +136,21 @@ object LearnedTranslations {
     }
 
     fun lookup(ctx: Context, profile: String, game: String, lang: String, speaker: String?,
-               ui: Boolean, source: String): Entry? = synchronized(lock) {
+               ui: Boolean, source: String, style: String, externalId: String?): Entry? = synchronized(lock) {
         if (game.isBlank()) return@synchronized null
-        data(ctx, profile)[LearnedTranslationRules.key(game, lang, speaker, ui, source)]
+        val entries = data(ctx, profile)
+        val legacy = LearnedTranslationRules.key(game, lang, speaker, ui, source)
+        entries[legacy]?.takeIf { it.manual && externalId.isNullOrEmpty() }
+            ?: entries[LearnedTranslationRules.scopedKey(legacy, style, externalId)]
     }
 
     /** Ghi một câu AI đã được TranslationGuard đánh giá OK, không ghi đè bản sửa tay. */
     fun remember(ctx: Context, profile: String, game: String, lang: String, speaker: String?,
-                 ui: Boolean, source: String, vi: String) {
+                 ui: Boolean, source: String, vi: String, style: String, externalId: String?) {
         if (game.isBlank() || !LearnedTranslationRules.canRemember(source, vi)) return
         synchronized(lock) {
-            val key = LearnedTranslationRules.key(game, lang, speaker, ui, source)
+            val legacy = LearnedTranslationRules.key(game, lang, speaker, ui, source)
+            val key = LearnedTranslationRules.scopedKey(legacy, style, externalId)
             val map = data(ctx, profile)
             if (profile in readOnly || map.containsKey(key)) return
             if (map.size >= LIMIT) {

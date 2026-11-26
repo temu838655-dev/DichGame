@@ -131,8 +131,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     }
 
     /** Các câu đã dịch xong và đạt kiểm tra: gặp lại (khung hình lặp, nhân vật nói lại) thì dùng ngay, không gọi AI lần nữa. */
-    private val cache = object : LinkedHashMap<String, Tr>(64, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Tr>?): Boolean = size > 160
+    private val cache = object : LinkedHashMap<List<String>, Tr>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<List<String>, Tr>?): Boolean = size > 160
     }
 
     fun translate(text: String, done: (String) -> Unit) = translateEx(text) { vi, _ -> done(vi) }
@@ -173,10 +173,10 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         }
         // Một câu dịch đang chờ Gemini khi người chơi đổi game sẽ bị loại,
         // không hiện phụ đề cũ và không lưu vào bộ nhớ của game mới.
-        fun stillCurrent(): Boolean = !closed && profile == p.profile && gameDescription == p.game && game == PackStore.gameName(p)
+        val style = p.styleText()
+        fun stillCurrent(): Boolean = !closed && style == p.styleText() && profile == p.profile && gameDescription == p.game && game == PackStore.gameName(p)
         fun emit(result: Tr) { if (stillCurrent()) done(result) }
-        val key = context + "\u0000" +
-            (if (ui) "ui|" else "") + (speaker?.lowercase(java.util.Locale.ROOT) ?: "") + "|" + text.trim()
+        val key = listOf(game, lang, speaker.orEmpty(), ui.toString(), text.trim(), style, externalId.orEmpty())
         val hist = if (ui) emptyList() else history.takeLast(p.ctxCount)
         if (!ui) {
             history.add(if (speaker != null) "$speaker: $text" else text)
@@ -195,7 +195,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         // Gói Việt hóa do người dùng nhập có ưu tiên cao nhất; tiếp theo là bản dịch đã
         // lưu lâu dài trên máy. Khớp đúng nguồn + ngôn ngữ + người nói, không khớp mờ.
         if (p.learnTranslations) {
-            LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text)?.takeIf {
+            LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text, style, externalId)?.takeIf {
                 it.manual || TranslationGuard.check(text, it.vi, sourceLang = lang).ok
             }?.let { saved ->
                 st.inc("dich_nho")
@@ -219,7 +219,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             // Không ghi bản dịch máy dự phòng hoặc bản dịch AI bị nghi ngờ.
             val saved = p.learnTranslations && t.via == "ai" && !t.uncertain &&
                 LearnedTranslationRules.canRemember(text, t.text)
-            if (saved) LearnedTranslations.remember(ctx, profile, game, lang, speaker, ui, text, t.text)
+            if (saved) LearnedTranslations.remember(ctx, profile, game, lang, speaker, ui, text, t.text, style, externalId)
             if (t.uncertain) st.inc("dich_nghi")
             // Câu đã lưu lâu dài không giữ thêm trong cache: khi người dùng xóa bộ nhớ
             // sẽ không bị trả lại bản cũ từ cache trong cùng phiên chơi.

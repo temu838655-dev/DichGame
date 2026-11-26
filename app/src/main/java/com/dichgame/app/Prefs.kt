@@ -216,7 +216,7 @@ class Prefs(ctx: Context) {
 
     /** Phong cách dịch AI (chỉ số trong TR_STYLES). */
     var trStyle: Int
-        get() = sp.getInt("trstyle", 1).coerceIn(0, TR_STYLES.size - 1)
+        get() = sp.getInt("trstyle", 0).coerceIn(0, TR_STYLES.size - 1)
         set(v) = sp.edit().putInt("trstyle", v).apply()
 
     /** Chỉ dẫn dịch đang dùng: phong cách đã chọn, hoặc prompt riêng. */
