@@ -23,6 +23,7 @@ class WebSubServer(private val port: Int = 8780, private val clock: () -> Long =
     private var server: ServerSocket? = null
     private val lock = Object()
     private var seq = 0L
+    private var captionLines: org.json.JSONArray? = null
     private var text = ""
     private var region = ""
     private var style = WebTvStyle()
@@ -61,8 +62,10 @@ class WebSubServer(private val port: Int = 8780, private val clock: () -> Long =
     }
 
     /** Đặt phụ đề hiện tại (chuỗi rỗng = xóa chữ). */
-    fun push(t: String, kind: String = "sub", speak: Boolean = false) {
+    fun push(t: String, kind: String = "sub", speak: Boolean = false, lines: org.json.JSONArray? = null) {
         synchronized(lock) {
+            val changedLines = kind != "region" && captionLines?.toString() != lines?.toString()
+            if (kind != "region") captionLines = lines
             val oldText = text
             val oldRegion = region
             val now = clock()
@@ -72,10 +75,10 @@ class WebSubServer(private val port: Int = 8780, private val clock: () -> Long =
                 else -> { text = t; textUntil = now + 12000 }
             }
             val voiced = speak && t.isNotBlank() && style.speak
-            if (voiced && (speech != t || oldText != text || oldRegion != region)) {
+            if (voiced && (changedLines || speech != t || oldText != text || oldRegion != region)) {
                 speech = t
                 speechSeq++
-            } else if (!voiced && oldText == text && oldRegion == region) return
+            } else if (!voiced && !changedLines && oldText == text && oldRegion == region) return
             seq++
             lock.notifyAll()
         }
@@ -159,7 +162,7 @@ class WebSubServer(private val port: Int = 8780, private val clock: () -> Long =
                             expireLocked()
                         }
                         body = JSONObject().put("seq", seq).put("text", text).put("region", region)
-                            .put("style", style.json()).put("speechSeq", speechSeq).put("speech", speech).toString()
+                            .put("lines", if (text.isEmpty()) null else captionLines).put("style", style.json()).put("speechSeq", speechSeq).put("speech", speech).toString()
                     }
                     if (stopped || (receiver && !pairing.valid(param("token"))) || (!receiver && !legacyEnabled)) reply(c, 403, "text/plain", "Pair receiver first", receiver)
                     else reply(c, 200, "application/json; charset=utf-8", body, cors = receiver)

@@ -1138,16 +1138,16 @@ class CaptureService : Service() {
     }
 
     /** Gửi phụ đề lên app Dịch game TV (nếu đã ghép). kind: sub | region | clear. */
-    private fun sendTv(kind: String, text: String, speakIt: Boolean = false, force: Boolean = false) {
+    private fun sendTv(kind: String, text: String, speakIt: Boolean = false, force: Boolean = false, lines: org.json.JSONArray? = null) {
         val hidden = kind == "sub" && Prefs(this).listenOnly
         val outKind = if (hidden) "clear" else kind
         val outText = if (hidden && !speakIt) "" else text
-        TvOut.publish(this, outKind, outText, speakIt)
+        TvOut.publish(this, outKind, outText, speakIt, if (hidden) null else lines)
         val p = getSharedPreferences("dg", MODE_PRIVATE)
         val ip = p.getString("tvip", "").orEmpty()
         val tok = p.getString("tvtoken", "").orEmpty()
         if (p.getString("playon", "phone") != "tv" || ip.isEmpty() || tok.isEmpty()) return
-        val key = "$ip:$tok:$outKind:$speakIt:$outText"
+        val key = "$ip:$tok:$outKind:$speakIt:$outText:$lines"
         if (!force && key == tvLast) return
         tvLast = key
         val size = p.getInt("fs", 18) * p.getInt("subscale", 100) / 100 + 12
@@ -1157,6 +1157,7 @@ class CaptureService : Service() {
                 c.requestMethod = "POST"; c.connectTimeout = 1500; c.readTimeout = 1500; c.doOutput = true
                 c.setRequestProperty("X-Token", tok)
                 val body = JSONObject().put("kind", outKind).put("text", outText).put("size", size).put("speak", speakIt).put("fg", styleFg()).put("bg", styleBg())
+                        .put("lines", if (hidden) null else lines)
                         .put("keepPrevious", p.getBoolean("showprev", true)).put("lastSeconds", p.getInt("last_subtitle_seconds", 0))
                 c.outputStream.use { it.write(body.toString().toByteArray()) }
                 try { if (c.responseCode !in 200..299 && tvLast == key) tvLast = "" } finally { c.disconnect() }
@@ -1219,7 +1220,11 @@ class CaptureService : Service() {
         // TV tự đọc thì chỉ gửi lời dịch; không đọc thì gửi kèm tên người nói
         val tvText = if (tvSpeaks || cards.none { it.speaker != null }) cards.joinToString(" ") { it.tr.caption }
         else cards.joinToString("\n") { (it.speaker?.let { n -> "$n: " } ?: "") + it.tr.caption }
-        sendTv("sub", tvText, tvSpeaks)
+        val lines = if (cards.none { it.speaker != null }) null else org.json.JSONArray().apply {
+            for (card in cards) put(JSONObject().put("name", card.speaker.orEmpty())
+                .put("text", card.tr.caption).put("color", card.speaker?.let { pr.speakerColor(it) }))
+        }
+        sendTv("sub", tvText, tvSpeaks, lines = lines)
         if (speak && tvVoiceOn() && scene.isNotEmpty()) {
             tvVoice(scene.joinToString(" ") { it.text }, scene.last().delivery, scene.last().speaker, scene)
         }

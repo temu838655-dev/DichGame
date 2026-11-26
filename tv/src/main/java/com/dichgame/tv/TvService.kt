@@ -288,7 +288,7 @@ class TvService : Service() {
                 val bg = j.optInt("bg", 0xB3000000.toInt())
                 val keepPrevious = j.optBoolean("keepPrevious", true)
                 val seconds = j.optInt("lastSeconds", 0)
-                handler.post { show(kind, text, size, sp, fg, bg, keepPrevious, seconds) }
+                handler.post { show(kind, text, size, sp, fg, bg, keepPrevious, seconds, j.optJSONArray("lines")) }
                 status = 200; out = "ok"
             }
         }
@@ -354,7 +354,7 @@ class TvService : Service() {
         handler.postDelayed(hide, ms)
     }
 
-    private fun show(kind: String, text: String, size: Int, speakIt: Boolean, fg: Int = Color.WHITE, bg: Int = 0xB3000000.toInt(), keepPrevious: Boolean = true, seconds: Int = 0) {
+    private fun show(kind: String, text: String, size: Int, speakIt: Boolean, fg: Int = Color.WHITE, bg: Int = 0xB3000000.toInt(), keepPrevious: Boolean = true, seconds: Int = 0, lines: org.json.JSONArray? = null) {
         if (!Settings.canDrawOverlays(this)) return
         if (subView == null) { subView = mk(false); regView = mk(true) }
         when (kind) {
@@ -372,10 +372,23 @@ class TvService : Service() {
                     caption.setSpan(android.text.style.RelativeSizeSpan(0.7f), 0, caption.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
                 val previousEnd = caption.length
-                caption.append(text)
+                if (lines == null || lines.length() == 0) caption.append(text) else {
+                    for (i in 0 until lines.length()) {
+                        val line = lines.optJSONObject(i) ?: continue
+                        if (i > 0) caption.append('\n')
+                        val name = line.optString("name")
+                        if (name.isNotEmpty()) {
+                            val start = caption.length
+                            caption.append(name).append(": ")
+                            caption.setSpan(android.text.style.ForegroundColorSpan(line.optInt("color", fg)),
+                                start, caption.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        }
+                        caption.append(line.optString("text"))
+                    }
+                }
                 put(view, text, size, hideSub, duration, fg, bg)
                 SubtitleTransition.display(view, caption, previousEnd, remaining)
-                currentCaption = text
+                currentCaption = caption.subSequence(previousEnd, caption.length).toString()
                 captionUntil = now + duration
             }
         }

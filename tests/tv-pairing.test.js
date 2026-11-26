@@ -69,3 +69,22 @@ for (const platform of ['webos', 'samsung']) {
   assert.equal(current.textContent,'');
   assert.equal(scheduled.size,0);
 }
+
+for (const platform of ['webos','samsung']) {
+  const children = [];
+  const doc = {createTextNode:text=>({textContent:text}),createElement:()=>({style:{}})};
+  const current = {
+    get textContent(){return children.map(x=>x.textContent).join('');},
+    set textContent(text){children.length=0;if(text)children.push(doc.createTextNode(text));},
+    appendChild(child){children.push(child);}
+  };
+  const env = {window:{},document:doc};
+  vm.runInNewContext(fs.readFileSync(platform+'/pairing.js','utf8'),env);
+  const show = env.window.DgReceiver.captions(current,{textContent:'',style:{}});
+  show('Đi thôi. Đi thôi.',{},[
+    {name:'Lucia',text:'Đi thôi.',color:0xff00ffff|0},
+    {name:'Jason',text:'Đi thôi.',color:0xffff0088|0}
+  ]);
+  assert.equal(current.textContent,'Lucia: Đi thôi.\nJason: Đi thôi.');
+  assert.deepEqual(children.filter(x=>x.style).map(x=>x.style.color),['#00ffff','#ff0088']);
+}

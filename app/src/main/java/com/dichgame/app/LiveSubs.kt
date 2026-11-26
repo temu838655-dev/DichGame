@@ -745,7 +745,11 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         val tvSpeaks = speak && tvSpeakOn() && !tvVoiceOn() && scene.size == cards.size
         val tvText = if (tvSpeaks || cards.none { it.speaker != null }) cards.joinToString(" ") { it.tr.caption }
         else cards.joinToString("\n") { (it.speaker?.let { n -> "$n: " } ?: "") + it.tr.caption }
-        sendTv("sub", tvText, tvSpeaks)
+        val lines = if (cards.none { it.speaker != null }) null else org.json.JSONArray().apply {
+            for (card in cards) put(JSONObject().put("name", card.speaker.orEmpty())
+                .put("text", card.tr.caption).put("color", card.speaker?.let { pr.speakerColor(it) }))
+        }
+        sendTv("sub", tvText, tvSpeaks, lines = lines)
         if (speak && tvVoiceOn() && scene.isNotEmpty()) {
             tvVoice(scene.joinToString(" ") { it.text }, scene.last().delivery, scene.last().speaker, scene)
         }
@@ -783,16 +787,16 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         else sp.synthForTv(text, d, speakerName, sendAudio)
     }
 
-    private fun sendTv(kind: String, text: String, speakIt: Boolean = false, force: Boolean = false) {
+    private fun sendTv(kind: String, text: String, speakIt: Boolean = false, force: Boolean = false, lines: org.json.JSONArray? = null) {
         val hidden = kind == "sub" && Prefs(act).listenOnly
         val outKind = if (hidden) "clear" else kind
         val outText = if (hidden && !speakIt) "" else text
-        TvOut.publish(act, outKind, outText, speakIt)
+        TvOut.publish(act, outKind, outText, speakIt, if (hidden) null else lines)
         val p = act.getSharedPreferences("dg", Context.MODE_PRIVATE)
         val ip = p.getString("tvip", "").orEmpty()
         val tok = p.getString("tvtoken", "").orEmpty()
         if (p.getString("playon", "phone") != "tv" || ip.isEmpty() || tok.isEmpty()) return
-        val key = "$ip:$tok:$outKind:$speakIt:$outText"
+        val key = "$ip:$tok:$outKind:$speakIt:$outText:$lines"
         if (!force && key == tvLast) return
         tvLast = key
         val size = p.getInt("fs", 18) * p.getInt("subscale", 100) / 100 + 12
@@ -804,6 +808,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
                     c.requestMethod = "POST"; c.connectTimeout = 1500; c.readTimeout = 1500; c.doOutput = true
                     c.setRequestProperty("X-Token", tok)
                     val body = JSONObject().put("kind", outKind).put("text", outText).put("size", size).put("speak", speakIt).put("fg", f).put("bg", b)
+                        .put("lines", if (hidden) null else lines)
                         .put("keepPrevious", p.getBoolean("showprev", true)).put("lastSeconds", p.getInt("last_subtitle_seconds", 0))
                     c.outputStream.use { it.write(body.toString().toByteArray()) }
                     try { if (c.responseCode !in 200..299 && tvLast == key) tvLast = "" } finally { c.disconnect() }

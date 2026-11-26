@@ -51,14 +51,14 @@ object TvOut {
         web = null
     }
 
-    fun publish(ctx: Context, kind: String, text: String, speak: Boolean = false) {
+    fun publish(ctx: Context, kind: String, text: String, speak: Boolean = false, lines: org.json.JSONArray? = null) {
         if (kind !in listOf("sub", "clear", "region")) return
         val t = if (kind == "clear") "" else text
         val p = ctx.applicationContext.getSharedPreferences("dg", Context.MODE_PRIVATE)
         if (p.getBoolean("websub", false)) {
             if (web?.running != true) startWeb(ctx)
             web?.setStyle(WebTvStyle.read(p))
-            web?.push(if (kind == "clear" && speak) text else t, kind, speak)
+            web?.push(if (kind == "clear" && speak) text else t, kind, speak, lines)
         }
         val ip = p.getString("lgip", "").orEmpty()
         val key = p.getString("lgkey", "").orEmpty()
