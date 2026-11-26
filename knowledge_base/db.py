@@ -179,6 +179,24 @@ class KnowledgeBase:
             )
             return int(cursor.lastrowid)
 
+    def pending_source_strings(self, game_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        if limit < 1:
+            raise ValueError('limit must be positive')
+        with closing(self.connect()) as db:
+            rows = db.execute(
+                "SELECT * FROM source_strings WHERE game_id=? AND status='PENDING' ORDER BY source_string_id LIMIT ?",
+                (game_id, min(limit, 1000)),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def set_source_string_translation(self, game_id: str, external_id: str, translated_text: str, status: str = 'TRANSLATED') -> None:
+        if status not in {'TRANSLATED', 'VERIFIED', 'REJECTED'}:
+            raise ValueError('invalid source string status')
+        with self.transaction() as db:
+            db.execute(
+                "UPDATE source_strings SET translated_text=?, status=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE game_id=? AND external_id=?",
+                (translated_text, status, game_id, external_id),
+            )
     def lookup_external_id(self, game_id: str, external_id: str) -> dict[str, Any] | None:
         """Resolve a game string by its original engine/localization ID."""
         key = (external_id or "").strip()
