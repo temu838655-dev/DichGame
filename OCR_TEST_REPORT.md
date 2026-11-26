@@ -38,3 +38,5 @@ Do not mark a row PASS without a reproducible test result. Separate JVM tests, e
 - Added `OcrGeometryTest` for valid mapping, tiny boxes, inverted/empty boxes, NaN/Infinity, out-of-range coordinates, invalid dimensions and edge clipping.
 - Previous three-line regression test failed because its fixture encoded literal backslash-n text. Fixture corrected to contain actual line separators; do not count this as a production OCR failure.
 - Verification is pending GitHub Actions run #2047.
+
+- Cloud OCR executor is now bounded to one active request plus one queued image. Further submissions are rejected through the existing path, which recycles the rejected bitmap and reports the OCR worker as busy/stopped instead of accumulating unbounded native image memory.
