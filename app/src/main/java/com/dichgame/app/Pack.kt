@@ -124,7 +124,7 @@ class TransMemory(pairs: Iterable<Pair<String, String>>) {
     }
 
     /** Kết quả tra: [fuzzy] = khớp gần đúng (chữ đọc từ màn hình hơi lệch so với câu trong gói), không phải khớp đúng khoá. */
-    class Hit(val vi: String, val fuzzy: Boolean)
+    class Hit(val vi: String, val fuzzy: Boolean, val reliable: Boolean = false)
 
     private val fuzzyIndex: FuzzyIndex by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { FuzzyIndex(map) }
 
@@ -170,13 +170,13 @@ class TransMemory(pairs: Iterable<Pair<String, String>>) {
 
     fun lookupEx(text: String): Hit? {
         if (exactMap.isEmpty() || text.isBlank()) return null
-        exact(text)?.let { return Hit(it, false) }
+        exact(text)?.let { return Hit(it, false, true) }
         val q = LineKey.of(text)
         if (q in ambiguous) return null
         // Even a short OCR-folded match is not exact and must never be narrated as certain.
-        map[q]?.let { return Hit(matchCase(text, it), true) }
+        map[q]?.let { return Hit(matchCase(text, it), true, false) }
         if (q.letters.length < FuzzyIndex.minLen(q.letters)) return null
-        return fuzzyIndex.find(q)?.let { Hit(matchCase(text, it), true) }
+        return fuzzyIndex.find(q)?.let { Hit(matchCase(text, it), true, true) }
     }
 
     private fun exact(text: String): String? {
