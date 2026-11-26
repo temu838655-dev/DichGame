@@ -29,3 +29,10 @@ Updated: 2026-11-26 (UTC+8)
 
 ## Manual validation needed
 Test same Wi-Fi and guest Wi-Fi separately; verify client isolation, firewall, router multicast/broadcast behavior, TV sleep/wake, phone network changes, invalid pairing code rate limiting, and reconnection after receiver process restart. Never describe a Samsung/LG overlay as supported unless verified on the target model and firmware.
+
+
+## Request flood / parser hardening — 2026-11-26
+- Limit incoming HTTP headers to 32 lines and 16 KiB total before processing.
+- Reject negative/invalid or over-8 KiB non-audio request bodies; reject empty subtitle payloads.
+- Audio PCM remains separately bounded by MAX_AUDIO (6 MB) and the allowed sample-rate range.
+- These limits reduce worker starvation and oversized JSON body processing; device flood/slow-client tests remain outstanding.
