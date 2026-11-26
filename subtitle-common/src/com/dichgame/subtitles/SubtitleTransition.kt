@@ -1,4 +1,4 @@
-package com.dichgame.app
+package com.dichgame.subtitles
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter

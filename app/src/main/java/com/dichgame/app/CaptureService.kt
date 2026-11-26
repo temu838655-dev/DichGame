@@ -1,5 +1,7 @@
 package com.dichgame.app
 
+import com.dichgame.subtitles.SubtitleTransition
+
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -1154,6 +1156,7 @@ class CaptureService : Service() {
                 c.requestMethod = "POST"; c.connectTimeout = 1500; c.readTimeout = 1500; c.doOutput = true
                 c.setRequestProperty("X-Token", tok)
                 val body = JSONObject().put("kind", outKind).put("text", outText).put("size", size).put("speak", speakIt).put("fg", styleFg()).put("bg", styleBg())
+                        .put("keepPrevious", p.getBoolean("showprev", true)).put("lastSeconds", p.getInt("last_subtitle_seconds", 0))
                 c.outputStream.use { it.write(body.toString().toByteArray()) }
                 try { if (c.responseCode !in 200..299 && tvLast == key) tvLast = "" } finally { c.disconnect() }
             } catch (_: Exception) { if (tvLast == key) tvLast = "" }

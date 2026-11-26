@@ -63,6 +63,7 @@ android {
         }
     }
     ndkVersion = "28.2.13676358"
+    sourceSets.getByName("main").java.srcDir("$rootDir/subtitle-common/src")
     // Phần cập nhật trong app dùng chung với app TV (update-common/)
     sourceSets.getByName("main").java.srcDir("$rootDir/update-common/src")
     if (withNative) {
