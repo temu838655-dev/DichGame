@@ -4,3 +4,10 @@ local.properties
 *.iml
 .idea/
 app/libs/
+
+# Private Android signing material must never be committed.
+keystore/
+*.jks
+*.keystore
+*.p12
+*.pfx
