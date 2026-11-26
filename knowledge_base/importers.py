@@ -63,8 +63,8 @@ def _first(mapping: dict, keys: tuple[str, ...]) -> str:
     return ""
 
 
-SOURCE_KEYS = ("source_text", "source", "original", "msgid", "english", "en", "text")
-TARGET_KEYS = ("translated_text", "translation", "target", "msgstr", "vietnamese", "vi")
+SOURCE_KEYS = ("source_text", "source", "original", "msgid", "english", "tiếng anh", "en", "text")
+TARGET_KEYS = ("translated_text", "translation", "target", "msgstr", "vietnamese", "tiếng việt", "vi")
 CONTEXT_KEYS = ("context", "extracomment", "developer_comment", "description")
 SPEAKER_KEYS = ("speaker", "character")
 SCENE_KEYS = ("scene_id", "scene")
