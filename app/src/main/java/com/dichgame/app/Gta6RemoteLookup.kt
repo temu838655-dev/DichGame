@@ -10,8 +10,11 @@ internal object Gta6RemoteLookup {
     private const val ENDPOINT = "https://dichgame-gta6-api.temu838655.workers.dev/v1/gta6/lookup"
     private const val MAX_RESPONSE = 16 * 1024
 
+    fun supports(game: String, language: String): Boolean =
+        GamePackMatch.selected(game, "Grand Theft Auto VI") && language == "en"
+
     fun lookup(game: String, language: String, text: String, externalId: String? = null): String? {
-        if (!GamePackMatch.selected(game, "Grand Theft Auto VI") || language != "en" || text.isBlank()) return null
+        if (!supports(game, language) || text.isBlank()) return null
         if (externalId.isNullOrBlank() && text.length > 700) return null
         val query = buildString {
             if (!externalId.isNullOrBlank()) append("id=").append(URLEncoder.encode(externalId, "UTF-8"))
