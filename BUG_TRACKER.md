@@ -96,3 +96,5 @@ Status rule: FIXED IN BRANCH is not VERIFIED. Reclassify only after CI, live API
 | QA-OCR-3LINE-01 | LOW | Newly added 3-line test fixture encoded literal \\n rather than newline, so test failed for a fixture error. | Correct fixture to use actual line separators; retain the regression test. | FIXED ON BRANCH — CI pending |
 
 | TV-RELAY-04 | MEDIUM | Receiver parsed an unbounded number of HTTP headers and accepted non-audio body lengths without an explicit 8 KiB limit. | Cap headers at 32 lines/16 KiB, reject invalid/oversized non-audio bodies and empty subtitle payloads. | FIXED ON BRANCH — CI pending |
+
+| OCR-QUEUE-01 | MEDIUM | Cloud OCR used a single-thread executor backed by an unbounded queue; repeated manual requests during a slow provider response could retain many large bitmaps. | Replace with one worker + one queued task; rejection path releases the incoming bitmap. | FIXED ON BRANCH — CI pending |
