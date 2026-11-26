@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -110,7 +111,8 @@ def main() -> int:
     parser.add_argument("--attribution", default="")
     parser.add_argument("--model", default=os.environ.get("GEMINI_MODEL", ""))
     parser.add_argument("--max-rows", type=int, default=50, help="Maximum new rows per run; use 0 for all remaining rows.")
-    parser.add_argument("--max-output-tokens", type=int, default=512)
+    parser.add_argument("--max-output-tokens", type=int, default=4096)
+    parser.add_argument("--translation-batch-size", type=int, default=10)
     parser.add_argument("--retries", type=int, default=2)
     parser.add_argument("--translate", action="store_true", help="Translate blank Vietnamese cells with Gemini; requires GEMINI_API_KEY.")
     parser.add_argument("--confirm-rights", action="store_true", required=True, help="Confirm you have permission for this source and intended distribution.")
@@ -118,8 +120,8 @@ def main() -> int:
     args = parser.parse_args()
     if not args.file.is_file() or args.file.suffix.lower() != ".xlsx":
         parser.error("--file must point to an existing .xlsx workbook")
-    if args.max_rows < 0 or args.max_output_tokens < 1 or args.retries < 0:
-        parser.error("Invalid batch limits")
+    if args.max_rows < 0 or args.max_output_tokens < 1 or args.retries < 0 or not 1 <= args.translation_batch_size <= 20:
+        parser.error("Invalid batch limits; translation batch size must be 1-20")
     token = os.environ.get("DICHGAME_ADMIN_TOKEN", "")
     if not args.dry_run and len(token) < 24:
         parser.error("Set DICHGAME_ADMIN_TOKEN to the existing DịchGame Worker ADMIN_TOKEN")
@@ -166,6 +168,7 @@ def main() -> int:
             response = request_json(args.api.rstrip("/") + "/v1/admin/gta6/check", token,
                                     {"ids": [row["external_id"] for row in chunk]})
             known = {item["external_id"]: item for item in response.get("lines", [])}
+        to_translate = []
         for row in chunk:
             if args.max_rows and new_rows >= args.max_rows:
                 stop = True
@@ -177,23 +180,59 @@ def main() -> int:
                 continue
             new_rows += 1
             if not row["vi"] and provider is not None:
+                to_translate.append(row)
+            else:
+                pending_upload.append(row)
+        for offset in range(0, len(to_translate), args.translation_batch_size):
+            group = to_translate[offset:offset + args.translation_batch_size]
+            translated = None
+            for attempt in range(args.retries + 1):
                 try:
-                    row["vi"] = translate_one(provider, row, args.model, args.max_output_tokens, args.retries)
+                    translated = provider.translate_many([
+                        {"id": row["external_id"], "text": row["original"],
+                         "context": f"{row['sheet_name']} | {row['group_name']}"}
+                        for row in group
+                    ], model=args.model, max_output_tokens=args.max_output_tokens)
+                    break
                 except Exception as exc:
+                    if attempt >= args.retries:
+                        print(f"BATCH_TRANSLATION_FAILED ({len(group)} rows): {exc}")
+                    else:
+                        time.sleep(1.0 * (2 ** attempt))
+            for row in group:
+                value = translated.get(row["external_id"], "").strip() if translated else ""
+                pattern = r"\{[^{}]+\}|%[A-Za-z0-9_]+%|~[^~]+~|<[^>]+>|\d+(?:[.:]\d+)?"
+                source_tokens = re.findall(pattern, row["original"])
+                target_tokens = re.findall(pattern, value)
+                if not value or source_tokens != target_tokens:
                     stats["translation_failed"] += 1
-                    print(f"TRANSLATION_FAILED {row['external_id']}: {exc}")
-            pending_upload.append(row)
-            batch_preview = {
-                "game": GAME, "rightsConfirmed": True,
-                "sourceName": args.source_name.strip() or args.file.name,
-                "licenseId": args.license_id.strip(),
-                "sourceUrl": args.source_url.strip(),
-                "licenseUrl": args.license_url.strip(),
-                "attribution": args.attribution.strip(),
-                "lines": pending_upload,
-            }
-            if len(pending_upload) >= 30 or len(json.dumps(batch_preview, ensure_ascii=False).encode("utf-8")) >= 14_000:
-                upload()
+                    if value:
+                        print(f"TOKEN_MISMATCH {row['external_id']}: left pending; no translation uploaded")
+                else:
+                    row["vi"] = value
+                pending_upload.append(row)
+                batch_preview = {
+                    "game": GAME, "rightsConfirmed": True,
+                    "sourceName": args.source_name.strip() or args.file.name,
+                    "licenseId": args.license_id.strip(),
+                    "sourceUrl": args.source_url.strip(),
+                    "licenseUrl": args.license_url.strip(),
+                    "attribution": args.attribution.strip(),
+                    "lines": pending_upload,
+                }
+                if len(pending_upload) >= 30 or len(json.dumps(batch_preview, ensure_ascii=False).encode("utf-8")) >= 14_000:
+                    upload()
+        batch_preview = {
+            "game": GAME, "rightsConfirmed": True,
+            "sourceName": args.source_name.strip() or args.file.name,
+            "licenseId": args.license_id.strip(),
+            "sourceUrl": args.source_url.strip(),
+            "licenseUrl": args.license_url.strip(),
+            "attribution": args.attribution.strip(),
+            "lines": pending_upload,
+        }
+        if pending_upload and len(json.dumps(batch_preview, ensure_ascii=False).encode("utf-8")) >= 14_000:
+            upload()
 
     try:
         chunk = []
