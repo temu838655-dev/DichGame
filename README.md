@@ -146,22 +146,21 @@ Lần đầu dùng mỗi thứ tiếng, app tải mô hình dịch nên cần m�
 - **Bản vá Việt hoá (mod) của cộng đồng** sửa chữ trong file game, mỗi nhóm giữ quyền riêng: app chỉ dẫn tới trang gốc, không tải hộ, không cài vào game. Gói Việt hoá trong app là dữ liệu cho phụ đề trên màn hình, soạn bởi người làm app, không chép từ các trang đó.
 
 
-## Kho dữ liệu Việt hóa tập trung (đang phát triển)
+## Kho dữ liệu Việt hóa tập trung
 
-Mã nguồn nền tảng dữ liệu độc lập với giao diện Android nằm trong `knowledge_base/`.
+Mã nguồn nền tảng dữ liệu nằm trong `knowledge_base/`; dữ liệu nguồn GTA VI không được commit vào repository công khai.
 
-- SQLite: dữ liệu game, bản dịch, nguồn/giấy phép, thuật ngữ, nhân vật, từ điển OCR, cache và phản hồi.
-- FTS5: chỉ mục tìm kiếm toàn văn.
-- Bộ nhập dữ liệu hiện hỗ trợ CSV, JSON, PO (bản số ít), XLIFF/XLF và TMX.
-- Yêu cầu khai báo nguồn, giấy phép/permission và xác nhận quyền sử dụng trước khi nhập. Nguồn được ghi trạng thái PENDING; không tự động coi là đã xác minh.
-- Dữ liệu nhập được giữ ở trạng thái COMMUNITY, không tự động nâng thành VERIFIED.
-- Công cụ nhập: `python -m knowledge_base.import_cli --help`.
-- Hướng dẫn: [knowledge_base/IMPORTING.md](knowledge_base/IMPORTING.md).
+- SQLite/FTS5 lưu bản dịch, ngữ cảnh, nguồn/giấy phép, thuật ngữ và chỉ mục tìm kiếm.
+- Bộ nhập hỗ trợ CSV, JSON, PO, XLIFF/XLF, TMX và Excel `.xlsx`; Excel giữ nguyên ID, sheet, nhóm thoại và dòng trống tiếng Việt để dịch tiếp.
+- Dịch batch Gemini có thể tiếp tục theo ID, kiểm tra placeholder, tag thời gian và số trước khi tải lên.
+- GTA VI dùng Cloudflare D1 riêng cùng hai Worker: API đọc chỉ trả dòng có bản dịch và nguồn đều được quản trị viên xác minh; Worker quản trị có nhập batch và màn hình duyệt.
+- Android tra cứu ID gốc nếu tích hợp game cung cấp được ID; OCR hiện không đọc được ID engine nên dùng exact-text lookup. Nếu câu trùng nhưng bản dịch theo ngữ cảnh khác nhau, API từ chối match mơ hồ.
+- Thứ tự xử lý trong app: exact ID (khi có), exact text từ kho cloud, fuzzy local chỉ khi độ tin cậy cao và không mơ hồ, rồi mới AI/MT fallback.
+- Công cụ nhập GTA VI riêng: `python -m knowledge_base.gta6_cloud_sync --help`; cần `DICHGAME_ADMIN_TOKEN` và khi dịch cần `GEMINI_API_KEY`/`GEMINI_MODEL` qua biến môi trường. Không đưa key vào GitHub.
+- Bản dịch AI giữ trạng thái `AI_UNVERIFIED`; chỉ phục vụ cho app sau khi quản trị viên duyệt cả bản dịch và khai báo nguồn/giấy phép.
 
-Chạy kiểm thử: `python -m unittest discover -s knowledge_base/tests -v`.
+Hướng dẫn: [knowledge_base/IMPORTING.md](knowledge_base/IMPORTING.md) · [knowledge_base/MATCHING.md](knowledge_base/MATCHING.md).
 
-Đã có fuzzy matching và sửa OCR ở mức cơ bản, có giới hạn ứng viên và kiểm thử. Điều phối AI, đồng bộ máy chủ và kiểm duyệt cộng đồng vẫn là các giai đoạn tiếp theo; không được xem là đã hoàn thành chỉ vì đã có schema dữ liệu.
+Kiểm thử: `python -m unittest discover -s knowledge_base/tests -v`.
 
-- Bộ tra cứu offline: sửa OCR bằng từ điển game có ngưỡng tin cậy, exact/context match và fuzzy matching trên tập ứng viên FTS5 có giới hạn.
-- RapidFuzz được dùng nếu cài đặt; có fallback `difflib` không cần thư viện ngoài. Xem [knowledge_base/MATCHING.md](knowledge_base/MATCHING.md).
-
+**Tiến độ dữ liệu GTA VI:** hiện có 30 câu mẫu được lưu riêng trong D1 ở trạng thái chờ duyệt. File đầy đủ có 579.495 dòng và chưa được dịch/nạp toàn bộ; không tuyên bố đã hoàn tất dữ liệu khi chưa chạy batch với khóa API của chủ sở hữu.
