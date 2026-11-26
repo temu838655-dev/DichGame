@@ -53,28 +53,29 @@ incompatible rights. Keep author attribution and the original source URL.
    library. See [PROVIDERS.md](PROVIDERS.md).
 7. Resumable, bounded AI translation batches for staged source strings, preserving
    exact localization IDs and marking AI output as unverified.
-7. Community submissions with contributor attribution, authorized human review,
+8. Community submissions with contributor attribution, authorized human review,
    rejection, report queues, moderation history and a local maintainer CLI.
    See [MODERATION.md](MODERATION.md).
-8. Integrity-checked SQLite backup/restore, HMAC-signed offline packs and
+9. Integrity-checked SQLite backup/restore, HMAC-signed offline packs and
    verified-only CSV export compatible with the Android app's existing importer.
    See [BACKUP_SYNC.md](BACKUP_SYNC.md).
 
-9. Permission-aware game catalog registry and metadata-feed importer, with per-platform localization release records and link-only handling for sources without explicit integration rights. See [CATALOG.md](CATALOG.md). This does not scrape sites or download patch archives.
+10. Permission-aware game catalog registry and metadata-feed importer, with per-platform localization release records and link-only handling for sources without explicit integration rights. See [CATALOG.md](CATALOG.md). This does not scrape sites or download patch archives.
 
-## Excel source staging
+## GTA VI private cloud import
 
-Install `knowledge_base/requirements.txt`, then stage an authorized workbook (including blank Vietnamese cells) with:
+The Android app uses the read-only Cloudflare Worker API at `https://dichgame-gta6-api.temu838655.workers.dev` for verified GTA VI English-to-Vietnamese exact-text lookup. The API also accepts an optional original string ID, which takes priority when a future game hook can provide one. OCR-only calls do not know that ID and therefore use exact text lookup.
+
+The existing private admin Worker stages and uploads workbook batches into the separate `gta6_localization` table. No source workbook or dialogue dataset is committed to this public repository. Only rows with status `VERIFIED` are returned by the public lookup API.
+
+To stage the workbook or translate blank Vietnamese cells locally, set `DICHGAME_ADMIN_TOKEN` to the existing DịchGame Worker `ADMIN_TOKEN`. For Gemini translation also set `GEMINI_API_KEY` and `GEMINI_MODEL`, then run:
 
 ```bash
-python -m knowledge_base.import_cli --db ./translations.db --game-id gta6 --file ./GTA6_text_EN.xlsx --source-name "Authorized GTA6 localization source" --license-id "PERMISSION-GRANTED" --confirm-rights --source-only
+python -m pip install -r knowledge_base/requirements.txt
+python -m knowledge_base.gta6_cloud_sync --file ./GTA6_text_EN.xlsx --confirm-rights --max-rows 50
 ```
 
-The source-only path stores each original `ID`, English string, sheet and group context in `source_strings`; it does not invent translations or mark any text verified. The ID lookup is available through `KnowledgeBase.lookup_external_id` after translated rows are imported.
-
-## GTA VI source staging
-
-The source workbook can be staged without Vietnamese text using `--source-only`; blank target cells are retained in a pending queue rather than silently discarded. Install the optional Excel dependency from `knowledge_base/requirements.txt`. To translate a bounded batch, set `GEMINI_API_KEY` and run `python -m knowledge_base.translate_batch_cli --db ./translations.db --game-id gta6 --model YOUR_ENABLED_GEMINI_MODEL --batch-size 50`. Repeat to resume. This process is not a substitute for rights review or human quality assurance.
+That command stages source rows only. To translate the blank cells with Gemini, add `--translate`. Repeat the command to resume; rows already `AI_UNVERIFIED` or `VERIFIED` are skipped. Use `--max-rows 0` only when intentionally processing every remaining row. AI output remains unverified until a human reviewer approves it through the authenticated admin API.
 
 ## Remaining phases
 
