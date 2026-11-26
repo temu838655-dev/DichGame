@@ -238,7 +238,7 @@ class MainActivity : Activity() {
             c.addView(Ui.tv(this, "Thuyết minh: chỉ đọc phụ đề tiếng Việt đã có, không dịch.", 13.5f, Ui.SUB).apply { setPadding(0, Ui.dp(this@MainActivity, 8), 0, Ui.dp(this@MainActivity, 4)) })
         }
         if (!narrate) c.addView(Ui.switchRow(this, "✦ AI Tự động",
-            "Ưu tiên Việt hóa → bộ nhớ game → Gemini, tự chuyển khóa dự phòng.", p.aiAuto) { enabled ->
+            "Giữ nguyên câu tiếng Việt. Với câu ngoại ngữ, ưu tiên bản Việt hóa và bộ nhớ game trước khi gọi Gemini.", p.aiAuto) { enabled ->
             if (!CaptureService.active) { p.aiAuto = enabled; render() } else busyToast()
         })
 

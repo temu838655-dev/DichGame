@@ -28,14 +28,24 @@ object VietsubGuard {
     private val commonTone = "áàéèíìóòúùýỳ"
     private val safeShort = setOf("có", "dạ", "vâng", "không", "đi", "ừ", "được", "chạy", "cứu", "đừng", "thôi", "nhé")
 
+    /** Keep the original string for display and speech. Normalize only the detection copy. */
     fun isVietnamese(raw: String): Boolean {
-        val text = raw.trim()
+        val lines = java.text.Normalizer.normalize(raw, java.text.Normalizer.Form.NFC)
+            .lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+        return lines.isNotEmpty() && lines.all { isVietnameseLine(it) }
+    }
+
+    fun useOriginal(sourceLanguage: String, automatic: Boolean, text: String): Boolean =
+        sourceLanguage == "vi" || (automatic && isVietnamese(text))
+
+    private fun isVietnameseLine(text: String): Boolean {
         if (text.isEmpty()) return false
         val guess = LangDetect.guess(text)
-        if (guess?.lang == "vi") return true
         val low = text.lowercase(Locale.ROOT)
         val tokens = word.findAll(low).map { it.value }.toList()
         val count = tokens.count { it in vietnameseWords }
+        // A foreign name or a French circumflex alone does not identify a Vietnamese subtitle.
+        if (guess?.lang == "vi" && (count > 0 || low.any { it in 'ạ'..'ỹ' || it in "ơư" })) return true
         // Lời thoại Vietsub ngắn như "Có!" hoặc "Xin chào!" có thể chỉ chứa dấu sắc/huyền
         // (cũng tồn tại ở ngôn ngữ Latin khác); yêu cầu từ vựng Việt rõ thay vì bỏ sót.
         if (tokens.size == 1 && tokens[0] in safeShort) return true
@@ -44,14 +54,14 @@ object VietsubGuard {
         val accents = low.count { it in viDiacritics }
         // Phụ đề không dấu có thể bị bộ đoán ngôn ngữ đánh nhầm chỉ bởi 1-2 từ
         // thông dụng trùng tiếng Tây Ban Nha/Pháp. Chỉ nhận khi ít nhất 3 tín hiệu Việt rõ.
-        if (accents == 0 && noAccentCount >= 3 &&
+        if (accents == 0 && tokens.distinct().count { it in noAccentWords } >= 3 &&
             (count + noAccentCount) * 3 >= tokens.size) return true
         if (guess != null && guess.lang != "vi") return false
         return when {
             accents >= 2 && count >= 1 -> true
             accents >= 1 && count >= 1 -> true
             // Phụ đề viết không dấu vẫn có thể đọc, nhưng phải đủ tín hiệu để tránh đọc tiếng Anh.
-            accents == 0 && (count + noAccentCount) >= 3 && (count + noAccentCount) * 3 >= tokens.size -> true
+            accents == 0 && tokens.distinct().count { it in vietnameseWords || it in noAccentWords } >= 3 && (count + noAccentCount) * 3 >= tokens.size -> true
             else -> false
         }
     }

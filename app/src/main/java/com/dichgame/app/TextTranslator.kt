@@ -176,6 +176,10 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         val style = p.styleText()
         fun stillCurrent(): Boolean = !closed && style == p.styleText() && profile == p.profile && gameDescription == p.game && game == PackStore.gameName(p)
         fun emit(result: Tr) { if (stillCurrent()) done(result) }
+        if (VietsubGuard.useOriginal(lang, p.aiAuto, text)) {
+            emit(Tr(text, null, false, "vietsub"))
+            return
+        }
         val key = listOf(game, lang, speaker.orEmpty(), ui.toString(), text.trim(), style, externalId.orEmpty())
         val hist = if (ui) emptyList() else history.takeLast(p.ctxCount)
         if (!ui) {
@@ -248,7 +252,6 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             return
         }
 
-        if (lang == "vi") { emit(Tr(text, null, false, "may")); return }
         if (!aiOn) {
             if (Gta6RemoteLookup.supports(game, lang)) {
                 try {

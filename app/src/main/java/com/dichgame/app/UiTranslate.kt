@@ -574,7 +574,8 @@ class UiTranslate(
             e.upgrading = false
             e.at = SystemClock.uptimeMillis()
             val restored = UiText.restore(tr.text, prot)
-            val valid = restored != null && UiText.safeTranslation(src, restored, tr.uncertain, lang)
+            val originalVietnamese = tr.via == "vietsub" && restored == src
+            val valid = originalVietnamese || (restored != null && UiText.safeTranslation(src, restored, tr.uncertain, lang))
             if (upgrading && e.vi != null && !e.unsure && (!valid || tr.via == "may")) {
                 pump(); return@translateFull
             }
@@ -582,7 +583,7 @@ class UiTranslate(
             val same = UiText.key(tr.text) == UiText.key(prot.text)
             when {
                 restored == null -> { e.failed = true; missed[src] = "mất mã giữ chỗ khi dịch, giữ nguyên chữ gốc" }
-                same -> { e.failed = true; missed[src] = "chưa dịch được (bản dịch giống chữ gốc)" }
+                same && !originalVietnamese -> { e.failed = true; missed[src] = "chưa dịch được (bản dịch giống chữ gốc)" }
                 !valid -> { e.failed = true; e.unsure = true; missed[src] = "bản dịch không đạt kiểm tra: $restored" }
                 else -> {
                     e.vi = restored
@@ -603,7 +604,7 @@ class UiTranslate(
         for (it in items) {
             val e = cache[it.key] ?: continue
             val vi = e.vi ?: continue
-            if (!e.unsure && !e.failed) list.add(UiOverlay.Draw(it.box, vi, it.bg, it.fg, false, it.corners, it.lines))
+            if (!e.unsure && !e.failed && e.via != "vietsub") list.add(UiOverlay.Draw(it.box, vi, it.bg, it.fg, false, it.corners, it.lines))
         }
         overlay.set(list)
         shown = list.size
