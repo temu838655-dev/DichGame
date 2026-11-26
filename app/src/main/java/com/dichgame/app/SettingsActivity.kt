@@ -295,6 +295,11 @@ class SettingsActivity : Activity() {
                 row(Ui.switchRow(a, "Hiện câu thoại trước",
                     "Hiện câu vừa dịch bằng chữ nhỏ phía trên phụ đề hiện tại (trên điện thoại).", p.showPrev) { p.showPrev = it }, 12, 12)
                 divide()
+                val holdSeconds = listOf(0) + (2..8)
+                fun holdLabel(seconds: Int) = if (seconds == 0) "Tự động (2–8 giây)" else "$seconds giây"
+                addView(Ui.dropRow(a, "Thời gian giữ câu cuối", { holdLabel(p.lastSubtitleSeconds) },
+                    { holdSeconds.map { holdLabel(it) } }) { p.lastSubtitleSeconds = holdSeconds[it] })
+                divide()
                 row(Ui.seekRow(a, "Cỡ chữ phụ đề", { v -> "$v%" }, 50, 200, p.subScale) { p.subScale = it }, 12, 6)
                 divide()
                 addView(Ui.dropRow(a, "Kiểu chữ", { Prefs.STYLES[p.style] }, { Prefs.STYLES }) { p.style = it })

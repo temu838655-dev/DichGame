@@ -12,11 +12,23 @@ class SubtitlePacerTest {
 
     @Test fun holdScalesWithTextAndSpeech() {
         val p = SubtitlePacer()
-        assertEquals(1_400L, p.holdFor("Đi."))
+        assertEquals(2_000L, p.holdFor("Đi."))
         assertTrue(p.holdFor("Chúng ta cần rời khỏi nơi này trước khi lính canh tìm thấy chúng ta tối nay") > 3_000)
         assertEquals(8_000L, p.holdFor("x".repeat(500)))
         // nhân vật nói chậm 4 giây một câu ngắn: giữ ít nhất bằng thời gian nói
         assertTrue(p.holdFor("Đi nào.", speechMs = 4_000) >= 4_000)
+    }
+
+    @Test fun newCaptionImmediatelyReplacesOlderTimers() {
+        val p = SubtitlePacer()
+        p.showImmediately(item("a"), 100)
+        p.submit(item("b"), 150)
+        val duration = p.holdFor("c", fixedSeconds = 5)
+        assertEquals("c", p.showImmediately(item("c", hold = duration), 200).text)
+        assertEquals(0, p.queued)
+        assertFalse(p.mayHide(5199))
+        assertTrue(p.mayHide(5200))
+        assertNull(p.poll(5200))
     }
 
     @Test fun firstItemShowsImmediately() {

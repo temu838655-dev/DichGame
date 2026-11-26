@@ -480,6 +480,10 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("showorig", false)
         set(v) = sp.edit().putBoolean("showorig", v).apply()
     /** Hiện câu vừa dịch trước đó bằng chữ nhỏ phía trên phụ đề hiện tại. */
+    var lastSubtitleSeconds: Int
+        get() = sp.getInt("last_subtitle_seconds", 0).takeIf { it in 2..8 } ?: 0
+        set(value) = sp.edit().putInt("last_subtitle_seconds", value.takeIf { it in 2..8 } ?: 0).apply()
+
     var showPrev: Boolean
         get() = sp.getBoolean("showprev", false)
         set(v) = sp.edit().putBoolean("showprev", v).apply()

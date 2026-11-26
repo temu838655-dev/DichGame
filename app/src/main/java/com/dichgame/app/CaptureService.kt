@@ -744,9 +744,8 @@ class CaptureService : Service() {
         // Nếu một câu đã chậm hơn 8 giây và câu mới đang chờ, bỏ kết quả cũ để không lệch cảnh.
         if (jobs.isNotEmpty() && now - w.seenAt > 8_000L) { stats.inc("hang_day"); return }
         val text = cards.joinToString(" ") { it.tr.text }
-        val item = SubtitlePacer.Item(text, w.src, pacer.holdFor(text, w.speechMs), cards[0].speaker, Payload(cards, w.seenAt))
-        val shown = pacer.submit(item, now, w.replace)
-        if (shown != null) render(shown) else { stats.inc("hang_cho"); scheduleHide() }
+        val item = SubtitlePacer.Item(text, w.src, pacer.holdFor(text, w.speechMs, Prefs(this).lastSubtitleSeconds), cards[0].speaker, Payload(cards, w.seenAt))
+        render(pacer.showImmediately(item, now))
     }
 
     private fun render(item: SubtitlePacer.Item) {
@@ -901,7 +900,7 @@ class CaptureService : Service() {
             if (textOnScreen) { textOnScreen = false; textGoneSince = now }
             fusion.onScreenEmpty(now)
             last = ""; cand = ""; stable = 0
-            if (narrate || pacer.showing == null) { if (!autoShown) show("") }
+            if (pacer.showing == null) { if (!autoShown) show("") }
             else if (canHide(now)) softHide() else scheduleHide()
             finishBusy()
             return
@@ -928,7 +927,10 @@ class CaptureService : Service() {
                 val phrase = u.text.replace("\n", sep)
                 Card(u.speaker, "", TextTranslator.Tr(phrase, null, false, "doc"), false)
             }
-            showCards(cards, Src.OCR)
+            val phrase = cards.joinToString(" ") { it.tr.text }
+            val hold = pacer.holdFor(phrase, fixedSeconds = prefs.lastSubtitleSeconds)
+            render(pacer.showImmediately(SubtitlePacer.Item(phrase, Src.OCR, hold,
+                cards.first().speaker, Payload(cards, scanAt)), now))
             finishBusy()
             return
         }

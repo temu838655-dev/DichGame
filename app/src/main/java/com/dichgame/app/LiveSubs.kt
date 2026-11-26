@@ -607,9 +607,8 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (cards.isEmpty()) return
         val now = System.currentTimeMillis()
         val text = cards.joinToString(" ") { it.tr.text }
-        val item = SubtitlePacer.Item(text, w.src, pacer.holdFor(text, w.speechMs), cards[0].speaker, Payload(cards, w.seenAt))
-        val shown = pacer.submit(item, now, w.replace)
-        if (shown != null) render(shown) else { stats.inc("hang_cho"); scheduleHide() }
+        val item = SubtitlePacer.Item(text, w.src, pacer.holdFor(text, w.speechMs, Prefs(act).lastSubtitleSeconds), cards[0].speaker, Payload(cards, w.seenAt))
+        render(pacer.showImmediately(item, now))
     }
 
     private fun render(item: SubtitlePacer.Item) {
