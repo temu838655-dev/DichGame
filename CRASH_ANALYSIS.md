@@ -28,3 +28,7 @@ Android CaptureService OCR/translation queue, bitmap ownership, audio worker tea
 
 ## Cloud OCR geometry hardening — 2026-11-26
 Gemini bounding-box coordinates are untrusted model output. The previous parser multiplied arbitrary JSON doubles by image dimensions and passed the results into Rect. Non-finite, inverted or out-of-range coordinates could silently become incorrect overlay geometry. The parser now rejects invalid coordinates and clips valid boxes to the image, enforcing at least one pixel in each dimension. JVM regression coverage added; CI pending.
+
+
+## Cloud OCR queue bound — 2026-11-26
+The cloud OCR worker previously used Executors.newSingleThreadExecutor(), whose pending task queue is unbounded. It now permits one running request and one waiting image; further requests are rejected through the existing RejectedExecutionException handler, which recycles the bitmap. The worker has a stable name for diagnostics. Shutdown remains graceful so already accepted tasks can finish and release their owned bitmaps.
