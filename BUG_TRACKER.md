@@ -80,3 +80,14 @@ Do not infer Android runtime success from Python tests. Re-poll the exact run ID
 Status rule: FIXED IN BRANCH is not VERIFIED. Reclassify only after CI, live API, and device evidence are available.
 
 | TTS-03 | HIGH | `Speaker.speakSystem()` returned when Android TextToSpeech was not yet ready, silently discarding early translated lines during asynchronous engine initialization. | `Speaker.kt` | Buffer up to 5 pending system-voice utterances, suppress duplicates, drain after successful initialization, clear on stop/shutdown. | FIXED IN BRANCH — Android/device test pending |
+
+
+## Enterprise reliability pass — 2026-11-26
+| ID | Severity | Finding / root cause | Remediation | Status |
+|---|---|---|---|---|
+| TV-RELAY-01 | HIGH | TV TCP listener returned permanently after a transient socket exception. | Restart listener with bounded retry delay and explicit shutdown flag. | FIXED ON BRANCH — CI pending |
+| TV-RELAY-02 | HIGH | TV UDP discovery returned permanently after a transient socket exception. | Restart discovery socket with bounded retry delay and explicit shutdown flag. | FIXED ON BRANCH — CI pending |
+| TV-RELAY-03 | HIGH | One raw thread was created per accepted TV client without a concurrency/queue limit. | Bounded executor (2 core, 4 max, queue 32); reject/close overload sockets. | FIXED ON BRANCH — CI pending |
+| CI-SIGN-01 | HIGH | Missing signing secrets caused public branch build to fail before unit tests and APK compilation. | Non-public branches use an ephemeral runner-local CI key and clearly labeled CI-only artifact; public Release remains blocked without private signing secrets. | FIXED ON BRANCH — CI pending |
+| SEC-001 | CRITICAL | Old Android signing key/password were exposed in public Git history. | No reuse or key replacement was performed. Owner decision required; a new key is not update-compatible with existing sideload installs absent a supported key-rotation path. | BLOCKED |
+| QA-GTA6-01 | HIGH | No GTA 6 game/capture hardware or annotated screenshot corpus available. | Add explicit synthetic test corpus and run on supported hardware before claiming compatibility. | BLOCKED — hardware/corpus |
