@@ -100,7 +100,7 @@ class CaptureService : Service() {
     private val maxJobs = 6
     private var translating = false
     private var translatingSince = 0L
-    private var translateToken = 0
+    private val translationEpoch = TranslationCallbackEpoch()
     private val fusion = SubtitleFusion()
     private val pacer = SubtitlePacer(mergePayload = { a, b ->
         val x = a as? Payload
@@ -170,7 +170,7 @@ class CaptureService : Service() {
         if (context == activeGameContext) return false
         activeGameContext = context
         speakers = SpeakerBook(PackStore.cast(p).map { it.name } + p.detectedSpeakers())
-        translateToken++
+        translationEpoch.invalidate()
         translating = false
         jobs.clear()
         fusion.clear()
@@ -700,14 +700,18 @@ class CaptureService : Service() {
         pacer.poll(now)?.let { render(it) }
         if (translating) {
             if (now - translatingSince < 30_000L) return
-            translating = false; stats.inc("dich_treo")
+            // Hủy quyền callback của request cũ trước khi chạy job tiếp theo.
+            // Nếu AI trả lời muộn, kết quả cũ không được phép ghi đè phụ đề mới.
+            translating = false
+            translationEpoch.invalidate()
+            stats.inc("dich_treo")
         }
         val w = jobs.pollFirst() ?: return
         translating = true
         translatingSince = now
-        val token = ++translateToken
+        val token = translationEpoch.begin()
         translateLines(w) { cards ->
-            if (token != translateToken || !running) return@translateLines
+            if (!translationEpoch.isCurrent(token) || !running) return@translateLines
             translating = false
             deliver(w, cards)
             handler.post { pump() }
