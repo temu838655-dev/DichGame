@@ -278,3 +278,44 @@ Links: [KB #227](https://github.com/temu838655-dev/DichGame/actions/runs/4571163
 - `Speaker.kt`: system-voice utterances arriving before Android TextToSpeech initialization completes are now buffered (maximum 5) and drained after the engine reports SUCCESS. Duplicate pending text is suppressed; an explicit interrupt clears pending text; stop/shutdown clears the buffer.
 - Rationale: the prior `speakSystem()` returned immediately when `ready == false`, silently dropping translations during the engine initialization window. This repair prevents that race from losing early narration.
 - Verification: source change committed; await Android JVM/Gradle CI. Physical TTS initialization and actual Vietnamese audio still require a device test.
+ 
+
+---
+
+## Enterprise reliability pass — 2026-11-26 08:xx UTC+8
+
+### Work performed on branch `fix/tv-receiver-resilience-2026-11-26`
+- [x] Reconfirmed repository default branch `main`, package IDs and latest commit.
+- [x] Reviewed CaptureService translation queue/watchdog, OCR ownership and parsing, DialogueSplitter geometry, Android TV receiver and release signing workflow.
+- [x] Fixed TV TCP listener lifecycle: transient listener failures now retry instead of permanently disabling the receiver.
+- [x] Fixed TV UDP discovery lifecycle: transient discovery failures now retry.
+- [x] Bounded TV client concurrency to 4 workers and 32 queued sockets; overload sockets are closed instead of spawning unbounded threads.
+- [x] TV service shutdown now sets a stop flag, closes listener/discovery sockets and stops the bounded executor.
+- [x] Added GTA6_LOCALIZATION.md, OCR_TEST_REPORT.md, TV_CONNECTION_TEST.md and CRASH_ANALYSIS.md with explicit test limitations.
+- [x] Hardened CI-only signing path: non-public branches generate an ephemeral runner-local key so compilation/tests can proceed; CI artifacts are labeled CI-only and no Release is created. Public Release still requires the four private signing secrets and certificate compatibility checks.
+- [ ] GitHub Actions run #2033 (45732076337) must finish before declaring compile/test success.
+- [ ] Android TV hardware, router discovery, phone/console and GTA 6 gameplay are not available in this environment.
+- [ ] Signing blocker remains: the old signing key was exposed in public Git history; a new key cannot update-install over old installations. No key was generated or published for users in this pass.
+
+### Latest verified observations
+- Main run #2029 (45729002127) failed at the signing gate before NDK setup, unit tests or APK builds; this was not an application compile failure.
+- Existing Release list includes build-2021 and older builds; no new production Release was created by this pass.
+- New branch workflow is pending; report only its final status after polling the run.
+
+### Next steps
+1. Poll #2033 and fix any Kotlin/Gradle/test failures.
+2. Add explicit three-line OCR regression coverage and invalid cloud-box regression tests if not already covered by an active PR.
+3. Review and reconcile existing security PRs without merging dirty/conflicted branches.
+4. Validate TV protocol end-to-end and test receiver restart/overload on hardware.
+5. Keep public Release blocked until owner-approved signing strategy is resolved.
+
+
+### Follow-up OCR hardening — 2026-11-26
+- [x] Corrected three-line subtitle test fixture after CI exposed a literal-backslash-n mistake (469 tests: 1 failed due to fixture; production parser unchanged by this fix).
+- [x] Hardened Gemini OCR bounding-box parser against NaN/Infinity, out-of-range, inverted/empty coordinates and invalid image dimensions.
+- [x] Added OcrGeometryTest with six geometry regression cases.
+- [ ] Await run #2047 before claiming tests pass.
+
+- [x] Hardened TV HTTP parser: max 32 headers / 16 KiB, max 8 KiB non-audio request body, reject empty subtitle body; PCM remains separately capped at 6 MB.
+
+- [x] Replaced unbounded cloud OCR single-thread queue with a bounded executor (1 active + 1 queued); overflow path already recycles rejected input bitmap.

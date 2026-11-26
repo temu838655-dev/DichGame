@@ -20,10 +20,18 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
+import android.util.Log
 import org.json.JSONObject
 import java.io.InputStream
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.InetSocketAddress
+import java.net.SocketException
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.security.SecureRandom
 import java.util.Locale
 
@@ -66,8 +74,14 @@ private const val MAX_AUDIO = 6_000_000
 class TvService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private val wm by lazy { getSystemService(WINDOW_SERVICE) as WindowManager }
-    private var server: ServerSocket? = null
-    private var disc: java.net.DatagramSocket? = null
+    @Volatile private var server: ServerSocket? = null
+    @Volatile private var disc: java.net.DatagramSocket? = null
+    private val stopping = AtomicBoolean(false)
+    // Giới hạn số client và hàng đợi để TV không tạo vô hạn thread khi điện thoại gửi dồn.
+    private val clients = ThreadPoolExecutor(
+        2, 4, 30L, TimeUnit.SECONDS, ArrayBlockingQueue(32),
+        ThreadPoolExecutor.AbortPolicy()
+    )
     private var tts: TextToSpeech? = null
     private var track: AudioTrack? = null
     private var subView: TextView? = null
@@ -91,8 +105,8 @@ class TvService : Service() {
         getSharedPreferences("tv", MODE_PRIVATE).getStringSet("tokens", emptySet())?.let { TvState.tokens.addAll(it) }
         handler.post(rotate)
         tts = TextToSpeech(this) { s -> if (s == TextToSpeech.SUCCESS) tts?.setLanguage(Locale("vi", "VN")) }
-        Thread { listen() }.start()
-        Thread { discover() }.start()
+        Thread({ listen() }, "DichGame-TV-listener").start()
+        Thread({ discover() }, "DichGame-TV-discovery").start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -104,33 +118,69 @@ class TvService : Service() {
     }
 
     private fun listen() {
-        try {
-            val ss = ServerSocket(8765)
-            server = ss
-            while (!ss.isClosed) {
-                val s = ss.accept()
-                Thread {
-                    try { handle(s) } catch (_: Exception) {} finally { try { s.close() } catch (_: Exception) {} }
-                }.start()
+        while (!stopping.get()) {
+            var ss: ServerSocket? = null
+            try {
+                val listener = ServerSocket().apply {
+                    reuseAddress = true
+                    bind(InetSocketAddress(8765), 32)
+                }
+                ss = listener
+                server = listener
+                while (!stopping.get() && !listener.isClosed) {
+                    val socket = listener.accept()
+                    try {
+                        clients.execute {
+                            try { handle(socket) }
+                            catch (e: Exception) { Log.w("DichGameTV", "Client request failed", e) }
+                            finally { runCatching { socket.close() } }
+                        }
+                    } catch (_: RejectedExecutionException) {
+                        // Quá tải: từ chối client mới thay vì tạo thêm thread hoặc giữ socket mở.
+                        runCatching { socket.close() }
+                    }
+                }
+            } catch (e: SocketException) {
+                if (!stopping.get()) Log.w("DichGameTV", "TV listener socket interrupted; retrying", e)
+            } catch (e: Exception) {
+                if (!stopping.get()) Log.e("DichGameTV", "TV listener failed; retrying", e)
+            } finally {
+                runCatching { ss?.close() }
+                if (server === ss) server = null
             }
-        } catch (_: Exception) {}
+            if (!stopping.get()) {
+                try { Thread.sleep(1000L) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); break }
+            }
+        }
     }
 
     /** Trả lời gói quảng bá "DICHGAME?" của điện thoại để nó tự tìm ra địa chỉ TV. */
     private fun discover() {
-        try {
-            val ds = java.net.DatagramSocket(8766)
-            disc = ds
-            val buf = ByteArray(64)
-            while (!ds.isClosed) {
-                val p = java.net.DatagramPacket(buf, buf.size)
-                ds.receive(p)
-                if (String(p.data, 0, p.length) == "DICHGAME?") {
-                    val r = "DICHGAME:8765".toByteArray()
-                    ds.send(java.net.DatagramPacket(r, r.size, p.address, p.port))
+        while (!stopping.get()) {
+            var ds: java.net.DatagramSocket? = null
+            try {
+                val discoverySocket = java.net.DatagramSocket(8766)
+                ds = discoverySocket
+                disc = discoverySocket
+                val buf = ByteArray(64)
+                while (!stopping.get() && !discoverySocket.isClosed) {
+                    val packet = java.net.DatagramPacket(buf, buf.size)
+                    discoverySocket.receive(packet)
+                    if (String(packet.data, 0, packet.length) == "DICHGAME?") {
+                        val response = "DICHGAME:8765".toByteArray(Charsets.UTF_8)
+                        discoverySocket.send(java.net.DatagramPacket(response, response.size, packet.address, packet.port))
+                    }
                 }
+            } catch (e: Exception) {
+                if (!stopping.get()) Log.w("DichGameTV", "TV discovery interrupted; retrying", e)
+            } finally {
+                runCatching { ds?.close() }
+                if (disc === ds) disc = null
             }
-        } catch (_: Exception) {}
+            if (!stopping.get()) {
+                try { Thread.sleep(1000L) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); break }
+            }
+        }
     }
 
     private fun line(i: InputStream): String? {
@@ -158,15 +208,32 @@ class TvService : Service() {
         var token = ""
         var rate = 22050
         var speed = 1f
+        var headerBytes = 0
+        var headerCount = 0
         while (true) {
             val h = line(i) ?: return
+            headerCount++
+            headerBytes += h.length
+            // Chặn client gửi vô hạn header nhỏ để chiếm worker trong thời gian dài.
+            if (headerCount > 32 || headerBytes > 16_384) {
+                reply(s, 431, "headers too large")
+                return
+            }
             if (h.isEmpty()) break
             val k = h.substringBefore(':').trim().lowercase()
             val v = h.substringAfter(':', "").trim()
-            if (k == "content-length") len = v.toIntOrNull() ?: 0
+            if (k == "content-length") len = v.toIntOrNull() ?: -1
             if (k == "x-token") token = v
             if (k == "x-rate") rate = v.toIntOrNull() ?: 22050
             if (k == "x-speed") speed = (v.toFloatOrNull() ?: 1f).coerceIn(0.5f, 2.5f)
+        }
+        if (path != "/audio" && (len < 0 || len > 8192)) {
+            reply(s, 413, "body too large")
+            return
+        }
+        if (path == "/sub" && len == 0) {
+            reply(s, 400, "empty body")
+            return
         }
         var status = 404
         var out = ""
@@ -292,9 +359,11 @@ class TvService : Service() {
     }
 
     override fun onDestroy() {
+        stopping.set(true)
         handler.removeCallbacksAndMessages(null)
         try { server?.close() } catch (_: Exception) {}
         try { disc?.close() } catch (_: Exception) {}
+        clients.shutdownNow()
         try { subView?.let { wm.removeView(it) }; regView?.let { wm.removeView(it) } } catch (_: Exception) {}
         try { track?.stop(); track?.release() } catch (_: Exception) {}
         tts?.shutdown()

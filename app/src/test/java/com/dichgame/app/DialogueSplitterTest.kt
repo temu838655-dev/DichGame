@@ -105,6 +105,15 @@ class DialogueSplitterTest {
         assertEquals("こんにちは", r[0].text)
     }
 
+    @Test fun threeSubtitleLinesInOneOcrBlockAreAllKeptInReadingOrder() {
+        val r = DialogueSplitter.split(
+            listOf(OcrLine("We have to get out\nbefore they close\nall the exits.", Box(100, 800, 700, 890))),
+            cjk = false
+        )
+        assertEquals(1, r.size)
+        assertEquals("We have to get out before they close all the exits.", r.single().text)
+    }
+
     @Test fun wrappedLinesOfOneBoxAreJoined() {
         val r = DialogueSplitter.split(
             listOf(line("I never thought I would see", 100, 800, 700, 830), line("this place again.", 100, 832, 400, 862)),

@@ -26,3 +26,13 @@ Branch: `fix/ai-translation-tts-400-latency`
 - Real Gemini API: not verified; requires a valid API key with access to the selected models.
 - Android device TTS/audio focus/background behavior: not verified.
 - APK Release: not published. Do not treat this unreleased branch as a production build.
+
+
+## Unreleased — enterprise reliability pass (2026-11-26)
+
+- Android TV receiver: retry TCP listener and UDP discovery after transient socket failures.
+- Android TV receiver: bound concurrent clients and pending socket queue to reduce thread/memory exhaustion risk.
+- Android TV receiver: stop accepting work and close sockets/workers during service shutdown.
+- CI: allow non-public branches to run tests/builds using an ephemeral runner-only signing key; label resulting artifacts CI-only and never publish them as a Release.
+- No production APK Release was created. CI-only APKs, if produced, are not compatible with updating an existing installed app.
+- GTA 6 gameplay, physical TV and console compatibility remain unverified.
