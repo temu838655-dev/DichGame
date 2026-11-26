@@ -237,11 +237,6 @@ class MainActivity : Activity() {
         } else {
             c.addView(Ui.tv(this, "Thuyết minh: chỉ đọc phụ đề tiếng Việt đã có, không dịch.", 13.5f, Ui.SUB).apply { setPadding(0, Ui.dp(this@MainActivity, 8), 0, Ui.dp(this@MainActivity, 4)) })
         }
-        if (!narrate) c.addView(Ui.switchRow(this, "✦ AI Tự động",
-            "Giữ nguyên câu tiếng Việt. Với câu ngoại ngữ, ưu tiên bản Việt hóa và bộ nhớ game trước khi gọi Gemini.", p.aiAuto) { enabled ->
-            if (!CaptureService.active) { p.aiAuto = enabled; render() } else busyToast()
-        })
-
         val dark = Color.parseColor("#2A1A08")
         val act = Ui.hbox(this)
         act.gravity = Gravity.CENTER
@@ -272,34 +267,23 @@ class MainActivity : Activity() {
     }
 
     private fun segment(): View {
-        val seg = Ui.hbox(this)
-        seg.background = Ui.bg(this, Ui.CARD2, 22)
-        fun item(label: String, on: Boolean, glyph: Boolean, click: () -> Unit): View {
-            val b = Ui.hbox(this)
-            b.gravity = Gravity.CENTER
-            val fg = if (on) Color.parseColor("#2A1A08") else Ui.TEXT
-            if (on) b.background = Ui.goldBg(this, 20)
-            b.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8))
-            if (glyph) b.addView(GamepadGlyph(this, fg, Ui.GOLD), Ui.lp(Ui.dp(this, 20), Ui.dp(this, 14)).apply { rightMargin = Ui.dp(this@MainActivity, 6) })
-            b.addView(Ui.tv(this, label, 14f, fg).apply { maxLines = 1 })
-            b.setOnClickListener { click() }
-            return b
+        return Ui.button(this, p.processingMode.label + " ▾") {
+            if (CaptureService.active) busyToast() else {
+                val modes = ProcessingMode.values()
+                Ui.pick(this, "Chế độ xử lý", modes.map { it.label }) { i ->
+                    p.processingMode = modes[i]
+                    render()
+                }
+            }
         }
-        seg.addView(item("Dịch", !p.narrate, true) {
-            if (!CaptureService.active) { p.mode = Prefs.MODE_TRANSLATE; render() } else busyToast()
-        }, Ui.lp(0, WRAP_CONTENT, 1f))
-        seg.addView(item("Thuyết minh", p.narrate, false) {
-            if (!CaptureService.active) { p.mode = Prefs.MODE_VIETSUB; render() } else busyToast()
-        }, Ui.lp(0, WRAP_CONTENT, 1f))
-        return seg
     }
 
     private fun busyToast() = Toast.makeText(this, "Hãy dừng trước khi đổi chế độ.", Toast.LENGTH_SHORT).show()
 
     private fun help() {
         AlertDialog.Builder(this, R.style.DgDialog)
-            .setTitle("Hai chế độ DichGame")
-            .setMessage("Dịch: nhận dạng chữ trên màn hình và dịch sang tiếng Việt. Có thể bật tùy chọn AI Tự động để nhận diện tên game, ưu tiên gói Việt hóa và bộ nhớ dịch trước Gemini.\n\n" +
+            .setTitle("Chế độ xử lý")
+            .setMessage("Chỉ dịch hiển thị phụ đề tiếng Việt. Dịch và thuyết minh đọc thêm bản dịch. AI thông minh tự động giữ nguyên câu tiếng Việt và ưu tiên gói Việt hóa, bộ nhớ dịch khi gặp câu ngoại ngữ.\n\n" +
                 "Thuyết minh: chỉ đọc phụ đề tiếng Việt đã có trong phim Vietsub hoặc game Việt hóa, không dịch.\n\n" +
                 "Giọng đọc có hai lựa chọn: Cơ bản và AI (Gemini).\n\n" +
                 "Kéo khung nhận dạng vào vùng có phụ đề và khóa khung để bắt đầu.")

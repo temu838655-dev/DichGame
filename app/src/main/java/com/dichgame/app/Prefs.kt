@@ -11,6 +11,10 @@ class Prefs(ctx: Context) {
     val sp: SharedPreferences = app.getSharedPreferences("dg", Context.MODE_PRIVATE)
 
     init {
+        if (!sp.contains("ai_auto_enabled")) {
+            // Existing installations retain the previous opt-in default.
+            sp.edit().putBoolean("ai_auto_enabled", sp.all.isEmpty()).apply()
+        }
         // Migrate legacy plaintext credentials as soon as app preferences are opened,
         // not only when the player first enters the AI settings screen.
         ApiSecrets.read(app, "key")
@@ -91,12 +95,22 @@ class Prefs(ctx: Context) {
         get() = mode == MODE_VIETSUB
         set(value) { mode = if (value) MODE_VIETSUB else MODE_TRANSLATE }
 
-    /** AI Tự động là một TÙY CHỌN CỦA CHẾ ĐỘ DỊCH, không phải chế độ thứ ba. */
     var aiAuto: Boolean
         get() = !narrate && sp.getBoolean("ai_auto_enabled", false)
+        set(value) { sp.edit().putBoolean("ai_auto_enabled", value).apply() }
+
+    var processingMode: ProcessingMode
+        get() = ProcessingMode.fromSettings(narrate, aiAuto, speak)
         set(value) {
-            val editor = sp.edit().putBoolean("ai_auto_enabled", value)
-            if (value) editor.putBoolean("learn_translations", true).putBoolean("charvoices", true)
+            val narrating = value == ProcessingMode.NARRATE_ONLY
+            val editor = sp.edit().putString("smart_mode", if (narrating) MODE_VIETSUB else MODE_TRANSLATE)
+                .putBoolean("narrate", narrating)
+                .putBoolean("ai_auto_enabled", value == ProcessingMode.AUTOMATIC)
+            when (value) {
+                ProcessingMode.TRANSLATE_ONLY -> editor.putBoolean("speak", false).putBoolean("listen_only", false)
+                ProcessingMode.TRANSLATE_AND_SPEAK -> editor.putBoolean("speak", true)
+                else -> Unit
+            }
             editor.apply()
         }
 

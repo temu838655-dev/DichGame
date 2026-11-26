@@ -39,20 +39,12 @@ class TranslateActivity : Activity() {
         val a = this
         screen("Cách dịch") {
             group(null, 14, 4) {
-                addView(modeSegment())
-                addView(Ui.tv(a,
-                    if (p.narrate) "Chỉ đọc nguyên văn phụ đề tiếng Việt, không dịch; phù hợp phim Vietsub và game Việt hóa."
-                    else "Dịch chữ trên màn hình sang tiếng Việt. AI Tự động là tùy chọn trong chế độ Dịch.", 13f, Ui.SUB).apply {
-                    setPadding(Ui.dp(a, 4), Ui.dp(a, 10), 0, 0)
+                val modes = ProcessingMode.values()
+                addView(Ui.dropRow(a, "Chế độ xử lý", { p.processingMode.label }, { modes.map { it.label } }) {
+                    p.processingMode = modes[it]
+                    render()
                 })
-            }
-            if (!p.narrate) {
-                group("TÙY CHỌN DỊCH", 14) {
-                    addView(Ui.switchRow(a, "✦ AI Tự động", "Tự nhận diện tên game khi đủ chứng cứ, ưu tiên bản Việt hóa và bộ nhớ rồi mới gọi Gemini.", p.aiAuto) {
-                        p.aiAuto = it
-                        render()
-                    })
-                }
+                if (p.narrate) addView(Ui.tv(a, "Đọc nguyên văn phụ đề tiếng Việt trong phim Vietsub và game Việt hóa.", 13f, Ui.SUB))
             }
             if (p.aiAuto) {
                 group("AI TỰ ĐỘNG", 14) {
@@ -143,12 +135,6 @@ class TranslateActivity : Activity() {
         }
         return row
     }
-
-    private fun modeSegment(): View =
-        Ui.segmented(this, listOf("Dịch", "Thuyết minh"), if (p.narrate) 1 else 0) { i ->
-            p.narrate = i == 1
-            render()
-        }
 
     private fun engineRow(title: String, badge: String?, sub: String, engine: String): View {
         val row = Ui.hbox(this)
