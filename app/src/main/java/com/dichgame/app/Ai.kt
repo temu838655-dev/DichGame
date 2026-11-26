@@ -204,11 +204,19 @@ object Ai {
     /** Một lần gọi AI (không thử lại). Dịch câu thì dùng [translateRetry]. */
     fun translate(p: Prefs, prompt: String, forceCloud: Boolean = false): String {
         val out: String = if (forceCloud || (!p.aiAuto && p.engine == Prefs.ENGINE_CLOUD)) {
+            val endpoint = cloudEndpoint(p.cloudUrl)
+            val model = p.cloudModel.trim()
+            if (model.isEmpty()) throw AiException(400, "Hãy chọn model CloudAPI.")
             val body = JSONObject()
-                .put("model", p.cloudModel)
+                .put("model", model)
                 .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
-            val r = post(cloudEndpoint(p.cloudUrl), body, mapOf("Authorization" to "Bearer " + p.cloudKey), metric = "api_dich_cloud")
-            AiRetry.cloudText(r)
+            val r = post(endpoint, body, mapOf("Authorization" to "Bearer " + p.cloudKey), metric = "api_dich_cloud")
+            val response = JSONObject(r)
+            AiRetry.cloudText(response).also {
+                val host = URL(endpoint).host
+                val provider = if (host.equals("api.openai.com", true)) "OpenAI" else "CloudAPI ($host)"
+                SessionStats.live.recordTranslationModel(provider, model, response.opt("model") as? String)
+            }
         } else {
             val model = p.geminiModel.trim()
             if (!model.matches(Regex("[A-Za-z0-9._-]{1,100}"))) throw AiException(400, "Tên model Gemini không hợp lệ. Chỉ dùng mã model, không thêm URL hoặc tham số.")
@@ -223,7 +231,10 @@ object Ai {
                     r2
                 } else throw e
             }
-            AiRetry.geminiText(r)
+            val response = JSONObject(r)
+            AiRetry.geminiText(response).also {
+                SessionStats.live.recordTranslationModel("Google Gemini", model, response.opt("modelVersion") as? String)
+            }
         }
         val t = out.trim()
         if (t.isEmpty()) throw AiException(0, "Phản hồi rỗng")

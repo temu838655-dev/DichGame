@@ -6,6 +6,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SessionStatsTest {
+    @Test fun reportTracksLatestProviderAndDistinguishesUnreportedModel() {
+        val stats = SessionStats()
+        stats.reset(1, 90)
+        stats.recordTranslationModel("Google Gemini", "requested", "returned")
+        assertTrue(stats.report(2, 90).contains("Google Gemini · returned"))
+        stats.recordTranslationModel("OpenAI", "fallback", null)
+        val report = stats.report(3, 90)
+        assertTrue(report.contains("OpenAI · fallback (model gửi trong yêu cầu)"))
+        assertTrue(!report.contains("Google Gemini · returned"))
+        stats.reset(4, 90)
+        assertTrue(!stats.report(5, 90).contains("OpenAI · fallback"))
+    }
+
     @Test fun apiAttemptsAndReportedTokensAreSeparate() {
         val s = SessionStats()
         s.reset(1, 50)

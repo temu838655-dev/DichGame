@@ -300,7 +300,11 @@ class TranslateActivity : Activity() {
                     } else {
                         val title = if (models.any { it.id == field.text.toString().trim() }) "Chọn model"
                             else "Model đang đặt chưa có trong danh sách. Chọn model khác"
-                        Ui.pick(this, title, models.map { it.label }) { field.setText(models[it].id) }
+                        val official = !gemini && android.net.Uri.parse(base).host.equals("api.openai.com", true)
+                        val preferred = TranslationModelCatalog.preferred(models, gemini, official)
+                        val ordered = models.sortedByDescending { it == preferred }
+                        val labels = ordered.map { if (it == preferred) "${it.label} (ưu tiên)" else it.label }
+                        Ui.pick(this, title, labels) { field.setText(ordered[it].id) }
                     }
                 }
             }.start()

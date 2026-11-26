@@ -10,16 +10,24 @@ import java.util.Locale
 class SessionStats {
     private val counts = HashMap<String, Long>()
     private val latencies = ArrayList<Long>()
+    private var lastTranslationModel = ""
     private var startAt = 0L
     private var startBattery = -1
 
     @Synchronized fun reset(nowMs: Long, batteryPct: Int) {
+        lastTranslationModel = ""
         counts.clear(); latencies.clear(); startAt = nowMs; startBattery = batteryPct
     }
 
     @Synchronized fun inc(key: String, n: Long = 1) { counts[key] = (counts[key] ?: 0L) + n }
 
     @Synchronized fun get(key: String): Long = counts[key] ?: 0L
+
+    @Synchronized fun recordTranslationModel(provider: String, requested: String, reported: String?) {
+        val actual = reported?.trim()?.takeIf { it.isNotEmpty() }
+        lastTranslationModel = if (actual == null) "$provider · $requested (model gửi trong yêu cầu)"
+            else "$provider · ${actual.take(160)}"
+    }
 
     @Synchronized fun recordTokens(metric: String, input: Long, output: Long) {
         if (input < 0 || output < 0) return
@@ -77,6 +85,7 @@ class SessionStats {
         sb.append("; ghép với chữ đọc dở: ${get("ghep")}\n")
         sb.append("Dịch: AI ${get("dich_ai")}, bộ nhớ đệm ${get("dich_cache")}, gói Việt hoá ${get("dich_goi")}" + (if (get("dich_goi_gan") > 0) " (trong đó ${get("dich_goi_gan")} khớp gần đúng)" else "") + ", dịch trên máy ${get("dich_may")}")
         sb.append("; AI bị loại rồi dịch lại ${get("dich_loai")}; còn nghi ngờ ${get("dich_nghi")}\n")
+        if (lastTranslationModel.isNotEmpty()) sb.append("Phản hồi dịch AI gần nhất: ").append(lastTranslationModel).append('\n')
         val gemini = get("api_dich_gemini")
         val cloud = get("api_dich_cloud")
         val voice = get("api_giong_gemini")

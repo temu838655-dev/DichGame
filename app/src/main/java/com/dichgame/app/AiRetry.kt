@@ -184,8 +184,9 @@ object AiRetry {
      * Lấy bản dịch từ phản hồi JSON của Gemini. Ném [AiException] mã [CODE_BLOCKED] nếu bị bộ lọc nội dung chặn, mã 0 nếu phản hồi
      * không có chữ. Bỏ các phần "suy nghĩ" của model; nối các phần chữ còn lại.
      */
-    fun geminiText(json: String): String {
-        val o = JSONObject(json)
+    fun geminiText(json: String) = geminiText(JSONObject(json))
+
+    fun geminiText(o: JSONObject): String {
         o.optJSONObject("promptFeedback")?.optString("blockReason", "")?.takeIf { it.isNotEmpty() }?.let {
             throw AiException(CODE_BLOCKED, "Bộ lọc nội dung chặn câu này: $it")
         }
@@ -209,8 +210,10 @@ object AiRetry {
         throw AiException(0, "Phản hồi rỗng" + if (fr.isNotEmpty()) " ($fr)" else "")
     }
 
-    fun cloudText(json: String): String {
-        val choice = JSONObject(json).optJSONArray("choices")?.optJSONObject(0)
+    fun cloudText(json: String) = cloudText(JSONObject(json))
+
+    fun cloudText(json: JSONObject): String {
+        val choice = json.optJSONArray("choices")?.optJSONObject(0)
             ?: throw AiException(0, "CloudAPI không trả về bản dịch")
         val reason = choice.optString("finish_reason", "")
         if (reason == "content_filter") throw AiException(CODE_BLOCKED, "Nhà cung cấp đã lọc nội dung")

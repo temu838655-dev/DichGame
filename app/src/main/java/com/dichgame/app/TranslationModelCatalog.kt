@@ -12,6 +12,12 @@ internal object TranslationModelCatalog {
         val label get() = if (id == name) id else "$name · $id"
     }
 
+    fun preferred(models: List<Model>, gemini: Boolean, officialOpenAI: Boolean): Model? {
+        if (!gemini) return if (officialOpenAI) models.find { it.id == "gpt-5-mini" } else null
+        fun compact(value: String) = value.lowercase(java.util.Locale.ROOT).filter { it.isLetterOrDigit() }
+        return models.find { compact(it.name) == "gemini35flashlite" || compact(it.id) == "gemini35flashlite" }
+    }
+
     fun cloudModelsUrl(base: String): String {
         val uri = URI(base.trim())
         require(uri.scheme.equals("https", true) && uri.host != null &&

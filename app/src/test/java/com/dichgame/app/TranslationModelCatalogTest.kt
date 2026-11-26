@@ -23,6 +23,15 @@ class TranslationModelCatalogTest {
         assertEquals("vendor/model-v2", models.single().id)
     }
 
+    @Test fun preferredModelMustExistInTheProviderResponse() {
+        val listed = TranslationModelCatalog.Model("real-id", "Gemini 3.5 Flash-Lite")
+        assertEquals(listed, TranslationModelCatalog.preferred(listOf(listed), true, false))
+        assertEquals(null, TranslationModelCatalog.preferred(listOf(listed), false, true))
+        val mini = TranslationModelCatalog.Model("gpt-5-mini", "GPT-5 Mini")
+        assertEquals(null, TranslationModelCatalog.preferred(listOf(mini), false, false))
+        assertEquals(mini, TranslationModelCatalog.preferred(listOf(mini), false, true))
+    }
+
     @Test(expected = IllegalStateException::class)
     fun repeatedPageTokenFails() {
         TranslationModelCatalog.pages(true) { JSONObject("""{"models":[],"nextPageToken":"same"}""") }
