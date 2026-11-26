@@ -231,13 +231,23 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             translateLocal(text, names, pace) { localResult ->
                 // Khớp mờ chỉ là gợi ý khi cả AI và dịch máy không cho kết quả chắc chắn.
                 // Không tự đọc hoặc tự lưu một câu suy đoán từ gói Việt hóa.
-                if (localResult.uncertain && packHit != null && packHit.fuzzy &&
+                if (localResult.uncertain && packHit != null && packHit.fuzzy && !packHit.reliable &&
                     TranslationGuard.check(text, packHit.vi, names, lang).ok) {
                     st.inc("dich_goi_gan")
                     finish(Tr(packHit.vi, null, true, "goi"))
                 } else finish(localResult)
             }
         }
+        // Reliable fuzzy candidates (high similarity, same numeric/cue signature, unambiguous game-scoped index)
+        // are used before AI. OCR-fold-only matches remain suggestions and never bypass AI.
+        if (packHit != null && packHit.fuzzy && packHit.reliable &&
+            TranslationGuard.check(text, packHit.vi, names, lang).ok &&
+            (!ui || UiText.samePlaceholders(text, packHit.vi))) {
+            st.inc("dich_goi_gan")
+            emit(Tr(packHit.vi, null, false, "goi"))
+            return
+        }
+
         if (lang == "vi") { emit(Tr(text, null, false, "may")); return }
         if (!aiOn) {
             if (Gta6RemoteLookup.supports(game, lang)) {
