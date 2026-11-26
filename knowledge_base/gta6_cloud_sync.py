@@ -126,7 +126,7 @@ def main() -> int:
     if not args.dry_run and len(token) < 24:
         parser.error("Set DICHGAME_ADMIN_TOKEN to the existing DịchGame Worker ADMIN_TOKEN")
     provider = None
-    if args.translate:
+    if args.translate and not args.dry_run:
         if not args.model:
             parser.error("Set --model or GEMINI_MODEL to a Gemini model enabled for your key")
         provider = GeminiProvider.from_env()
