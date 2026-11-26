@@ -51,6 +51,8 @@ incompatible rights. Keep author attribution and the original source URL.
    retries, input/output limits and offline mode. See [AI_FALLBACK.md](AI_FALLBACK.md).
 6. Concrete Gemini and OpenAI-compatible HTTPS adapters using Python's standard
    library. See [PROVIDERS.md](PROVIDERS.md).
+7. Resumable, bounded AI translation batches for staged source strings, preserving
+   exact localization IDs and marking AI output as unverified.
 7. Community submissions with contributor attribution, authorized human review,
    rejection, report queues, moderation history and a local maintainer CLI.
    See [MODERATION.md](MODERATION.md).
@@ -69,6 +71,10 @@ python -m knowledge_base.import_cli --db ./translations.db --game-id gta6 --file
 ```
 
 The source-only path stores each original `ID`, English string, sheet and group context in `source_strings`; it does not invent translations or mark any text verified. The ID lookup is available through `KnowledgeBase.lookup_external_id` after translated rows are imported.
+
+## GTA VI source staging
+
+The source workbook can be staged without Vietnamese text using `--source-only`; blank target cells are retained in a pending queue rather than silently discarded. Install the optional Excel dependency from `knowledge_base/requirements.txt`. To translate a bounded batch, set `GEMINI_API_KEY` and run `python -m knowledge_base.translate_batch_cli --db ./translations.db --game-id gta6 --model YOUR_ENABLED_GEMINI_MODEL --batch-size 50`. Repeat to resume. This process is not a substitute for rights review or human quality assurance.
 
 ## Remaining phases
 
