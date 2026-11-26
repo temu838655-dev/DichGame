@@ -121,13 +121,14 @@ class TvService : Service() {
         while (!stopping.get()) {
             var ss: ServerSocket? = null
             try {
-                ss = ServerSocket().apply {
+                val listener = ServerSocket().apply {
                     reuseAddress = true
                     bind(InetSocketAddress(8765), 32)
                 }
-                server = ss
-                while (!stopping.get() && !ss.isClosed) {
-                    val socket = ss.accept()
+                ss = listener
+                server = listener
+                while (!stopping.get() && !listener.isClosed) {
+                    val socket = listener.accept()
                     try {
                         clients.execute {
                             try { handle(socket) }
@@ -158,15 +159,16 @@ class TvService : Service() {
         while (!stopping.get()) {
             var ds: java.net.DatagramSocket? = null
             try {
-                ds = java.net.DatagramSocket(8766)
-                disc = ds
+                val discoverySocket = java.net.DatagramSocket(8766)
+                ds = discoverySocket
+                disc = discoverySocket
                 val buf = ByteArray(64)
-                while (!stopping.get() && !ds.isClosed) {
+                while (!stopping.get() && !discoverySocket.isClosed) {
                     val packet = java.net.DatagramPacket(buf, buf.size)
-                    ds.receive(packet)
+                    discoverySocket.receive(packet)
                     if (String(packet.data, 0, packet.length) == "DICHGAME?") {
                         val response = "DICHGAME:8765".toByteArray(Charsets.UTF_8)
-                        ds.send(java.net.DatagramPacket(response, response.size, packet.address, packet.port))
+                        discoverySocket.send(java.net.DatagramPacket(response, response.size, packet.address, packet.port))
                     }
                 }
             } catch (e: Exception) {
