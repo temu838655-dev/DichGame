@@ -499,6 +499,7 @@ class SettingsActivity : Activity() {
                 })
             }
             group("CÁCH DỊCH CỦA HỒ SƠ NÀY", 16) {
+                addView(Ui.seekRow(a, "Số câu AI xem trước", { n -> "$n câu" }, 0, 10, p.lookaheadCount) { p.lookaheadCount = it })
                 addView(Ui.dropRow(a, "Phong cách dịch", { Prefs.TR_STYLES[p.trStyle].first }, { Prefs.TR_STYLES.map { it.first } }) { i ->
                     p.trStyle = i
                     if (i == Prefs.CUSTOM_STYLE) promptDialog() else render()

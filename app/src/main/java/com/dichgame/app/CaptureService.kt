@@ -730,7 +730,8 @@ class CaptureService : Service() {
                 out.add(Card(line.speaker, line.text, TextTranslator.Tr(line.text, null, true, "may"), true))
                 next(i + 1)
             } else {
-                t.translateFull(line.text, line.speaker) { tr ->
+                val following = w.lines.asSequence().drop(i + 1).filterNot { it.nameLike }.map { it.text }
+                t.translateDialogue(line.text, line.speaker, following) { tr ->
                     // một cái tên đứng riêng được giữ nguyên là bình thường, không đánh dấu "chưa chắc"
                     out.add(Card(line.speaker, line.text, tr, tr.uncertain && !line.nameLike))
                     next(i + 1)

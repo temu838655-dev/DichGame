@@ -595,7 +595,8 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
                 }
                 next(i + 1)
             } else {
-                t.translateFull(line.text, line.speaker) { tr ->
+                val following = w.lines.asSequence().drop(i + 1).filterNot { it.nameLike }.map { it.text }
+                t.translateDialogue(line.text, line.speaker, following) { tr ->
                     Log.i(TAG, "dich: ${tr.text}")
                     out.add(Card(line.speaker, line.text, tr, tr.uncertain && !line.nameLike))
                     next(i + 1)

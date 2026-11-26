@@ -154,13 +154,16 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      * không có người nói hay cảm xúc. Gói Việt hoá, bộ nhớ đệm, thuật ngữ và kiểm tra bản dịch vẫn áp dụng như cũ.
      */
     fun translateFull(text: String, speaker: String?, ui: Boolean, done: (Tr) -> Unit) =
-        translateFullWithId(text, speaker, ui, null, done)
+        translateFullWithId(text, speaker, ui, null, emptyList(), done)
 
     /** Optional stable localization ID; used before exact text matching when the game integration provides one. */
     fun translateFullById(text: String, speaker: String?, ui: Boolean, externalId: String, done: (Tr) -> Unit) =
-        translateFullWithId(text, speaker, ui, externalId, done)
+        translateFullWithId(text, speaker, ui, externalId, emptyList(), done)
 
-    private fun translateFullWithId(text: String, speaker: String?, ui: Boolean, externalId: String?, done: (Tr) -> Unit) {
+    fun translateDialogue(text: String, speaker: String?, following: Sequence<String>, done: (Tr) -> Unit) =
+        translateFullWithId(text, speaker, false, null, Ai.lookahead(following, p.lookaheadCount), done)
+
+    private fun translateFullWithId(text: String, speaker: String?, ui: Boolean, externalId: String?, following: List<String>, done: (Tr) -> Unit) {
         val st = SessionStats.live
         val profile = p.profile
         val game = PackStore.gameName(p)
@@ -180,7 +183,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             emit(Tr(text, null, false, "vietsub"))
             return
         }
-        val key = listOf(game, lang, speaker.orEmpty(), ui.toString(), text.trim(), style, externalId.orEmpty())
+        val memoryStyle = if (following.isEmpty()) style else VoiceDiskCache.key("lookahead", style, *following.toTypedArray())
+        val key = listOf(game, lang, speaker.orEmpty(), ui.toString(), text.trim(), memoryStyle, externalId.orEmpty())
         val hist = if (ui) emptyList() else history.takeLast(p.ctxCount)
         if (!ui) {
             history.add(if (speaker != null) "$speaker: $text" else text)
@@ -199,7 +203,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         // Gói Việt hóa do người dùng nhập có ưu tiên cao nhất; tiếp theo là bản dịch đã
         // lưu lâu dài trên máy. Khớp đúng nguồn + ngôn ngữ + người nói, không khớp mờ.
         if (p.learnTranslations) {
-            LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text, style, externalId)?.takeIf {
+            LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text, memoryStyle, externalId)?.takeIf {
                 it.manual || TranslationGuard.check(text, it.vi, sourceLang = lang).ok
             }?.let { saved ->
                 st.inc("dich_nho")
@@ -223,7 +227,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             // Không ghi bản dịch máy dự phòng hoặc bản dịch AI bị nghi ngờ.
             val saved = p.learnTranslations && t.via == "ai" && !t.uncertain &&
                 LearnedTranslationRules.canRemember(text, t.text)
-            if (saved) LearnedTranslations.remember(ctx, profile, game, lang, speaker, ui, text, t.text, style, externalId)
+            if (saved) LearnedTranslations.remember(ctx, profile, game, lang, speaker, ui, text, t.text, memoryStyle, externalId)
             if (t.uncertain) st.inc("dich_nghi")
             // Câu đã lưu lâu dài không giữ thêm trong cache: khi người dùng xóa bộ nhớ
             // sẽ không bị trả lại bản cũ từ cache trong cùng phiên chơi.
@@ -293,7 +297,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 warn(AiRetry.explain(AiRetry.Kind.QUOTA, 429, cool))
             } else for (attempt in 0..1) {
                 if (!stillCurrent()) return@execute
-                val prompt = Ai.prompt(p, srcName(), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui)
+                val prompt = Ai.prompt(p, srcName(), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui, style = style, following = following)
                 var raw: String? = null
                 try {
                     raw = Ai.translateRetry(p, prompt)

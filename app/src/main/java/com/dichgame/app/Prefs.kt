@@ -224,6 +224,10 @@ class Prefs(ctx: Context) {
         get() = sp.getString(gameSettingKey("gloss"), "").orEmpty()
         set(v) = sp.edit().putString(gameSettingKey("gloss"), v).apply()
 
+    var lookaheadCount: Int
+        get() = sp.getInt("lookahead_count", 4).coerceIn(0, 10)
+        set(value) = sp.edit().putInt("lookahead_count", value.coerceIn(0, 10)).apply()
+
     var ctxCount: Int
         get() = sp.getInt("ctxn", 3).coerceIn(0, 10)
         set(v) = sp.edit().putInt("ctxn", v.coerceIn(0, 10)).apply()
