@@ -103,6 +103,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Stage or translate GTA VI Excel rows into the private DịchGame Cloud database.")
     parser.add_argument("--file", required=True, type=Path)
     parser.add_argument("--api", default=os.environ.get("DICHGAME_COMMUNITY_API", DEFAULT_API))
+    parser.add_argument("--source-name", default="", help="Name of the source workbook or localization pack")
+    parser.add_argument("--license-id", required=True, help="Declared permission/license identifier, e.g. PERMISSION-GRANTED when accurate")
+    parser.add_argument("--source-url", default="")
+    parser.add_argument("--license-url", default="")
+    parser.add_argument("--attribution", default="")
     parser.add_argument("--model", default=os.environ.get("GEMINI_MODEL", ""))
     parser.add_argument("--max-rows", type=int, default=50, help="Maximum new rows per run; use 0 for all remaining rows.")
     parser.add_argument("--max-output-tokens", type=int, default=512)
@@ -133,7 +138,13 @@ def main() -> int:
             pending_upload.clear()
             return
         request_json(args.api.rstrip("/") + "/v1/admin/gta6/batch", token, {
-            "game": GAME, "rightsConfirmed": True, "lines": list(pending_upload),
+            "game": GAME, "rightsConfirmed": True,
+            "sourceName": args.source_name.strip() or args.file.name,
+            "licenseId": args.license_id.strip(),
+            "sourceUrl": args.source_url.strip(),
+            "licenseUrl": args.license_url.strip(),
+            "attribution": args.attribution.strip(),
+            "lines": list(pending_upload),
         })
         stats["rows_staged"] += len(pending_upload)
         stats["rows_with_translation"] += sum(bool(row["vi"]) for row in pending_upload)
