@@ -66,13 +66,13 @@ incompatible rights. Keep author attribution and the original source URL.
 
 The Android app uses the read-only Cloudflare Worker API at `https://dichgame-gta6-api.temu838655.workers.dev` for verified GTA VI English-to-Vietnamese exact-text lookup. The API also accepts an optional original string ID, which takes priority when a future game hook can provide one. OCR-only calls do not know that ID and therefore use exact text lookup.
 
-The existing private admin Worker stages and uploads workbook batches into the separate `gta6_localization` table. No source workbook or dialogue dataset is committed to this public repository. Only rows with status `VERIFIED` are returned by the public lookup API.
+The existing private admin Worker stages and uploads workbook batches into the separate `gta6_localization` table, retaining the declared source name, license identifier, URL and attribution. Source permission is stored as `DECLARED` until an administrator approves it alongside the translation. No source workbook or dialogue dataset is committed to this public repository. Only rows with both translation and provenance status `VERIFIED` are returned by the public lookup API.
 
 To stage the workbook or translate blank Vietnamese cells locally, set `DICHGAME_ADMIN_TOKEN` to the existing DịchGame Worker `ADMIN_TOKEN`. For Gemini translation also set `GEMINI_API_KEY` and `GEMINI_MODEL`, then run:
 
 ```bash
 python -m pip install -r knowledge_base/requirements.txt
-python -m knowledge_base.gta6_cloud_sync --file ./GTA6_text_EN.xlsx --confirm-rights --max-rows 50
+python -m knowledge_base.gta6_cloud_sync --file ./GTA6_text_EN.xlsx --source-name "GTA6_text_EN.xlsx" --license-id "PERMISSION-GRANTED" --confirm-rights --max-rows 50
 ```
 
 That command stages source rows only. To translate the blank cells with Gemini, add `--translate`. Repeat the command to resume; rows already `AI_UNVERIFIED` or `VERIFIED` are skipped. Use `--max-rows 0` only when intentionally processing every remaining row. `--translate` makes one Gemini request per blank source row, so API quota and cost can be substantial; start with a small batch. AI output remains unverified until a human reviewer approves it in the authenticated `/admin` dashboard.
