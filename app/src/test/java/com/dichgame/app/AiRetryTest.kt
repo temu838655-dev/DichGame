@@ -263,15 +263,25 @@ class AiRetryTest {
     }
 
     @Test fun answerCutBySafetyFinish() {
-        val j = """{"candidates":[{"finishReason":"SAFETY"}]}"""
+        val j = gem("Một phần", "SAFETY")
         try { AiRetry.geminiText(j); fail("phải ném lỗi") }
         catch (e: AiException) { assertEquals(AiRetry.CODE_BLOCKED, e.code) }
     }
 
     @Test fun emptyOrMissingCandidatesIsNotBlocked() {
-        for (j in listOf("""{"candidates":[]}""", """{}""", gem("", "MAX_TOKENS"))) {
+        for (j in listOf("""{"candidates":[]}""", """{}""", gem("Một phần", "MAX_TOKENS"))) {
             try { AiRetry.geminiText(j); fail("phải ném lỗi: $j") }
             catch (e: AiException) { assertEquals(AiRetry.kindOf(e).toString(), AiRetry.Kind.OTHER, AiRetry.kindOf(e)) }
+        }
+    }
+
+    @Test fun cloudRequiresCompletedText() {
+        fun answer(reason: String, value: String) =
+            """{"choices":[{"finish_reason":"$reason","message":{"content":$value}}]}"""
+        assertEquals("Xin chào", AiRetry.cloudText(answer("stop", "\"Xin chào\"")))
+        for (json in listOf(answer("length", "\"Một phần\""), answer("stop", "null"), answer("stop", "[]"))) {
+            try { AiRetry.cloudText(json); fail("Phải từ chối bản dịch chưa hợp lệ") }
+            catch (e: AiException) { assertEquals(0, e.code) }
         }
     }
 

@@ -208,7 +208,7 @@ object Ai {
                 .put("model", p.cloudModel)
                 .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
             val r = post(cloudEndpoint(p.cloudUrl), body, mapOf("Authorization" to "Bearer " + p.cloudKey), metric = "api_dich_cloud")
-            JSONObject(r).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+            AiRetry.cloudText(r)
         } else {
             val model = p.geminiModel.trim()
             if (!model.matches(Regex("[A-Za-z0-9._-]{1,100}"))) throw AiException(400, "Tên model Gemini không hợp lệ. Chỉ dùng mã model, không thêm URL hoặc tham số.")

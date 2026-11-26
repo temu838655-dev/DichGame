@@ -106,7 +106,10 @@ enum GameImageTranslator {
                       let parts = content["parts"] as? [[String: Any]] else {
                     throw GameTranslationError.noText
                 }
-                let text = parts.compactMap { $0["text"] as? String }
+                if let reason = candidates.first?["finishReason"] as? String, reason != "STOP" {
+                    throw GameTranslationError.api("Gemini chưa hoàn tất bản dịch.")
+                }
+                let text = parts.filter { $0["thought"] as? Bool != true }.compactMap { $0["text"] as? String }
                     .joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else { throw GameTranslationError.noText }
                 return text

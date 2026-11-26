@@ -192,6 +192,11 @@ object AiRetry {
         val cands = o.optJSONArray("candidates")
         if (cands == null || cands.length() == 0) throw AiException(0, "Phản hồi không có bản dịch")
         val c = cands.getJSONObject(0)
+        val fr = c.optString("finishReason", "")
+        if (fr in setOf("SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION", "IMAGE_SAFETY")) {
+            throw AiException(CODE_BLOCKED, "Bộ lọc nội dung chặn câu này: $fr")
+        }
+        if (fr.isNotEmpty() && fr != "STOP") throw AiException(0, "Gemini chưa hoàn tất bản dịch ($fr)")
         val parts = c.optJSONObject("content")?.optJSONArray("parts")
         val sb = StringBuilder()
         if (parts != null) for (i in 0 until parts.length()) {
@@ -201,11 +206,17 @@ object AiRetry {
         }
         val text = sb.toString().trim()
         if (text.isNotEmpty()) return text
-        val fr = c.optString("finishReason", "")
-        if (fr in setOf("SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION", "IMAGE_SAFETY")) {
-            throw AiException(CODE_BLOCKED, "Bộ lọc nội dung chặn câu này: $fr")
-        }
         throw AiException(0, "Phản hồi rỗng" + if (fr.isNotEmpty()) " ($fr)" else "")
+    }
+
+    fun cloudText(json: String): String {
+        val choice = JSONObject(json).optJSONArray("choices")?.optJSONObject(0)
+            ?: throw AiException(0, "CloudAPI không trả về bản dịch")
+        val reason = choice.optString("finish_reason", "")
+        if (reason == "content_filter") throw AiException(CODE_BLOCKED, "Nhà cung cấp đã lọc nội dung")
+        if (reason.isNotEmpty() && reason != "stop") throw AiException(0, "CloudAPI chưa hoàn tất bản dịch ($reason)")
+        val text = choice.optJSONObject("message")?.opt("content") as? String
+        return text?.trim()?.takeIf { it.isNotEmpty() } ?: throw AiException(0, "CloudAPI trả về nội dung trống hoặc sai định dạng")
     }
 
     /** "21 giây", "5 phút", "3 giờ": thời gian chờ viết cho người đọc. */
