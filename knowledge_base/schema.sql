@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS data_sources (
 CREATE TABLE IF NOT EXISTS translations (
     translation_id INTEGER PRIMARY KEY AUTOINCREMENT,
     game_id TEXT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+    external_id TEXT,
     source_text TEXT NOT NULL,
     normalized_text TEXT NOT NULL,
     translated_text TEXT NOT NULL,
@@ -64,6 +65,8 @@ CREATE TABLE IF NOT EXISTS translations (
     CHECK (length(trim(translated_text)) > 0)
 );
 
+CREATE INDEX IF NOT EXISTS idx_translations_external_id
+    ON translations(game_id, external_id) WHERE external_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_translations_game_hash
     ON translations(game_id, text_sha256);
 CREATE INDEX IF NOT EXISTS idx_translations_game_normalized
