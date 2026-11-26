@@ -31,7 +31,7 @@ export default {
         let row = null;
         if (id) {
           row = await env.DB.prepare(
-            "SELECT external_id, source_text, translated_text, group_name FROM gta6_localization WHERE game_key=? AND external_id=? AND status='VERIFIED' LIMIT 1"
+            "SELECT external_id, source_text, translated_text, group_name FROM gta6_localization WHERE game_key=? AND external_id=? AND status='VERIFIED' AND provenance_status='VERIFIED' LIMIT 1"
           ).bind(GAME, id).first();
         }
         if (!row && text) {
