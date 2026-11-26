@@ -8,63 +8,38 @@ import org.json.JSONObject
 class Pcm(val data: ByteArray, val rate: Int, val channels: Int)
 
 /**
- * Giọng đọc AI của Google Gemini. Thử giao diện "Interactions" trước (theo tài liệu mới), lỗi 400/404 thì thử kiểu generateContent cũ.
- * Hàm chặn luồng, gọi từ luồng nền.
+ * Giọng đọc AI Gemini qua generateContent — endpoint và JSON theo tài liệu Gemini TTS.
+ * Hàm chặn luồng, chỉ gọi từ luồng nền.
  */
 object AiSpeech {
     private const val BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-    /** Đọc [text] bằng giọng [voiceName] (mã giọng Gemini, mặc định giọng đã chọn trong cài đặt). Tự đổi khóa khi một khóa hết lượt hay sai (xem [KeyRing]). */
+    /** Đọc nguyên văn [text]. Chỉ dẫn phong cách nằm trong speechMetadata, không trộn vào transcript. */
     fun synth(p: Prefs, text: String, style: String, voiceName: String = p.aiVoice): Pcm {
         val model = p.ttsModel.trim()
         if (!model.matches(Regex("[A-Za-z0-9._-]{1,100}"))) {
             throw AiException(400, "Tên model giọng Gemini không hợp lệ. Chỉ dùng mã model, không thêm URL hoặc tham số.")
         }
-        return try {
-            viaInteractions(p, text, style, voiceName)
-        } catch (e: AiException) {
-            if (AiRetry.shouldFallbackTtsEndpoint(e.code, e.message.orEmpty())) viaGenerate(p, text, style, voiceName) else throw e
-        }
+        return viaGenerate(p, model, text, style, voiceName)
     }
 
-    private fun viaInteractions(p: Prefs, text: String, style: String, voiceName: String): Pcm {
-        val item = JSONObject().put("type", "text").put("text", text)
-        if (style.isNotEmpty()) {
-            item.put("annotations", JSONArray().put(JSONObject().put("type", "speech_metadata").put("style", style)))
-        }
-        val body = JSONObject()
-            .put("model", p.ttsModel)
-            .put("input", JSONArray().put(JSONObject().put("type", "user_input").put("content", JSONArray().put(item))))
-            .put("response_format", JSONObject().put("type", "audio"))
-            .put("generation_config", JSONObject().put("speech_config", JSONArray().put(JSONObject().put("voice", voiceName))))
-        val r = Ai.withGeminiKey(p, p.ttsModel) { key -> Ai.post("$BASE/interactions", body, mapOf("x-goog-api-key" to key), metric = "api_giong_gemini") }
-        val steps = JSONObject(r).optJSONArray("steps") ?: throw AiException(0, "Phản hồi không có âm thanh")
-        var data = ""
-        for (i in 0 until steps.length()) {
-            val s = steps.getJSONObject(i)
-            if (s.optString("type") != "model_output") continue
-            val c = s.optJSONArray("content") ?: continue
-            for (j in 0 until c.length()) {
-                val x = c.getJSONObject(j)
-                if (x.optString("type") == "audio") data = x.optString("data")
-            }
-        }
-        if (data.isEmpty()) throw AiException(0, "Phản hồi không có âm thanh")
-        return parse(Base64.decode(data, Base64.DEFAULT))
-    }
-
-    private fun viaGenerate(p: Prefs, text: String, style: String, voiceName: String): Pcm {
-        val prompt = "Đọc chính xác nguyên văn câu tiếng Việt sau, phát âm rõ ràng và tự nhiên. " +
-            "Không dịch, không giải thích, không thêm hoặc bỏ chữ." +
-            (if (style.isEmpty()) "" else " Sắc thái giọng: $style.") +
-            "\nVăn bản cần đọc: $text"
+    /** Request schema chính thức: transcript nguyên văn + speechMetadata tùy chọn ở cùng TextPart. */
+    internal fun generateBody(text: String, style: String, voiceName: String): JSONObject {
+        val part = JSONObject().put("text", text)
+        if (style.isNotBlank()) part.put("speechMetadata", JSONObject().put("style", style))
         val voice = JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voiceName))
-        val body = JSONObject()
-            .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
+        return JSONObject()
+            .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(part))))
             .put("generationConfig", JSONObject()
                 .put("responseModalities", JSONArray().put("AUDIO"))
                 .put("speechConfig", JSONObject().put("voiceConfig", voice)))
-        val r = Ai.withGeminiKey(p, p.ttsModel) { key -> Ai.post("$BASE/models/${p.ttsModel}:generateContent", body, mapOf("x-goog-api-key" to key), metric = "api_giong_gemini") }
+    }
+
+    private fun viaGenerate(p: Prefs, model: String, text: String, style: String, voiceName: String): Pcm {
+        val body = generateBody(text, style, voiceName)
+        val r = Ai.withGeminiKey(p, model) { key ->
+            Ai.post("$BASE/models/$model:generateContent", body, mapOf("x-goog-api-key" to key), metric = "api_giong_gemini")
+        }
         val b64 = JSONObject(r).getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
             .getJSONArray("parts").getJSONObject(0).getJSONObject("inlineData").getString("data")
         return parse(Base64.decode(b64, Base64.DEFAULT))
