@@ -39,3 +39,33 @@ sandbox.window.DgReceiver.applyStyle(node,region,{region:''});
 assert.equal(region.textContent,'');
 assert.equal(node.style.top,'7%');
 console.log('TV pairing and appearance transport passed');
+
+for (const platform of ['webos', 'samsung']) {
+  let now = 100;
+  const scheduled = new Map();
+  let id = 0;
+  const env = {window:{}, Date:{now:()=>now}, setTimeout:(fn, ms)=>{
+    scheduled.set(++id,{fn,ms}); return id;
+  }, clearTimeout:key=>scheduled.delete(key)};
+  vm.runInNewContext(fs.readFileSync(platform+'/pairing.js','utf8'),env);
+  const current = {textContent:''}, previous = {textContent:'',style:{}};
+  const show = env.window.DgReceiver.captions(current,previous);
+  show('Một',{lastSeconds:2});
+  now += 500;
+  show('Hai');
+  assert.equal(current.textContent,'Hai');
+  assert.equal(previous.textContent,'Một');
+  assert.equal([...scheduled.values()][0].ms,1500);
+  show('Hai');
+  show('Ba');
+  assert.equal(previous.textContent,'Hai');
+  assert.equal(scheduled.size,1);
+  [...scheduled.values()][0].fn();
+  assert.equal(previous.textContent,'');
+  assert.equal(current.textContent,'Ba');
+  show('Bốn',{keepPrevious:false});
+  assert.equal(previous.textContent,'');
+  show('');
+  assert.equal(current.textContent,'');
+  assert.equal(scheduled.size,0);
+}
