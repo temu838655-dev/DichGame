@@ -239,7 +239,26 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             }
         }
         if (lang == "vi") { emit(Tr(text, null, false, "may")); return }
-        if (!aiOn) { fallbackLocal(); return }
+        if (!aiOn) {
+            if (Gta6RemoteLookup.supports(game, lang)) {
+                try {
+                    aiExecutor.execute {
+                        val remote = runCatching { Gta6RemoteLookup.lookup(game, lang, text, externalId) }.getOrNull()
+                        main.post {
+                            if (!stillCurrent()) return@post
+                            if (!remote.isNullOrBlank() && TranslationGuard.check(text, remote, names, lang).ok &&
+                                (!ui || UiText.samePlaceholders(text, remote))) {
+                                st.inc("dich_goi_cloud")
+                                finish(Tr(remote, null, false, "goi_cloud"))
+                            } else fallbackLocal()
+                        }
+                    }
+                } catch (_: java.util.concurrent.RejectedExecutionException) {
+                    fallbackLocal()
+                }
+            } else fallbackLocal()
+            return
+        }
         val emo = p.emoTr && !ui
         try { aiExecutor.execute {
             if (!stillCurrent()) return@execute
