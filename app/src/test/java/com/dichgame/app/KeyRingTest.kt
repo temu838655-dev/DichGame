@@ -92,7 +92,7 @@ class KeyRingTest {
     @Test fun minuteQuotaDefaultsAndClamps() {
         assertEquals(KeyRing.DEFAULT_QUOTA_MS, KeyRing.quotaBlockMs(0, false, 0))
         assertEquals(1_000L, KeyRing.quotaBlockMs(100, false, 0))
-        assertEquals(600_000L, KeyRing.quotaBlockMs(7_200_000, false, 0))
+        assertEquals(7_200_000L, KeyRing.quotaBlockMs(7_200_000, false, 0))
         assertEquals(21_000L, KeyRing.quotaBlockMs(21_000, false, 0))
     }
 

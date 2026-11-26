@@ -15,7 +15,6 @@ object KeyRing {
     /** Hết lượt mà máy chủ không nói chờ bao lâu: coi như hết lượt theo phút. */
     const val DEFAULT_QUOTA_MS = 30_000L
     private const val MIN_QUOTA_MS = 1_000L
-    private const val MAX_MINUTE_QUOTA_MS = 10 * 60_000L
 
     private val until = HashMap<String, Long>()
     private val bad = HashMap<String, Long>()
@@ -180,8 +179,8 @@ object KeyRing {
 
     /** Khóa hết lượt phải nghỉ bao lâu: tới nửa đêm Thái Bình Dương nếu hết theo ngày, không thì theo lời máy chủ (không nói thì [DEFAULT_QUOTA_MS]). */
     fun quotaBlockMs(retryAfterMs: Long, daily: Boolean, now: Long): Long = when {
-        daily -> (nextPacificMidnight(now) - now).coerceAtLeast(MIN_QUOTA_MS)
-        retryAfterMs > 0 -> retryAfterMs.coerceIn(MIN_QUOTA_MS, MAX_MINUTE_QUOTA_MS)
+        daily -> maxOf(nextPacificMidnight(now) - now, retryAfterMs, MIN_QUOTA_MS)
+        retryAfterMs > 0 -> retryAfterMs.coerceAtLeast(MIN_QUOTA_MS)
         else -> DEFAULT_QUOTA_MS
     }
 

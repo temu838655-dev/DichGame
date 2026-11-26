@@ -231,7 +231,9 @@ class AiRetryTest {
         assertEquals(1500L, AiRetry.retryDelayMs(" 1.5 ", ""))
         assertEquals(21000L, AiRetry.retryDelayMs(null, """{"error":{"code":429,"details":[{"@type":"x.RetryInfo","retryDelay": "21s"}]}}"""))
         assertEquals(0L, AiRetry.retryDelayMs(null, """{"error":{"code":429}}"""))
-        assertEquals(0L, AiRetry.retryDelayMs("Wed, 21 Oct 2026 07:28:00 GMT", ""))   // dạng ngày: bỏ qua
+        assertEquals(2000L, AiRetry.retryDelayMs("Thu, 01 Jan 1970 00:00:03 GMT", "", 1000L))
+        assertEquals(0L, AiRetry.retryDelayMs("Thu, 01 Jan 1970 00:00:03 GMT", "", 4000L))
+        assertEquals(3000L, AiRetry.retryDelayMs("1", """{"retryDelay":"3s"}"""))
         assertEquals(0L, AiRetry.retryDelayMs("0", ""))
     }
 
@@ -239,7 +241,7 @@ class AiRetryTest {
         assertEquals(20_000L, AiRetry.cooldownMs(0))
         assertEquals(5_000L, AiRetry.cooldownMs(1_000))
         assertEquals(21_000L, AiRetry.cooldownMs(21_000))
-        assertEquals(120_000L, AiRetry.cooldownMs(3_600_000))
+        assertEquals(3_600_000L, AiRetry.cooldownMs(3_600_000))
     }
 
     private fun gem(text: String, finish: String = "STOP") =

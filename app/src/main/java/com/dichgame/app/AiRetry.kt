@@ -134,14 +134,14 @@ object AiRetry {
                 val backoffCap = plan.maxBackoffMs.coerceAtLeast(0L)
                 val multiplier = 1L shl shift
                 val exponential = if (baseBackoff > backoffCap / multiplier) backoffCap else baseBackoff * multiplier
-                val told = if (kind == Kind.QUOTA) (e as? AiException)?.retryAfterMs ?: 0L else 0L
+                val told = (e as? AiException)?.retryAfterMs ?: 0L
                 if (told > plan.maxWaitMs) throw e
 
                 // Honor Retry-After as a lower bound. Otherwise apply bounded jitter so
                 // many game clients do not synchronize retries against a recovering API.
                 val base = maxOf(exponential, told)
                 val ratio = plan.jitterRatio.coerceIn(0.0, 1.0)
-                val wait = if (kind == Kind.QUOTA && told > 0L) {
+                val wait = if (told > 0L) {
                     base
                 } else if (ratio == 0.0 || base == 0L) {
                     base
@@ -159,15 +159,26 @@ object AiRetry {
 
     private val RETRY_DELAY = Regex("\"retryDelay\"\\s*:\\s*\"([0-9]+(?:\\.[0-9]+)?)s\"")
 
-    /** Thời gian máy chủ bảo chờ (mili giây): từ tiêu đề Retry-After (giây) hoặc trường retryDelay trong phản hồi lỗi của Gemini. 0 nếu không có. */
-    fun retryDelayMs(header: String?, body: String): Long {
-        header?.trim()?.toDoubleOrNull()?.let { if (it > 0) return (it * 1000).toLong() }
-        RETRY_DELAY.find(body)?.groupValues?.get(1)?.toDoubleOrNull()?.let { if (it > 0) return (it * 1000).toLong() }
-        return 0L
+    /** Retry-After accepts seconds or an HTTP date. Gemini also sends a duration in the body. */
+    fun retryDelayMs(header: String?, body: String, nowMs: Long = System.currentTimeMillis()): Long {
+        val value = header?.trim().orEmpty()
+        fun millis(seconds: String?): Long {
+            val n = seconds?.toDoubleOrNull() ?: return 0
+            return if (n.isFinite() && n > 0) (n * 1000).toLong().coerceAtMost(Long.MAX_VALUE - nowMs) else 0
+        }
+        val fromHeader = if (value.firstOrNull()?.isLetter() == true) {
+            try {
+                val date = java.time.ZonedDateTime.parse(value, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)
+                (date.toInstant().toEpochMilli() - nowMs).coerceAtLeast(0)
+            } catch (_: java.time.format.DateTimeParseException) {
+                0L
+            }
+        } else millis(value)
+        return maxOf(fromHeader, millis(RETRY_DELAY.find(body)?.groupValues?.get(1)))
     }
 
     /** Hết lượt hết khóa: tạm bỏ AI chừng này mili giây (cho dịch máy ngay, khỏi để mỗi câu chờ vô ích), rồi thử lại AI. */
-    fun cooldownMs(retryAfterMs: Long): Long = if (retryAfterMs > 0) retryAfterMs.coerceIn(5000L, 120000L) else 20000L
+    fun cooldownMs(retryAfterMs: Long): Long = if (retryAfterMs > 0) retryAfterMs.coerceAtLeast(5000L) else 20000L
 
     /**
      * Lấy bản dịch từ phản hồi JSON của Gemini. Ném [AiException] mã [CODE_BLOCKED] nếu bị bộ lọc nội dung chặn, mã 0 nếu phản hồi
