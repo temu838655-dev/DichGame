@@ -459,7 +459,7 @@ class Prefs(ctx: Context) {
         val pool = when {
             female && !male -> FEMALE_AI_VOICES.sortedBy { if (it.first == femaleAiVoice) 0 else 1 }
             male && !female -> MALE_AI_VOICES.sortedBy { if (it.first == maleAiVoice) 0 else 1 }
-            else -> AI_VOICES
+            else -> return aiVoice
         }
         val canonical = card?.names?.firstOrNull() ?: name
         return stableAutoVoice(canonical, card?.names.orEmpty() + name, pool)

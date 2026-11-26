@@ -35,13 +35,13 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     private val seq = AtomicInteger(0)
     @Volatile private var disposed = false
     private val lock = Any()
-    private data class PendingSystem(val text: String, val queue: Boolean, val delivery: Delivery?, val interrupt: Boolean)
+    private data class PendingSystem(val text: String, val queue: Boolean, val delivery: Delivery?, val interrupt: Boolean, val speaker: String?)
     private val pendingSystemLock = Any()
     private val pendingSystem = java.util.ArrayDeque<PendingSystem>()
     private val maxPendingSystem = 5
     /** Một đoạn chờ đọc bằng âm thanh tự tạo (giọng AI hoặc offline). */
     private class Clip(
-        val gen: Int, val text: String, val norm: String, val d: Delivery?, val baseSpeed: Float, val at: Long,
+        val gen: Int, val text: String, val norm: String, val speaker: String?, val d: Delivery?, val baseSpeed: Float, val at: Long,
         val synth: (alive: () -> Boolean) -> Pcm,
     ) {
         @Volatile var alive = true
@@ -131,7 +131,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                 }
                 main.post {
                     if (!disposed) waiting.forEach { item ->
-                        speakSystem(item.text, item.queue, item.delivery, item.interrupt)
+                        speakSystem(item.text, item.queue, item.delivery, item.interrupt, item.speaker)
                     }
                 }
                 onReady?.invoke()
@@ -176,9 +176,9 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         val spoken = LineClean.clean(text)
         if (spoken.isEmpty()) return
         when {
-            offlineOn() -> speakOffline(spoken, d, interrupt)
+            offlineOn() -> speakOffline(spoken, d, interrupt, speakerName)
             p.aiVoiceOn -> speakAi(spoken, d, speakerName, interrupt)
-            else -> speakSystem(spoken, queue, d, interrupt)
+            else -> speakSystem(spoken, queue, d, interrupt, speakerName)
         }
     }
 
@@ -198,7 +198,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
             speak(all, false, last.delivery, last.speaker)
             return
         }
-        enqueue(all, last.delivery, (p.rate10 / 10f).coerceIn(0.5f, 2.5f), false) { alive -> synthScenePcm(items, alive) }
+        enqueue(all, last.delivery, (p.rate10 / 10f).coerceIn(0.5f, 2.5f), false, org.json.JSONArray(items.map { it.speaker.orEmpty() }).toString()) { alive -> synthScenePcm(items, alive) }
     }
 
     /** Hợp nhất PCM 24 kHz theo thứ tự, thêm nhịp nghỉ ngắn để tách lời hai người. */
@@ -249,19 +249,20 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     // ---------------- Giọng máy ----------------
 
+    @Volatile private var lastSysSpeaker: String? = null
     @Volatile private var lastSysNorm = ""
     @Volatile private var lastSysAt = 0L
 
-    private fun speakSystem(text: String, queue: Boolean, d: Delivery?, interrupt: Boolean = false) {
+    private fun speakSystem(text: String, queue: Boolean, d: Delivery?, interrupt: Boolean = false, speaker: String? = null) {
         if (disposed) return
         val t = synchronized(pendingSystemLock) {
             val engine = tts
             if (engine == null || !ready) {
                 if (interrupt) pendingSystem.clear()
                 val norm = SpeechPolicy.norm(text)
-                if (pendingSystem.any { SpeechPolicy.norm(it.text) == norm }) return
+                if (pendingSystem.peekLast()?.let { SpeechPolicy.sameSpeaker(it.speaker, speaker) && SpeechPolicy.norm(it.text) == norm } == true) return
                 while (pendingSystem.size >= maxPendingSystem) pendingSystem.removeFirst()
-                pendingSystem.addLast(PendingSystem(text, queue, d, interrupt))
+                pendingSystem.addLast(PendingSystem(text, queue, d, interrupt, speaker))
                 return
             }
             engine
@@ -269,7 +270,8 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         // Cùng một câu gửi lại liền nhau (chữ OCR nháy, bản dịch được sửa lại) thì chỉ đọc một lần.
         val norm = SpeechPolicy.norm(text)
         val now = SystemClock.elapsedRealtime()
-        if (!interrupt && norm.isNotEmpty() && norm == lastSysNorm && now - lastSysAt < SpeechPolicy.DUPLICATE_MS) return
+        if (!interrupt && norm.isNotEmpty() && norm == lastSysNorm && SpeechPolicy.sameSpeaker(lastSysSpeaker, speaker) && now - lastSysAt < SpeechPolicy.DUPLICATE_MS) return
+        lastSysSpeaker = speaker
         lastSysNorm = norm
         lastSysAt = now
         var rate = p.rate10 / 10f
@@ -301,7 +303,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     private fun speakAi(text: String, d: Delivery?, speakerName: String?, interrupt: Boolean) {
         val style = styleFor(text, d)
         val voiceName = p.aiVoiceFor(speakerName, text)
-        enqueue(text, d, (p.rate10 / 10f).coerceIn(0.5f, 2.5f), interrupt) { aiPcm(text, style, voiceName) }
+        enqueue(text, d, (p.rate10 / 10f).coerceIn(0.5f, 2.5f), interrupt, speakerName) { aiPcm(text, style, voiceName) }
     }
 
     // ---------------- Giọng offline ----------------
@@ -313,28 +315,28 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         return v.coerceIn(0.5f, 2.2f)
     }
 
-    private fun speakOffline(text: String, d: Delivery?, interrupt: Boolean) {
+    private fun speakOffline(text: String, d: Delivery?, interrupt: Boolean, speaker: String?) {
         val id = p.offlineVoice
         val speed = speedFor(text, d)
-        enqueue(text, d, 1f, interrupt) { offlinePcm(id, text, speed) }
+        enqueue(text, d, 1f, interrupt, speaker) { offlinePcm(id, text, speed) }
     }
 
     // ---------------- Hàng chờ âm thanh (giọng AI và offline) ----------------
 
     /** Xếp một đoạn vào hàng. Câu trùng câu vừa/đang đọc thì bỏ; bản dở của câu mới (chữ hiện dần) đang chờ thì được thay. */
-    private fun enqueue(text: String, d: Delivery?, baseSpeed: Float, interrupt: Boolean, synth: (alive: () -> Boolean) -> Pcm) {
+    private fun enqueue(text: String, d: Delivery?, baseSpeed: Float, interrupt: Boolean, speaker: String?, synth: (alive: () -> Boolean) -> Pcm) {
         if (disposed) return
         if (interrupt) stop()
         val norm = SpeechPolicy.norm(text)
         val now = SystemClock.elapsedRealtime()
-        val clip = Clip(seq.get(), text, norm, d, baseSpeed, now, synth)
+        val clip = Clip(seq.get(), text, norm, speaker, d, baseSpeed, now, synth)
         var dropped: List<Clip> = emptyList()
         var waited = false
         synchronized(lock) {
             if (disposed) return
             val last = clips.newest() ?: nowPlaying
-            if (last != null && last.norm == norm && now - last.at < SpeechPolicy.DUPLICATE_MS) return
-            for (c in clips.removeAll { SpeechPolicy.isDraftOf(it.norm, norm) }) discard(c)
+            if (last != null && last.norm == norm && SpeechPolicy.sameSpeaker(last.speaker, speaker) && now - last.at < SpeechPolicy.DUPLICATE_MS) return
+            for (c in clips.removeAll { SpeechPolicy.sameSpeaker(it.speaker, speaker) && SpeechPolicy.isDraftOf(it.norm, norm) }) discard(c)
             waited = nowPlaying != null || !clips.isEmpty()
             dropped = clips.add(clip, now)
             for (c in dropped) discard(c)
@@ -437,7 +439,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         }
         val f = fb
         if (f != null) {
-            fallback(f.text, f.d, f.failed ?: IllegalStateException("Giọng đọc lỗi"))
+            fallback(f.text, f.d, f.speaker, f.failed ?: IllegalStateException("Giọng đọc lỗi"))
             wait = maxOf(1_200L, f.text.length * 75L)
             synchronized(lock) { nowPlaying = f; nowEnds = SystemClock.elapsedRealtime() + wait }
         }
@@ -537,7 +539,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         } catch (_: Exception) { cb(null, 1f) }
     }
 
-    private fun fallback(text: String, d: Delivery?, e: Throwable) {
+    private fun fallback(text: String, d: Delivery?, speaker: String?, e: Throwable) {
         if (!aiErrorShown) {
             aiErrorShown = true
             val m = when {
@@ -547,7 +549,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
             }
             onAiError?.invoke(m)
         }
-        speakSystem(text, false, d)
+        speakSystem(text, false, d, speaker = speaker)
     }
 
     fun stop() {

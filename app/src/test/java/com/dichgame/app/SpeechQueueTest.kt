@@ -42,6 +42,13 @@ class SpeechQueueTest {
         assertEquals(0, q.size)
     }
 
+    @Test fun speakerIdentitySurvivesCaseAndWhitespaceButSeparatesActors() {
+        assertTrue(SpeechPolicy.sameSpeaker(" Lucia ", "lucia"))
+        assertTrue(SpeechPolicy.sameSpeaker(null, ""))
+        assertFalse(SpeechPolicy.sameSpeaker("Lucia", "Jason"))
+        assertFalse(SpeechPolicy.sameSpeaker("Lucia", null))
+    }
+
     @Test fun newestIsTheLastAdded() {
         val q = SpeechQueue<String>(maxPending = 5)
         assertNull(q.newest())

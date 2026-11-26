@@ -29,6 +29,9 @@ object SpeechPolicy {
         return sb.toString()
     }
 
+    fun sameSpeaker(first: String?, second: String?): Boolean =
+        first.orEmpty().trim().equals(second.orEmpty().trim(), ignoreCase = true)
+
     /** [older] là bản chưa đầy đủ của [newer] (chữ đang hiện dần): câu cũ chưa đọc thì khỏi đọc nữa. Câu quá ngắn không tính. */
     fun isDraftOf(older: String, newer: String): Boolean = older.length >= 4 && newer.length > older.length && newer.startsWith(older)
 }
