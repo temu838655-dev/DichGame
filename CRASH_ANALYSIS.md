@@ -24,3 +24,7 @@ Android CaptureService OCR/translation queue, bitmap ownership, audio worker tea
 ## Outstanding tests
 - Android arm64 low-memory soak, repeated start/stop, screen rotation, process recreation, network flap, OCR executor rejection, TTS init race, TV client flood and long-running playback.
 - GTA 6, PS5/PS4/Xbox and physical TV tests require real hardware and are not simulated by JVM tests.
+
+
+## Cloud OCR geometry hardening — 2026-11-26
+Gemini bounding-box coordinates are untrusted model output. The previous parser multiplied arbitrary JSON doubles by image dimensions and passed the results into Rect. Non-finite, inverted or out-of-range coordinates could silently become incorrect overlay geometry. The parser now rejects invalid coordinates and clips valid boxes to the image, enforcing at least one pixel in each dimension. JVM regression coverage added; CI pending.
