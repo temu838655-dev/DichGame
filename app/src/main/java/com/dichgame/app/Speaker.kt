@@ -123,8 +123,8 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                     override fun onStop(utteranceId: String?, interrupted: Boolean) { finished(utteranceId) }
                 })
                 applyVoice()
-                ready = true
                 val waiting = synchronized(pendingSystemLock) {
+                    ready = true
                     val copy = pendingSystem.toList()
                     pendingSystem.clear()
                     copy
@@ -246,16 +246,17 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     private fun speakSystem(text: String, queue: Boolean, d: Delivery?, interrupt: Boolean = false) {
         if (disposed) return
-        val t = tts
-        if (t == null || !ready) {
-            synchronized(pendingSystemLock) {
+        val t = synchronized(pendingSystemLock) {
+            val engine = tts
+            if (engine == null || !ready) {
                 if (interrupt) pendingSystem.clear()
                 val norm = SpeechPolicy.norm(text)
                 if (pendingSystem.any { SpeechPolicy.norm(it.text) == norm }) return
                 while (pendingSystem.size >= maxPendingSystem) pendingSystem.removeFirst()
                 pendingSystem.addLast(PendingSystem(text, queue, d, interrupt))
+                return
             }
-            return
+            engine
         }
         // Cùng một câu gửi lại liền nhau (chữ OCR nháy, bản dịch được sửa lại) thì chỉ đọc một lần.
         val norm = SpeechPolicy.norm(text)
@@ -422,6 +423,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                 val t = head.track ?: return   // chưa tạo xong: prepareClips sẽ gọi lại
                 clips.poll()
                 wait = startLocked(head, t, now)
+                if (head.failed != null) fb = head
                 break
             }
         }
@@ -442,10 +444,16 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     /** Phát [c] (cần giữ [lock]). Trả về thời gian phát ước tính (ms), 0 nếu không phát được. Câu trước không bị dừng giữa chừng. */
     private fun startLocked(c: Clip, t: AudioTrack, now: Long): Long {
         val speed = (c.baseSpeed * SpeechPolicy.speedFactor(clips.size, p.autoFast)).coerceIn(0.5f, 2.5f)
-        try { t.playbackParams = PlaybackParams().setSpeed(speed) } catch (_: Exception) {}
+        val appliedSpeed = try {
+            t.playbackParams = PlaybackParams().setSpeed(speed)
+            speed
+        } catch (_: Exception) {
+            1f
+        }
         try {
             t.play()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            c.failed = e
             try { t.release() } catch (_: Exception) {}
             c.track = null
             return 0L
@@ -454,7 +462,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         retireLocked(track)
         track = t
         nowPlaying = c
-        val dur = (c.durMs / speed).toLong()
+        val dur = SpeechPolicy.playbackDurationMs(c.durMs, appliedSpeed)
         nowEnds = now + dur + 30
         played++
         count("doc_doc")

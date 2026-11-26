@@ -72,6 +72,12 @@ class SpeechQueueTest {
         assertFalse(SpeechPolicy.isDraftOf(SpeechPolicy.norm("Đi thôi nào"), SpeechPolicy.norm("Chờ đã, đi thôi nào")))
     }
 
+    @Test fun playbackTimerUsesAppliedRateAndAlwaysAdvances() {
+        assertEquals(1000L, SpeechPolicy.playbackDurationMs(1000L, 1f))
+        assertEquals(501L, SpeechPolicy.playbackDurationMs(1001L, 2f))
+        assertEquals(1L, SpeechPolicy.playbackDurationMs(0L, 2.5f))
+    }
+
     @Test fun limitsAreSane() {
         assertTrue(SpeechPolicy.MAX_PENDING in 1..4)
         assertTrue(SpeechPolicy.STALE_MS in 3_000L..30_000L)

@@ -19,6 +19,9 @@ object SpeechPolicy {
         else -> 1.6f
     }
 
+    fun playbackDurationMs(durationMs: Long, appliedSpeed: Float): Long =
+        kotlin.math.ceil(durationMs / appliedSpeed.toDouble()).toLong().coerceAtLeast(1L)
+
     /** Dạng so sánh của một câu: chỉ chữ và số, viết thường (bỏ dấu câu, khoảng trắng). */
     fun norm(text: String): String {
         val sb = StringBuilder(text.length)
