@@ -42,6 +42,22 @@ def _post_json(url: str, payload: dict, headers: dict[str, str], timeout: float)
     return result
 
 
+def _gemini_answer(result: dict) -> str:
+    try:
+        candidate = result["candidates"][0]
+        if candidate.get("finishReason", "STOP") != "STOP":
+            raise ProviderHTTPError("Gemini chưa hoàn tất bản dịch")
+        parts = candidate["content"]["parts"]
+        if not isinstance(parts, list):
+            raise TypeError
+        text = "".join(part.get("text", "") for part in parts if not part.get("thought")).strip()
+    except (AttributeError, IndexError, KeyError, TypeError):
+        raise ProviderHTTPError("Cấu trúc phản hồi Gemini không hợp lệ") from None
+    if not text:
+        raise ProviderHTTPError("Gemini trả về bản dịch trống")
+    return text
+
+
 class GeminiProvider:
     """Google Gemini generateContent REST adapter."""
 
@@ -85,11 +101,7 @@ class GeminiProvider:
         }
         result = _post_json(url, payload, {"x-goog-api-key": self.api_key}, self.timeout_seconds)
         try:
-            candidates = result["candidates"]
-            if candidates[0].get("finishReason", "STOP") != "STOP":
-                raise ProviderHTTPError("Gemini chưa hoàn tất bản dịch")
-            parts = candidates[0]["content"]["parts"]
-            translated = "".join(part.get("text", "") for part in parts)
+            translated = _gemini_answer(result)
             usage = result.get("usageMetadata", {})
             input_tokens = int(usage.get("promptTokenCount", 0))
             output_tokens = int(usage.get("candidatesTokenCount", 0))
@@ -127,9 +139,7 @@ class GeminiProvider:
         }
         result = _post_json(url, payload, {"x-goog-api-key": self.api_key}, self.timeout_seconds)
         try:
-            if result["candidates"][0].get("finishReason", "STOP") != "STOP":
-                raise ProviderHTTPError("Gemini chưa hoàn tất lô bản dịch")
-            raw = "".join(part.get("text", "") for part in result["candidates"][0]["content"]["parts"]).strip()
+            raw = _gemini_answer(result)
             if raw.startswith("```"):
                 raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
             decoded = json.loads(raw)

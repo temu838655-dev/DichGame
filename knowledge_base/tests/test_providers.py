@@ -27,7 +27,7 @@ class ProviderAdapterTests(unittest.TestCase):
     @patch("knowledge_base.providers.urlopen")
     def test_gemini_adapter_parses_text_and_usage(self, mocked):
         mocked.return_value = FakeResponse({
-            "candidates": [{"content": {"parts": [{"text": "Mở cổng"}]}}],
+            "candidates": [{"content": {"parts": [{"thought": True, "text": "analysis"}, {"text": "Mở cổng"}]}}],
             "usageMetadata": {"promptTokenCount": 14, "candidatesTokenCount": 4},
         })
         provider = GeminiProvider("test-secret")
@@ -46,7 +46,7 @@ class ProviderAdapterTests(unittest.TestCase):
     @patch("knowledge_base.providers.urlopen")
     def test_gemini_batch_keeps_ids_and_parses_json(self, mocked):
         mocked.return_value = FakeResponse({
-            "candidates": [{"content": {"parts": [{"text": json.dumps([
+            "candidates": [{"content": {"parts": [{"thought": True, "text": "analysis"}, {"text": json.dumps([
                 {"id": "A_001", "translation": "Xin chào"},
                 {"id": "B_002", "translation": "Tạm biệt"},
             ], ensure_ascii=False)}]}}],
@@ -106,6 +106,12 @@ class ProviderAdapterTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 provider.translate(" ", "", model="test", max_output_tokens=20)
         mocked.assert_not_called()
+
+    @patch("knowledge_base.providers.urlopen")
+    def test_batch_rejects_malformed_parts(self, mocked):
+        mocked.return_value = FakeResponse({"candidates": [{"content": {"parts": [None]}}]})
+        with self.assertRaises(ProviderHTTPError):
+            GeminiProvider("test").translate_many([{"id": "1", "text": "Hello"}], model="test", max_output_tokens=64)
 
     def test_https_and_credentials_are_required(self):
         with self.assertRaises(ValueError):
