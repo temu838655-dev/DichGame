@@ -255,7 +255,7 @@ class Prefs(ctx: Context) {
 
     /** Khoảng cách giữa hai lần quét khung phụ đề, mili giây. Nhỏ hơn đỡ sót câu, lớn hơn đỡ nóng máy. */
     var scanMs: Int
-        get() = sp.getInt("scanms", 400).coerceIn(100, 3000)
+        get() = sp.getInt("scanms", 333).coerceIn(100, 3000)
         set(v) = sp.edit().putInt("scanms", v.coerceIn(100, 3000)).apply()
 
     /** Hai lựa chọn giọng: "system" (cơ bản) và "ai" (Gemini); tự đọc cơ bản nếu AI lỗi. */
@@ -602,7 +602,7 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("automenu", false)
         set(v) = sp.edit().putBoolean("automenu", v).apply()
     var slow: Boolean
-        get() = sp.getBoolean("slow", false)
+        get() = sp.getBoolean("slow", true)
         set(v) = sp.edit().putBoolean("slow", v).apply()
     var listenOnly: Boolean
         get() = sp.getBoolean("listen_only", false)

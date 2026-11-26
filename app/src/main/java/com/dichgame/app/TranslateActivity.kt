@@ -81,7 +81,7 @@ class TranslateActivity : Activity() {
             if (p.aiAuto) {
                 group("GEMINI VÀ KHÓA DỰ PHÒNG") {
                     geminiBlock(this)
-                    addView(Ui.tv(a, "Chế độ này ưu tiên bản Việt hóa và câu đã nhớ trước khi gọi Gemini. Hết lượt 401/403/429 sẽ tự thử khóa kế tiếp; các khóa trong cùng dự án Google có thể chung hạn mức. Nếu chưa có khóa, ứng dụng thử dịch trên máy khi được hỗ trợ.", 13f, Ui.SUB), Ui.lpm(a, 8, 2))
+                    addView(Ui.tv(a, "Chế độ này ưu tiên bản Việt hóa và câu đã nhớ trước khi gọi Gemini. Khi khóa sai, ứng dụng thử khóa kế tiếp. Khi gặp 429, các khóa tạm nghỉ; các khóa trong cùng dự án Google có thể chung hạn mức. Nếu chưa có khóa, ứng dụng thử dịch trên máy khi được hỗ trợ.", 13f, Ui.SUB), Ui.lpm(a, 8, 2))
                 }
                 group("CLOUDAPI DỰ PHÒNG") {
                     addView(Ui.switchRow(a, "Dùng CloudAPI khi Gemini lỗi", "Gửi câu thoại và ngữ cảnh tới dịch vụ HTTPS bạn cấu hình (ví dụ Groq). Có thể phát sinh phí.", p.autoCloudFallback) {
@@ -255,7 +255,7 @@ class TranslateActivity : Activity() {
             if (p.setGeminiKeys(p.geminiStoredKeys() + v)) render()
             else Toast.makeText(a, "Không lưu được khóa mã hóa. Hãy kiểm tra bộ nhớ thiết bị.", Toast.LENGTH_LONG).show()
         }, Ui.lpm(a, 0, 4))
-        c.addView(Ui.tv(a, "Thêm nhiều khóa: có thể sửa, bật hoặc tắt riêng từng khóa. Khi một khóa hết lượt (lỗi 429) hoặc bị từ chối, app tự chuyển sang khóa kế tiếp và tạm bỏ khóa đó tới giờ hồi (hết lượt theo ngày thì tới nửa đêm giờ Thái Bình Dương). Lưu ý: Google tính hạn mức theo dự án, các khóa tạo trong cùng một dự án dùng chung hạn mức nên không thêm lượt; hãy tạo khóa ở dự án khác.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 4))
+        c.addView(Ui.tv(a, "Thêm nhiều khóa: có thể sửa, bật hoặc tắt riêng từng khóa. Khi gặp lỗi 429, ứng dụng tạm dừng các khóa của model theo thời gian chờ.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 4))
         c.addView(Ui.button(a, "Lấy khóa miễn phí ở aistudio.google.com") {
             try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/apikey"))) }
             catch (_: Exception) { Toast.makeText(a, "Không mở được trình duyệt.", Toast.LENGTH_SHORT).show() }

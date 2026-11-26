@@ -339,7 +339,7 @@ class SettingsActivity : Activity() {
         adv.addView(Ui.segmented(a, rates.map { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString().replace(".", ",") }, rateSel) {
             p.scanMs = (1000.0 / rates[it]).toInt(); render()
         }, Ui.lpm(a, 6, 0))
-        adv.addView(note("Đọc nhiều lần đỡ sót câu thoại nhưng máy nóng và hao pin hơn. Mặc định 2,5 lần mỗi giây (400 ms)."), Ui.lpm(a, 6, 0))
+        adv.addView(note("Đọc nhiều lần đỡ sót câu thoại nhưng máy nóng và hao pin hơn. Mặc định 3 lần mỗi giây (333 ms)."), Ui.lpm(a, 6, 0))
 
         adv.addView(Ui.tv(a, "Chế độ hiệu năng", 15f, Ui.TEXT, true), Ui.lpm(a, 14, 0))
         adv.addView(Ui.segmented(a, listOf("Tiết kiệm pin", "Cân bằng", "Chất lượng"), p.perf) { p.perf = it; render() }, Ui.lpm(a, 6, 0))

@@ -143,12 +143,7 @@ object Ai {
         }
     }
 
-    /**
-     * Chạy [call] với một khóa Gemini còn dùng được. Khóa hết lượt (429) hay sai thì ghi vào [KeyRing] rồi đổi ngay sang khóa kế,
-     * không báo lỗi nếu còn khóa khác chạy được. Khóa hết lượt được nghỉ tới giờ hồi nên các lần gọi sau không thử lại khóa đó.
-     * [scope] là model (hạn mức tính theo model). Mọi khóa đều không dùng được thì ném [AiException] 429 kèm số mili giây phải chờ
-     * (hoặc lỗi sai khóa nếu mọi khóa đều sai).
-     */
+    /** Khóa lỗi xác thực có thể được thay thế. Hạn mức áp dụng cho nhóm khóa đã cấu hình. */
     fun <T> withGeminiKey(p: Prefs, scope: String, call: (String) -> T): T {
         val keys = p.geminiKeys()
         if (keys.isEmpty()) throw AiException(401, "Chưa có khóa Gemini", badKey = true)
@@ -162,7 +157,14 @@ object Ai {
             } catch (e: AiException) {
                 last = e
                 if (!KeyRing.report(k, scope, e)) throw e
-                if (e.billingLimit) throw e
+                if (e.code == 429) {
+                    if (!e.billingLimit) {
+                        val now = System.currentTimeMillis()
+                        val delay = maxOf(e.retryAfterMs, KeyRing.quotaBlockMs(e.retryAfterMs, e.perDay, now))
+                        keys.forEach { KeyRing.blockQuota(it, scope, delay, now) }
+                    }
+                    throw e
+                }
             } finally {
                 KeyRing.release(k, scope)
             }
@@ -292,7 +294,7 @@ object Ai {
             400 -> "Lỗi 400: sai tên model hoặc yêu cầu không hợp lệ. ${e.message.orEmpty()}"
             401, 403 -> "Lỗi ${e.code}: khóa API sai hoặc không có quyền."
             404 -> "Lỗi 404: sai địa chỉ hoặc tên model."
-            429 -> "Lỗi 429: hết lượt dùng, chờ rồi thử lại hoặc đổi khóa."
+            429 -> "Lỗi 429: hết lượt dùng, chờ đến khi hạn mức được phục hồi."
             else -> "Lỗi ${e.code}: ${e.message.orEmpty()}"
         }
     } catch (e: Exception) {

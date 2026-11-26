@@ -94,7 +94,7 @@ enum GameImageTranslator {
                     let message = String(data: responseData, encoding: .utf8)?
                         .prefix(240).description ?? "Lỗi không rõ"
                     let error = GameTranslationError.api("Gemini HTTP \(http.statusCode): \(message)")
-                    if [401, 403, 429].contains(http.statusCode) {
+                    if [401, 403].contains(http.statusCode) {
                         lastError = error
                         continue
                     }
