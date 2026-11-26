@@ -123,7 +123,7 @@ class TransMemory(pairs: Iterable<Pair<String, String>>) {
         }
     }
 
-    /** Kết quả tra: [fuzzy] = khớp gần đúng (chữ đọc từ màn hình hơi lệch so với câu trong gói), không phải khớp đúng khoá. */
+    /** [reliable] chỉ bật cho fuzzy-index đạt ngưỡng cao và không mơ hồ; OCR-fold ngắn chỉ là gợi ý. */
     class Hit(val vi: String, val fuzzy: Boolean, val reliable: Boolean = false)
 
     private val fuzzyIndex: FuzzyIndex by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { FuzzyIndex(map) }
