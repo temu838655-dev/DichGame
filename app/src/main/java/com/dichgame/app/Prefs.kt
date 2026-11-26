@@ -485,7 +485,7 @@ class Prefs(ctx: Context) {
         set(value) = sp.edit().putInt("last_subtitle_seconds", value.takeIf { it in 2..8 } ?: 0).apply()
 
     var showPrev: Boolean
-        get() = sp.getBoolean("showprev", false)
+        get() = sp.getBoolean("showprev", true)
         set(v) = sp.edit().putBoolean("showprev", v).apply()
     /** Khi câu thoại dồn lại (câu mới tới lúc câu cũ chưa đọc xong) thì tự đọc nhanh hơn. */
     var autoFast: Boolean

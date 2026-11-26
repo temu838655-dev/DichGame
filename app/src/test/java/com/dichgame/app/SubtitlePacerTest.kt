@@ -25,10 +25,13 @@ class SubtitlePacerTest {
         p.submit(item("b"), 150)
         val duration = p.holdFor("c", fixedSeconds = 5)
         assertEquals("c", p.showImmediately(item("c", hold = duration), 200).text)
+        assertEquals(3100L, p.previousUntil)
         assertEquals(0, p.queued)
         assertFalse(p.mayHide(5199))
         assertTrue(p.mayHide(5200))
         assertNull(p.poll(5200))
+        p.showImmediately(item("d"), 6000)
+        assertEquals(0L, p.previousUntil)
     }
 
     @Test fun firstItemShowsImmediately() {

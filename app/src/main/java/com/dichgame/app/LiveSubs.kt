@@ -706,7 +706,12 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             sb.setSpan(RelativeSizeSpan(size), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             sb.setSpan(ForegroundColorSpan(color), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        if (pr.showPrev) add(prevVi, 0.7f, (fg and 0x00FFFFFF) or 0x99000000.toInt())
+        val remaining = pacer.previousUntil - System.currentTimeMillis()
+        if (pr.showPrev && remaining > 0 && !pr.listenOnly) {
+            val previous = prevVi.replace('\n', ' ')
+            add(if (previous.length > 100) previous.take(99) + "…" else previous, 0.7f, dim)
+        }
+        val previousEnd = sb.length
         for ((i, c) in cards.withIndex()) {
             if (pr.showOrig && !narrate) add((if (src != Src.OCR && c.orig.isNotEmpty()) "🔊 " else "") + c.orig, 0.75f, dim)
             val d = c.tr.delivery
@@ -730,7 +735,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             sb.setSpan(RelativeSizeSpan(1.15f), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
-        view.text = sb
+        SubtitleTransition.display(view, sb, previousEnd, remaining)
         view.visibility = if (pr.listenOnly) View.GONE else View.VISIBLE
         val vi = cards.joinToString(" ") { it.tr.text }
         val scene = cards.filterNot { it.tr.uncertain }.map { VoiceLine(it.tr.text, it.speaker, it.tr.delivery) }

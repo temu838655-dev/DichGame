@@ -1176,7 +1176,12 @@ class CaptureService : Service() {
             sb.setSpan(RelativeSizeSpan(size), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             sb.setSpan(ForegroundColorSpan(color), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        if (pr.showPrev) add(prevVi, 0.7f, (fg and 0x00FFFFFF) or 0x99000000.toInt())
+        val remaining = pacer.previousUntil - System.currentTimeMillis()
+        if (pr.showPrev && remaining > 0 && !pr.listenOnly) {
+            val previous = prevVi.replace('\n', ' ')
+            add(if (previous.length > 100) previous.take(99) + "…" else previous, 0.7f, dim)
+        }
+        val previousEnd = sb.length
         for ((i, c) in cards.withIndex()) {
             if (pr.showOrig) add((if (src != Src.OCR && c.orig.isNotEmpty()) "🔊 " else "") + c.orig, 0.75f, dim)
             val d = c.tr.delivery
@@ -1200,7 +1205,7 @@ class CaptureService : Service() {
             sb.setSpan(RelativeSizeSpan(1.15f), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
-        overlay?.apply { text = sb; visibility = if (pr.listenOnly) View.GONE else View.VISIBLE }
+        overlay?.apply { SubtitleTransition.display(this, sb, previousEnd, remaining); visibility = if (pr.listenOnly) View.GONE else View.VISIBLE }
         val vi = cards.joinToString(" ") { it.tr.text }
         // uncertainty là cảnh báo chất lượng, không phải lý do bỏ đọc một bản dịch đã có nội dung.
         val scene = cards.filter {

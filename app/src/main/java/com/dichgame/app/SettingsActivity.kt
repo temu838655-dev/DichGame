@@ -292,8 +292,8 @@ class SettingsActivity : Activity() {
                 divide()
                 row(Ui.switchRow(a, "Hiện câu gốc ${Prefs.srcNameOf(p.lang)}", null, p.showOrig) { p.showOrig = it }, 2, 12)
                 divide()
-                row(Ui.switchRow(a, "Hiện câu thoại trước",
-                    "Hiện câu vừa dịch bằng chữ nhỏ phía trên phụ đề hiện tại (trên điện thoại).", p.showPrev) { p.showPrev = it }, 12, 12)
+                row(Ui.switchRow(a, "Giữ câu trước để đọc hết",
+                    "Câu trước còn thời gian đọc sẽ trượt lên và mờ dần phía trên câu mới trên điện thoại.", p.showPrev) { p.showPrev = it }, 12, 12)
                 divide()
                 val holdSeconds = listOf(0) + (2..8)
                 fun holdLabel(seconds: Int) = if (seconds == 0) "Tự động (2–8 giây)" else "$seconds giây"

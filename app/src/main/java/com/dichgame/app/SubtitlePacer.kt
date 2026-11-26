@@ -21,6 +21,8 @@ class SubtitlePacer(
     private class Queued(val item: Item, val readyAt: Long)
 
     private var current: Item? = null
+    var previousUntil = 0L
+        private set
     private var shownAt = 0L
     private val queue = ArrayList<Queued>()
 
@@ -68,6 +70,7 @@ class SubtitlePacer(
     }
 
     fun showImmediately(item: Item, now: Long): Item {
+        previousUntil = hideAt().takeIf { it > now && showing?.text != item.text } ?: 0L
         queue.clear()
         return start(item, now)
     }
@@ -101,7 +104,7 @@ class SubtitlePacer(
     fun hideAt(): Long = current?.let { shownAt + it.holdMs } ?: 0L
 
     /** Đã ẩn dòng đang hiện (hoặc dừng dịch). */
-    fun cleared() { current = null; queue.clear() }
+    fun cleared() { previousUntil = 0; current = null; queue.clear() }
 
     /** Ước lượng tốc độ nói (ký tự mỗi giây) từ một câu nghe được; dùng để biết nhân vật nói nhanh hay chậm. */
     class SpeechRate(private val alpha: Float = 0.3f) {
