@@ -15,6 +15,32 @@ Supported input formats:
 - XLIFF / XLF: XLIFF 1.x \`trans-unit\` and XLIFF 2.x \`unit\` elements.
 - TMX: translation units with English and Vietnamese language variants.
 
+## Stage an untranslated Excel source workbook
+
+An Excel workbook may contain original English text while its Vietnamese column is still empty. Stage that source data without inventing target text:
+
+```bash
+python -m pip install -r knowledge_base/requirements.txt
+python -m knowledge_base.import_cli \
+  --db ./translations.db \
+  --game-id gta6 \
+  --file ./GTA6_text_EN.xlsx \
+  --source-name "Authorized GTA6 localization source" \
+  --license-id "PERMISSION-GRANTED" \
+  --confirm-rights \
+  --source-only
+```
+
+This stores original IDs, English strings, worksheet names, row numbers and `Nhóm` context in the `source_strings` queue. It does not publish the source workbook or mark generated translations as verified.
+
+After staging, run bounded Gemini batches with an API key supplied through the `GEMINI_API_KEY` environment variable:
+
+```bash
+python -m knowledge_base.translate_batch_cli --db ./translations.db --game-id gta6 --model YOUR_ENABLED_GEMINI_MODEL --batch-size 50
+```
+
+Repeat the command to resume from the next pending rows. AI output is stored as `AI_UNVERIFIED`; human review is still required before a source is marked verified.
+
 ## Example invocation
 
 \`\`\`bash
