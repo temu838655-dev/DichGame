@@ -75,7 +75,7 @@ python -m pip install -r knowledge_base/requirements.txt
 python -m knowledge_base.gta6_cloud_sync --file ./GTA6_text_EN.xlsx --source-name "GTA6_text_EN.xlsx" --license-id "PERMISSION-GRANTED" --confirm-rights --max-rows 50
 ```
 
-That command stages source rows only. To translate the blank cells with Gemini, add `--translate`. Repeat the command to resume; rows already `AI_UNVERIFIED` or `VERIFIED` are skipped. Use `--max-rows 0` only when intentionally processing every remaining row. `--translate` makes one Gemini request per blank source row, so API quota and cost can be substantial; start with a small batch. AI output remains unverified until a human reviewer approves it in the authenticated `/admin` dashboard.
+That command stages source rows only. To translate the blank cells with Gemini, add `--translate`. Repeat the command to resume; rows already `AI_UNVERIFIED` or `VERIFIED` are skipped. Use `--max-rows 0` only when intentionally processing every remaining row. `--translate` sends up to 10 source lines per Gemini request by default (configurable with `--translation-batch-size`), preserving IDs and checking timing tags, placeholders and numbers before upload. API quota and cost can still be substantial; start with a small batch. AI output remains unverified until a human reviewer approves it in the authenticated `/admin` dashboard.
 
 ## Remaining phases
 
