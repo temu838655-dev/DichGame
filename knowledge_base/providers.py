@@ -99,6 +99,57 @@ class GeminiProvider:
         return ProviderResponse(translated.strip(), input_tokens, output_tokens)
 
 
+    def translate_many(
+        self, rows: list[dict[str, str]], *, model: str, max_output_tokens: int,
+    ) -> dict[str, str]:
+        """Translate a small group in one request and require an exact JSON ID set."""
+        if not rows or len(rows) > 20 or max_output_tokens < 1:
+            raise ValueError("translate_many accepts 1-20 rows and a positive output limit")
+        source_ids = [str(row.get("id", "")).strip() for row in rows]
+        if any(not value for value in source_ids) or len(set(source_ids)) != len(source_ids):
+            raise ValueError("Every batch row must have a unique non-empty ID")
+        source = [{
+            "id": source_ids[index],
+            "context": str(row.get("context", "")),
+            "text": str(row.get("text", "")),
+        } for index, row in enumerate(rows)]
+        prompt = (
+            "You are a professional Vietnamese game-localization translator. Translate every item into natural Vietnamese. "
+            "Preserve character names, tone, profanity level, numbers, placeholders, markup tags, timing tokens and line breaks. "
+            "Do not omit, merge, reorder or add items. Return only a valid JSON array of objects with exactly the keys id and translation. "
+            "Copy each id exactly.\nINPUT:\n" + json.dumps(source, ensure_ascii=False)
+        )
+        url = (
+            f"{self.api_base}/models/{quote(model, safe='')}:generateContent?"
+            + urlencode({"key": self.api_key})
+        )
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": max_output_tokens, "temperature": 0.2, "responseMimeType": "application/json"},
+        }
+        result = _post_json(url, payload, {}, self.timeout_seconds)
+        try:
+            raw = "".join(part.get("text", "") for part in result["candidates"][0]["content"]["parts"]).strip()
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+            decoded = json.loads(raw)
+        except (KeyError, IndexError, TypeError, json.JSONDecodeError):
+            raise ProviderHTTPError("Gemini returned invalid batch JSON") from None
+        if not isinstance(decoded, list):
+            raise ProviderHTTPError("Gemini batch response must be a JSON array")
+        translations: dict[str, str] = {}
+        for item in decoded:
+            if not isinstance(item, dict) or set(item) != {"id", "translation"}:
+                raise ProviderHTTPError("Gemini batch item has an unexpected shape")
+            key = str(item["id"]).strip()
+            value = item["translation"]
+            if key not in source_ids or key in translations or not isinstance(value, str) or not value.strip():
+                raise ProviderHTTPError("Gemini batch returned missing, duplicate or empty translations")
+            translations[key] = value.strip()
+        if set(translations) != set(source_ids):
+            raise ProviderHTTPError("Gemini batch did not return every source ID")
+        return translations
+
 class OpenAICompatibleProvider:
     """Adapter for OpenAI Chat Completions-compatible HTTP endpoints."""
 
