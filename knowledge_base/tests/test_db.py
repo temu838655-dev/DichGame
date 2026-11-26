@@ -22,6 +22,16 @@ class KnowledgeBaseTests(unittest.TestCase):
         self.assertEqual(self.db.lookup_exact("sample-game", " OPEN THE DOOR ")["translated_text"], "Mở cửa")
         self.assertIsNone(self.db.lookup_exact("another-game", "Open the Door"))
 
+    def test_exact_external_id_lookup_is_game_scoped(self):
+        self.db.add_translation(
+            'sample-game', 'Hey! Eyes open!', 'Này! Tỉnh táo lên!',
+            external_id='C0000_B381007C', translation_status='VERIFIED',
+        )
+        self.assertEqual(
+            self.db.lookup_external_id('sample-game', 'C0000_B381007C')['translated_text'],
+            'Này! Tỉnh táo lên!',
+        )
+        self.assertIsNone(self.db.lookup_external_id('other-game', 'C0000_B381007C'))
     def test_rejected_translation_is_never_returned(self):
         self.db.add_translation("sample-game", "Bad line", "Sai", translation_status="REJECTED")
         self.assertIsNone(self.db.lookup_exact("sample-game", "Bad line"))

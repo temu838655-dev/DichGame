@@ -50,6 +50,17 @@ class SignedPackTests(unittest.TestCase):
             ).fetchone()[0]
         self.assertEqual(status, "VERIFIED")
 
+    def test_signed_pack_preserves_external_string_id(self):
+        self.source.add_translation(
+            'pack-game', 'Original string', 'Bản dịch gốc',
+            external_id='GTA6_0001', translation_status='VERIFIED',
+        )
+        export_game_pack(self.source, 'pack-game', self.key, self.pack)
+        import_game_pack(self.target, self.pack, self.key, allow_verified=True)
+        self.assertEqual(
+            self.target.lookup_external_id('pack-game', 'GTA6_0001')['translated_text'],
+            'Bản dịch gốc',
+        )
     def test_tampered_pack_and_wrong_key_are_rejected(self):
         export_game_pack(self.source, "pack-game", self.key, self.pack)
         document = json.loads(self.pack.read_text(encoding="utf-8"))

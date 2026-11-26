@@ -1,0 +1,2 @@
+# Excel workbook support for localization imports
+openpyxl>=3.1,<4

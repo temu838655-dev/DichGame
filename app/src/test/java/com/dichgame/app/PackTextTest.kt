@@ -98,6 +98,19 @@ class PackTextTest {
         assertEquals(listOf("YOU DIED" to "BẠN ĐÃ CHẾT"), p.lines)
     }
 
+    @Test fun reliableFuzzyMatchIsSeparatedFromOcrFoldSuggestion() {
+        val reliable = TransMemory(listOf(
+            "The quick brown fox jumps over the lazy dog" to "Con cáo nâu nhanh nhẹn nhảy qua con chó lười"
+        )).lookupEx("The quick brown fox jumps over the lazy doq")
+        assertNotNull(reliable)
+        assertTrue(reliable!!.fuzzy)
+        assertTrue(reliable.reliable)
+
+        val ocrOnly = TransMemory(listOf("YOU DIED" to "BẠN ĐÃ CHẾT")).lookupEx("you d1ed")
+        assertNotNull(ocrOnly)
+        assertTrue(ocrOnly!!.fuzzy)
+        assertTrue(!ocrOnly.reliable)
+    }
     @Test fun verifiedKnowledgeCsvRoundTripsQuotedCellsAndKeepsGameScope() {
         val original = listOf(
             "Hello, \"hero\"" to "Chào, \"anh hùng\"",

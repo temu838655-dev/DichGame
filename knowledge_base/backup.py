@@ -9,7 +9,7 @@ from pathlib import Path
 
 REQUIRED_TABLES = {
     "games", "translations", "data_sources", "glossary",
-    "characters", "ocr_dictionary", "translation_cache",
+    "characters", "ocr_dictionary", "translation_cache", "source_strings",
 }
 
 

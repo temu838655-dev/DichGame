@@ -5,6 +5,7 @@ controls, or assume that a public repository grants reuse rights.
 
 Supported input formats:
 
+- Excel (`.xlsx`): all worksheets are read. The `ID` column is preserved as `external_id`, and `Nhóm` is retained as context. Requires `python -m pip install -r knowledge_base/requirements.txt`.
 - CSV: header row with source/target aliases such as \`source_text\` and
   \`translated_text\`, or \`english\` and \`vietnamese\`.
 - JSON: an array of entry objects, or an object containing \`translations\`,
@@ -13,6 +14,32 @@ Supported input formats:
   than guessing a plural form.
 - XLIFF / XLF: XLIFF 1.x \`trans-unit\` and XLIFF 2.x \`unit\` elements.
 - TMX: translation units with English and Vietnamese language variants.
+
+## Stage an untranslated Excel source workbook
+
+An Excel workbook may contain original English text while its Vietnamese column is still empty. Stage that source data without inventing target text:
+
+```bash
+python -m pip install -r knowledge_base/requirements.txt
+python -m knowledge_base.import_cli \
+  --db ./translations.db \
+  --game-id gta6 \
+  --file ./GTA6_text_EN.xlsx \
+  --source-name "Authorized GTA6 localization source" \
+  --license-id "PERMISSION-GRANTED" \
+  --confirm-rights \
+  --source-only
+```
+
+This stores original IDs, English strings, worksheet names, row numbers and `Nhóm` context in the `source_strings` queue. It does not publish the source workbook or mark generated translations as verified.
+
+After staging, run bounded Gemini batches with an API key supplied through the `GEMINI_API_KEY` environment variable:
+
+```bash
+python -m knowledge_base.translate_batch_cli --db ./translations.db --game-id gta6 --model YOUR_ENABLED_GEMINI_MODEL --batch-size 50
+```
+
+Repeat the command to resume from the next pending rows. AI output is stored as `AI_UNVERIFIED`; human review is still required before a source is marked verified.
 
 ## Example invocation
 
@@ -39,6 +66,6 @@ not an independent legal verification. A reviewer must inspect the license,
 source URL and attribution before changing its verification status. Unknown,
 unlicensed, and all-rights-reserved sources are blocked.
 
-Repeated imports skip already-present game/source-text/translation triples.
+Repeated imports skip already-present game/source-text/translation triples. If an external string ID is supplied, the importer preserves it and rejects conflicting content for the same game/ID instead of silently overwriting it.
 The importer records SHA-256 of the input file and per-import counts in
 \`import_jobs\`. It never marks imported community translations as VERIFIED.

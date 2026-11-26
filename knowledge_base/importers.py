@@ -19,7 +19,7 @@ from typing import Iterable, Iterator
 
 from .db import KnowledgeBase, normalize_text, sha256_text
 
-SUPPORTED_FORMATS = {"csv", "json", "po", "xliff", "xlf", "tmx"}
+SUPPORTED_FORMATS = {"csv", "json", "po", "xliff", "xlf", "tmx", "xlsx"}
 BLOCKED_LICENSE_IDS = {"", "unknown", "none", "n/a", "na", "unlicensed", "all-rights-reserved"}
 
 
@@ -35,6 +35,7 @@ class TranslationRow:
     speaker: str | None = None
     scene_id: str | None = None
     mission_id: str | None = None
+    external_id: str | None = None
 
 
 @dataclass
@@ -62,12 +63,14 @@ def _first(mapping: dict, keys: tuple[str, ...]) -> str:
     return ""
 
 
-SOURCE_KEYS = ("source_text", "source", "original", "msgid", "english", "en", "text")
-TARGET_KEYS = ("translated_text", "translation", "target", "msgstr", "vietnamese", "vi")
+SOURCE_KEYS = ("source_text", "source", "original", "msgid", "english", "tiếng anh", "en", "text")
+TARGET_KEYS = ("translated_text", "translation", "target", "msgstr", "vietnamese", "tiếng việt", "vi")
 CONTEXT_KEYS = ("context", "extracomment", "developer_comment", "description")
 SPEAKER_KEYS = ("speaker", "character")
 SCENE_KEYS = ("scene_id", "scene")
 MISSION_KEYS = ("mission_id", "mission")
+ID_KEYS = ("external_id", "string_id", "id", "key")
+GROUP_KEYS = ("group", "nhom", "category")
 
 
 def _row(mapping: dict) -> TranslationRow | None:
@@ -81,6 +84,7 @@ def _row(mapping: dict) -> TranslationRow | None:
         _first(mapping, SPEAKER_KEYS) or None,
         _first(mapping, SCENE_KEYS) or None,
         _first(mapping, MISSION_KEYS) or None,
+        _first(mapping, ID_KEYS) or None,
     )
 
 
@@ -100,6 +104,36 @@ def parse_csv(path: Path) -> Iterator[TranslationRow]:
             if row:
                 yield row
 
+
+def parse_xlsx(path: Path) -> Iterator[TranslationRow]:
+    """Read all worksheets and preserve each source string ID."""
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:
+        raise ImportValidationError("Excel .xlsx import requires openpyxl.") from exc
+    try:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+    except Exception as exc:
+        raise ImportValidationError(f"Invalid Excel workbook: {exc}") from exc
+    try:
+        for sheet in workbook.worksheets:
+            rows = sheet.iter_rows(values_only=True)
+            headers = next(rows, None)
+            if not headers:
+                continue
+            names = [str(value).strip() if value is not None else "" for value in headers]
+            if not any(names):
+                continue
+            for values in rows:
+                mapping = {names[n]: values[n] for n in range(min(len(names), len(values))) if names[n]}
+                row = _row(mapping)
+                if row:
+                    group = _first(mapping, GROUP_KEYS)
+                    if group and not row.context:
+                        row = TranslationRow(row.source_text, row.translated_text, group, row.speaker, row.scene_id, row.mission_id, row.external_id)
+                    yield row
+    finally:
+        workbook.close()
 
 def parse_json(path: Path) -> Iterator[TranslationRow]:
     try:
@@ -229,6 +263,7 @@ def parse_tmx(path: Path) -> Iterator[TranslationRow]:
 PARSERS = {
     "csv": parse_csv, "json": parse_json, "po": parse_po,
     "xliff": parse_xliff, "xlf": parse_xliff, "tmx": parse_tmx,
+    "xlsx": parse_xlsx,
 }
 
 
@@ -236,6 +271,90 @@ class TranslationImporter:
     def __init__(self, knowledge_base: KnowledgeBase):
         self.kb = knowledge_base
 
+    def import_source_workbook(
+        self, game_id: str, file_path: str | Path, *, source_name: str,
+        license_id: str, source_url: str | None = None, author_name: str | None = None,
+        license_url: str | None = None, attribution: str | None = None,
+        confirm_rights: bool = False,
+    ) -> ImportReport:
+        """Stage original Excel strings even when the Vietnamese column is still empty."""
+        path = Path(file_path)
+        if not path.is_file() or path.suffix.lower() != '.xlsx':
+            raise ImportValidationError('Source staging requires an existing .xlsx workbook.')
+        if not source_name.strip() or license_id.strip().lower() in BLOCKED_LICENSE_IDS:
+            raise ImportValidationError('A source name and explicit reuse permission are required.')
+        if not confirm_rights:
+            raise ImportValidationError('Confirm that you have the right to import and reuse this content.')
+        try:
+            from openpyxl import load_workbook
+        except ImportError as exc:
+            raise ImportValidationError('Excel .xlsx import requires openpyxl.') from exc
+        with closing(self.kb.connect()) as db:
+            if db.execute('SELECT 1 FROM games WHERE game_id=?', (game_id,)).fetchone() is None:
+                raise ImportValidationError(f'Unknown game_id: {game_id}')
+        source_id = self.kb.add_source(
+            source_name=source_name, license_id=license_id.strip(), source_url=source_url,
+            author_name=author_name, license_url=license_url, attribution=attribution,
+            verification_status='PENDING',
+        )
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        with self.kb.transaction() as db:
+            cur = db.execute(
+                "INSERT INTO import_jobs(source_id, game_id, file_name, file_format, file_sha256, status, started_at) "
+                "VALUES (?, ?, ?, 'xlsx', ?, 'RUNNING', strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+                (source_id, game_id, path.name, digest),
+            )
+            import_id = int(cur.lastrowid)
+        imported = skipped = rejected = 0
+        errors: list[str] = []
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        try:
+            for sheet in workbook.worksheets:
+                rows = sheet.iter_rows(values_only=True)
+                headers = next(rows, None)
+                if not headers:
+                    continue
+                names = [str(v).strip() if v is not None else '' for v in headers]
+                for row_number, values in enumerate(rows, start=2):
+                    mapping = {names[n]: values[n] for n in range(min(len(names), len(values))) if names[n]}
+                    lowered = {str(k).strip().lower(): v for k, v in mapping.items()}
+                    external_id = _clean(lowered.get('id') or lowered.get('external_id') or lowered.get('string_id'))
+                    source_text = _clean(lowered.get('english') or lowered.get('source_text') or lowered.get('source'))
+                    context = _clean(lowered.get('nhóm') or lowered.get('nhom') or lowered.get('group') or lowered.get('category'))
+                    if not external_id or not source_text:
+                        skipped += 1
+                        continue
+                    try:
+                        with self.kb.transaction() as db:
+                            old = db.execute(
+                                'SELECT source_text, context FROM source_strings WHERE game_id=? AND external_id=?',
+                                (game_id, external_id),
+                            ).fetchone()
+                            if old:
+                                if old['source_text'] != source_text:
+                                    raise ValueError(f'ID {external_id} already exists with different English text')
+                                skipped += 1
+                                continue
+                            db.execute(
+                                'INSERT INTO source_strings(game_id, external_id, source_text, context, sheet_name, row_number, source_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                                (game_id, external_id, source_text, context or None, sheet.title, row_number, source_id),
+                            )
+                        imported += 1
+                    except (sqlite3.Error, ValueError) as exc:
+                        rejected += 1
+                        if len(errors) < 100:
+                            errors.append(f'{sheet.title}!{row_number}: {exc}')
+        except Exception as exc:
+            errors.append(str(exc))
+        finally:
+            workbook.close()
+        status = 'COMPLETED' if imported or skipped else 'FAILED'
+        with self.kb.transaction() as db:
+            db.execute(
+                "UPDATE import_jobs SET imported_count=?, skipped_count=?, rejected_count=?, status=?, error_message=?, completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE import_id=?",
+                (imported, skipped, rejected, status, '\n'.join(errors) or None, import_id),
+            )
+        return ImportReport(import_id, path.name, 'xlsx', imported, skipped, rejected, status, errors)
     def import_file(
         self,
         game_id: str,
@@ -292,21 +411,27 @@ class TranslationImporter:
                     digest = sha256_text(normalized)
                     with self.kb.transaction() as db:
                         duplicate = db.execute(
-                            """SELECT 1 FROM translations
-                               WHERE game_id=? AND text_sha256=? AND translated_text=?
-                                 AND translation_status != 'REJECTED' LIMIT 1""",
-                            (game_id, digest, row.translated_text),
+                            """SELECT external_id, source_text, translated_text FROM translations
+                               WHERE game_id=? AND (
+                                   (? IS NOT NULL AND external_id=?) OR
+                                   (? IS NULL AND text_sha256=? AND translated_text=?)
+                               ) AND translation_status != 'REJECTED' LIMIT 1""",
+                            (game_id, row.external_id, row.external_id, row.external_id, digest, row.translated_text),
                         ).fetchone()
                         if duplicate:
+                            if (row.external_id and duplicate["external_id"] == row.external_id and
+                                    (duplicate["source_text"] != row.source_text or
+                                     duplicate["translated_text"] != row.translated_text)):
+                                raise ValueError(f"external ID {row.external_id} already exists with different content")
                             skipped += 1
                             continue
                         db.execute(
                             """INSERT INTO translations(
-                                game_id, source_text, normalized_text, translated_text,
+                                game_id, external_id, source_text, normalized_text, translated_text,
                                 text_sha256, context, speaker, scene_id, mission_id,
                                 source_id, translation_source, translation_status
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'IMPORT', 'COMMUNITY')""",
-                            (game_id, row.source_text, normalized, row.translated_text,
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'IMPORT', 'COMMUNITY')""",
+                            (game_id, row.external_id, row.source_text, normalized, row.translated_text,
                              digest, row.context, row.speaker, row.scene_id,
                              row.mission_id, source_id),
                         )

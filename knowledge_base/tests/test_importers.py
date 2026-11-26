@@ -34,6 +34,68 @@ class ImporterTests(unittest.TestCase):
             "source_text,translated_text,context\nHello,Xin chào,menu\n")
         self.assertEqual((again.imported, again.skipped), (0, 1))
 
+    def test_source_only_workbook_stages_blank_vietnamese_cells(self):
+        try:
+            from openpyxl import Workbook
+        except ImportError:
+            self.skipTest('openpyxl is not installed')
+        path = self.root / 'source-only.xlsx'
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = 'Core'
+        sheet.append(['STT', 'ID', 'Nhóm', 'English', 'Tiếng Việt'])
+        sheet.append([1, 'C0000_B381007C', 'Thoại | Core C0000', 'Hey! Eyes open!', None])
+        workbook.save(path)
+        report = self.importer.import_source_workbook(
+            'fixture-game', path, source_name='Authorized source fixture',
+            license_id='TEST-PERMISSION', confirm_rights=True,
+        )
+        self.assertEqual((report.imported, report.skipped, report.rejected), (1, 0, 0))
+        pending = self.kb.pending_source_strings('fixture-game')
+        self.assertEqual(pending[0]['external_id'], 'C0000_B381007C')
+        self.assertEqual(pending[0]['source_text'], 'Hey! Eyes open!')
+        self.assertEqual(pending[0]['context'], 'Thoại | Core C0000')
+        self.assertIsNone(pending[0]['translated_text'])
+    def test_xlsx_preserves_original_ids_and_group_context(self):
+        try:
+            from openpyxl import Workbook
+        except ImportError:
+            self.skipTest("openpyxl is not installed")
+        path = self.root / "gta6.xlsx"
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Core"
+        sheet.append(["STT", "ID", "Nhóm", "English", "Tiếng Việt"])
+        sheet.append([1, "C0000_B381007C", "Thoại | Core C0000", "Hey! Eyes open!", "Này! Tỉnh táo lên!"])
+        workbook.save(path)
+        report = self.importer.import_file(
+            "fixture-game", path, source_name="Authorized Excel fixture",
+            license_id="TEST-PERMISSION", confirm_rights=True,
+        )
+        self.assertEqual(report.imported, 1)
+        self.assertEqual(
+            self.kb.lookup_external_id("fixture-game", "C0000_B381007C")["translated_text"],
+            "Này! Tỉnh táo lên!",
+        )
+    def test_xlsx_keeps_different_ids_for_identical_text(self):
+        try:
+            from openpyxl import Workbook
+        except ImportError:
+            self.skipTest('openpyxl is not installed')
+        path = self.root / 'same-text.xlsx'
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append(['ID', 'English', 'Vietnamese'])
+        sheet.append(['A_001', 'Continue', 'Tiếp tục'])
+        sheet.append(['B_002', 'Continue', 'Tiếp tục'])
+        workbook.save(path)
+        report = self.importer.import_file(
+            'fixture-game', path, source_name='Authorized duplicate-ID fixture',
+            license_id='TEST-PERMISSION', confirm_rights=True,
+        )
+        self.assertEqual(report.imported, 2)
+        self.assertEqual(self.kb.lookup_external_id('fixture-game', 'A_001')['translated_text'], 'Tiếp tục')
+        self.assertEqual(self.kb.lookup_external_id('fixture-game', 'B_002')['translated_text'], 'Tiếp tục')
     def test_json(self):
         report = self.import_path("strings.json", json.dumps([
             {"source": "Start", "target": "Bắt đầu"},

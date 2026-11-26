@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS data_sources (
 CREATE TABLE IF NOT EXISTS translations (
     translation_id INTEGER PRIMARY KEY AUTOINCREMENT,
     game_id TEXT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+    external_id TEXT,
     source_text TEXT NOT NULL,
     normalized_text TEXT NOT NULL,
     translated_text TEXT NOT NULL,
@@ -72,6 +73,26 @@ CREATE INDEX IF NOT EXISTS idx_translations_status
     ON translations(game_id, translation_status);
 CREATE INDEX IF NOT EXISTS idx_translations_context
     ON translations(game_id, speaker, scene_id, mission_id);
+
+CREATE TABLE IF NOT EXISTS source_strings (
+    source_string_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_id TEXT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+    external_id TEXT NOT NULL,
+    source_text TEXT NOT NULL,
+    context TEXT,
+    sheet_name TEXT,
+    row_number INTEGER,
+    source_id INTEGER REFERENCES data_sources(source_id) ON DELETE SET NULL,
+    translated_text TEXT,
+    status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','TRANSLATED','VERIFIED','REJECTED')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    UNIQUE(game_id, external_id),
+    CHECK (length(trim(external_id)) > 0),
+    CHECK (length(trim(source_text)) > 0)
+);
+CREATE INDEX IF NOT EXISTS idx_source_strings_pending
+    ON source_strings(game_id, status, source_string_id);
 
 CREATE TABLE IF NOT EXISTS glossary (
     glossary_id INTEGER PRIMARY KEY AUTOINCREMENT,

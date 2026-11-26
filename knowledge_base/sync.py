@@ -155,8 +155,8 @@ def import_game_pack(
                     game_id, source_text, normalized_text, translated_text, text_sha256,
                     context, speaker, scene_id, mission_id, previous_sentence,
                     next_sentence, source_id, contributor_id, translation_source, translation_status,
-                    confidence_score, verified_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    confidence_score, verified_at, external_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     game_id, source_text, normalize_text(source_text), translated_text,
                     hashlib.sha256(normalize_text(source_text).encode("utf-8")).hexdigest(),
@@ -166,6 +166,7 @@ def import_game_pack(
                     item.get("contributor_id"), "SYNC", status,
                     item.get("confidence_score"),
                     item.get("verified_at") if status == "VERIFIED" and allow_verified else None,
+                    item.get("external_id"),
                 ),
             )
             counts["translations"] += 1

@@ -53,9 +53,15 @@ class KnowledgeBase:
             columns = {row[1] for row in connection.execute("PRAGMA table_info(translations)")}
             if "contributor_id" not in columns:
                 connection.execute("ALTER TABLE translations ADD COLUMN contributor_id TEXT")
+            if "external_id" not in columns:
+                connection.execute("ALTER TABLE translations ADD COLUMN external_id TEXT")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_translations_external_id "
+                "ON translations(game_id, external_id) WHERE external_id IS NOT NULL"
+            )
             connection.execute(
                 "INSERT OR IGNORE INTO schema_migrations(version, description) VALUES (?, ?)",
-                (5, "Track community contributor identifiers"),
+                (6, "Preserve source localization string identifiers"),
             )
             connection.commit()
             # Fail early and clearly if SQLite was built without FTS5.
@@ -153,6 +159,7 @@ class KnowledgeBase:
         translation_source: str = "COMMUNITY",
         translation_status: str = "COMMUNITY",
         confidence_score: float | None = None,
+        external_id: str | None = None,
     ) -> int:
         normalized = normalize_text(source_text)
         with self.transaction() as db:
@@ -161,17 +168,50 @@ class KnowledgeBase:
                     game_id, source_text, normalized_text, translated_text, text_sha256,
                     context, speaker, scene_id, mission_id, previous_sentence,
                     next_sentence, source_id, contributor_id, translation_source, translation_status,
-                    confidence_score
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    confidence_score, external_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     game_id, source_text, normalized, translated_text,
                     sha256_text(normalized), context, speaker, scene_id, mission_id,
                     previous_sentence, next_sentence, source_id, contributor_id, translation_source,
-                    translation_status, confidence_score,
+                    translation_status, confidence_score, external_id,
                 ),
             )
             return int(cursor.lastrowid)
 
+    def pending_source_strings(self, game_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        if limit < 1:
+            raise ValueError('limit must be positive')
+        with closing(self.connect()) as db:
+            rows = db.execute(
+                "SELECT * FROM source_strings WHERE game_id=? AND status='PENDING' ORDER BY source_string_id LIMIT ?",
+                (game_id, min(limit, 1000)),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def set_source_string_translation(self, game_id: str, external_id: str, translated_text: str, status: str = 'TRANSLATED') -> None:
+        if status not in {'TRANSLATED', 'VERIFIED', 'REJECTED'}:
+            raise ValueError('invalid source string status')
+        with self.transaction() as db:
+            db.execute(
+                "UPDATE source_strings SET translated_text=?, status=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE game_id=? AND external_id=?",
+                (translated_text, status, game_id, external_id),
+            )
+    def lookup_external_id(self, game_id: str, external_id: str) -> dict[str, Any] | None:
+        """Resolve a game string by its original engine/localization ID."""
+        key = (external_id or "").strip()
+        if not key:
+            return None
+        with closing(self.connect()) as db:
+            row = db.execute(
+                """SELECT * FROM translations
+                   WHERE game_id=? AND external_id=? AND translation_status != 'REJECTED'
+                   ORDER BY CASE translation_status
+                       WHEN 'VERIFIED' THEN 0 WHEN 'AI_REVIEWED' THEN 1
+                       WHEN 'COMMUNITY' THEN 2 ELSE 3 END, confidence_score DESC LIMIT 1""",
+                (game_id, key),
+            ).fetchone()
+            return dict(row) if row else None
     def lookup_exact(self, game_id: str, source_text: str) -> dict[str, Any] | None:
         normalized = normalize_text(source_text)
         with closing(self.connect()) as db:
