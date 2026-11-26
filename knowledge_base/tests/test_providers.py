@@ -43,6 +43,22 @@ class ProviderAdapterTests(unittest.TestCase):
         self.assertEqual(payload["generationConfig"]["maxOutputTokens"], 80)
 
     @patch("knowledge_base.providers.urlopen")
+    def test_gemini_batch_keeps_ids_and_parses_json(self, mocked):
+        mocked.return_value = FakeResponse({
+            "candidates": [{"content": {"parts": [{"text": json.dumps([
+                {"id": "A_001", "translation": "Xin chào"},
+                {"id": "B_002", "translation": "Tạm biệt"},
+            ], ensure_ascii=False)}]}}],
+        })
+        provider = GeminiProvider("test-secret")
+        result = provider.translate_many([
+            {"id": "A_001", "text": "Hello", "context": "Greeting"},
+            {"id": "B_002", "text": "Goodbye", "context": "Farewell"},
+        ], model="gemini-test", max_output_tokens=256)
+        self.assertEqual(result, {"A_001": "Xin chào", "B_002": "Tạm biệt"})
+        payload = json.loads(mocked.call_args.args[0].data)
+        self.assertEqual(payload["generationConfig"]["responseMimeType"], "application/json")
+    @patch("knowledge_base.providers.urlopen")
     def test_openai_compatible_adapter_sets_auth_and_usage(self, mocked):
         mocked.return_value = FakeResponse({
             "choices": [{"message": {"content": "Nhiệm vụ hoàn tất"}}],
