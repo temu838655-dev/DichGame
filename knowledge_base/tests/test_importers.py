@@ -77,6 +77,25 @@ class ImporterTests(unittest.TestCase):
             self.kb.lookup_external_id("fixture-game", "C0000_B381007C")["translated_text"],
             "Này! Tỉnh táo lên!",
         )
+    def test_xlsx_keeps_different_ids_for_identical_text(self):
+        try:
+            from openpyxl import Workbook
+        except ImportError:
+            self.skipTest('openpyxl is not installed')
+        path = self.root / 'same-text.xlsx'
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append(['ID', 'English', 'Vietnamese'])
+        sheet.append(['A_001', 'Continue', 'Tiếp tục'])
+        sheet.append(['B_002', 'Continue', 'Tiếp tục'])
+        workbook.save(path)
+        report = self.importer.import_file(
+            'fixture-game', path, source_name='Authorized duplicate-ID fixture',
+            license_id='TEST-PERMISSION', confirm_rights=True,
+        )
+        self.assertEqual(report.imported, 2)
+        self.assertEqual(self.kb.lookup_external_id('fixture-game', 'A_001')['translated_text'], 'Tiếp tục')
+        self.assertEqual(self.kb.lookup_external_id('fixture-game', 'B_002')['translated_text'], 'Tiếp tục')
     def test_json(self):
         report = self.import_path("strings.json", json.dumps([
             {"source": "Start", "target": "Bắt đầu"},
