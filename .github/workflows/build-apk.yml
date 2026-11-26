@@ -63,11 +63,9 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      # Người vận hành đã chấp thuận tạm bỏ qua việc xoay khóa ký để phát hành bản cập nhật.
-      # Nếu thiếu GitHub Secrets, dùng keystore hiện có trong repo; bước xác minh phía dưới
-      # bắt buộc chứng thư SHA-256 và versionCode khớp Release trước, nếu không sẽ dừng phát hành.
-      # Khóa hiện tại đã từng xuất hiện trong lịch sử repo công khai: cần xoay khóa sau đợt chuyển tiếp.
-      - name: Kiểm tra và nạp khóa ký
+      # Public release is blocked until a private signing key is supplied via GitHub Secrets.
+      # The previous repository keystore and password were exposed in public git history and must never be reused.
+      - name: Yêu cầu khóa ký riêng cho bản phát hành
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -77,33 +75,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -n "${KEYSTORE_BASE64}${KEYSTORE_PASSWORD}${KEY_ALIAS}${KEY_PASSWORD}" ]; then
-            for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
-              if [ -z "${!name}" ]; then
-                echo "::error::Bộ khóa riêng chưa đầy đủ ($name đang trống)."
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              if [ "$IS_PUBLIC_RELEASE" = "true" ]; then
+                echo "::error::Không phát hành: thiếu GitHub Secret $name. Khóa ký cũ đã lộ công khai; hãy tạo/cấu hình khóa riêng mới trước khi phát hành."
                 exit 1
               fi
-            done
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            test -s "$RUNNER_TEMP/release.jks"
-            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
-            echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
-            echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-            echo "CAN_PUBLISH_RELEASE=true" >> "$GITHUB_ENV"
-            echo "Đang ký bằng khóa trong GitHub Secrets; kiểm tra tương thích chứng thư sẽ quyết định có phát hành được hay không."
-          else
-            test -s keystore/dichgame.jks
-            if [ "$IS_PUBLIC_RELEASE" = "true" ]; then
-              echo "::warning::Đang dùng khóa ký hiện có trong repo theo yêu cầu phát hành; khóa này đã lộ trong lịch sử repo công khai."
-              echo "CAN_PUBLISH_RELEASE=true" >> "$GITHUB_ENV"
-              echo "### Phát hành bằng khóa ký hiện có" >> "$GITHUB_STEP_SUMMARY"
-              echo "Đã bỏ qua yêu cầu secrets theo chấp thuận của chủ dự án. Release chỉ tiếp tục nếu chứng thư và versionCode khớp bản trước." >> "$GITHUB_STEP_SUMMARY"
-            else
               echo "CAN_PUBLISH_RELEASE=false" >> "$GITHUB_ENV"
+              echo "Không có khóa phát hành riêng; chỉ cho phép kiểm tra trên nhánh không phát hành."
+              exit 0
             fi
-            echo "Dùng keystore hiện có; mọi public release vẫn phải qua bước đối chiếu chứng thư/versionCode."
-          fi
+          done
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          test -s "$RUNNER_TEMP/release.jks"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "CAN_PUBLISH_RELEASE=true" >> "$GITHUB_ENV"
+          echo "Đã nạp khóa ký riêng từ GitHub Secrets."
 
       # Android NDK đôi lúc được SDK Manager tải thành tệp ZIP hỏng trên runner GitHub.
       # Chuẩn bị NDK trước khi chạy Gradle, thử lại thay vì làm hỏng cả bản phát hành.
