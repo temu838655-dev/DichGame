@@ -172,18 +172,23 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
      * [queue] = true: giọng máy không bao giờ xóa hàng dù dồn nhiều.
      */
     fun speak(text: String, queue: Boolean = false, d: Delivery? = null, speakerName: String? = null, interrupt: Boolean = false) {
-        if (disposed || text.isBlank()) return
+        if (disposed) return
+        val spoken = LineClean.clean(text)
+        if (spoken.isEmpty()) return
         when {
-            offlineOn() -> speakOffline(text, d, interrupt)
-            p.aiVoiceOn -> speakAi(text, d, speakerName, interrupt)
-            else -> speakSystem(text, queue, d, interrupt)
+            offlineOn() -> speakOffline(spoken, d, interrupt)
+            p.aiVoiceOn -> speakAi(spoken, d, speakerName, interrupt)
+            else -> speakSystem(spoken, queue, d, interrupt)
         }
     }
 
     /** Đọc nhiều câu trong một khung thoại bằng đúng giọng của từng nhân vật. */
     fun speakScene(lines: List<VoiceLine>) {
         if (disposed) return
-        val items = lines.filter { it.text.isNotBlank() }
+        val items = lines.mapNotNull { line ->
+            val spoken = LineClean.clean(line.text)
+            if (spoken.isEmpty()) null else line.copy(text = spoken)
+        }
         if (items.isEmpty()) return
         val all = items.joinToString(" ") { it.text }
         val last = items.last()
@@ -222,7 +227,10 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     /** TV nhận một đoạn PCM duy nhất, nhưng từng lời thoại vẫn được tạo bằng giọng riêng. */
     fun synthForTvScene(lines: List<VoiceLine>, cb: (Pcm?, Float) -> Unit) {
-        val items = lines.filter { it.text.isNotBlank() }
+        val items = lines.mapNotNull { line ->
+            val spoken = LineClean.clean(line.text)
+            if (spoken.isEmpty()) null else line.copy(text = spoken)
+        }
         if (disposed || items.isEmpty()) { cb(null, 1f); return }
         val last = items.last()
         val multipleVoices = p.aiVoiceOn && p.characterVoices &&
@@ -502,24 +510,26 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
      * Câu cũ chưa kịp làm mà đã có câu mới thì bị bỏ (không gọi [cb]).
      */
     fun synthForTv(text: String, d: Delivery? = null, speakerName: String? = null, cb: (Pcm?, Float) -> Unit) {
-        if (disposed || text.isBlank()) return
+        if (disposed) return
+        val spoken = LineClean.clean(text)
+        if (spoken.isEmpty()) return
         val my = tvSeq.incrementAndGet()
         val useOffline = offlineOn()
         val id = p.offlineVoice
-        val speed = if (useOffline) speedFor(text, d) else ((p.rate10 / 10f) * (deliveryOf(text, d)?.rate ?: 1f)).coerceIn(0.5f, 2.5f)
-        val style = styleFor(text, d)
+        val speed = if (useOffline) speedFor(spoken, d) else ((p.rate10 / 10f) * (deliveryOf(spoken, d)?.rate ?: 1f)).coerceIn(0.5f, 2.5f)
+        val style = styleFor(spoken, d)
         try {
             exec.execute {
                 if (my != tvSeq.get()) return@execute
                 if (useOffline) {
                     val pcm: Pcm? = try {
-                        offlinePcm(id, text, speed)
+                        offlinePcm(id, spoken, speed)
                     } catch (_: Throwable) { null }
                     if (!disposed && my == tvSeq.get()) cb(pcm, 1f) // tốc độ đã nằm trong âm thanh
                 } else {
-                    val voiceName = p.aiVoiceFor(speakerName, text)
+                    val voiceName = p.aiVoiceFor(speakerName, spoken)
                     val pcm: Pcm? = try {
-                        aiPcm(text, style, voiceName)
+                        aiPcm(spoken, style, voiceName)
                     } catch (_: Exception) { null }
                     if (!disposed && my == tvSeq.get()) cb(pcm, speed)
                 }
