@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import os
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from .ai_fallback import ProviderResponse
@@ -69,6 +69,8 @@ class GeminiProvider:
         self, source_text: str, context: str, *, model: str,
         max_output_tokens: int,
     ) -> ProviderResponse:
+        if not model.strip() or max_output_tokens < 1 or not source_text.strip():
+            raise ValueError("Cần model, nội dung và giới hạn token hợp lệ")
         prompt = (
             "Translate the game dialogue below into natural Vietnamese. "
             "Preserve names, variables, markup, placeholders, and line breaks. "
@@ -76,17 +78,16 @@ class GeminiProvider:
             f"Context: {context or 'Not provided'}\n"
             f"Text:\n{source_text}"
         )
-        url = (
-            f"{self.api_base}/models/{quote(model, safe='')}:generateContent?"
-            + urlencode({"key": self.api_key})
-        )
+        url = f"{self.api_base}/models/{quote(model, safe='')}:generateContent"
         payload = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {"maxOutputTokens": max_output_tokens, "temperature": 0.2},
         }
-        result = _post_json(url, payload, {}, self.timeout_seconds)
+        result = _post_json(url, payload, {"x-goog-api-key": self.api_key}, self.timeout_seconds)
         try:
             candidates = result["candidates"]
+            if candidates[0].get("finishReason", "STOP") != "STOP":
+                raise ProviderHTTPError("Gemini chưa hoàn tất bản dịch")
             parts = candidates[0]["content"]["parts"]
             translated = "".join(part.get("text", "") for part in parts)
             usage = result.get("usageMetadata", {})
@@ -103,7 +104,7 @@ class GeminiProvider:
         self, rows: list[dict[str, str]], *, model: str, max_output_tokens: int,
     ) -> dict[str, str]:
         """Translate a small group in one request and require an exact JSON ID set."""
-        if not rows or len(rows) > 20 or max_output_tokens < 1:
+        if not model.strip() or any(not isinstance(row.get("text"), str) or not row["text"].strip() for row in rows) or not rows or len(rows) > 20 or max_output_tokens < 1:
             raise ValueError("translate_many accepts 1-20 rows and a positive output limit")
         source_ids = [str(row.get("id", "")).strip() for row in rows]
         if any(not value for value in source_ids) or len(set(source_ids)) != len(source_ids):
@@ -119,16 +120,15 @@ class GeminiProvider:
             "Do not omit, merge, reorder or add items. Return only a valid JSON array of objects with exactly the keys id and translation. "
             "Copy each id exactly.\nINPUT:\n" + json.dumps(source, ensure_ascii=False)
         )
-        url = (
-            f"{self.api_base}/models/{quote(model, safe='')}:generateContent?"
-            + urlencode({"key": self.api_key})
-        )
+        url = f"{self.api_base}/models/{quote(model, safe='')}:generateContent"
         payload = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {"maxOutputTokens": max_output_tokens, "temperature": 0.2, "responseMimeType": "application/json"},
         }
-        result = _post_json(url, payload, {}, self.timeout_seconds)
+        result = _post_json(url, payload, {"x-goog-api-key": self.api_key}, self.timeout_seconds)
         try:
+            if result["candidates"][0].get("finishReason", "STOP") != "STOP":
+                raise ProviderHTTPError("Gemini chưa hoàn tất lô bản dịch")
             raw = "".join(part.get("text", "") for part in result["candidates"][0]["content"]["parts"]).strip()
             if raw.startswith("```"):
                 raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
@@ -185,6 +185,8 @@ class OpenAICompatibleProvider:
         self, source_text: str, context: str, *, model: str,
         max_output_tokens: int,
     ) -> ProviderResponse:
+        if not model.strip() or max_output_tokens < 1 or not source_text.strip():
+            raise ValueError("Cần model, nội dung và giới hạn token hợp lệ")
         payload = {
             "model": model,
             "messages": [
@@ -204,12 +206,17 @@ class OpenAICompatibleProvider:
             "max_tokens": max_output_tokens,
             "temperature": 0.2,
         }
+        if model == "gpt-5-mini" or model.startswith("gpt-5-mini-"):
+            payload["max_completion_tokens"] = payload.pop("max_tokens")
+            del payload["temperature"]
         result = _post_json(
             self.base_url, payload,
             {"Authorization": f"Bearer {self.api_key}"},
             self.timeout_seconds,
         )
         try:
+            if result["choices"][0].get("finish_reason", "stop") != "stop":
+                raise ProviderHTTPError("OpenAI chưa hoàn tất bản dịch")
             translated = result["choices"][0]["message"]["content"]
             usage = result.get("usage", {})
             input_tokens = int(usage.get("prompt_tokens", 0))

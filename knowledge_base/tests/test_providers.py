@@ -38,7 +38,8 @@ class ProviderAdapterTests(unittest.TestCase):
         self.assertEqual((result.input_tokens, result.output_tokens), (14, 4))
         request = mocked.call_args.args[0]
         self.assertIn("gemini-test", request.full_url)
-        self.assertIn("test-secret", request.full_url)
+        self.assertNotIn("test-secret", request.full_url)
+        self.assertEqual(request.get_header("X-goog-api-key"), "test-secret")
         payload = json.loads(request.data)
         self.assertEqual(payload["generationConfig"]["maxOutputTokens"], 80)
 
@@ -86,6 +87,25 @@ class ProviderAdapterTests(unittest.TestCase):
         with self.assertRaises(ProviderHTTPError) as error:
             provider.translate("Hello", "", model="test", max_output_tokens=32)
         self.assertNotIn("private-secret", str(error.exception))
+
+    @patch("knowledge_base.providers.urlopen")
+    def test_mini_rejects_partial_output_and_uses_completion_budget(self, mocked):
+        mocked.return_value = FakeResponse({
+            "choices": [{"finish_reason": "length", "message": {"content": "Một phần"}}]
+        })
+        with self.assertRaises(ProviderHTTPError):
+            OpenAICompatibleProvider("test").translate("Hello", "", model="gpt-5-mini", max_output_tokens=80)
+        payload = json.loads(mocked.call_args.args[0].data)
+        self.assertEqual(payload["max_completion_tokens"], 80)
+        self.assertNotIn("temperature", payload)
+        self.assertNotIn("max_tokens", payload)
+
+    @patch("knowledge_base.providers.urlopen")
+    def test_blank_dialogue_never_calls_network(self, mocked):
+        for provider in (GeminiProvider("test"), OpenAICompatibleProvider("test")):
+            with self.assertRaises(ValueError):
+                provider.translate(" ", "", model="test", max_output_tokens=20)
+        mocked.assert_not_called()
 
     def test_https_and_credentials_are_required(self):
         with self.assertRaises(ValueError):
