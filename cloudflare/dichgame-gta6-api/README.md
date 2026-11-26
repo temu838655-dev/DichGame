@@ -11,7 +11,7 @@ This Worker reads the `dichgame-community` D1 database and exposes only GTA VI t
 
 ## Storage
 
-Apply `migrations/0001_gta6_localization.sql` to the existing `dichgame-community` D1 database. The migration creates an isolated table and indexes; it does not modify the existing community translation tables.
+Apply `migrations/0001_gta6_localization.sql` and `migrations/0002_source_provenance.sql` to the existing `dichgame-community` D1 database. The migrations create an isolated table and indexes, then add source/license provenance; they do not modify the existing community translation tables.
 
 ## App integration
 
