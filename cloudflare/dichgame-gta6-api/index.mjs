@@ -34,12 +34,22 @@ export default {
             "SELECT external_id, source_text, translated_text, group_name FROM gta6_localization WHERE game_key=? AND external_id=? AND status='VERIFIED' AND provenance_status='VERIFIED' LIMIT 1"
           ).bind(GAME, id).first();
         }
+        const context = url.searchParams.get('context')?.trim() ?? '';
+        let ambiguous = false;
         if (!row && text) {
-          row = await env.DB.prepare(
-            "SELECT external_id, source_text, translated_text, group_name FROM gta6_localization WHERE game_key=? AND normalized_text=? AND status='VERIFIED' AND provenance_status='VERIFIED' ORDER BY id LIMIT 1"
-          ).bind(GAME, normalize(text)).first();
+          if (context) {
+            row = await env.DB.prepare(
+              "SELECT external_id, source_text, translated_text, group_name FROM gta6_localization WHERE game_key=? AND normalized_text=? AND group_name=? AND status='VERIFIED' AND provenance_status='VERIFIED' ORDER BY id LIMIT 1"
+            ).bind(GAME, normalize(text), context).first();
+          } else {
+            const matches = await env.DB.prepare(
+              "SELECT MIN(id) AS id, external_id, source_text, translated_text, group_name FROM gta6_localization WHERE game_key=? AND normalized_text=? AND status='VERIFIED' AND provenance_status='VERIFIED' GROUP BY translated_text LIMIT 2"
+            ).bind(GAME, normalize(text)).all();
+            if (matches.results.length === 1) row = matches.results[0];
+            else if (matches.results.length > 1) ambiguous = true;
+          }
         }
-        return json({ hit: !!row, match: row ? (id && row.external_id === id ? 'id' : 'exact_text') : null, translation: row?.translated_text ?? null, external_id: row?.external_id ?? null, context: row?.group_name ?? null });
+        return json({ hit: !!row, ambiguous, match: row ? (id && row.external_id === id ? 'id' : 'exact_text') : null, translation: row?.translated_text ?? null, external_id: row?.external_id ?? null, context: row?.group_name ?? null });
       }
       if (url.pathname === '/v1/gta6/lines') {
         const cursorRaw = url.searchParams.get('after') ?? '0';
