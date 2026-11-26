@@ -1078,10 +1078,14 @@ class CaptureService : Service() {
             if (text.length < minLen) { show("Không thấy chữ trong khung."); finishBusy(); return@read }
             translateText(text) { vi ->
                 if (!validScan(scope)) { finishBusy(); return@translateText }
-                show(vi.caption, readAloud = !vi.uncertain)
+                // Confidence is shown as a visual warning; a non-empty translation must still be narrated.
+                val canNarrate = TranslationSpeechPolicy.isSpeakable(
+                    TranslationSpeechPolicy.Candidate(vi.text, vi.uncertain)
+                )
+                show(vi.caption, readAloud = canNarrate)
                 hideRegionFrame()
-                sendTv("region", vi.caption, !vi.uncertain && speak && tvSpeakOn() && !tvVoiceOn())
-                if (!vi.uncertain && speak && tvVoiceOn()) tvVoice(vi.text)
+                sendTv("region", vi.caption, canNarrate && speak && tvSpeakOn() && !tvVoiceOn())
+                if (canNarrate && speak && tvVoiceOn()) tvVoice(vi.text)
                 finishBusy()
             }
         }
