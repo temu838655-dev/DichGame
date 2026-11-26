@@ -104,7 +104,7 @@ def main() -> int:
     parser.add_argument("--file", required=True, type=Path)
     parser.add_argument("--api", default=os.environ.get("DICHGAME_COMMUNITY_API", DEFAULT_API))
     parser.add_argument("--model", default=os.environ.get("GEMINI_MODEL", ""))
-    parser.add_argument("--max-rows", type=int, default=50, help="Maximum new rows to stage/translate in this run; use 0 for all remaining rows.")
+    parser.add_argument("--max-rows", type=int, default=50, help="Maximum new rows per run; use 0 for all remaining rows.")
     parser.add_argument("--max-output-tokens", type=int, default=512)
     parser.add_argument("--retries", type=int, default=2)
     parser.add_argument("--translate", action="store_true", help="Translate blank Vietnamese cells with Gemini; requires GEMINI_API_KEY.")
@@ -123,44 +123,64 @@ def main() -> int:
         if not args.model:
             parser.error("Set --model or GEMINI_MODEL to a Gemini model enabled for your key")
         provider = GeminiProvider.from_env()
-    checked = staged = translated = skipped = failed = 0
-    pending_upload = []
+    stats = {"rows_scanned": 0, "rows_staged": 0, "rows_with_translation": 0, "already_present_skipped": 0, "translation_failed": 0}
+    pending_upload: list[dict] = []
+    new_rows = 0
+    stop = False
 
-    def upload():
-        nonlocal staged, translated, pending_upload
+    def upload() -> None:
         if not pending_upload or args.dry_run:
-            pending_upload = []
+            pending_upload.clear()
             return
         request_json(args.api.rstrip("/") + "/v1/admin/gta6/batch", token, {
-            "game": GAME, "rightsConfirmed": True, "lines": pending_upload,
+            "game": GAME, "rightsConfirmed": True, "lines": list(pending_upload),
         })
-        staged += len(pending_upload)
-        translated += sum(bool(row["vi"]) for row in pending_upload)
-        pending_upload = []
+        stats["rows_staged"] += len(pending_upload)
+        stats["rows_with_translation"] += sum(bool(row["vi"]) for row in pending_upload)
+        pending_upload.clear()
 
-    try:
-        for row in rows_from_workbook(args.file):
-            checked += 1
-            if args.max_rows and (staged + len(pending_upload) + skipped) >= args.max_rows:
+    def process_chunk(chunk: list[dict]) -> None:
+        nonlocal new_rows, stop
+        if not chunk or stop:
+            return
+        known = {}
+        if not args.dry_run:
+            response = request_json(args.api.rstrip("/") + "/v1/admin/gta6/check", token,
+                                    {"ids": [row["external_id"] for row in chunk]})
+            known = {item["external_id"]: item for item in response.get("lines", [])}
+        for row in chunk:
+            if args.max_rows and new_rows >= args.max_rows:
+                stop = True
                 break
-            if not args.dry_run:
-                known = request_json(args.api.rstrip("/") + "/v1/admin/gta6/check", token, {"ids": [row["external_id"]]})
-                existing = next((item for item in known.get("lines", []) if item.get("external_id") == row["external_id"]), None)
-                if existing and existing.get("status") in {"VERIFIED", "AI_UNVERIFIED"}:
-                    skipped += 1
-                    continue
+            stats["rows_scanned"] += 1
+            existing = known.get(row["external_id"])
+            if existing and existing.get("status") in {"VERIFIED", "AI_UNVERIFIED"}:
+                stats["already_present_skipped"] += 1
+                continue
+            new_rows += 1
             if not row["vi"] and provider is not None:
                 try:
                     row["vi"] = translate_one(provider, row, args.model, args.max_output_tokens, args.retries)
                 except Exception as exc:
-                    failed += 1
+                    stats["translation_failed"] += 1
                     print(f"TRANSLATION_FAILED {row['external_id']}: {exc}")
-                    continue
             pending_upload.append(row)
             if len(pending_upload) >= 5:
                 upload()
-            if checked % 25 == 0:
-                print(f"Read {checked}; staged {staged + len(pending_upload)}; translated {translated}; skipped {skipped}; failed {failed}")
+
+    try:
+        chunk = []
+        for row in rows_from_workbook(args.file):
+            chunk.append(row)
+            if len(chunk) == 100:
+                process_chunk(chunk)
+                chunk = []
+                if stop:
+                    break
+                if stats["rows_scanned"] and stats["rows_scanned"] % 500 == 0:
+                    print(json.dumps(stats, ensure_ascii=False))
+        if chunk and not stop:
+            process_chunk(chunk)
         upload()
     except KeyboardInterrupt:
         upload()
@@ -170,12 +190,9 @@ def main() -> int:
         upload()
         print(f"ERROR: {exc}")
         return 2
-    print(json.dumps({
-        "rows_scanned": checked, "rows_staged": staged, "rows_with_translation": translated,
-        "already_present_skipped": skipped, "translation_failed": failed, "dry_run": args.dry_run,
-    }, ensure_ascii=False, indent=2))
-    return 0 if failed == 0 else 1
-
+    stats["dry_run"] = args.dry_run
+    print(json.dumps(stats, ensure_ascii=False, indent=2))
+    return 0 if stats["translation_failed"] == 0 else 1
 
 if __name__ == "__main__":
     raise SystemExit(main())
