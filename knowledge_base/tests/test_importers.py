@@ -34,6 +34,27 @@ class ImporterTests(unittest.TestCase):
             "source_text,translated_text,context\nHello,Xin chào,menu\n")
         self.assertEqual((again.imported, again.skipped), (0, 1))
 
+    def test_xlsx_preserves_original_ids_and_group_context(self):
+        try:
+            from openpyxl import Workbook
+        except ImportError:
+            self.skipTest("openpyxl is not installed")
+        path = self.root / "gta6.xlsx"
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Core"
+        sheet.append(["STT", "ID", "Nhóm", "English", "Tiếng Việt"])
+        sheet.append([1, "C0000_B381007C", "Thoại | Core C0000", "Hey! Eyes open!", "Này! Tỉnh táo lên!"])
+        workbook.save(path)
+        report = self.importer.import_file(
+            "fixture-game", path, source_name="Authorized Excel fixture",
+            license_id="TEST-PERMISSION", confirm_rights=True,
+        )
+        self.assertEqual(report.imported, 1)
+        self.assertEqual(
+            self.kb.lookup_external_id("fixture-game", "C0000_B381007C")["translated_text"],
+            "Này! Tỉnh táo lên!",
+        )
     def test_json(self):
         report = self.import_path("strings.json", json.dumps([
             {"source": "Start", "target": "Bắt đầu"},
