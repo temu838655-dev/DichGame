@@ -179,6 +179,21 @@ class KnowledgeBase:
             )
             return int(cursor.lastrowid)
 
+    def lookup_external_id(self, game_id: str, external_id: str) -> dict[str, Any] | None:
+        """Resolve a game string by its original engine/localization ID."""
+        key = (external_id or "").strip()
+        if not key:
+            return None
+        with closing(self.connect()) as db:
+            row = db.execute(
+                """SELECT * FROM translations
+                   WHERE game_id=? AND external_id=? AND translation_status != 'REJECTED'
+                   ORDER BY CASE translation_status
+                       WHEN 'VERIFIED' THEN 0 WHEN 'AI_REVIEWED' THEN 1
+                       WHEN 'COMMUNITY' THEN 2 ELSE 3 END, confidence_score DESC LIMIT 1""",
+                (game_id, key),
+            ).fetchone()
+            return dict(row) if row else None
     def lookup_exact(self, game_id: str, source_text: str) -> dict[str, Any] | None:
         normalized = normalize_text(source_text)
         with closing(self.connect()) as db:
