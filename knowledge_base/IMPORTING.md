@@ -5,6 +5,7 @@ controls, or assume that a public repository grants reuse rights.
 
 Supported input formats:
 
+- Excel (`.xlsx`): all worksheets are read. The `ID` column is preserved as `external_id`, and `Nhóm` is retained as context. Requires `python -m pip install -r knowledge_base/requirements.txt`.
 - CSV: header row with source/target aliases such as \`source_text\` and
   \`translated_text\`, or \`english\` and \`vietnamese\`.
 - JSON: an array of entry objects, or an object containing \`translations\`,
@@ -39,6 +40,6 @@ not an independent legal verification. A reviewer must inspect the license,
 source URL and attribution before changing its verification status. Unknown,
 unlicensed, and all-rights-reserved sources are blocked.
 
-Repeated imports skip already-present game/source-text/translation triples.
+Repeated imports skip already-present game/source-text/translation triples. If an external string ID is supplied, the importer preserves it and rejects conflicting content for the same game/ID instead of silently overwriting it.
 The importer records SHA-256 of the input file and per-import counts in
 \`import_jobs\`. It never marks imported community translations as VERIFIED.
