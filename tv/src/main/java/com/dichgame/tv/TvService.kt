@@ -208,15 +208,32 @@ class TvService : Service() {
         var token = ""
         var rate = 22050
         var speed = 1f
+        var headerBytes = 0
+        var headerCount = 0
         while (true) {
             val h = line(i) ?: return
+            headerCount++
+            headerBytes += h.length
+            // Chặn client gửi vô hạn header nhỏ để chiếm worker trong thời gian dài.
+            if (headerCount > 32 || headerBytes > 16_384) {
+                reply(s, 431, "headers too large")
+                return
+            }
             if (h.isEmpty()) break
             val k = h.substringBefore(':').trim().lowercase()
             val v = h.substringAfter(':', "").trim()
-            if (k == "content-length") len = v.toIntOrNull() ?: 0
+            if (k == "content-length") len = v.toIntOrNull() ?: -1
             if (k == "x-token") token = v
             if (k == "x-rate") rate = v.toIntOrNull() ?: 22050
             if (k == "x-speed") speed = (v.toFloatOrNull() ?: 1f).coerceIn(0.5f, 2.5f)
+        }
+        if (path != "/audio" && (len < 0 || len > 8192)) {
+            reply(s, 413, "body too large")
+            return
+        }
+        if (path == "/sub" && len == 0) {
+            reply(s, 400, "empty body")
+            return
         }
         var status = 404
         var out = ""
