@@ -153,7 +153,14 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      * [ui] = true: chữ giao diện game (menu, vật phẩm, kỹ năng...), không phải lời thoại: lời nhắc riêng, không ghi vào mạch thoại,
      * không có người nói hay cảm xúc. Gói Việt hoá, bộ nhớ đệm, thuật ngữ và kiểm tra bản dịch vẫn áp dụng như cũ.
      */
-    fun translateFull(text: String, speaker: String?, ui: Boolean, done: (Tr) -> Unit) {
+    fun translateFull(text: String, speaker: String?, ui: Boolean, done: (Tr) -> Unit) =
+        translateFullWithId(text, speaker, ui, null, done)
+
+    /** Optional stable localization ID; used before exact text matching when the game integration provides one. */
+    fun translateFullById(text: String, speaker: String?, ui: Boolean, externalId: String, done: (Tr) -> Unit) =
+        translateFullWithId(text, speaker, ui, externalId, done)
+
+    private fun translateFullWithId(text: String, speaker: String?, ui: Boolean, externalId: String?, done: (Tr) -> Unit) {
         val st = SessionStats.live
         val profile = p.profile
         val game = PackStore.gameName(p)
@@ -236,6 +243,15 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         val emo = p.emoTr && !ui
         try { aiExecutor.execute {
             if (!stillCurrent()) return@execute
+            // Shared GTA VI knowledge base: exact original ID first, then exact normalized text.
+            val remote = runCatching { Gta6RemoteLookup.lookup(game, lang, text, externalId) }.getOrNull()
+            if (!remote.isNullOrBlank() && TranslationGuard.check(text, remote, names, lang).ok &&
+                (!ui || UiText.samePlaceholders(text, remote))) {
+                val delivery = if (emo) Emo.detect(text, remote, pace) else null
+                st.inc("dich_goi_cloud")
+                main.post { if (stillCurrent()) finish(Tr(remote, delivery, false, "goi_cloud")) }
+                return@execute
+            }
             var chosen: Tr? = null
             var strict: String? = null
             val cool = Ai.coolingMs(p)
