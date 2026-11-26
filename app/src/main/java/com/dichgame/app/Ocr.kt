@@ -18,6 +18,25 @@ import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * Convert normalized Gemini coordinates [ymin,xmin,ymax,xmax] into a safe pixel rectangle.
+ * Reject malformed/non-finite/out-of-range or inverted coordinates instead of silently
+ * converting NaN/Infinity into (0,0) and accidentally routing text to the wrong screen region.
+ * Returns [left, top, right, bottom], with a non-empty rectangle clipped to the source image.
+ */
+internal fun normalizedOcrBox(yMin: Double, xMin: Double, yMax: Double, xMax: Double, width: Int, height: Int): IntArray? {
+    if (width <= 0 || height <= 0) return null
+    val values = doubleArrayOf(yMin, xMin, yMax, xMax)
+    if (values.any { !it.isFinite() || it < 0.0 || it > 1000.0 }) return null
+    if (yMin >= yMax || xMin >= xMax) return null
+
+    val left = (xMin * width / 1000.0).toInt().coerceIn(0, width - 1)
+    val top = (yMin * height / 1000.0).toInt().coerceIn(0, height - 1)
+    val right = (xMax * width / 1000.0).toInt().coerceIn(left + 1, width)
+    val bottom = (yMax * height / 1000.0).toInt().coerceIn(top + 1, height)
+    return intArrayOf(left, top, right, bottom)
+}
+
 internal fun ocrAiErrorText(e: Exception): String =
         if (e is AiException) when {
             e.billingLimit -> "Tài khoản hoặc dự án AI đã chạm giới hạn thanh toán/chi tiêu. Hãy kiểm tra billing; ứng dụng sẽ dùng phương án dịch dự phòng."
@@ -169,10 +188,13 @@ class Ocr(private val p: Prefs, private val lang: String) {
             val t = o.optString("t").trim()
             if (t.isEmpty()) continue
             val b = o.optJSONArray("b")
-            val box = if (b != null && b.length() == 4) Rect(
-                (b.optDouble(1) * w / 1000).toInt(), (b.optDouble(0) * h / 1000).toInt(),
-                (b.optDouble(3) * w / 1000).toInt(), (b.optDouble(2) * h / 1000).toInt()
-            ) else null
+            val box = if (b != null && b.length() == 4) {
+                val coords = normalizedOcrBox(
+                    b.optDouble(0, Double.NaN), b.optDouble(1, Double.NaN),
+                    b.optDouble(2, Double.NaN), b.optDouble(3, Double.NaN), w, h
+                )
+                coords?.let { Rect(it[0], it[1], it[2], it[3]) }
+            } else null
             out.add(Blk(t, box, lineCount = t.lines().size.coerceAtLeast(1)))
         }
         return out
