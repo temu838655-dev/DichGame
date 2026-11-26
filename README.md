@@ -163,4 +163,4 @@ Hướng dẫn: [knowledge_base/IMPORTING.md](knowledge_base/IMPORTING.md) · [k
 
 Kiểm thử: `python -m unittest discover -s knowledge_base/tests -v`.
 
-**Tiến độ dữ liệu GTA VI:** hiện có 30 câu mẫu được lưu riêng trong D1 ở trạng thái chờ duyệt. File đầy đủ có 579.495 dòng và chưa được dịch/nạp toàn bộ; không tuyên bố đã hoàn tất dữ liệu khi chưa chạy batch với khóa API của chủ sở hữu.
+**Tiến độ dữ liệu GTA VI:** đã nạp riêng vào D1 1.200 dòng đầu của sheet `Core` (Excel rows 2–1201): 1.198 câu đã dịch, 2 dòng không có tiếng Anh được giữ nguyên; toàn bộ bản dịch ở trạng thái `AI_UNVERIFIED`, nguồn ở trạng thái `DECLARED`, chưa được API công khai phục vụ. Không có câu thoại hoặc bản dịch GTA VI nào được commit vào repository. Bộ workbook đầy đủ có 579.495 dòng và chưa được xử lý hết; lượt dịch tiếp theo hiện tạm dừng do tài khoản Cloudflare Workers AI đã dùng hết hạn mức miễn phí hằng ngày.
