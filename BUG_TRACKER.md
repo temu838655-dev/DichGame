@@ -94,3 +94,5 @@ Status rule: FIXED IN BRANCH is not VERIFIED. Reclassify only after CI, live API
 
 | OCR-CLOUD-BOX-01 | MEDIUM | Gemini normalized coordinates were converted directly to pixel integers; malformed/NaN/out-of-range or inverted values could create invalid or misleading UI boxes. | Validate finite 0..1000 coordinates, reject inverted/empty boxes, clamp pixel bounds and guarantee minimum 1px geometry; add OcrGeometryTest. | FIXED ON BRANCH — CI pending |
 | QA-OCR-3LINE-01 | LOW | Newly added 3-line test fixture encoded literal \\n rather than newline, so test failed for a fixture error. | Correct fixture to use actual line separators; retain the regression test. | FIXED ON BRANCH — CI pending |
+
+| TV-RELAY-04 | MEDIUM | Receiver parsed an unbounded number of HTTP headers and accepted non-audio body lengths without an explicit 8 KiB limit. | Cap headers at 32 lines/16 KiB, reject invalid/oversized non-audio bodies and empty subtitle payloads. | FIXED ON BRANCH — CI pending |
