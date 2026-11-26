@@ -141,28 +141,34 @@ export default {
         if (!Array.isArray(body.ids) || body.ids.length < 1 || body.ids.length > 100 || body.ids.some(id => !bounded(id,160))) return reply({error:"invalid_gta6_ids"},400);
         const rows = [];
         for (const id of [...new Set(body.ids.map(id => id.trim()))]) {
-          const row = await env.DB.prepare("SELECT external_id,status,translated_text FROM gta6_localization WHERE game_key=? AND external_id=?").bind("grand theft auto vi",id).first();
+          const row = await env.DB.prepare("SELECT external_id,status,translated_text,provenance_status FROM gta6_localization WHERE game_key=? AND external_id=?").bind("grand theft auto vi",id).first();
           if (row) rows.push(row);
         }
         return reply({lines:rows});
       }
       if (path === "/v1/admin/gta6/pending" && method === "GET") {
-        const {results} = await env.DB.prepare("SELECT external_id,source_text,translated_text,group_name,sheet_name,row_number,status FROM gta6_localization WHERE game_key=? AND status IN ('PENDING','AI_UNVERIFIED') ORDER BY id LIMIT 100").bind("grand theft auto vi").all();
+        const {results} = await env.DB.prepare("SELECT external_id,source_text,translated_text,group_name,sheet_name,row_number,status,source_name,license_id,source_url,license_url,attribution,provenance_status FROM gta6_localization WHERE game_key=? AND status IN ('PENDING','AI_UNVERIFIED') ORDER BY id LIMIT 100").bind("grand theft auto vi").all();
         return reply({lines:results});
       }
       if (path === "/v1/admin/gta6/batch" && method === "POST") {
         const body = await jsonBody(request);
-        if (normalize(body.game ?? "") !== "grand theft auto vi" || body.rightsConfirmed !== true || !Array.isArray(body.lines) || body.lines.length < 1 || body.lines.length > 30) return reply({error:"invalid_gta6_batch"},400);
+        if (normalize(body.game ?? "") !== "grand theft auto vi" || body.rightsConfirmed !== true ||
+            !bounded(body.sourceName,180) || !bounded(body.licenseId,100) ||
+            !bounded(body.sourceUrl ?? "",2048,0) || !bounded(body.licenseUrl ?? "",2048,0) ||
+            !bounded(body.attribution ?? "",500,0) || !Array.isArray(body.lines) ||
+            body.lines.length < 1 || body.lines.length > 30) return reply({error:"invalid_gta6_batch"},400);
         const statements = [];
         for (const line of body.lines) {
           if (!line || !bounded(line.external_id,160) || !bounded(line.original,700) || !bounded(line.group_name ?? "",180,0) || !bounded(line.sheet_name ?? "",80,0) || !Number.isSafeInteger(line.row_number) || line.row_number < 1 || !bounded(line.vi ?? "",1400,0)) return reply({error:"invalid_gta6_line"},400);
-          const old = await env.DB.prepare("SELECT source_text,status FROM gta6_localization WHERE game_key=? AND external_id=?").bind("grand theft auto vi",line.external_id.trim()).first();
+          const old = await env.DB.prepare("SELECT source_text,status,provenance_status FROM gta6_localization WHERE game_key=? AND external_id=?").bind("grand theft auto vi",line.external_id.trim()).first();
           if (old && old.source_text !== line.original.trim()) return reply({error:"external_id_conflict",external_id:line.external_id},409);
           if (old?.status === "VERIFIED") continue;
           const vi = (line.vi ?? "").trim();
           const status = vi ? "AI_UNVERIFIED" : "PENDING";
           const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(line.original.trim()))),b=>b.toString(16).padStart(2,"0")).join("");
-          statements.push(env.DB.prepare("INSERT INTO gta6_localization(game_key,external_id,sheet_name,row_number,group_name,source_text,normalized_text,translated_text,status,source_sha256,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,unixepoch()) ON CONFLICT(game_key,external_id) DO UPDATE SET sheet_name=excluded.sheet_name,row_number=excluded.row_number,group_name=excluded.group_name,translated_text=CASE WHEN gta6_localization.status='VERIFIED' THEN gta6_localization.translated_text ELSE excluded.translated_text END,status=CASE WHEN gta6_localization.status='VERIFIED' THEN 'VERIFIED' ELSE excluded.status END,source_sha256=excluded.source_sha256,updated_at=unixepoch()").bind("grand theft auto vi",line.external_id.trim(),(line.sheet_name ?? "").trim(),line.row_number,(line.group_name ?? "").trim(),line.original.trim(),normalize(line.original),vi,status,hash));
+          statements.push(env.DB.prepare("INSERT INTO gta6_localization(game_key,external_id,sheet_name,row_number,group_name,source_text,normalized_text,translated_text,status,source_sha256,source_name,license_id,source_url,license_url,attribution,provenance_status,rights_confirmed_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'DECLARED',unixepoch(),unixepoch()) ON CONFLICT(game_key,external_id) DO UPDATE SET sheet_name=excluded.sheet_name,row_number=excluded.row_number,group_name=excluded.group_name,translated_text=CASE WHEN gta6_localization.status='VERIFIED' THEN gta6_localization.translated_text ELSE excluded.translated_text END,status=CASE WHEN gta6_localization.status='VERIFIED' THEN 'VERIFIED' ELSE excluded.status END,source_sha256=excluded.source_sha256,source_name=excluded.source_name,license_id=excluded.license_id,source_url=excluded.source_url,license_url=excluded.license_url,attribution=excluded.attribution,provenance_status=CASE WHEN gta6_localization.provenance_status='VERIFIED' THEN 'VERIFIED' ELSE 'DECLARED' END,rights_confirmed_at=unixepoch(),updated_at=unixepoch()").bind("grand theft auto vi",line.external_id.trim(),(line.sheet_name ?? "").trim(),line.row_number,(line.group_name ?? "").trim(),line.original.trim(),normalize(line.original),vi,status,hash,
+          body.sourceName.trim(),body.licenseId.trim(),(body.sourceUrl ?? "").trim(),
+          (body.licenseUrl ?? "").trim(),(body.attribution ?? "").trim()));
         }
         if (statements.length) await env.DB.batch(statements);
         return reply({ok:true,received:body.lines.length,upserted:statements.length,verified_preserved:body.lines.length-statements.length});
@@ -171,7 +177,7 @@ export default {
         const body = await jsonBody(request);
         if (!bounded(body.external_id,160) || !["approve","reject"].includes(body.action)) return reply({error:"invalid_gta6_review"},400);
         const status = body.action === "approve" ? "VERIFIED" : "REJECTED";
-        const result = await env.DB.prepare("UPDATE gta6_localization SET status=?,updated_at=unixepoch() WHERE game_key=? AND external_id=? AND (?='REJECTED' OR length(trim(translated_text))>0)").bind(status,"grand theft auto vi",body.external_id.trim(),status).run();
+        const result = await env.DB.prepare("UPDATE gta6_localization SET status=?,provenance_status=?,updated_at=unixepoch() WHERE game_key=? AND external_id=? AND (?='REJECTED' OR length(trim(translated_text))>0)").bind(status,status,"grand theft auto vi",body.external_id.trim(),status).run();
         if (!result.meta?.changes) return reply({error:"line_not_found_or_empty"},404);
         return reply({ok:true,status});
       }
