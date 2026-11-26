@@ -62,13 +62,13 @@ object Ai {
     fun prompt(
         p: Prefs, srcName: String, game: String, history: List<String>, text: String,
         terms: TermMap? = null, cast: List<Character> = emptyList(), emo: Boolean = false, speaker: String? = null,
-        strict: String? = null, ui: Boolean = false,
+        strict: String? = null, ui: Boolean = false, style: String = p.styleText(),
     ): String {
         val recent = boundedHistory(history)
         return if (ui) uiPrompt(p, srcName, game, text, terms, strict) else
         "Bạn dịch phụ đề game từ $srcName sang tiếng Việt." +
             (if (game.isNotEmpty()) " Game / phong cách: $game." else "") +
-            " " + p.styleText() +
+            " " + style +
             glossaryLine(terms, p, text) +
             Cast.promptLine(cast, recent.joinToString(" ") + " " + text, speaker = speaker) +
             (if (speaker != null) " Người đang nói câu này: $speaker (giữ đúng giọng và cách xưng hô của người này, không đổi tên)." else "") +

@@ -518,19 +518,73 @@ class SettingsActivity : Activity() {
     }
 
     private fun promptDialog() {
-        val et = Ui.field(this, "Viết chỉ dẫn dịch của riêng bạn", p.customPrompt)
-        et.minLines = 6
-        et.gravity = Gravity.TOP
+        val library = p.promptTemplates
+        val names = library.entries.keys.sorted()
+        val options = names.map { if (it == library.selected) "✓ $it" else it } +
+            listOf("Thêm mẫu", "Dùng phong cách mặc định")
+        Ui.pick(this, "Mẫu prompt của game", options) { index ->
+            when (index) {
+                names.size -> editTemplate(null, "", "")
+                names.size + 1 -> { p.trStyle = 0; render() }
+                else -> {
+                    val name = names[index]
+                    val body = library.entries.getValue(name)
+                    Ui.pick(this, name, listOf("Sử dụng", "Chỉnh sửa", "Sao chép", "Xóa")) { action ->
+                        when (action) {
+                            0 -> { p.promptTemplates = library.copy(selected = name); render() }
+                            1 -> editTemplate(name, name, body)
+                            2 -> editTemplate(null, "$name (bản sao)", body)
+                            3 -> AlertDialog.Builder(this).setMessage("Xóa mẫu $name?")
+                                .setPositiveButton("Xóa") { _, _ -> p.promptTemplates = library.remove(name); render() }
+                                .setNegativeButton("Hủy", null).show()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun editTemplate(old: String?, name: String, body: String) {
+        val title = Ui.field(this, "Tên mẫu", name)
+        val et = Ui.field(this, "Chỉ dẫn dịch", body)
         et.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        et.minLines = 3
+        val sample = Ui.field(this, "Câu gốc để dịch thử", "")
+        val result = Ui.tv(this, "", 14f, Ui.TEXT)
         val box = Ui.vbox(this)
-        val pad = Ui.dp(this, 20)
-        box.setPadding(pad, pad / 2, pad, 0)
-        box.addView(Ui.tv(this, "Ví dụ: Dịch như lính đánh thuê lì lợm, xưng tao – mày với đồng đội, gọi sếp là ông chủ, câu cộc, không văn vẻ.", 12.5f, Ui.SUB))
+        box.addView(title)
         box.addView(et)
-        AlertDialog.Builder(this, R.style.DgDialog)
-            .setTitle("Prompt riêng").setView(box)
-            .setPositiveButton("Lưu") { _, _ -> p.customPrompt = et.text.toString(); render() }
-            .setNegativeButton("Hủy", null).show()
+        box.addView(sample)
+        val preview = Ui.button(this, "Dịch thử bằng AI đang cấu hình") {}
+        box.addView(preview)
+        box.addView(result)
+        val dialog = AlertDialog.Builder(this, R.style.DgDialog).setTitle("Prompt riêng")
+            .setView(android.widget.ScrollView(this).apply { addView(box) })
+            .setPositiveButton("Lưu và sử dụng", null).setNegativeButton("Hủy", null).show()
+        preview.setOnClickListener {
+            val source = sample.text.toString().trim()
+            if (source.isEmpty()) { sample.error = "Hãy nhập câu gốc"; return@setOnClickListener }
+            if (!Ai.enabled(p)) { result.text = "Hãy cấu hình bộ dịch AI trước khi dịch thử."; return@setOnClickListener }
+            val prompt = Ai.prompt(p, Prefs.srcNameOf(p.lang), p.game, emptyList(), source,
+                terms = PackStore.terms(p), cast = PackStore.cast(p), style = et.text.toString().trim().ifBlank { Prefs.TR_STYLES[0].second })
+            preview.isEnabled = false
+            result.text = "Đang dịch…"
+            Thread {
+                val answer = runCatching { Ai.translateRetry(p, prompt) }
+                runOnUiThread {
+                    if (!dialog.isShowing) return@runOnUiThread
+                    preview.isEnabled = true
+                    result.text = answer.getOrElse { "Dịch thử thất bại: " + it.localizedMessage.orEmpty() }
+                }
+            }.start()
+        }
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            try {
+                p.promptTemplates = p.promptTemplates.save(old, title.text.toString().trim(), et.text.toString().trim())
+                dialog.dismiss()
+                render()
+            } catch (e: IllegalArgumentException) { title.error = e.message }
+        }
     }
 
     private fun addProfile() {

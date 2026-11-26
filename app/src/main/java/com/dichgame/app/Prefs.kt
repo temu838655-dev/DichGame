@@ -238,9 +238,13 @@ class Prefs(ctx: Context) {
         if (trStyle == CUSTOM_STYLE) customPrompt.ifBlank { TR_STYLES[0].second } else TR_STYLES[trStyle].second
 
     /** Prompt riêng do người dùng viết, dùng khi chọn phong cách "Prompt riêng". */
-    var customPrompt: String
-        get() = sp.getString("customprompt", "").orEmpty()
-        set(v) = sp.edit().putString("customprompt", v.trim()).apply()
+    internal var promptTemplates: PromptTemplates
+        get() = PromptTemplates.decode(sp.getString(gameSettingKey("prompt_templates"), null),
+            sp.getString("customprompt", "").orEmpty())
+        set(value) = sp.edit().putString(gameSettingKey("prompt_templates"), value.encode()).apply()
+
+    val customPrompt: String
+        get() = promptTemplates.let { it.entries[it.selected].orEmpty() }
 
     /** Dùng gói Việt hoá có sẵn của game (thuật ngữ, thẻ nhân vật, câu thoại chuẩn). */
     /** Gói thuật ngữ bật/tắt theo từng hồ sơ game; cài đặt cũ làm mặc định tương thích. */
