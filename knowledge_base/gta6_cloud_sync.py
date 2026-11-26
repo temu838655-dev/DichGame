@@ -172,7 +172,7 @@ def main() -> int:
                 break
             stats["rows_scanned"] += 1
             existing = known.get(row["external_id"])
-            if existing and existing.get("status") in {"VERIFIED", "AI_UNVERIFIED"}:
+            if existing and existing.get("status") in {"VERIFIED", "AI_UNVERIFIED", "REJECTED"}:
                 stats["already_present_skipped"] += 1
                 continue
             new_rows += 1
