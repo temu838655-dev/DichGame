@@ -308,3 +308,10 @@ Links: [KB #227](https://github.com/temu838655-dev/DichGame/actions/runs/4571163
 3. Review and reconcile existing security PRs without merging dirty/conflicted branches.
 4. Validate TV protocol end-to-end and test receiver restart/overload on hardware.
 5. Keep public Release blocked until owner-approved signing strategy is resolved.
+
+
+### Follow-up OCR hardening — 2026-11-26
+- [x] Corrected three-line subtitle test fixture after CI exposed a literal-backslash-n mistake (469 tests: 1 failed due to fixture; production parser unchanged by this fix).
+- [x] Hardened Gemini OCR bounding-box parser against NaN/Infinity, out-of-range, inverted/empty coordinates and invalid image dimensions.
+- [x] Added OcrGeometryTest with six geometry regression cases.
+- [ ] Await run #2047 before claiming tests pass.
