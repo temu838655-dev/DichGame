@@ -14,7 +14,9 @@ import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.ByteArrayOutputStream
-import java.util.concurrent.Executors
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -61,7 +63,15 @@ class Blk(val text: String, val box: Rect?, val conf: Float = 1f, val corners: F
  */
 class Ocr(private val p: Prefs, private val lang: String) {
     private val main = Handler(Looper.getMainLooper())
-    private val io by lazy { Executors.newSingleThreadExecutor() }
+    // Một tác vụ đang chạy + tối đa một ảnh chờ; không để ảnh OCR tích tụ vô hạn khi mạng/AI chậm.
+    // RejectedExecutionException được xử lý trong read(), nơi bitmap đầu vào được giải phóng.
+    private val io by lazy {
+        ThreadPoolExecutor(
+            1, 1, 0L, TimeUnit.MILLISECONDS, ArrayBlockingQueue(1),
+            { task -> Thread(task, "DichGame-OCR-cloud").apply { isDaemon = true } },
+            ThreadPoolExecutor.AbortPolicy()
+        )
+    }
     private val local: TextRecognizer? =
         if (Prefs.isCloudOcr(lang)) null
         else TextRecognition.getClient(
