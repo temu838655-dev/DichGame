@@ -327,21 +327,27 @@ class TranslationImporter:
                     digest = sha256_text(normalized)
                     with self.kb.transaction() as db:
                         duplicate = db.execute(
-                            """SELECT 1 FROM translations
-                               WHERE game_id=? AND text_sha256=? AND translated_text=?
-                                 AND translation_status != 'REJECTED' LIMIT 1""",
-                            (game_id, digest, row.translated_text),
+                            """SELECT external_id, source_text, translated_text FROM translations
+                               WHERE game_id=? AND (
+                                   (? IS NOT NULL AND external_id=?) OR
+                                   (text_sha256=? AND translated_text=?)
+                               ) AND translation_status != 'REJECTED' LIMIT 1""",
+                            (game_id, row.external_id, row.external_id, digest, row.translated_text),
                         ).fetchone()
                         if duplicate:
+                            if (row.external_id and duplicate["external_id"] == row.external_id and
+                                    (duplicate["source_text"] != row.source_text or
+                                     duplicate["translated_text"] != row.translated_text)):
+                                raise ValueError(f"external ID {row.external_id} already exists with different content")
                             skipped += 1
                             continue
                         db.execute(
                             """INSERT INTO translations(
-                                game_id, source_text, normalized_text, translated_text,
+                                game_id, external_id, source_text, normalized_text, translated_text,
                                 text_sha256, context, speaker, scene_id, mission_id,
                                 source_id, translation_source, translation_status
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'IMPORT', 'COMMUNITY')""",
-                            (game_id, row.source_text, normalized, row.translated_text,
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'IMPORT', 'COMMUNITY')""",
+                            (game_id, row.external_id, row.source_text, normalized, row.translated_text,
                              digest, row.context, row.speaker, row.scene_id,
                              row.mission_id, source_id),
                         )
