@@ -65,8 +65,6 @@ CREATE TABLE IF NOT EXISTS translations (
     CHECK (length(trim(translated_text)) > 0)
 );
 
-CREATE INDEX IF NOT EXISTS idx_translations_external_id
-    ON translations(game_id, external_id) WHERE external_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_translations_game_hash
     ON translations(game_id, text_sha256);
 CREATE INDEX IF NOT EXISTS idx_translations_game_normalized
