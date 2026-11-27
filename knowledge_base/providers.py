@@ -6,15 +6,34 @@ from __future__ import annotations
 
 import json
 import os
+import time
+from email.utils import parsedate_to_datetime
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from .ai_fallback import ProviderResponse
+from .ai_fallback import ProviderHTTPError, ProviderResponse
+from .db import preserves_arguments
 
 
-class ProviderHTTPError(RuntimeError):
-    pass
+def _retry_after(value: str) -> float:
+    if value.isascii() and value.isdecimal():
+        return float(value)
+    try:
+        return max(0.0, parsedate_to_datetime(value).timestamp() - time.time())
+    except (ValueError, TypeError, OverflowError):
+        return 0.0
+
+
+def _quota_exhausted(payload: bytes) -> bool:
+    try:
+        error = json.loads(payload)["error"]
+        return isinstance(error, dict) and any(
+            error.get(key) in ("insufficient_quota", "billing_hard_limit_reached", "credit_balance_exhausted")
+            for key in ("type", "code")
+        )
+    except (ValueError, TypeError, KeyError):
+        return False
 
 
 def _post_json(url: str, payload: dict, headers: dict[str, str], timeout: float) -> dict:
@@ -30,9 +49,17 @@ def _post_json(url: str, payload: dict, headers: dict[str, str], timeout: float)
             if len(raw) > 2_000_000:
                 raise ProviderHTTPError("Provider response exceeded 2 MB")
     except HTTPError as exc:
-        raise ProviderHTTPError(f"Provider returned HTTP {exc.code}") from None
-    except URLError as exc:
-        raise ProviderHTTPError("Provider network request failed") from None
+        with exc:
+            quota = exc.code == 429 and _quota_exhausted(exc.read(16_384))
+            retry_after = _retry_after((exc.headers or {}).get("Retry-After", "").strip())
+        message = "API đã hết hạn mức" if quota else "API trả về lỗi"
+        raise ProviderHTTPError(
+            f"{message} HTTP {exc.code}",
+            retryable=exc.code in (408, 429, 500, 502, 503, 504) and not quota,
+            retry_after=retry_after, status=exc.code,
+        ) from None
+    except (URLError, TimeoutError):
+        raise ProviderHTTPError("Mất kết nối với API", retryable=True) from None
     try:
         result = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -40,6 +67,22 @@ def _post_json(url: str, payload: dict, headers: dict[str, str], timeout: float)
     if not isinstance(result, dict):
         raise ProviderHTTPError("Provider returned an unexpected response")
     return result
+
+
+def _gemini_answer(result: dict) -> str:
+    try:
+        candidate = result["candidates"][0]
+        if candidate.get("finishReason", "STOP") != "STOP":
+            raise ProviderHTTPError("Gemini chưa hoàn tất bản dịch")
+        parts = candidate["content"]["parts"]
+        if not isinstance(parts, list):
+            raise TypeError
+        text = "".join(part.get("text", "") for part in parts if not part.get("thought")).strip()
+    except (AttributeError, IndexError, KeyError, TypeError):
+        raise ProviderHTTPError("Cấu trúc phản hồi Gemini không hợp lệ") from None
+    if not text:
+        raise ProviderHTTPError("Gemini trả về bản dịch trống")
+    return text
 
 
 class GeminiProvider:
@@ -69,6 +112,8 @@ class GeminiProvider:
         self, source_text: str, context: str, *, model: str,
         max_output_tokens: int,
     ) -> ProviderResponse:
+        if not model.strip() or max_output_tokens < 1 or not source_text.strip():
+            raise ValueError("Cần model, nội dung và giới hạn token hợp lệ")
         prompt = (
             "Translate the game dialogue below into natural Vietnamese. "
             "Preserve names, variables, markup, placeholders, and line breaks. "
@@ -76,19 +121,14 @@ class GeminiProvider:
             f"Context: {context or 'Not provided'}\n"
             f"Text:\n{source_text}"
         )
-        url = (
-            f"{self.api_base}/models/{quote(model, safe='')}:generateContent?"
-            + urlencode({"key": self.api_key})
-        )
+        url = f"{self.api_base}/models/{quote(model, safe='')}:generateContent"
         payload = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {"maxOutputTokens": max_output_tokens, "temperature": 0.2},
         }
-        result = _post_json(url, payload, {}, self.timeout_seconds)
+        result = _post_json(url, payload, {"x-goog-api-key": self.api_key}, self.timeout_seconds)
         try:
-            candidates = result["candidates"]
-            parts = candidates[0]["content"]["parts"]
-            translated = "".join(part.get("text", "") for part in parts)
+            translated = _gemini_answer(result)
             usage = result.get("usageMetadata", {})
             input_tokens = int(usage.get("promptTokenCount", 0))
             output_tokens = int(usage.get("candidatesTokenCount", 0))
@@ -103,7 +143,7 @@ class GeminiProvider:
         self, rows: list[dict[str, str]], *, model: str, max_output_tokens: int,
     ) -> dict[str, str]:
         """Translate a small group in one request and require an exact JSON ID set."""
-        if not rows or len(rows) > 20 or max_output_tokens < 1:
+        if not model.strip() or any(not isinstance(row.get("text"), str) or not row["text"].strip() for row in rows) or not rows or len(rows) > 20 or max_output_tokens < 1:
             raise ValueError("translate_many accepts 1-20 rows and a positive output limit")
         source_ids = [str(row.get("id", "")).strip() for row in rows]
         if any(not value for value in source_ids) or len(set(source_ids)) != len(source_ids):
@@ -119,17 +159,14 @@ class GeminiProvider:
             "Do not omit, merge, reorder or add items. Return only a valid JSON array of objects with exactly the keys id and translation. "
             "Copy each id exactly.\nINPUT:\n" + json.dumps(source, ensure_ascii=False)
         )
-        url = (
-            f"{self.api_base}/models/{quote(model, safe='')}:generateContent?"
-            + urlencode({"key": self.api_key})
-        )
+        url = f"{self.api_base}/models/{quote(model, safe='')}:generateContent"
         payload = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {"maxOutputTokens": max_output_tokens, "temperature": 0.2, "responseMimeType": "application/json"},
         }
-        result = _post_json(url, payload, {}, self.timeout_seconds)
+        result = _post_json(url, payload, {"x-goog-api-key": self.api_key}, self.timeout_seconds)
         try:
-            raw = "".join(part.get("text", "") for part in result["candidates"][0]["content"]["parts"]).strip()
+            raw = _gemini_answer(result)
             if raw.startswith("```"):
                 raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
             decoded = json.loads(raw)
@@ -148,6 +185,9 @@ class GeminiProvider:
             translations[key] = value.strip()
         if set(translations) != set(source_ids):
             raise ProviderHTTPError("Gemini batch did not return every source ID")
+        for item in source:
+            if not preserves_arguments(item["text"], translations[item["id"]]):
+                raise ProviderHTTPError("Bản dịch theo lô làm thay đổi biến, thẻ định dạng hoặc số liệu")
         return translations
 
 class OpenAICompatibleProvider:
@@ -185,6 +225,8 @@ class OpenAICompatibleProvider:
         self, source_text: str, context: str, *, model: str,
         max_output_tokens: int,
     ) -> ProviderResponse:
+        if not model.strip() or max_output_tokens < 1 or not source_text.strip():
+            raise ValueError("Cần model, nội dung và giới hạn token hợp lệ")
         payload = {
             "model": model,
             "messages": [
@@ -204,12 +246,17 @@ class OpenAICompatibleProvider:
             "max_tokens": max_output_tokens,
             "temperature": 0.2,
         }
+        if model == "gpt-5-mini" or model.startswith("gpt-5-mini-"):
+            payload["max_completion_tokens"] = payload.pop("max_tokens")
+            del payload["temperature"]
         result = _post_json(
             self.base_url, payload,
             {"Authorization": f"Bearer {self.api_key}"},
             self.timeout_seconds,
         )
         try:
+            if result["choices"][0].get("finish_reason", "stop") != "stop":
+                raise ProviderHTTPError("OpenAI chưa hoàn tất bản dịch")
             translated = result["choices"][0]["message"]["content"]
             usage = result.get("usage", {})
             input_tokens = int(usage.get("prompt_tokens", 0))

@@ -19,6 +19,15 @@ class AiRetryTest {
 
     private fun ex(code: Int, after: Long = 0L) = AiException(code, "x", after)
 
+    @Test fun validatesGeminiModelIdentifierBeforeSending() {
+        assertTrue(Ai.validGeminiModelName("gemini-3.5-flash-lite"))
+        assertTrue(Ai.validGeminiModelName("gemini-2.5-flash-preview_05"))
+        assertFalse(Ai.validGeminiModelName(""))
+        assertFalse(Ai.validGeminiModelName(" gemini-2.5-flash"))
+        assertFalse(Ai.validGeminiModelName("gemini/../../other"))
+        assertFalse(Ai.validGeminiModelName("gemini model"))
+    }
+
     @Test fun safetySettingsFallbackOnlyForExplicitCompatibilityErrors() {
         assertTrue(AiRetry.shouldRetryWithoutSafetySettings(400,
             """{"error":{"message":"Unknown name 'safetySettings' in request"}}"""))
@@ -231,7 +240,9 @@ class AiRetryTest {
         assertEquals(1500L, AiRetry.retryDelayMs(" 1.5 ", ""))
         assertEquals(21000L, AiRetry.retryDelayMs(null, """{"error":{"code":429,"details":[{"@type":"x.RetryInfo","retryDelay": "21s"}]}}"""))
         assertEquals(0L, AiRetry.retryDelayMs(null, """{"error":{"code":429}}"""))
-        assertEquals(0L, AiRetry.retryDelayMs("Wed, 21 Oct 2026 07:28:00 GMT", ""))   // dạng ngày: bỏ qua
+        assertEquals(2000L, AiRetry.retryDelayMs("Thu, 01 Jan 1970 00:00:03 GMT", "", 1000L))
+        assertEquals(0L, AiRetry.retryDelayMs("Thu, 01 Jan 1970 00:00:03 GMT", "", 4000L))
+        assertEquals(3000L, AiRetry.retryDelayMs("1", """{"retryDelay":"3s"}"""))
         assertEquals(0L, AiRetry.retryDelayMs("0", ""))
     }
 
@@ -239,7 +250,7 @@ class AiRetryTest {
         assertEquals(20_000L, AiRetry.cooldownMs(0))
         assertEquals(5_000L, AiRetry.cooldownMs(1_000))
         assertEquals(21_000L, AiRetry.cooldownMs(21_000))
-        assertEquals(120_000L, AiRetry.cooldownMs(3_600_000))
+        assertEquals(3_600_000L, AiRetry.cooldownMs(3_600_000))
     }
 
     private fun gem(text: String, finish: String = "STOP") =
@@ -254,6 +265,18 @@ class AiRetryTest {
         assertEquals("Xin chào", AiRetry.geminiText(j))
     }
 
+    @Test fun malformedGeminiPartInvalidatesTheWholeTranslation() {
+        for (part in listOf("null", "7", "{}", """{"text":false}""", """{"text":{"value":"sai"}}""")) {
+            val json = """{"candidates":[{"content":{"parts":[{"text":"Một phần"},$part]}}]}"""
+            try {
+                AiRetry.geminiText(json)
+                fail("Không được nhận phần còn lại làm bản dịch hoàn chỉnh")
+            } catch (error: AiException) {
+                assertEquals(0, error.code)
+            }
+        }
+    }
+
     @Test fun promptBlockedByFilter() {
         val j = """{"promptFeedback":{"blockReason":"PROHIBITED_CONTENT"}}"""
         try { AiRetry.geminiText(j); fail("phải ném lỗi") }
@@ -261,16 +284,38 @@ class AiRetryTest {
     }
 
     @Test fun answerCutBySafetyFinish() {
-        val j = """{"candidates":[{"finishReason":"SAFETY"}]}"""
+        val j = gem("Một phần", "SAFETY")
         try { AiRetry.geminiText(j); fail("phải ném lỗi") }
         catch (e: AiException) { assertEquals(AiRetry.CODE_BLOCKED, e.code) }
     }
 
     @Test fun emptyOrMissingCandidatesIsNotBlocked() {
-        for (j in listOf("""{"candidates":[]}""", """{}""", gem("", "MAX_TOKENS"))) {
+        for (j in listOf("""{"candidates":[]}""", """{}""", gem("Một phần", "MAX_TOKENS"))) {
             try { AiRetry.geminiText(j); fail("phải ném lỗi: $j") }
             catch (e: AiException) { assertEquals(AiRetry.kindOf(e).toString(), AiRetry.Kind.OTHER, AiRetry.kindOf(e)) }
         }
+    }
+
+    @Test fun cloudRequiresCompletedText() {
+        fun answer(reason: String, value: String) =
+            """{"choices":[{"finish_reason":"$reason","message":{"content":$value}}]}"""
+        assertEquals("Xin chào", AiRetry.cloudText(answer("stop", "\"Xin chào\"")))
+        for (json in listOf(answer("length", "\"Một phần\""), answer("stop", "null"), answer("stop", "[]"))) {
+            try { AiRetry.cloudText(json); fail("Phải từ chối bản dịch chưa hợp lệ") }
+            catch (e: AiException) { assertEquals(0, e.code) }
+        }
+    }
+
+    @Test fun hybridErrorsKeepOriginalAnd400DoesNotAssumeGemini() {
+        for (kind in AiRetry.Kind.values()) {
+            val message = AiRetry.explain(kind, 400, 0, keepOriginal = true)
+            assertTrue(message.contains("Giữ nguyên câu gốc"))
+            assertFalse(message.contains("dịch máy"))
+        }
+        val cloud = AiRetry.explain(AiRetry.Kind.BAD, 400, 0, "invalid model")
+        assertTrue(cloud.contains("invalid model"))
+        assertFalse(cloud.contains("Gemini"))
+        assertTrue(cloud.contains("dịch máy"))
     }
 
     @Test fun explainMentionsWhatToDo() {

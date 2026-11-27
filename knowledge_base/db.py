@@ -32,6 +32,45 @@ def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+# Compare case-sensitive runtime arguments before case folding or fuzzy scoring.
+_ARGUMENT = re.compile(r"\{[^{}\n]+\}|%(?:\d+\$)?[-+#0 ]*\d*(?:\.\d+)?[diuoxXfFeEgGcs]|<[^<>\n]+>|\d+")
+
+
+def runtime_arguments(text: str) -> list[str]:
+    return _ARGUMENT.findall(text)
+
+
+def preserves_arguments(source: str, translation: str) -> bool:
+    expected = runtime_arguments(source)
+    actual = runtime_arguments(translation)
+    if expected == actual:
+        return True
+    if sorted(expected) != sorted(actual):
+        return False
+    # Named/indexed arguments can move. Markup and unnumbered printf arguments
+    # must retain their relative order within their respective groups.
+    for prefix in ("<", "%"):
+        def ordered(tokens):
+            return [t for t in tokens if t.startswith(prefix) and
+                    (prefix != "%" or "$" not in t)]
+        if ordered(expected) != ordered(actual):
+            return False
+    return True
+
+
+def _memory_hash(text: str) -> str:
+    normalized = normalize_text(text)
+    args = runtime_arguments(text)
+    if not args:
+        return sha256_text(normalized)
+    payload = json.dumps([normalized, args], ensure_ascii=False, separators=(",", ":"))
+    return sha256_text("runtime-arguments-v1\0" + payload)
+
+
+def memory_key(text: str, context: str) -> tuple[str, str]:
+    return _memory_hash(text), _memory_hash(context) if context else ""
+
+
 class KnowledgeBase:
     def __init__(self, database_path: str | Path):
         self.database_path = str(database_path)
@@ -203,19 +242,23 @@ class KnowledgeBase:
         if not key:
             return None
         with closing(self.connect()) as db:
-            row = db.execute(
+            rows = db.execute(
                 """SELECT * FROM translations
                    WHERE game_id=? AND external_id=? AND translation_status != 'REJECTED'
                    ORDER BY CASE translation_status
                        WHEN 'VERIFIED' THEN 0 WHEN 'AI_REVIEWED' THEN 1
-                       WHEN 'COMMUNITY' THEN 2 ELSE 3 END, confidence_score DESC LIMIT 1""",
+                       WHEN 'COMMUNITY' THEN 2 ELSE 3 END, confidence_score DESC""",
                 (game_id, key),
-            ).fetchone()
-            return dict(row) if row else None
+            )
+            for row in rows:
+                if preserves_arguments(row["source_text"], row["translated_text"]):
+                    return dict(row)
+        return None
+
     def lookup_exact(self, game_id: str, source_text: str) -> dict[str, Any] | None:
         normalized = normalize_text(source_text)
         with closing(self.connect()) as db:
-            row = db.execute(
+            rows = db.execute(
                 """SELECT * FROM translations
                    WHERE game_id = ? AND normalized_text = ?
                      AND translation_status != 'REJECTED'
@@ -224,11 +267,15 @@ class KnowledgeBase:
                        WHEN 'AI_REVIEWED' THEN 1
                        WHEN 'COMMUNITY' THEN 2
                        ELSE 3 END,
-                       confidence_score DESC
-                   LIMIT 1""",
+                       confidence_score DESC""",
                 (game_id, normalized),
-            ).fetchone()
-            return dict(row) if row else None
+            )
+            arguments = runtime_arguments(source_text)
+            for row in rows:
+                if (runtime_arguments(row["source_text"]) == arguments
+                        and preserves_arguments(source_text, row["translated_text"])):
+                    return dict(row)
+        return None
 
     def search_fts(self, game_id: str, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search indexed text. This is discovery, not a fuzzy-match confidence decision."""
@@ -252,20 +299,31 @@ class KnowledgeBase:
         self, game_id: str, text: str, context: str = "",
         max_age_seconds: int | None = None,
     ) -> str | None:
-        text_hash = sha256_text(normalize_text(text))
-        context_hash = sha256_text(normalize_text(context)) if context else ""
+        entry = self.cache_get_with_model(game_id, text, context, max_age_seconds)
+        return entry[0] if entry else None
+
+    def cache_get_with_model(
+        self, game_id: str, text: str, context: str = "",
+        max_age_seconds: int | None = None,
+    ) -> tuple[str, str] | None:
+        text_hash, context_hash = memory_key(text, context)
         with self.transaction() as db:
             cutoff = None
             if max_age_seconds is not None:
                 from datetime import datetime, timedelta, timezone
                 cutoff = (datetime.now(timezone.utc) - timedelta(seconds=max(0, max_age_seconds))).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-            row = db.execute(
-                """SELECT translated_text FROM translation_cache
-                   WHERE game_id=? AND text_hash=? AND context_hash=?
-                     AND (? IS NULL OR created_at >= ?)""",
-                (game_id, text_hash, context_hash, cutoff, cutoff),
-            ).fetchone()
-            if row is None:
+            query = """SELECT source_text, translated_text, model FROM translation_cache
+                       WHERE game_id=? AND text_hash=? AND context_hash=?
+                         AND (? IS NULL OR created_at >= ?)"""
+            row = db.execute(query, (game_id, text_hash, context_hash, cutoff, cutoff)).fetchone()
+            if row is None and runtime_arguments(text) and not runtime_arguments(context):
+                # Old keys folded case. The stored source can prove a safe hit.
+                # Legacy rows lack raw context, so never infer its arguments.
+                text_hash = sha256_text(normalize_text(text))
+                row = db.execute(query, (game_id, text_hash, context_hash, cutoff, cutoff)).fetchone()
+            if row is None or runtime_arguments(row["source_text"]) != runtime_arguments(text):
+                return None
+            if not preserves_arguments(text, row["translated_text"]):
                 return None
             db.execute(
                 """UPDATE translation_cache
@@ -274,14 +332,15 @@ class KnowledgeBase:
                    WHERE game_id=? AND text_hash=? AND context_hash=?""",
                 (game_id, text_hash, context_hash),
             )
-            return str(row["translated_text"])
+            return str(row["translated_text"]), str(row["model"])
 
     def cache_put(
         self, game_id: str, text: str, translated_text: str,
         model: str, context: str = "",
     ) -> None:
-        text_hash = sha256_text(normalize_text(text))
-        context_hash = sha256_text(normalize_text(context)) if context else ""
+        if not preserves_arguments(text, translated_text):
+            raise ValueError("Bản dịch làm thay đổi biến, thẻ định dạng hoặc số liệu")
+        text_hash, context_hash = memory_key(text, context)
         with self.transaction() as db:
             db.execute(
                 """INSERT INTO translation_cache(
@@ -290,6 +349,7 @@ class KnowledgeBase:
                 ON CONFLICT(game_id, text_hash, context_hash) DO UPDATE SET
                     translated_text=excluded.translated_text,
                     model=excluded.model,
+                    created_at=excluded.created_at,
                     last_used=strftime('%Y-%m-%dT%H:%M:%fZ','now')""",
                 (game_id, text_hash, context_hash, text, translated_text, model),
             )

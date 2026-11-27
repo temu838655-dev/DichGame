@@ -42,6 +42,13 @@ class SpeechQueueTest {
         assertEquals(0, q.size)
     }
 
+    @Test fun speakerIdentitySurvivesCaseAndWhitespaceButSeparatesActors() {
+        assertTrue(SpeechPolicy.sameSpeaker(" Lucia ", "lucia"))
+        assertTrue(SpeechPolicy.sameSpeaker(null, ""))
+        assertFalse(SpeechPolicy.sameSpeaker("Lucia", "Jason"))
+        assertFalse(SpeechPolicy.sameSpeaker("Lucia", null))
+    }
+
     @Test fun newestIsTheLastAdded() {
         val q = SpeechQueue<String>(maxPending = 5)
         assertNull(q.newest())
@@ -70,6 +77,12 @@ class SpeechQueueTest {
         assertFalse(SpeechPolicy.isDraftOf(b, b))                       // giống hệt không phải bản dở
         assertFalse(SpeechPolicy.isDraftOf("ừ", SpeechPolicy.norm("ừ rồi")))   // quá ngắn: không đoán
         assertFalse(SpeechPolicy.isDraftOf(SpeechPolicy.norm("Đi thôi nào"), SpeechPolicy.norm("Chờ đã, đi thôi nào")))
+    }
+
+    @Test fun playbackTimerUsesAppliedRateAndAlwaysAdvances() {
+        assertEquals(1000L, SpeechPolicy.playbackDurationMs(1000L, 1f))
+        assertEquals(501L, SpeechPolicy.playbackDurationMs(1001L, 2f))
+        assertEquals(1L, SpeechPolicy.playbackDurationMs(0L, 2.5f))
     }
 
     @Test fun limitsAreSane() {

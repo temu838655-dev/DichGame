@@ -45,6 +45,7 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { buildConfig = true }
+    sourceSets.getByName("main").java.srcDir("$rootDir/subtitle-common/src")
     // Phần cập nhật trong app dùng chung với app điện thoại (update-common/)
     sourceSets.getByName("main").java.srcDir("$rootDir/update-common/src")
 }

@@ -47,3 +47,31 @@ print(result.translated_text, result.cache_hit)
   to the provider adapter and later orchestration work.
 - Cache entries are AI/provider output, not verified community translations.
   They are kept separate from the reviewed translations table.
+
+## Biến trong câu thoại và dữ liệu phiên bản cũ
+
+Trong backend Python, khóa tra cứu và khóa chống gọi trùng giữ nguyên chữ hoa,
+chữ thường của các biến như `{Player}`, tham số printf và thẻ định dạng.
+Quy tắc này áp dụng cho cả câu gốc lẫn ngữ cảnh. Với dữ liệu cũ, backend đối
+chiếu biến trong câu gốc và câu dịch trước khi dùng lại. Nếu ngữ cảnh cũ chỉ
+còn giá trị băm và không thể xác minh biến, backend tra theo khóa mới.
+
+Phép thử SQLite trên cùng máy dùng 20 lượt xen kẽ `Hello {Player}` và
+`Hello {player}`, với hàm dịch thử giữ nguyên biến. Trước khi sửa, một lần gọi
+hàm dịch tạo 10 kết quả sai biến. Sau khi sửa, hai lần gọi tạo đủ hai bản dịch,
+18 lượt còn lại dùng bộ nhớ và cả 20 kết quả đều đúng biến. Đây là số đo độ
+chính xác và số lượt gọi trong backend. Độ trễ dịch trực tuyến cần đo riêng.
+
+Backend kiểm tra biến trước khi ghi kết quả AI và khi đọc bộ nhớ cũ. Trong
+phép thử với SQLite mới, 20 câu dạng `Give {Player} N coins` nhận cùng một
+phản hồi thử `Tặng xu` thiếu cả biến và số lượng. Trước khi sửa, bộ nhớ lưu
+20 bản dịch lỗi. Sau khi sửa, số bản dịch lỗi được lưu là 0. Kiểm thử cũng
+gửi lại câu có phản hồi hợp lệ để kiểm tra phục hồi sau lỗi.
+
+**Dữ liệu nhập và bản Việt hóa có sẵn.** Cùng một dòng đã đánh dấu VERIFIED
+nhưng thiếu `{Player}` từng được trả về ở cả bốn đường tra cứu Python gồm tra
+ID, tra văn bản trực tiếp, khớp đúng và khớp gần. Trên cùng dữ liệu SQLite
+kiểm thử, sau khi sửa có 0/4 đường trả về dòng lỗi. Khi thêm bản dịch giữ đủ
+biến, cả 4/4 đường chọn được bản hợp lệ. Các bản ghi gốc vẫn được giữ để
+người quản lý đối chiếu. Có thể chạy lại bằng
+`python -m unittest knowledge_base.tests.test_matcher`.

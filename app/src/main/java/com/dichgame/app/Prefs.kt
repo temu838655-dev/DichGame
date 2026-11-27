@@ -11,6 +11,10 @@ class Prefs(ctx: Context) {
     val sp: SharedPreferences = app.getSharedPreferences("dg", Context.MODE_PRIVATE)
 
     init {
+        if (!sp.contains("ai_auto_enabled")) {
+            // Existing installations retain the previous opt-in default.
+            sp.edit().putBoolean("ai_auto_enabled", sp.all.isEmpty()).apply()
+        }
         // Migrate legacy plaintext credentials as soon as app preferences are opened,
         // not only when the player first enters the AI settings screen.
         ApiSecrets.read(app, "key")
@@ -19,6 +23,8 @@ class Prefs(ctx: Context) {
     }
 
     companion object {
+        const val ENGINE_PACK_GEMINI = "pack_gemini"
+        const val ENGINE_PACK = "pack"
         const val ENGINE_LOCAL = "local"
         const val ENGINE_CLOUD = "cloud"
         const val ENGINE_GEMINI = "gemini"
@@ -91,12 +97,22 @@ class Prefs(ctx: Context) {
         get() = mode == MODE_VIETSUB
         set(value) { mode = if (value) MODE_VIETSUB else MODE_TRANSLATE }
 
-    /** AI Tự động là một TÙY CHỌN CỦA CHẾ ĐỘ DỊCH, không phải chế độ thứ ba. */
     var aiAuto: Boolean
         get() = !narrate && sp.getBoolean("ai_auto_enabled", false)
+        set(value) { sp.edit().putBoolean("ai_auto_enabled", value).apply() }
+
+    var processingMode: ProcessingMode
+        get() = ProcessingMode.fromSettings(narrate, aiAuto, speak)
         set(value) {
-            val editor = sp.edit().putBoolean("ai_auto_enabled", value)
-            if (value) editor.putBoolean("learn_translations", true).putBoolean("charvoices", true)
+            val narrating = value == ProcessingMode.NARRATE_ONLY
+            val editor = sp.edit().putString("smart_mode", if (narrating) MODE_VIETSUB else MODE_TRANSLATE)
+                .putBoolean("narrate", narrating)
+                .putBoolean("ai_auto_enabled", value == ProcessingMode.AUTOMATIC)
+            when (value) {
+                ProcessingMode.TRANSLATE_ONLY -> editor.putBoolean("speak", false).putBoolean("listen_only", false)
+                ProcessingMode.TRANSLATE_AND_SPEAK -> editor.putBoolean("speak", true)
+                else -> Unit
+            }
             editor.apply()
         }
 
@@ -108,6 +124,9 @@ class Prefs(ctx: Context) {
     var engine: String
         get() = sp.getString("engine", null) ?: if (geminiKeys().isEmpty()) ENGINE_LOCAL else ENGINE_GEMINI
         set(v) = sp.edit().putString("engine", v).apply()
+
+    val packGemini: Boolean get() = !aiAuto && engine == ENGINE_PACK_GEMINI
+    val packOnly: Boolean get() = !aiAuto && engine == ENGINE_PACK
 
     var geminiKey: String
         get() = ApiSecrets.read(app, "key")
@@ -186,8 +205,27 @@ class Prefs(ctx: Context) {
     var cloudKey: String
         get() = ApiSecrets.read(app, "ckey")
         set(v) {
-            if (ApiSecrets.write(app, mapOf("ckey" to v.trim()))) KeyRing.clearBilling()
+            if (ApiSecrets.write(app, mapOf("ckey" to v.trim()))) {
+                KeyRing.clearBilling()
+                clearCloudBillingBlock()
+            }
         }
+
+    /** Billing lock survives process death; only a key/endpoint change or explicit API test clears it. */
+    private fun cloudBillingFingerprint(): String {
+        val value = cloudKey.trim() + "\u0000" + cloudUrl.trim().trimEnd('/')
+        return java.security.MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    fun isCloudBillingBlocked(): Boolean =
+        CloudBillingGate(sp).isBlocked(cloudBillingFingerprint())
+
+    fun blockCloudBilling(): Boolean =
+        CloudBillingGate(sp).block(cloudBillingFingerprint())
+
+    fun clearCloudBillingBlock(): Boolean = CloudBillingGate(sp).clear()
     var cloudModel: String
         get() = sp.getString("cmodel", "gemini-3.1-flash-lite").orEmpty()
         set(v) = sp.edit().putString("cmodel", v.trim()).apply()
@@ -210,13 +248,17 @@ class Prefs(ctx: Context) {
         get() = sp.getString(gameSettingKey("gloss"), "").orEmpty()
         set(v) = sp.edit().putString(gameSettingKey("gloss"), v).apply()
 
+    var lookaheadCount: Int
+        get() = sp.getInt("lookahead_count", 4).coerceIn(0, 10)
+        set(value) = sp.edit().putInt("lookahead_count", value.coerceIn(0, 10)).apply()
+
     var ctxCount: Int
         get() = sp.getInt("ctxn", 3).coerceIn(0, 10)
         set(v) = sp.edit().putInt("ctxn", v.coerceIn(0, 10)).apply()
 
     /** Phong cách dịch AI (chỉ số trong TR_STYLES). */
     var trStyle: Int
-        get() = sp.getInt("trstyle", 1).coerceIn(0, TR_STYLES.size - 1)
+        get() = sp.getInt("trstyle", 0).coerceIn(0, TR_STYLES.size - 1)
         set(v) = sp.edit().putInt("trstyle", v).apply()
 
     /** Chỉ dẫn dịch đang dùng: phong cách đã chọn, hoặc prompt riêng. */
@@ -224,9 +266,13 @@ class Prefs(ctx: Context) {
         if (trStyle == CUSTOM_STYLE) customPrompt.ifBlank { TR_STYLES[0].second } else TR_STYLES[trStyle].second
 
     /** Prompt riêng do người dùng viết, dùng khi chọn phong cách "Prompt riêng". */
-    var customPrompt: String
-        get() = sp.getString("customprompt", "").orEmpty()
-        set(v) = sp.edit().putString("customprompt", v.trim()).apply()
+    internal var promptTemplates: PromptTemplates
+        get() = PromptTemplates.decode(sp.getString(gameSettingKey("prompt_templates"), null),
+            sp.getString("customprompt", "").orEmpty())
+        set(value) = sp.edit().putString(gameSettingKey("prompt_templates"), value.encode()).apply()
+
+    val customPrompt: String
+        get() = promptTemplates.let { it.entries[it.selected].orEmpty() }
 
     /** Dùng gói Việt hoá có sẵn của game (thuật ngữ, thẻ nhân vật, câu thoại chuẩn). */
     /** Gói thuật ngữ bật/tắt theo từng hồ sơ game; cài đặt cũ làm mặc định tương thích. */
@@ -255,13 +301,27 @@ class Prefs(ctx: Context) {
 
     /** Khoảng cách giữa hai lần quét khung phụ đề, mili giây. Nhỏ hơn đỡ sót câu, lớn hơn đỡ nóng máy. */
     var scanMs: Int
-        get() = sp.getInt("scanms", 400).coerceIn(100, 3000)
+        get() = sp.getInt("scanms", 333).coerceIn(100, 3000)
         set(v) = sp.edit().putInt("scanms", v.coerceIn(100, 3000)).apply()
 
-    /** Hai lựa chọn giọng: "system" (cơ bản) và "ai" (Gemini); tự đọc cơ bản nếu AI lỗi. */
+    /** "system" là Giọng cơ bản; "ai" và "offline" là hai engine nằm trong nhóm Giọng AI. */
     var voiceEngine: String
         get() = sp.getString("voiceengine", "system").orEmpty().takeIf { it in setOf("ai", "offline") } ?: "system"
-        set(v) = sp.edit().putString("voiceengine", if (v in setOf("ai", "offline")) v else "system").apply()
+        set(v) {
+            val value = if (v in setOf("ai", "offline")) v else "system"
+            sp.edit().putString("voiceengine", value).apply()
+            if (value in setOf("ai", "offline")) lastAiVoiceEngine = value
+        }
+
+    /** Giữ lựa chọn Offline/Gemini khi người dùng tạm chuyển sang Giọng cơ bản. */
+    var lastAiVoiceEngine: String
+        get() = sp.getString("last_ai_voice_engine", null)
+            ?.takeIf { it in setOf("ai", "offline") }
+            ?: voiceEngine.takeIf { it in setOf("ai", "offline") }
+            ?: "ai"
+        set(v) {
+            if (v in setOf("ai", "offline")) sp.edit().putString("last_ai_voice_engine", v).apply()
+        }
     var aiVoice: String
         get() = sp.getString("aivoice", "Kore").orEmpty().ifBlank { "Kore" }
         set(v) = sp.edit().putString("aivoice", v).apply()
@@ -351,6 +411,23 @@ class Prefs(ctx: Context) {
         } catch (_: Exception) { null }
     }
 
+    private fun canonicalColorName(name: String): String =
+        Cast.byName(name, PackStore.cast(this))?.names?.firstOrNull() ?: name
+
+    private fun colorSetting(name: String) =
+        gameSettingKey("speaker_color_" + GamePackMatch.storageHash(SpeakerBook.key(name)))
+
+    fun speakerColor(name: String): Int {
+        val canonical = canonicalColorName(name)
+        return SpeakerColor.of(canonical, sp.getInt(colorSetting(canonical), 0))
+    }
+
+    fun setSpeakerColor(name: String, color: Int?) {
+        val key = colorSetting(canonicalColorName(name))
+        if (color == null) sp.edit().remove(key).apply()
+        else sp.edit().putInt(key, color).apply()
+    }
+
     /** Giọng thủ công hiệu lực cho tên gọi chính hoặc bất kỳ bí danh nào của cùng nhân vật. */
     fun effectiveManualVoice(name: String): String? {
         manualVoice(name)?.let { return it }
@@ -437,7 +514,7 @@ class Prefs(ctx: Context) {
         val pool = when {
             female && !male -> FEMALE_AI_VOICES.sortedBy { if (it.first == femaleAiVoice) 0 else 1 }
             male && !female -> MALE_AI_VOICES.sortedBy { if (it.first == maleAiVoice) 0 else 1 }
-            else -> AI_VOICES
+            else -> return aiVoice
         }
         val canonical = card?.names?.firstOrNull() ?: name
         return stableAutoVoice(canonical, card?.names.orEmpty() + name, pool)
@@ -466,8 +543,12 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("showorig", false)
         set(v) = sp.edit().putBoolean("showorig", v).apply()
     /** Hiện câu vừa dịch trước đó bằng chữ nhỏ phía trên phụ đề hiện tại. */
+    var lastSubtitleSeconds: Int
+        get() = sp.getInt("last_subtitle_seconds", 0).takeIf { it in 2..8 } ?: 0
+        set(value) = sp.edit().putInt("last_subtitle_seconds", value.takeIf { it in 2..8 } ?: 0).apply()
+
     var showPrev: Boolean
-        get() = sp.getBoolean("showprev", false)
+        get() = sp.getBoolean("showprev", true)
         set(v) = sp.edit().putBoolean("showprev", v).apply()
     /** Khi câu thoại dồn lại (câu mới tới lúc câu cũ chưa đọc xong) thì tự đọc nhanh hơn. */
     var autoFast: Boolean
@@ -601,9 +682,10 @@ class Prefs(ctx: Context) {
     var autoMenu: Boolean
         get() = sp.getBoolean("automenu", false)
         set(v) = sp.edit().putBoolean("automenu", v).apply()
-    var slow: Boolean
-        get() = sp.getBoolean("slow", false)
-        set(v) = sp.edit().putBoolean("slow", v).apply()
+    var ocrQuality: OcrQuality
+        get() = OcrQuality.read(sp.getString("ocr_quality", null), sp.getBoolean("slow", true))
+        set(value) = sp.edit().putString("ocr_quality", value.name).putBoolean("slow", value != OcrQuality.FAST).apply()
+    val slow: Boolean get() = ocrQuality != OcrQuality.FAST
     var listenOnly: Boolean
         get() = sp.getBoolean("listen_only", false)
         set(v) = sp.edit().putBoolean("listen_only", v).apply()

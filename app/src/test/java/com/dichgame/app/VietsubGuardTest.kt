@@ -20,6 +20,21 @@ class VietsubGuardTest {
         assertFalse(VietsubGuard.isVietnamese("Hello"))
     }
 
+    @Test fun automaticModeRoutesEachSubtitleInAMixedStream() {
+        val lines = listOf("Dạ, em hiểu rồi.", "Open the door.", "Xin chào!", "La forêt")
+        assertEquals(listOf(true, false, true, false), lines.map { VietsubGuard.useOriginal("en", true, it) })
+        assertFalse(VietsubGuard.useOriginal("en", false, lines.first()))
+        assertTrue(VietsubGuard.useOriginal("vi", false, "OK"))
+    }
+
+    @Test fun handlesDecomposedAccentsAndRejectsMixedCaptionBlocks() {
+        val line = java.text.Normalizer.normalize("Không!", java.text.Normalizer.Form.NFD)
+        assertTrue(VietsubGuard.isVietnamese(line))
+        assertTrue(VietsubGuard.isVietnamese("Xin chào!\nDạ, em hiểu rồi."))
+        assertFalse(VietsubGuard.isVietnamese("Xin chào!\nOpen the door."))
+        assertFalse(VietsubGuard.isVietnamese("can can can"))
+    }
+
     @Test fun cautiouslyHandlesNonDiacriticVietnamese() {
         assertTrue(VietsubGuard.isVietnamese("toi va ban se di ve nha"))
         assertFalse(VietsubGuard.isVietnamese("Game Over"))

@@ -5,7 +5,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from knowledge_base.db import KnowledgeBase
+from knowledge_base.db import KnowledgeBase, normalize_text, sha256_text
 from knowledge_base.translation_memory import TranslationMemory
 
 
@@ -31,6 +31,47 @@ class TranslationMemoryTests(unittest.TestCase):
         self.assertEqual(first.translated_text, "Nhiệm vụ mới")
         self.assertFalse(first.cache_hit)
         self.assertTrue(second.cache_hit)
+        self.assertEqual(second.model, "fake-model")
+
+    def test_argument_case_isolated_across_restart_for_source_and_context(self):
+        for name in ("Player", "player"):
+            source = "Hello {" + name + "}"
+            context = "cue {" + name + "}"
+            self.kb.cache_put("memory-game", source, "Chào {" + name + "}", "m")
+            self.kb.cache_put("memory-game", "Ready", name, "m", context)
+        restarted = KnowledgeBase(self.kb.database_path)
+        for name in ("Player", "player"):
+            self.assertEqual(restarted.cache_get("memory-game", "Hello {" + name + "}"), "Chào {" + name + "}")
+            self.assertEqual(restarted.cache_get("memory-game", "Ready", "cue {" + name + "}"), name)
+
+    def test_legacy_folded_key_requires_matching_source_and_output(self):
+        source = "Open {Gate}"
+        with self.kb.transaction() as db:
+            db.execute(
+                "INSERT INTO translation_cache(game_id,text_hash,source_text,translated_text,model) VALUES(?,?,?,?,?)",
+                ("memory-game", sha256_text(normalize_text(source)), source, "Mở {Gate}", "legacy"),
+            )
+        self.assertIsNone(self.kb.cache_get("memory-game", "Open {gate}"))
+        self.assertEqual(self.kb.cache_get("memory-game", source), "Mở {Gate}")
+        with self.kb.transaction() as db:
+            db.execute("UPDATE translation_cache SET translated_text='Mở {gate}'")
+        self.assertIsNone(self.kb.cache_get("memory-game", source))
+
+    def test_invalid_output_is_not_remembered_and_recovery_is_cached(self):
+        source = "Give {player} 2 <b>coins</b> %s %d"
+        good = "Tặng 2 <b>xu</b> cho {player} %s %d"
+        memory = TranslationMemory(self.kb)
+        for broken in (good.replace("{player}", "{Player}"), good.replace("2", "3"),
+                       good.replace("<b>xu</b>", "</b>xu<b>"), good.replace("%s %d", "%d %s")):
+            with self.assertRaises(ValueError):
+                memory.get_or_translate("memory-game", source, lambda *_: broken, model="test")
+            self.assertIsNone(self.kb.cache_get("memory-game", source))
+        result = memory.get_or_translate("memory-game", source, lambda *_: good, model="test")
+        self.assertFalse(result.cache_hit)
+        self.assertEqual(self.kb.cache_get("memory-game", source), good)
+        with self.kb.transaction() as db:
+            db.execute("UPDATE translation_cache SET translated_text='Hỏng'")
+        self.assertIsNone(self.kb.cache_get("memory-game", source))
 
     def test_concurrent_identical_requests_call_provider_once(self):
         memory = TranslationMemory(
@@ -94,6 +135,12 @@ class TranslationMemoryTests(unittest.TestCase):
         )
         self.assertFalse(result.cache_hit)
         self.assertEqual(result.translated_text, "Tiếp tục trò chơi")
+        hit = memory.get_or_translate(
+            "memory-game", "Continue", lambda *_: self.fail("refreshed entry expired immediately"),
+            model="another-model",
+        )
+        self.assertTrue(hit.cache_hit)
+        self.assertEqual(hit.model, "new-model")
 
 
 if __name__ == "__main__":

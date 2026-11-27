@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any
 
-from .db import KnowledgeBase, normalize_text
+from .db import KnowledgeBase, normalize_text, preserves_arguments, runtime_arguments
 
 try:
     from rapidfuzz import fuzz
@@ -44,6 +44,13 @@ def _context_score(row: dict[str, Any], context: dict[str, str]) -> float:
         if normalize_text(str(row.get(key) or "")) == normalize_text(value)
     )
     return matched / len(supplied)
+
+
+def _compatible(row, context: dict[str, str]) -> bool:
+    return all(
+        not row[key] or normalize_text(row[key]) == normalize_text(value)
+        for key, value in context.items() if value
+    )
 
 
 class TranslationMatcher:
@@ -132,7 +139,13 @@ class TranslationMatcher:
                      AND translation_status != 'REJECTED'""",
                 (game_id, normalized),
             ).fetchall()
+        arguments = runtime_arguments(corrected)
         if exact_rows:
+            exact_rows = [row for row in exact_rows if _compatible(row, context_data)
+                          and runtime_arguments(row["source_text"]) == arguments
+                          and preserves_arguments(corrected, row["translated_text"])]
+            if not exact_rows:
+                return None
             rows = [dict(row) for row in exact_rows]
             rows.sort(key=lambda row: (
                 _context_score(row, context_data),
@@ -141,13 +154,16 @@ class TranslationMatcher:
                 float(row.get("confidence_score") or 0),
             ), reverse=True)
             best = rows[0]
-            # If identical source text has multiple different translations but
-            # none matches the supplied dialogue context, do not guess based on
-            # status or insertion order. Let the caller fall back to AI.
-            distinct_translations = {str(row["translated_text"]) for row in rows}
-            if (any(context_data.values()) and len(distinct_translations) > 1
-                    and _context_score(best, context_data) == 0.0):
-                return None
+            context_fit = _context_score(best, context_data)
+            for other in rows[1:]:
+                if other["translated_text"] == best["translated_text"]:
+                    continue
+                if _context_score(other, context_data) != context_fit:
+                    continue
+                if any(other[key] != best[key] for key in context_data):
+                    return None
+                if other["translation_status"] == best["translation_status"]:
+                    return None
             return MatchResult(best, "OCR_CORRECTED_EXACT" if corrections else "EXACT",
                                1.0, corrected, corrections)
 
@@ -157,6 +173,9 @@ class TranslationMatcher:
 
         scored: list[tuple[float, float, dict[str, Any]]] = []
         for row in candidates:
+            if (not _compatible(row, context_data) or runtime_arguments(row["source_text"]) != arguments
+                    or not preserves_arguments(corrected, row["translated_text"])):
+                continue
             source_norm = normalize_text(str(row["source_text"]))
             lexical = _similarity(normalized, source_norm)
             context_fit = _context_score(row, context_data)
@@ -172,16 +191,17 @@ class TranslationMatcher:
             )
             scored.append((min(1.0, score + status_bonus), lexical, row))
 
+        if not scored:
+            return None
         scored.sort(key=lambda item: item[0], reverse=True)
         best_score, lexical, best = scored[0]
         if best_score < fuzzy_threshold:
             return None
-        if len(scored) > 1:
-            second_score, _, second = scored[1]
-            if best_score - second_score < 0.015 and (
-                second["translated_text"] != best["translated_text"]
-                or second.get("speaker") != best.get("speaker")
-                or second.get("scene_id") != best.get("scene_id")
-            ):
+        for other_score, _, other in scored[1:]:
+            if best_score - other_score >= 0.015:
+                break
+            if (other["translated_text"] != best["translated_text"]
+                    or other.get("speaker") != best.get("speaker")
+                    or other.get("scene_id") != best.get("scene_id")):
                 return None
         return MatchResult(best, "FUZZY", best_score, corrected, corrections)

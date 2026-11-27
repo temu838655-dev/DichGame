@@ -3,7 +3,6 @@ package com.dichgame.app
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.widget.Toast
 import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.TranslateRemoteModel
@@ -30,12 +29,15 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     /** Nếu đặt, mỗi lần dịch AI lỗi và phải dùng dịch trên máy thì gọi hàm này (thay vì hiện thông báo một lần). */
     var onFallback: ((String) -> Unit)? = null
 
-    private val local: Translator? = if (lang == "vi") null else Translation.getClient(
-        TranslatorOptions.Builder()
-            .setSourceLanguage(mlCode(lang))
-            .setTargetLanguage(TranslateLanguage.VIETNAMESE)
-            .build()
-    )
+    private val localClient = lazy<Translator?> {
+        if (lang == "vi") null else Translation.getClient(
+            TranslatorOptions.Builder()
+                .setSourceLanguage(mlCode(lang))
+                .setTargetLanguage(TranslateLanguage.VIETNAMESE)
+                .build()
+        )
+    }
+    private val local by localClient
 
     companion object {
         /** Mã ngôn ngữ của ML Kit cho ngôn ngữ trong game. */
@@ -87,7 +89,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
 
     /** Tải mô hình dịch trên máy (lần đầu cần mạng). */
     fun prepare(onDone: (Boolean) -> Unit) {
-        val l = local
+        val l = if (p.packGemini || p.packOnly) null else local
         if (l == null) { onDone(true); return }
         l.downloadModelIfNeeded()
             .addOnSuccessListener { onDone(true) }
@@ -99,7 +101,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      * Mô hình ML Kit vẫn tải ở nền; không khóa OCR chỉ vì tải mô hình lỗi.
      */
     fun prepareForPlayback(onDone: (Boolean) -> Unit) {
-        if (local == null) { if (!closed) onDone(true); return }
+        if (p.packGemini || p.packOnly || local == null) { if (!closed) onDone(true); return }
         val profile = p.profile
         val game = PackStore.gameName(p)
         try {
@@ -131,8 +133,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     }
 
     /** Các câu đã dịch xong và đạt kiểm tra: gặp lại (khung hình lặp, nhân vật nói lại) thì dùng ngay, không gọi AI lần nữa. */
-    private val cache = object : LinkedHashMap<String, Tr>(64, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Tr>?): Boolean = size > 160
+    private val cache = object : LinkedHashMap<List<String>, Tr>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<List<String>, Tr>?): Boolean = size > 160
     }
 
     fun translate(text: String, done: (String) -> Unit) = translateEx(text) { vi, _ -> done(vi) }
@@ -154,13 +156,16 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      * không có người nói hay cảm xúc. Gói Việt hoá, bộ nhớ đệm, thuật ngữ và kiểm tra bản dịch vẫn áp dụng như cũ.
      */
     fun translateFull(text: String, speaker: String?, ui: Boolean, done: (Tr) -> Unit) =
-        translateFullWithId(text, speaker, ui, null, done)
+        translateFullWithId(text, speaker, ui, null, emptyList(), done)
 
     /** Optional stable localization ID; used before exact text matching when the game integration provides one. */
     fun translateFullById(text: String, speaker: String?, ui: Boolean, externalId: String, done: (Tr) -> Unit) =
-        translateFullWithId(text, speaker, ui, externalId, done)
+        translateFullWithId(text, speaker, ui, externalId, emptyList(), done)
 
-    private fun translateFullWithId(text: String, speaker: String?, ui: Boolean, externalId: String?, done: (Tr) -> Unit) {
+    fun translateDialogue(text: String, speaker: String?, following: Sequence<String>, done: (Tr) -> Unit) =
+        translateFullWithId(text, speaker, false, null, Ai.lookahead(following, p.lookaheadCount), done)
+
+    private fun translateFullWithId(text: String, speaker: String?, ui: Boolean, externalId: String?, following: List<String>, done: (Tr) -> Unit) {
         val st = SessionStats.live
         val profile = p.profile
         val game = PackStore.gameName(p)
@@ -173,16 +178,25 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         }
         // Một câu dịch đang chờ Gemini khi người chơi đổi game sẽ bị loại,
         // không hiện phụ đề cũ và không lưu vào bộ nhớ của game mới.
-        fun stillCurrent(): Boolean = !closed && profile == p.profile && gameDescription == p.game && game == PackStore.gameName(p)
+        val style = p.styleText()
+        val hybrid = p.packGemini
+        val packOnly = p.packOnly
+        fun stillCurrent(): Boolean = !closed && hybrid == p.packGemini && packOnly == p.packOnly && style == p.styleText() && profile == p.profile && gameDescription == p.game && game == PackStore.gameName(p)
         fun emit(result: Tr) { if (stillCurrent()) done(result) }
-        val key = context + "\u0000" +
-            (if (ui) "ui|" else "") + (speaker?.lowercase(java.util.Locale.ROOT) ?: "") + "|" + text.trim()
+        if (VietsubGuard.useOriginal(lang, p.aiAuto, text)) {
+            st.inc("nguyen_van_vi")
+            emit(Tr(text, null, false, "vietsub"))
+            return
+        }
+        val memoryStyle = if (following.isEmpty()) style else VoiceDiskCache.key("lookahead", style, *following.toTypedArray())
+        val key = listOf(hybrid.toString(), game, lang, speaker.orEmpty(), ui.toString(), text.trim(), memoryStyle, externalId.orEmpty())
         val hist = if (ui) emptyList() else history.takeLast(p.ctxCount)
         if (!ui) {
             history.add(if (speaker != null) "$speaker: $text" else text)
             while (history.size > 10) history.removeAt(0)
         }
         // gói Việt hoá (file đã nhập, bản người dùng sửa) đứng trước mọi thứ, kể cả bộ nhớ đệm: bản vừa sửa phải có hiệu lực ngay
+        st.inc("tra_ban_dich")
         val packHit = PackStore.memory(ctx, p).lookupEx(text)
         // Bản Việt hóa khớp đúng luôn đứng đầu. Với kết quả khớp mờ,
         // ưu tiên bộ nhớ AI khớp chính xác của chính game để tránh câu tương tự bị lẫn.
@@ -195,7 +209,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         // Gói Việt hóa do người dùng nhập có ưu tiên cao nhất; tiếp theo là bản dịch đã
         // lưu lâu dài trên máy. Khớp đúng nguồn + ngôn ngữ + người nói, không khớp mờ.
         if (p.learnTranslations) {
-            LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text)?.takeIf {
+            LearnedTranslations.lookup(ctx, profile, game, lang, speaker, ui, text, memoryStyle, externalId)?.takeIf {
                 it.manual || TranslationGuard.check(text, it.vi, sourceLang = lang).ok
             }?.let { saved ->
                 st.inc("dich_nho")
@@ -204,6 +218,18 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                     (Cast.byName(speaker, cast) ?: Cast.speakerOf(text, cast))?.pace
                 val delivery = if (p.emoTr && !ui) Emo.detect(text, saved.vi, pace) else null
                 emit(Tr(saved.vi, delivery, false, "nho"))
+                return
+            }
+        }
+        if (packOnly || hybrid) {
+            val term = PackStore.terms(p).exact(text)
+            if (term != null && UiText.samePlaceholders(text, term)) {
+                st.inc("dich_goi")
+                emit(Tr(term, null, false, "goi"))
+                return
+            }
+            if (packOnly) {
+                emit(Tr(text, null, true, "goi_thieu"))
                 return
             }
         }
@@ -219,7 +245,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             // Không ghi bản dịch máy dự phòng hoặc bản dịch AI bị nghi ngờ.
             val saved = p.learnTranslations && t.via == "ai" && !t.uncertain &&
                 LearnedTranslationRules.canRemember(text, t.text)
-            if (saved) LearnedTranslations.remember(ctx, profile, game, lang, speaker, ui, text, t.text)
+            if (saved) LearnedTranslations.remember(ctx, profile, game, lang, speaker, ui, text, t.text, memoryStyle, externalId)
             if (t.uncertain) st.inc("dich_nghi")
             // Câu đã lưu lâu dài không giữ thêm trong cache: khi người dùng xóa bộ nhớ
             // sẽ không bị trả lại bản cũ từ cache trong cùng phiên chơi.
@@ -228,6 +254,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         }
         fun fallbackLocal() {
             if (!stillCurrent()) return
+            if (hybrid) { emit(Tr(text, null, true, "goi_thieu")); return }
             translateLocal(text, names, pace) { localResult ->
                 // Khớp mờ chỉ là gợi ý khi cả AI và dịch máy không cho kết quả chắc chắn.
                 // Không tự đọc hoặc tự lưu một câu suy đoán từ gói Việt hóa.
@@ -244,12 +271,13 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             TranslationGuard.check(text, packHit.vi, names, lang).ok &&
             (!ui || UiText.samePlaceholders(text, packHit.vi))) {
             st.inc("dich_goi_gan")
+            st.inc("goi_gan_tin_cay")
             emit(Tr(packHit.vi, null, false, "goi"))
             return
         }
 
-        if (lang == "vi") { emit(Tr(text, null, false, "may")); return }
         if (!aiOn) {
+            if (hybrid) { fallbackLocal(); return }
             if (Gta6RemoteLookup.supports(game, lang)) {
                 try {
                     aiExecutor.execute {
@@ -273,7 +301,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         try { aiExecutor.execute {
             if (!stillCurrent()) return@execute
             // Shared GTA VI knowledge base: exact original ID first, then exact normalized text.
-            val remote = runCatching { Gta6RemoteLookup.lookup(game, lang, text, externalId) }.getOrNull()
+            val remote = if (hybrid) null else runCatching { Gta6RemoteLookup.lookup(game, lang, text, externalId) }.getOrNull()
             if (!remote.isNullOrBlank() && TranslationGuard.check(text, remote, names, lang).ok &&
                 (!ui || UiText.samePlaceholders(text, remote))) {
                 val delivery = if (emo) Emo.detect(text, remote, pace) else null
@@ -283,21 +311,21 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             }
             var chosen: Tr? = null
             var strict: String? = null
-            val cool = Ai.coolingMs(p)
-            if (cool > 0) {
-                // vừa hết lượt: dịch máy ngay cho câu này, khỏi chờ AI vô ích; hết thời gian nghỉ sẽ thử AI lại
-                st.inc(AiRetry.statKey(AiRetry.Kind.QUOTA))
-                warn(AiRetry.explain(AiRetry.Kind.QUOTA, 429, cool))
+            val cooldown = Ai.cooldownError(p)
+            if (cooldown != null) {
+                val kind = AiRetry.kindOf(cooldown)
+                st.inc(AiRetry.statKey(kind))
+                warn(AiRetry.explain(kind, cooldown.code, cooldown.retryAfterMs, keepOriginal = hybrid))
             } else for (attempt in 0..1) {
                 if (!stillCurrent()) return@execute
-                val prompt = Ai.prompt(p, srcName(), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui)
+                val prompt = Ai.prompt(p, srcName(), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui, style = style, following = following)
                 var raw: String? = null
                 try {
                     raw = Ai.translateRetry(p, prompt)
                 } catch (e: Exception) {
                     val kind = AiRetry.kindOf(e)
                     st.inc(AiRetry.statKey(kind))
-                    warn(AiRetry.explain(kind, (e as? AiException)?.code ?: 0, Ai.coolingMs(p), (e as? AiException)?.message))
+                    warn(AiRetry.explain(kind, (e as? AiException)?.code ?: 0, Ai.coolingMs(p), (e as? AiException)?.message, keepOriginal = hybrid))
                 }
                 if (raw.isNullOrEmpty()) break
                 val parsed = if (emo) Emo.parse(raw) else Emo.Parsed(raw, null)
@@ -357,17 +385,18 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
 
     /** Báo người dùng lý do câu này phải dịch máy. Có ô báo thì báo mỗi lần; không thì nhắn (Toast) tối đa mỗi 45 giây một lần. */
     private fun warn(m: String) {
+        if (TranslationLog.health() != TranslationLog.Health.FAILED) TranslationLog.setHealth(TranslationLog.Health.FALLBACK, m)
         val cb = onFallback
         if (cb != null) { main.post { if (!closed) cb(m) }; return }
         val now = System.currentTimeMillis()
         if (now - lastWarnAt < 45_000L) return
         lastWarnAt = now
-        main.post { Toast.makeText(ctx.applicationContext, m, Toast.LENGTH_LONG).show() }
+        TranslationLog.write("WARN", "Translation", null, null, null, m)
     }
 
     fun close() {
         closed = true
         aiExecutor.shutdownNow()
-        try { local?.close() } catch (_: Exception) {}
+        if (localClient.isInitialized()) local?.close()
     }
 }

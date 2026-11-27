@@ -1,5 +1,8 @@
 package com.dichgame.tv
 
+import com.dichgame.subtitles.SubtitleTransition
+import android.text.SpannableStringBuilder
+
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -86,6 +89,8 @@ class TvService : Service() {
     private var track: AudioTrack? = null
     private var subView: TextView? = null
     private var regView: TextView? = null
+    private var currentCaption = ""
+    private var captionUntil = 0L
     private val hideSub = Runnable { subView?.visibility = View.GONE }
     private val hideReg = Runnable { regView?.visibility = View.GONE }
     private val rotate = object : Runnable {
@@ -281,7 +286,9 @@ class TvService : Service() {
                 val sp = j.optBoolean("speak", false)
                 val fg = j.optInt("fg", Color.WHITE)
                 val bg = j.optInt("bg", 0xB3000000.toInt())
-                handler.post { show(kind, text, size, sp, fg, bg) }
+                val keepPrevious = j.optBoolean("keepPrevious", true)
+                val seconds = j.optInt("lastSeconds", 0)
+                handler.post { show(kind, text, size, sp, fg, bg, keepPrevious, seconds, j.optJSONArray("lines")) }
                 status = 200; out = "ok"
             }
         }
@@ -347,13 +354,43 @@ class TvService : Service() {
         handler.postDelayed(hide, ms)
     }
 
-    private fun show(kind: String, text: String, size: Int, speakIt: Boolean, fg: Int = Color.WHITE, bg: Int = 0xB3000000.toInt()) {
+    private fun show(kind: String, text: String, size: Int, speakIt: Boolean, fg: Int = Color.WHITE, bg: Int = 0xB3000000.toInt(), keepPrevious: Boolean = true, seconds: Int = 0, lines: org.json.JSONArray? = null) {
         if (!Settings.canDrawOverlays(this)) return
         if (subView == null) { subView = mk(false); regView = mk(true) }
         when (kind) {
             "region" -> put(regView!!, text, size, hideReg, 15000, fg, bg)
-            "clear" -> { put(subView!!, "", size, hideSub, 0, fg, bg); put(regView!!, "", size, hideReg, 0, fg, bg) }
-            else -> put(subView!!, text, size, hideSub, 12000, fg, bg)
+            "clear" -> { currentCaption = ""; captionUntil = 0; put(subView!!, "", size, hideSub, 0, fg, bg); put(regView!!, "", size, hideReg, 0, fg, bg) }
+            else -> {
+                val view = subView!!
+                val now = android.os.SystemClock.elapsedRealtime()
+                val remaining = captionUntil - now
+                val duration = if (seconds in 2..8) seconds * 1000L else
+                    (600 + text.count { !it.isWhitespace() } * 1000L / 17).coerceIn(2000L, 8000L)
+                val caption = SpannableStringBuilder()
+                if (keepPrevious && remaining > 0 && currentCaption != text && currentCaption.isNotEmpty() && text.isNotEmpty()) {
+                    caption.append(currentCaption.replace('\n', ' ').take(100)).append('\n')
+                    caption.setSpan(android.text.style.RelativeSizeSpan(0.7f), 0, caption.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                val previousEnd = caption.length
+                if (lines == null || lines.length() == 0) caption.append(text) else {
+                    for (i in 0 until lines.length()) {
+                        val line = lines.optJSONObject(i) ?: continue
+                        if (i > 0) caption.append('\n')
+                        val name = line.optString("name")
+                        if (name.isNotEmpty()) {
+                            val start = caption.length
+                            caption.append(name).append(": ")
+                            caption.setSpan(android.text.style.ForegroundColorSpan(line.optInt("color", fg)),
+                                start, caption.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        }
+                        caption.append(line.optString("text"))
+                    }
+                }
+                put(view, text, size, hideSub, duration, fg, bg)
+                SubtitleTransition.display(view, caption, previousEnd, remaining)
+                currentCaption = caption.subSequence(previousEnd, caption.length).toString()
+                captionUntil = now + duration
+            }
         }
         if (speakIt && text.isNotEmpty()) tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "tv")
     }

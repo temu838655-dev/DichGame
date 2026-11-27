@@ -23,6 +23,15 @@ class LearnedTranslationRulesTest {
         assertNotEquals(lucia, LearnedTranslationRules.key("GTA VI", "en", "Lucia", false, "We need to get out of here?"))
     }
 
+    @Test fun customInstructionsAndStableDialogueIdsArePartOfTheKey() {
+        val base = LearnedTranslationRules.key("game", "en", "Sam", false, "Come back here!")
+        val a = LearnedTranslationRules.scopedKey(base, "Tự nhiên", "chapter1")
+        assertEquals(a, LearnedTranslationRules.scopedKey(base, "Tự nhiên", "chapter1"))
+        assertNotEquals(a, LearnedTranslationRules.scopedKey(base, "Tin tức", "chapter1"))
+        assertNotEquals(a, LearnedTranslationRules.scopedKey(base, "Tự nhiên", "chapter2"))
+        assertNotEquals(a, LearnedTranslationRules.scopedKey(base, "Tự nhiên", null))
+    }
+
     @Test fun meaningfulVietnameseLineMayBeRemembered() {
         assertTrue(LearnedTranslationRules.canRemember(
             "We need to get out of here!", "Chúng ta phải rời khỏi đây ngay!"))

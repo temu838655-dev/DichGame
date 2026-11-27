@@ -46,8 +46,7 @@ internal static class GeminiClient
             {
                 var msg = $"Gemini HTTP {(int)response.StatusCode}: {text[..Math.Min(text.Length, 230)]}";
                 if (response.StatusCode == HttpStatusCode.Unauthorized ||
-                    response.StatusCode == HttpStatusCode.Forbidden ||
-                    response.StatusCode == HttpStatusCode.TooManyRequests)
+                    response.StatusCode == HttpStatusCode.Forbidden)
                 {
                     lastError = msg;
                     continue;
@@ -60,8 +59,10 @@ internal static class GeminiClient
                 !candidates[0].TryGetProperty("content", out var content) ||
                 !content.TryGetProperty("parts", out var parts))
                 throw new InvalidOperationException("Gemini không trả về bản dịch.");
+            if (candidates[0].TryGetProperty("finishReason", out var reason) && reason.GetString() != "STOP")
+                throw new InvalidOperationException("Gemini chưa hoàn tất bản dịch.");
             string result = string.Join("\n", parts.EnumerateArray()
-                .Where(p => p.TryGetProperty("text", out _))
+                .Where(p => (!p.TryGetProperty("thought", out var thought) || thought.ValueKind != JsonValueKind.True) && p.TryGetProperty("text", out _))
                 .Select(p => p.GetProperty("text").GetString()));
             if (string.IsNullOrWhiteSpace(result))
                 throw new InvalidOperationException("Gemini không tìm thấy chữ có thể dịch.");

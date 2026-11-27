@@ -10,16 +10,29 @@ import java.util.Locale
 class SessionStats {
     private val counts = HashMap<String, Long>()
     private val latencies = ArrayList<Long>()
+    private val speechLatencies = ArrayList<Long>()
+    private var lastTranslationModel = ""
     private var startAt = 0L
     private var startBattery = -1
 
     @Synchronized fun reset(nowMs: Long, batteryPct: Int) {
-        counts.clear(); latencies.clear(); startAt = nowMs; startBattery = batteryPct
+        lastTranslationModel = ""
+        counts.clear(); latencies.clear(); speechLatencies.clear(); startAt = nowMs; startBattery = batteryPct
     }
 
     @Synchronized fun inc(key: String, n: Long = 1) { counts[key] = (counts[key] ?: 0L) + n }
 
     @Synchronized fun get(key: String): Long = counts[key] ?: 0L
+
+    @Synchronized fun recordTranslationModel(provider: String, requested: String, reported: String?) {
+        val actual = reported?.trim()?.takeIf { it.isNotEmpty() }
+        lastTranslationModel = if (actual == null) "$provider · $requested (model gửi trong yêu cầu)"
+            else "$provider · ${actual.take(160)}"
+    }
+
+    @Synchronized fun recordHttpStatus(metric: String, code: Int) {
+        if (code == 400 || code == 429) inc("${metric}_http_$code")
+    }
 
     @Synchronized fun recordTokens(metric: String, input: Long, output: Long) {
         if (input < 0 || output < 0) return
@@ -35,11 +48,22 @@ class SessionStats {
         latencies.add(ms)
     }
 
-    @Synchronized fun percentile(p: Int): Long {
-        if (latencies.isEmpty()) return -1
-        val s = latencies.sorted()
-        return s[((s.size - 1) * p / 100).coerceIn(0, s.size - 1)]
+    @Synchronized fun speechLatency(ms: Long) {
+        if (ms < 0 || ms > 120_000) return
+        if (speechLatencies.size >= 2_000) speechLatencies.removeAt(0)
+        speechLatencies.add(ms)
     }
+
+    private fun percentileOf(values: List<Long>, p: Int): Long {
+        if (values.isEmpty()) return -1
+        val sorted = values.sorted()
+        val rank = kotlin.math.ceil((p.coerceIn(0, 100) / 100.0) * sorted.size).toInt() - 1
+        return sorted[rank.coerceIn(0, sorted.lastIndex)]
+    }
+
+    @Synchronized fun percentile(p: Int): Long = percentileOf(latencies, p)
+
+    @Synchronized fun speechPercentile(p: Int): Long = percentileOf(speechLatencies, p)
 
     private fun sec(ms: Long) = String.format(Locale.US, "%.1f", ms / 1000.0)
 
@@ -75,13 +99,26 @@ class SessionStats {
         val heard = get("asr_nhan")
         sb.append("Nghe âm thanh game: $heard câu; loại vì nhiễu hoặc ảo giác: ${get("asr_loc")}; trùng với phụ đề trên màn hình: ${get("asr_trung")}")
         sb.append("; ghép với chữ đọc dở: ${get("ghep")}\n")
-        sb.append("Dịch: AI ${get("dich_ai")}, bộ nhớ đệm ${get("dich_cache")}, gói Việt hoá ${get("dich_goi")}" + (if (get("dich_goi_gan") > 0) " (trong đó ${get("dich_goi_gan")} khớp gần đúng)" else "") + ", dịch trên máy ${get("dich_may")}")
+        val ram = get("dich_cache")
+        val learned = get("dich_nho")
+        val pack = get("dich_goi") + get("goi_gan_tin_cay")
+        val lookups = get("tra_ban_dich")
+        if (lookups > 0) {
+            val hits = ram + learned + pack
+            sb.append("Tái sử dụng bản dịch trên máy: $hits/$lookups lượt tra (${100 * hits / lookups}%). ")
+            sb.append("RAM $ram, bộ nhớ game $learned, gói Việt hóa $pack.\n")
+        }
+        sb.append("Dịch: AI ${get("dich_ai")}, dịch máy ${get("dich_may")}, gói trực tuyến ${get("dich_goi_cloud")}, giữ nguyên tiếng Việt ${get("nguyen_van_vi")}")
         sb.append("; AI bị loại rồi dịch lại ${get("dich_loai")}; còn nghi ngờ ${get("dich_nghi")}\n")
+        if (lastTranslationModel.isNotEmpty()) sb.append("Phản hồi dịch AI gần nhất: ").append(lastTranslationModel).append('\n')
         val gemini = get("api_dich_gemini")
         val cloud = get("api_dich_cloud")
         val voice = get("api_giong_gemini")
         sb.append("Lượt thử gửi API: dịch Gemini $gemini, dịch CloudAPI $cloud, giọng Gemini $voice (gồm thử lại; không phải số lượt tính phí).\n")
         for ((metric, label) in listOf("api_dich_gemini" to "Gemini dịch", "api_dich_cloud" to "CloudAPI dịch", "api_giong_gemini" to "Gemini giọng")) {
+            val bad = get("${metric}_http_400")
+            val limited = get("${metric}_http_429")
+            if (get(metric) > 0 || bad + limited > 0) sb.append("HTTP $label: 400 = $bad, 429 = $limited.\n")
             val measured = get(metric + "_usage")
             if (measured > 0) sb.append("Token $label: vào ${get(metric + "_input")}, ra ${get(metric + "_output")} ($measured phản hồi có số liệu).\n")
         }
@@ -93,7 +130,9 @@ class SessionStats {
         val why = machineReasons()
         if (why.isNotEmpty()) sb.append("Dịch trên máy vì AI không dùng được: ").append(why).append('\n')
         val n = synchronized(this) { latencies.size }
-        if (n > 0) sb.append("Từ lúc câu xuất hiện tới lúc hiện bản dịch (${n} câu): giữa ${sec(percentile(50))} giây, 90% dưới ${sec(percentile(90))} giây\n")
+        if (n > 0) sb.append("Từ lần chụp đầu tiên phát hiện câu mới tới lúc hiện phụ đề (${n} câu): p50 ${sec(percentile(50))} giây, p95 ${sec(percentile(95))} giây\n")
+        val speechN = synchronized(this) { speechLatencies.size }
+        if (speechN > 0) sb.append("Từ lần chụp đầu tiên phát hiện câu mới tới lúc bắt đầu đọc (${speechN} câu): p50 ${sec(speechPercentile(50))} giây, p95 ${sec(speechPercentile(95))} giây\n")
         if (startBattery in 0..100 && batteryPct in 0..100 && nowMs > startAt) {
             val drop = startBattery - batteryPct
             val perHour = if (nowMs - startAt >= 10 * 60_000L) " (khoảng ${drop * 3_600_000L / (nowMs - startAt)}% mỗi giờ)" else " (dịch trên 10 phút mới ước lượng được mỗi giờ)"
@@ -115,7 +154,11 @@ object SpeakerColor {
         0xFFFFD54F.toInt(), 0xFF80DEEA.toInt(), 0xFFA5D6A7.toInt(), 0xFFF48FB1.toInt(), 0xFFCE93D8.toInt(), 0xFFFFAB91.toInt(), 0xFF9FA8DA.toInt(), 0xFFE6EE9C.toInt(),
     )
 
-    fun of(name: String): Int {
+    val choices = listOf("Vàng", "Xanh ngọc", "Xanh lá", "Hồng", "Tím", "Cam", "Chàm", "Vàng chanh")
+        .zip(PALETTE.toList())
+
+    fun of(name: String, selected: Int? = null): Int {
+        if (selected != null && selected in PALETTE) return selected
         val k = SpeakerBook.key(name)
         var h = 0
         for (c in k) h = h * 31 + c.code

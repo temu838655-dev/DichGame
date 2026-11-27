@@ -6,6 +6,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SessionStatsTest {
+    @Test fun reportTracksLatestProviderAndDistinguishesUnreportedModel() {
+        val stats = SessionStats()
+        stats.reset(1, 90)
+        stats.recordTranslationModel("Google Gemini", "requested", "returned")
+        assertTrue(stats.report(2, 90).contains("Google Gemini · returned"))
+        stats.recordTranslationModel("OpenAI", "fallback", null)
+        val report = stats.report(3, 90)
+        assertTrue(report.contains("OpenAI · fallback (model gửi trong yêu cầu)"))
+        assertTrue(!report.contains("Google Gemini · returned"))
+        stats.reset(4, 90)
+        assertTrue(!stats.report(5, 90).contains("OpenAI · fallback"))
+    }
+
     @Test fun apiAttemptsAndReportedTokensAreSeparate() {
         val s = SessionStats()
         s.reset(1, 50)
@@ -38,6 +51,18 @@ class SessionStatsTest {
         assertTrue(r, r.contains("20 phút"))
     }
 
+    @Test fun reportsP95ForSubtitleAndSpeechStartSeparately() {
+        val s = SessionStats()
+        s.reset(1_000, 80)
+        for (ms in listOf(100L, 200L, 300L, 400L, 500L)) s.latency(ms)
+        for (ms in listOf(150L, 250L, 350L, 450L)) s.speechLatency(ms)
+        assertEquals(500L, s.percentile(95))
+        assertEquals(450L, s.speechPercentile(95))
+        val report = s.report(2_000, 80)
+        assertTrue(report.contains("hiện phụ đề (5 câu): p50 0.3 giây, p95 0.5 giây"))
+        assertTrue(report.contains("bắt đầu đọc (4 câu): p50 0.3 giây, p95 0.5 giây"))
+    }
+
     @Test fun ignoresAbsurdLatencies() {
         val s = SessionStats()
         s.reset(1, 50)
@@ -55,9 +80,25 @@ class SessionStatsTest {
         assertTrue(s.report(5 * 60_000L, 55).contains("tăng 5%"))
     }
 
+    @Test fun reportSeparatesLocalHitsFromProviderErrorsAndUntranslatedText() {
+        val s = SessionStats()
+        s.reset(1, 100)
+        for (key in listOf("dich_cache", "dich_nho", "dich_goi", "goi_gan_tin_cay", "nguyen_van_vi")) s.inc(key)
+        s.inc("tra_ban_dich", 5)
+        s.recordHttpStatus("api_dich_gemini", 429)
+        s.recordHttpStatus("api_dich_gemini", 200)
+        s.recordHttpStatus("api_dich_cloud", 400)
+        val report = s.report(2, 100)
+        assertTrue(report.contains("4/5 lượt tra (80%)"))
+        assertTrue(report.contains("HTTP Gemini dịch: 400 = 0, 429 = 1"))
+        assertTrue(report.contains("HTTP CloudAPI dịch: 400 = 1, 429 = 0"))
+    }
+
     @Test fun speakerColorIsStable() {
         assertEquals(SpeakerColor.of("Geralt"), SpeakerColor.of("geralt"))
         assertNotEquals(SpeakerColor.of("Geralt"), SpeakerColor.of("Yennefer"))
+        for ((_, color) in SpeakerColor.choices) assertEquals(color, SpeakerColor.of("Geralt", color))
+        assertEquals(SpeakerColor.of("Geralt"), SpeakerColor.of("Geralt", 0))
     }
 
     @Test fun audioSourceIsReportedHonestly() {

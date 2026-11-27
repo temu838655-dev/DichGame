@@ -239,6 +239,18 @@ class PackActivity : Activity() {
                     "Tự nhận diện chỉ đáng tin khi game có nhãn tên; " +
                     "chưa nhận diện được người nói sẽ dùng giọng mặc định. Giọng tự động không suy đoán giới tính theo tên.",
                 12.5f, Ui.SUB), Ui.lpm(this@PackActivity, 8, 10))
+            if (known.isNotEmpty()) v.addView(Ui.button(this@PackActivity, "Màu tên nhân vật") {
+                Ui.pick(this@PackActivity, "Chọn nhân vật", known.toList()) { i ->
+                    val name = known[i]
+                    val choices = SpeakerColor.choices
+                    val labels = listOf("Tự động") + choices.map { (label, _) -> label }
+                    val current = choices.firstOrNull { it.second == p.speakerColor(name) }?.first.orEmpty()
+                    Ui.pick(this@PackActivity, "$name · $current", labels) { index ->
+                        p.setSpeakerColor(name, choices.getOrNull(index - 1)?.second)
+                        render()
+                    }
+                }
+            }, Ui.lpm(this@PackActivity, 6, 0))
             for (name in known.take(25)) {
                 val voice = Prefs.aiVoiceLabel(p.aiVoiceFor(name, ""))
                 val status = if (p.effectiveManualVoice(name) != null) "Đã chọn tay" else "Tự động"

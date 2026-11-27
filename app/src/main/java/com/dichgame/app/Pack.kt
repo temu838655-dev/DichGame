@@ -349,6 +349,7 @@ class TermMap(pairs: List<Pair<String, String>>) {
 
     val size: Int get() = entries.size
     val all: List<Pair<String, String>> get() = entries
+    fun exact(text: String): String? = byKey[norm(text)]?.second
 
     private fun pattern(src: String): String {
         val body = src.trim().split(Regex("\\s+")).joinToString("\\s+") { Regex.escape(it) }

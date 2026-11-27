@@ -34,6 +34,8 @@ class SettingsActivity : Activity() {
         page = intent?.getStringExtra("page") ?: if (intent?.getStringExtra("goto") == "profile") "profile" else "hub"
         speaker = Speaker(this, p)
         speaker?.onAiError = { m -> Toast.makeText(this, m, Toast.LENGTH_LONG).show() }
+        speaker?.onSpeechError = { _, m -> Toast.makeText(this, m, Toast.LENGTH_LONG).show() }
+        speaker?.onSpeechWarning = { m -> Toast.makeText(this, m, Toast.LENGTH_LONG).show() }
         render()
         if (BuildConfig.DEBUG && intent?.getBooleanExtra("selftest", false) == true) SelfTest.voice(applicationContext)
     }
@@ -103,10 +105,10 @@ class SettingsActivity : Activity() {
                 } else {
                     addView(Ui.switchRow(a, "Đọc to bản dịch", "Tắt nếu chỉ muốn xem chữ.", p.speak) { p.speak = it })
                 }
-                row(Ui.segmented(a, listOf("Cơ bản", "Offline", "AI"),
-                    when (p.voiceEngine) { "offline" -> 1; "ai" -> 2; else -> 0 }) { i ->
+                row(Ui.segmented(a, listOf("Giọng cơ bản", "Giọng AI"),
+                    if (p.voiceEngine == "system") 0 else 1) { i ->
                     speaker?.stop()
-                    p.voiceEngine = when (i) { 1 -> "offline"; 2 -> "ai"; else -> "system" }
+                    p.voiceEngine = if (i == 0) "system" else p.lastAiVoiceEngine
                     speaker?.prepare()
                     render()
                 }, 14, 6)
@@ -152,6 +154,16 @@ class SettingsActivity : Activity() {
 
     private fun voiceEngineBlock(c: LinearLayout) {
         val a = this
+        if (p.voiceEngine != "system") {
+            c.addView(Ui.segmented(a, listOf("Offline", "Gemini"),
+                if (p.voiceEngine == "ai") 1 else 0) { i ->
+                speaker?.stop()
+                p.voiceEngine = if (i == 0) "offline" else "ai"
+                speaker?.prepare()
+                render()
+            })
+            c.divide()
+        }
         when (p.voiceEngine) {
             "offline" -> c.addView(offlineBlock())
              "ai" -> {
@@ -292,8 +304,13 @@ class SettingsActivity : Activity() {
                 divide()
                 row(Ui.switchRow(a, "Hiện câu gốc ${Prefs.srcNameOf(p.lang)}", null, p.showOrig) { p.showOrig = it }, 2, 12)
                 divide()
-                row(Ui.switchRow(a, "Hiện câu thoại trước",
-                    "Hiện câu vừa dịch bằng chữ nhỏ phía trên phụ đề hiện tại (trên điện thoại).", p.showPrev) { p.showPrev = it }, 12, 12)
+                row(Ui.switchRow(a, "Giữ câu trước để đọc hết",
+                    "Câu trước còn thời gian đọc sẽ trượt lên và mờ dần phía trên câu mới trên điện thoại và bộ nhận LG/Samsung.", p.showPrev) { p.showPrev = it }, 12, 12)
+                divide()
+                val holdSeconds = listOf(0) + (2..8)
+                fun holdLabel(seconds: Int) = if (seconds == 0) "Tự động (2–8 giây)" else "$seconds giây"
+                addView(Ui.dropRow(a, "Thời gian giữ câu cuối", { holdLabel(p.lastSubtitleSeconds) },
+                    { holdSeconds.map { holdLabel(it) } }) { p.lastSubtitleSeconds = holdSeconds[it] })
                 divide()
                 row(Ui.seekRow(a, "Cỡ chữ phụ đề", { v -> "$v%" }, 50, 200, p.subScale) { p.subScale = it }, 12, 6)
                 divide()
@@ -330,8 +347,8 @@ class SettingsActivity : Activity() {
         adv.visibility = if (advOpen) View.VISIBLE else View.GONE
 
         adv.addView(Ui.tv(a, "Cách đọc chữ trên hình", 15f, Ui.TEXT, true), Ui.lpm(a, 4, 0))
-        adv.addView(Ui.segmented(a, listOf("Kỹ", "Nhanh"), if (p.slow) 0 else 1) { p.slow = it == 0; render() }, Ui.lpm(a, 6, 0))
-        adv.addView(note("Kỹ: chờ chữ hiện đủ rồi mới dịch, ít dịch nhầm câu đang hiện dở. Nhanh: dịch ngay khi thấy chữ."), Ui.lpm(a, 6, 0))
+        adv.addView(Ui.segmented(a, OcrQuality.values().map { it.label }, p.ocrQuality.ordinal) { p.ocrQuality = OcrQuality.values()[it]; render() }, Ui.lpm(a, 6, 0))
+        adv.addView(note("Kỹ kiểm tra hai lượt quét. Cân bằng kiểm tra lại câu dưới 12 chữ cái. Nhanh xử lý ngay khi chữ vượt qua bộ lọc nhiễu."), Ui.lpm(a, 6, 0))
 
         val rates = listOf(2.0, 2.5, 3.0, 4.0, 6.0, 8.0)
         val rateSel = rates.indexOfFirst { kotlin.math.abs((1000.0 / it).toInt() - p.scanMs) <= 20 }
@@ -339,7 +356,7 @@ class SettingsActivity : Activity() {
         adv.addView(Ui.segmented(a, rates.map { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString().replace(".", ",") }, rateSel) {
             p.scanMs = (1000.0 / rates[it]).toInt(); render()
         }, Ui.lpm(a, 6, 0))
-        adv.addView(note("Đọc nhiều lần đỡ sót câu thoại nhưng máy nóng và hao pin hơn. Mặc định 2,5 lần mỗi giây (400 ms)."), Ui.lpm(a, 6, 0))
+        adv.addView(note("Đọc nhiều lần đỡ sót câu thoại nhưng máy nóng và hao pin hơn. Mặc định 3 lần mỗi giây (333 ms)."), Ui.lpm(a, 6, 0))
 
         adv.addView(Ui.tv(a, "Chế độ hiệu năng", 15f, Ui.TEXT, true), Ui.lpm(a, 14, 0))
         adv.addView(Ui.segmented(a, listOf("Tiết kiệm pin", "Cân bằng", "Chất lượng"), p.perf) { p.perf = it; render() }, Ui.lpm(a, 6, 0))
@@ -494,6 +511,7 @@ class SettingsActivity : Activity() {
                 })
             }
             group("CÁCH DỊCH CỦA HỒ SƠ NÀY", 16) {
+                addView(Ui.seekRow(a, "Số câu AI xem trước", { n -> "$n câu" }, 0, 10, p.lookaheadCount) { p.lookaheadCount = it })
                 addView(Ui.dropRow(a, "Phong cách dịch", { Prefs.TR_STYLES[p.trStyle].first }, { Prefs.TR_STYLES.map { it.first } }) { i ->
                     p.trStyle = i
                     if (i == Prefs.CUSTOM_STYLE) promptDialog() else render()
@@ -513,19 +531,73 @@ class SettingsActivity : Activity() {
     }
 
     private fun promptDialog() {
-        val et = Ui.field(this, "Viết chỉ dẫn dịch của riêng bạn", p.customPrompt)
-        et.minLines = 6
-        et.gravity = Gravity.TOP
+        val library = p.promptTemplates
+        val names = library.entries.keys.sorted()
+        val options = names.map { if (it == library.selected) "✓ $it" else it } +
+            listOf("Thêm mẫu", "Dùng phong cách mặc định")
+        Ui.pick(this, "Mẫu prompt của game", options) { index ->
+            when (index) {
+                names.size -> editTemplate(null, "", "")
+                names.size + 1 -> { p.trStyle = 0; render() }
+                else -> {
+                    val name = names[index]
+                    val body = library.entries.getValue(name)
+                    Ui.pick(this, name, listOf("Sử dụng", "Chỉnh sửa", "Sao chép", "Xóa")) { action ->
+                        when (action) {
+                            0 -> { p.promptTemplates = library.copy(selected = name); render() }
+                            1 -> editTemplate(name, name, body)
+                            2 -> editTemplate(null, "$name (bản sao)", body)
+                            3 -> AlertDialog.Builder(this).setMessage("Xóa mẫu $name?")
+                                .setPositiveButton("Xóa") { _, _ -> p.promptTemplates = library.remove(name); render() }
+                                .setNegativeButton("Hủy", null).show()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun editTemplate(old: String?, name: String, body: String) {
+        val title = Ui.field(this, "Tên mẫu", name)
+        val et = Ui.field(this, "Chỉ dẫn dịch", body)
         et.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        et.minLines = 3
+        val sample = Ui.field(this, "Câu gốc để dịch thử", "")
+        val result = Ui.tv(this, "", 14f, Ui.TEXT)
         val box = Ui.vbox(this)
-        val pad = Ui.dp(this, 20)
-        box.setPadding(pad, pad / 2, pad, 0)
-        box.addView(Ui.tv(this, "Ví dụ: Dịch như lính đánh thuê lì lợm, xưng tao – mày với đồng đội, gọi sếp là ông chủ, câu cộc, không văn vẻ.", 12.5f, Ui.SUB))
+        box.addView(title)
         box.addView(et)
-        AlertDialog.Builder(this, R.style.DgDialog)
-            .setTitle("Prompt riêng").setView(box)
-            .setPositiveButton("Lưu") { _, _ -> p.customPrompt = et.text.toString(); render() }
-            .setNegativeButton("Hủy", null).show()
+        box.addView(sample)
+        val preview = Ui.button(this, "Dịch thử bằng AI đang cấu hình") {}
+        box.addView(preview)
+        box.addView(result)
+        val dialog = AlertDialog.Builder(this, R.style.DgDialog).setTitle("Prompt riêng")
+            .setView(android.widget.ScrollView(this).apply { addView(box) })
+            .setPositiveButton("Lưu và sử dụng", null).setNegativeButton("Hủy", null).show()
+        preview.setOnClickListener {
+            val source = sample.text.toString().trim()
+            if (source.isEmpty()) { sample.error = "Hãy nhập câu gốc"; return@setOnClickListener }
+            if (!Ai.enabled(p)) { result.text = "Hãy cấu hình bộ dịch AI trước khi dịch thử."; return@setOnClickListener }
+            val prompt = Ai.prompt(p, Prefs.srcNameOf(p.lang), p.game, emptyList(), source,
+                terms = PackStore.terms(p), cast = PackStore.cast(p), style = et.text.toString().trim().ifBlank { Prefs.TR_STYLES[0].second })
+            preview.isEnabled = false
+            result.text = "Đang dịch…"
+            Thread {
+                val answer = runCatching { Ai.translateRetry(p, prompt) }
+                runOnUiThread {
+                    if (!dialog.isShowing) return@runOnUiThread
+                    preview.isEnabled = true
+                    result.text = answer.getOrElse { "Dịch thử thất bại: " + it.localizedMessage.orEmpty() }
+                }
+            }.start()
+        }
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            try {
+                p.promptTemplates = p.promptTemplates.save(old, title.text.toString().trim(), et.text.toString().trim())
+                dialog.dismiss()
+                render()
+            } catch (e: IllegalArgumentException) { title.error = e.message }
+        }
     }
 
     private fun addProfile() {

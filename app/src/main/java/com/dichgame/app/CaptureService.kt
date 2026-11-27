@@ -1,5 +1,7 @@
 package com.dichgame.app
 
+import com.dichgame.subtitles.SubtitleTransition
+
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -130,7 +132,7 @@ class CaptureService : Service() {
     private var editing = true
     private var narrate = false
     private val autoGameDetector = AutoGameDetector()
-    private var needStable = 1
+    private var quality = OcrQuality.CAREFUL
     private var cand = ""
     private var stable = 0
     private var prevVi = ""
@@ -249,7 +251,7 @@ class CaptureService : Service() {
         RecentLines.clear()
         narrate = intent.getBooleanExtra("narrate", false)
         speak = intent.getBooleanExtra("speak", false) || narrate || Prefs(this).listenOnly
-        needStable = if (intent.getBooleanExtra("slow", false)) 2 else 1
+        quality = OcrQuality.read(intent.getStringExtra("ocr_quality"), intent.getBooleanExtra("slow", true))
         // chỉ khi bắt đầu từ màn hình chính (game chạy trên điện thoại); chơi PS trong app thì đã có âm thanh từ Remote Play
         val wantPhoneAudio = intent.getBooleanExtra("phoneaudio", false) && !narrate
         autoMenu = intent.getBooleanExtra("automenu", false) && !narrate
@@ -728,7 +730,8 @@ class CaptureService : Service() {
                 out.add(Card(line.speaker, line.text, TextTranslator.Tr(line.text, null, true, "may"), true))
                 next(i + 1)
             } else {
-                t.translateFull(line.text, line.speaker) { tr ->
+                val following = w.lines.asSequence().drop(i + 1).filterNot { it.nameLike }.map { it.text }
+                t.translateDialogue(line.text, line.speaker, following) { tr ->
                     // một cái tên đứng riêng được giữ nguyên là bình thường, không đánh dấu "chưa chắc"
                     out.add(Card(line.speaker, line.text, tr, tr.uncertain && !line.nameLike))
                     next(i + 1)
@@ -744,9 +747,8 @@ class CaptureService : Service() {
         // Nếu một câu đã chậm hơn 8 giây và câu mới đang chờ, bỏ kết quả cũ để không lệch cảnh.
         if (jobs.isNotEmpty() && now - w.seenAt > 8_000L) { stats.inc("hang_day"); return }
         val text = cards.joinToString(" ") { it.tr.text }
-        val item = SubtitlePacer.Item(text, w.src, pacer.holdFor(text, w.speechMs), cards[0].speaker, Payload(cards, w.seenAt))
-        val shown = pacer.submit(item, now, w.replace)
-        if (shown != null) render(shown) else { stats.inc("hang_cho"); scheduleHide() }
+        val item = SubtitlePacer.Item(text, w.src, pacer.holdFor(text, w.speechMs, Prefs(this).lastSubtitleSeconds), cards[0].speaker, Payload(cards, w.seenAt))
+        render(pacer.showImmediately(item, now))
     }
 
     private fun render(item: SubtitlePacer.Item) {
@@ -856,6 +858,7 @@ class CaptureService : Service() {
     /** Số lần đọc giống nhau liên tiếp trước khi tin một câu: câu cực ngắn dễ là chữ rác nên cần thấy lâu hơn. */
     private fun requiredStable(utts: List<Utterance>): Int {
         val minLetters = utts.minOf { OcrGuard.letterCount(it.text) }
+        val needStable = quality.frames(minLetters)
         var need = when {
             minLetters <= 1 -> maxOf(needStable, 3)
             minLetters <= 2 -> maxOf(needStable, 2)
@@ -901,7 +904,7 @@ class CaptureService : Service() {
             if (textOnScreen) { textOnScreen = false; textGoneSince = now }
             fusion.onScreenEmpty(now)
             last = ""; cand = ""; stable = 0
-            if (narrate || pacer.showing == null) { if (!autoShown) show("") }
+            if (pacer.showing == null) { if (!autoShown) show("") }
             else if (canHide(now)) softHide() else scheduleHide()
             finishBusy()
             return
@@ -928,7 +931,10 @@ class CaptureService : Service() {
                 val phrase = u.text.replace("\n", sep)
                 Card(u.speaker, "", TextTranslator.Tr(phrase, null, false, "doc"), false)
             }
-            showCards(cards, Src.OCR)
+            val phrase = cards.joinToString(" ") { it.tr.text }
+            val hold = pacer.holdFor(phrase, fixedSeconds = prefs.lastSubtitleSeconds)
+            render(pacer.showImmediately(SubtitlePacer.Item(phrase, Src.OCR, hold,
+                cards.first().speaker, Payload(cards, scanAt)), now))
             finishBusy()
             return
         }
@@ -1133,16 +1139,16 @@ class CaptureService : Service() {
     }
 
     /** Gửi phụ đề lên app Dịch game TV (nếu đã ghép). kind: sub | region | clear. */
-    private fun sendTv(kind: String, text: String, speakIt: Boolean = false, force: Boolean = false) {
+    private fun sendTv(kind: String, text: String, speakIt: Boolean = false, force: Boolean = false, lines: org.json.JSONArray? = null) {
         val hidden = kind == "sub" && Prefs(this).listenOnly
         val outKind = if (hidden) "clear" else kind
         val outText = if (hidden && !speakIt) "" else text
-        TvOut.publish(this, outKind, outText, speakIt)
+        TvOut.publish(this, outKind, outText, speakIt, if (hidden) null else lines)
         val p = getSharedPreferences("dg", MODE_PRIVATE)
         val ip = p.getString("tvip", "").orEmpty()
         val tok = p.getString("tvtoken", "").orEmpty()
         if (p.getString("playon", "phone") != "tv" || ip.isEmpty() || tok.isEmpty()) return
-        val key = "$ip:$tok:$outKind:$speakIt:$outText"
+        val key = "$ip:$tok:$outKind:$speakIt:$outText:$lines"
         if (!force && key == tvLast) return
         tvLast = key
         val size = p.getInt("fs", 18) * p.getInt("subscale", 100) / 100 + 12
@@ -1152,6 +1158,8 @@ class CaptureService : Service() {
                 c.requestMethod = "POST"; c.connectTimeout = 1500; c.readTimeout = 1500; c.doOutput = true
                 c.setRequestProperty("X-Token", tok)
                 val body = JSONObject().put("kind", outKind).put("text", outText).put("size", size).put("speak", speakIt).put("fg", styleFg()).put("bg", styleBg())
+                        .put("lines", if (hidden) null else lines)
+                        .put("keepPrevious", p.getBoolean("showprev", true)).put("lastSeconds", p.getInt("last_subtitle_seconds", 0))
                 c.outputStream.use { it.write(body.toString().toByteArray()) }
                 try { if (c.responseCode !in 200..299 && tvLast == key) tvLast = "" } finally { c.disconnect() }
             } catch (_: Exception) { if (tvLast == key) tvLast = "" }
@@ -1174,7 +1182,12 @@ class CaptureService : Service() {
             sb.setSpan(RelativeSizeSpan(size), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             sb.setSpan(ForegroundColorSpan(color), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        if (pr.showPrev) add(prevVi, 0.7f, (fg and 0x00FFFFFF) or 0x99000000.toInt())
+        val remaining = pacer.previousUntil - System.currentTimeMillis()
+        if (pr.showPrev && remaining > 0 && !pr.listenOnly) {
+            val previous = prevVi.replace('\n', ' ')
+            add(if (previous.length > 100) previous.take(99) + "…" else previous, 0.7f, dim)
+        }
+        val previousEnd = sb.length
         for ((i, c) in cards.withIndex()) {
             if (pr.showOrig) add((if (src != Src.OCR && c.orig.isNotEmpty()) "🔊 " else "") + c.orig, 0.75f, dim)
             val d = c.tr.delivery
@@ -1183,7 +1196,7 @@ class CaptureService : Service() {
             val name = c.speaker
             if (name != null) {
                 sb.append(name).append(": ")
-                sb.setSpan(ForegroundColorSpan(SpeakerColor.of(name)), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                sb.setSpan(ForegroundColorSpan(pr.speakerColor(name)), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 sb.setSpan(StyleSpan(Typeface.BOLD), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             val b = sb.length
@@ -1198,17 +1211,21 @@ class CaptureService : Service() {
             sb.setSpan(RelativeSizeSpan(1.15f), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         if (sb.isNotEmpty()) sb.delete(sb.length - 1, sb.length)
-        overlay?.apply { text = sb; visibility = if (pr.listenOnly) View.GONE else View.VISIBLE }
+        overlay?.apply { SubtitleTransition.display(this, sb, previousEnd, remaining); visibility = if (pr.listenOnly) View.GONE else View.VISIBLE }
         val vi = cards.joinToString(" ") { it.tr.text }
         // uncertainty là cảnh báo chất lượng, không phải lý do bỏ đọc một bản dịch đã có nội dung.
         val scene = cards.filter {
-            TranslationSpeechPolicy.isSpeakable(TranslationSpeechPolicy.Candidate(it.tr.text, it.unsure))
+            it.tr.via != "goi_thieu" && TranslationSpeechPolicy.isSpeakable(TranslationSpeechPolicy.Candidate(it.tr.text, it.unsure))
         }.map { VoiceLine(it.tr.text.trim(), it.speaker, it.tr.delivery) }
         val tvSpeaks = speak && tvSpeakOn() && !tvVoiceOn() && scene.size == cards.size
         // TV tự đọc thì chỉ gửi lời dịch; không đọc thì gửi kèm tên người nói
         val tvText = if (tvSpeaks || cards.none { it.speaker != null }) cards.joinToString(" ") { it.tr.caption }
         else cards.joinToString("\n") { (it.speaker?.let { n -> "$n: " } ?: "") + it.tr.caption }
-        sendTv("sub", tvText, tvSpeaks)
+        val lines = if (cards.none { it.speaker != null }) null else org.json.JSONArray().apply {
+            for (card in cards) put(JSONObject().put("name", card.speaker.orEmpty())
+                .put("text", card.tr.caption).put("color", card.speaker?.let { pr.speakerColor(it) }))
+        }
+        sendTv("sub", tvText, tvSpeaks, lines = lines)
         if (speak && tvVoiceOn() && scene.isNotEmpty()) {
             tvVoice(scene.joinToString(" ") { it.text }, scene.last().delivery, scene.last().speaker, scene)
         }

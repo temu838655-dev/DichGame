@@ -3,7 +3,10 @@ package com.dichgame.app
 import android.content.Context
 import android.util.Log
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Tự kiểm tra giọng offline, chỉ chạy ở bản debug khi được mở bằng extra "selftest" (dùng trong ci/smoke.sh):
@@ -17,6 +20,10 @@ object SelfTest {
     fun voice(ctx: Context) {
         Thread {
             try {
+                val phrase = "Xin chào, tôi có 25 đồng vàng."
+                if (!testSystemPlayback(ctx, phrase)) {
+                    Log.e(TAG, "FAIL system_tts: engine không phát và kết thúc được câu tiếng Việt.")
+                }
                 if (!Voices.installed(ctx, ID)) {
                     val pack = Voices.pack(ID)!!
                     var last = -10
@@ -45,13 +52,94 @@ object SelfTest {
                 ov.synth(ID, text, 1f)
                 val ms2 = System.currentTimeMillis() - t1
                 ov.close()
-                // Lưu ý: từ khi cài đặt chỉ còn Giọng cơ bản và Giọng AI, Speaker không còn chọn giọng offline nên không thử đường Speaker ở đây.
-                if (pcm.data.isEmpty() || peak < 1000) Log.e(TAG, "FAIL audio rong hoac qua nho: bytes=${pcm.data.size} peak=$peak")
-                else Log.i(TAG, "OK audio=${"%.2f".format(secs)}s rate=${pcm.rate} peak=$peak first=${ms}ms second=${ms2}ms")
+                if (pcm.data.isEmpty() || peak < 1000) {
+                    Log.e(TAG, "FAIL offline_synthesis: audio rỗng hoặc quá nhỏ: bytes=${pcm.data.size} peak=$peak")
+                } else {
+                    Log.i(TAG, "OK offline_synthesis audio=${"%.2f".format(secs)}s rate=${pcm.rate} peak=$peak first=${ms}ms second=${ms2}ms")
+                    if (!testOfflinePlayback(ctx, phrase)) {
+                        Log.e(TAG, "FAIL offline_track: AudioTrack không vào trạng thái phát.")
+                    }
+                }
             } catch (e: Throwable) {
-                Log.e(TAG, "FAIL " + e.javaClass.simpleName + ": " + e.message)
+                Log.e(TAG, "FAIL offline_synthesis: " + e.javaClass.simpleName + ": " + e.message)
             }
         }.start()
+    }
+
+    private fun testSystemPlayback(ctx: Context, text: String): Boolean {
+        val started = CountDownLatch(1)
+        val firstEvent = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val failure = AtomicReference<String?>(null)
+        val warning = AtomicReference<String?>(null)
+        val speaker = Speaker(ctx, Prefs(ctx).apply {
+            voiceEngine = "system"
+            rate10 = 10
+            emotion = false
+        })
+        speaker.onSpeechStarted = { started.countDown(); firstEvent.countDown() }
+        speaker.onSpeechFinished = { finished.countDown() }
+        speaker.onSpeechError = { _, message ->
+            failure.set(message)
+            firstEvent.countDown()
+            finished.countDown()
+        }
+        speaker.onSpeechWarning = { warning.set(it) }
+        return try {
+            speaker.speak(text, interrupt = true)
+            firstEvent.await(15, TimeUnit.SECONDS)
+            val didStart = started.count == 0L
+            val didFinish = didStart && finished.await(25, TimeUnit.SECONDS)
+            val ok = didStart && didFinish && failure.get() == null
+            if (ok) {
+                Log.i(TAG, "OK system_tts started and completed utterance; viLocale=${speaker.systemLanguageAvailable}")
+                warning.get()?.let { Log.w(TAG, "WARN system_tts_locale: $it") }
+            } else Log.e(TAG, "FAIL system_tts started=$didStart finished=$didFinish error=${failure.get() ?: "timeout"}")
+            ok
+        } finally {
+            speaker.shutdown()
+        }
+    }
+
+    private fun testOfflinePlayback(ctx: Context, text: String): Boolean {
+        val speaker = Speaker(ctx, Prefs(ctx).apply {
+            voiceEngine = "offline"
+            offlineVoice = ID
+            rate10 = 10
+            emotion = false
+        })
+        return try {
+            val beforePlayed = speaker.played
+            val beforeCompleted = speaker.completedAudioTracks
+            speaker.speak(text, interrupt = true)
+            val startDeadline = System.currentTimeMillis() + 15_000L
+            while (System.currentTimeMillis() < startDeadline &&
+                (speaker.played <= beforePlayed || !speaker.isAudioTrackPlaying())) Thread.sleep(50L)
+            val started = speaker.played > beforePlayed && speaker.isAudioTrackPlaying()
+            val finishDeadline = System.currentTimeMillis() + 15_000L
+            while (System.currentTimeMillis() < finishDeadline &&
+                speaker.completedAudioTracks <= beforeCompleted) Thread.sleep(50L)
+            val completed = started && speaker.completedAudioTracks > beforeCompleted
+            if (completed) Log.i(TAG, "OK offline_track consumed complete PCM buffer and advanced")
+            else Log.e(TAG, "FAIL offline_track started=$started completed=${speaker.completedAudioTracks > beforeCompleted}")
+
+            val stopBeforePlayed = speaker.played
+            val stopBeforeCompleted = speaker.completedAudioTracks
+            speaker.speak(text, interrupt = true)
+            val stopStartDeadline = System.currentTimeMillis() + 15_000L
+            while (System.currentTimeMillis() < stopStartDeadline &&
+                (speaker.played <= stopBeforePlayed || !speaker.isAudioTrackPlaying())) Thread.sleep(50L)
+            val wasPlaying = speaker.played > stopBeforePlayed && speaker.isAudioTrackPlaying()
+            speaker.stop()
+            Thread.sleep(150L)
+            val interrupted = wasPlaying && !speaker.isAudioTrackPlaying() &&
+                speaker.completedAudioTracks == stopBeforeCompleted
+            if (interrupted) Log.i(TAG, "OK offline_stop interrupted active utterance")
+            else Log.e(TAG, "FAIL offline_stop wasPlaying=$wasPlaying stillPlaying=${speaker.isAudioTrackPlaying()} completed=${speaker.completedAudioTracks > stopBeforeCompleted}")
+            completed && interrupted
+        } finally {
+            speaker.shutdown()
+        }
     }
 
     private fun writeWav(f: File, pcm: Pcm) {

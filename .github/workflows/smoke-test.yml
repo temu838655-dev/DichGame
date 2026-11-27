@@ -5,7 +5,7 @@ name: Smoke test (máy giả lập)
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: [main, master, fix/translation-pipeline]
     paths: ["app/**", "ci/**", ".github/workflows/smoke-test.yml", "*.kts", "gradle.properties"]
 
 permissions:
@@ -13,8 +13,8 @@ permissions:
 
 concurrency:
   group: smoke-${{ github.ref }}
-  # Emulator builds are expensive; do not cancel an in-flight smoke run when another commit arrives.
-  cancel-in-progress: false
+  # Keep the newest candidate on the working branch; preserve main-branch smoke runs.
+  cancel-in-progress: ${{ github.ref == 'refs/heads/fix/translation-pipeline' }}
 
 jobs:
   smoke:
@@ -84,7 +84,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Đẩy ảnh lên nhánh ci-shots
-        if: always()
+        if: always() && github.ref != 'refs/heads/fix/translation-pipeline'
         run: |
           if [ ! -d shots ] || [ -z "$(find shots -type f -print -quit)" ]; then
             echo "Không có ảnh kiểm thử để đẩy."

@@ -19,12 +19,18 @@ object SpeechPolicy {
         else -> 1.6f
     }
 
+    fun playbackDurationMs(durationMs: Long, appliedSpeed: Float): Long =
+        kotlin.math.ceil(durationMs / appliedSpeed.toDouble()).toLong().coerceAtLeast(1L)
+
     /** Dạng so sánh của một câu: chỉ chữ và số, viết thường (bỏ dấu câu, khoảng trắng). */
     fun norm(text: String): String {
         val sb = StringBuilder(text.length)
         for (ch in text) if (ch.isLetterOrDigit()) sb.append(ch.lowercaseChar())
         return sb.toString()
     }
+
+    fun sameSpeaker(first: String?, second: String?): Boolean =
+        first.orEmpty().trim().equals(second.orEmpty().trim(), ignoreCase = true)
 
     /** [older] là bản chưa đầy đủ của [newer] (chữ đang hiện dần): câu cũ chưa đọc thì khỏi đọc nữa. Câu quá ngắn không tính. */
     fun isDraftOf(older: String, newer: String): Boolean = older.length >= 4 && newer.length > older.length && newer.startsWith(older)

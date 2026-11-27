@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Callable
 
-from .db import KnowledgeBase, normalize_text, sha256_text
+from .db import KnowledgeBase, memory_key, normalize_text
 
 
 @dataclass(frozen=True)
@@ -61,38 +61,37 @@ class TranslationMemory:
             raise ValueError("source_text must not be empty")
         if not model.strip():
             raise ValueError("model must not be empty")
-        cached = self.kb.cache_get(
+        cached = self.kb.cache_get_with_model(
             game_id, source_text, context,
             max_age_seconds=self.max_cache_age_seconds,
         )
         if cached is not None:
-            return TranslationResult(cached, True, model)
+            return TranslationResult(cached[0], True, cached[1])
 
-        text_hash = sha256_text(normalize_text(source_text))
-        context_hash = sha256_text(normalize_text(context)) if context else ""
+        text_hash, context_hash = memory_key(source_text, context)
         owner = uuid.uuid4().hex
         deadline = time.monotonic() + self.wait_timeout_seconds
 
         while True:
             if self._claim(game_id, text_hash, context_hash, owner):
                 break
-            cached = self.kb.cache_get(
+            cached = self.kb.cache_get_with_model(
                 game_id, source_text, context,
                 max_age_seconds=self.max_cache_age_seconds,
             )
             if cached is not None:
-                return TranslationResult(cached, True, model)
+                return TranslationResult(cached[0], True, cached[1])
             if time.monotonic() >= deadline:
                 raise TimeoutError("Timed out waiting for an in-flight translation")
             time.sleep(self.poll_interval_seconds)
 
         try:
-            cached = self.kb.cache_get(
+            cached = self.kb.cache_get_with_model(
                 game_id, source_text, context,
                 max_age_seconds=self.max_cache_age_seconds,
             )
             if cached is not None:
-                return TranslationResult(cached, True, model)
+                return TranslationResult(cached[0], True, cached[1])
 
             translated = provider(source_text, context)
             if not isinstance(translated, str) or not translated.strip():

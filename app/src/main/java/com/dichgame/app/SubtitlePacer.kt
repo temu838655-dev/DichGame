@@ -10,7 +10,7 @@ import kotlin.math.min
  */
 class SubtitlePacer(
     private val readCps: Float = 17f,
-    private val minHoldMs: Long = 1_400L,
+    private val minHoldMs: Long = 2_000L,
     private val maxHoldMs: Long = 8_000L,
     private val maxQueue: Int = 2,
     /** Cách gộp phần dữ liệu đính kèm của hai dòng khi hàng chờ đầy (nếu không đặt thì lấy của dòng sau). */
@@ -21,6 +21,8 @@ class SubtitlePacer(
     private class Queued(val item: Item, val readyAt: Long)
 
     private var current: Item? = null
+    var previousUntil = 0L
+        private set
     private var shownAt = 0L
     private val queue = ArrayList<Queued>()
 
@@ -34,7 +36,8 @@ class SubtitlePacer(
      * Thời gian giữ một dòng: đủ để đọc (khoảng [readCps] ký tự mỗi giây, cộng một nhịp phản ứng) và không ngắn hơn
      * thời gian nhân vật nói câu đó ([speechMs], 0 nếu không biết).
      */
-    fun holdFor(text: String, speechMs: Long = 0L): Long {
+    fun holdFor(text: String, speechMs: Long = 0L, fixedSeconds: Int = 0): Long {
+        if (fixedSeconds in 2..8) return fixedSeconds * 1000L
         val chars = text.count { !it.isWhitespace() }
         val read = (chars / readCps * 1000f).toLong() + 600L
         return max(min(max(read, (speechMs * 1.05f).toLong()), maxHoldMs), minHoldMs)
@@ -66,6 +69,12 @@ class SubtitlePacer(
         return poll(now)
     }
 
+    fun showImmediately(item: Item, now: Long): Item {
+        previousUntil = hideAt().takeIf { it > now && showing?.text != item.text } ?: 0L
+        queue.clear()
+        return start(item, now)
+    }
+
     private fun start(item: Item, now: Long): Item {
         current = item
         shownAt = now
@@ -95,7 +104,7 @@ class SubtitlePacer(
     fun hideAt(): Long = current?.let { shownAt + it.holdMs } ?: 0L
 
     /** Đã ẩn dòng đang hiện (hoặc dừng dịch). */
-    fun cleared() { current = null; queue.clear() }
+    fun cleared() { previousUntil = 0; current = null; queue.clear() }
 
     /** Ước lượng tốc độ nói (ký tự mỗi giây) từ một câu nghe được; dùng để biết nhân vật nói nhanh hay chậm. */
     class SpeechRate(private val alpha: Float = 0.3f) {

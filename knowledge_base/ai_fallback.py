@@ -5,6 +5,7 @@ adapter that implements the small AIProvider protocol below.
 """
 from __future__ import annotations
 
+import random
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -36,6 +37,28 @@ class AIProvider(Protocol):
 
 class AIFallbackError(RuntimeError):
     """Base class for controlled AI fallback failures."""
+
+
+class ProviderHTTPError(RuntimeError):
+    def __init__(self, message: str, *, retryable: bool = False, retry_after: float = 0,
+                 status: int | None = None):
+        super().__init__(message)
+        self.retryable = retryable
+        self.retry_after = retry_after
+        self.status = status
+
+
+def retry_delay(error: Exception, attempt: int, base_seconds: float) -> float | None:
+    """None means the caller must stop retrying this request."""
+    if isinstance(error, (TypeError, ValueError)):
+        return None
+    minimum = 0.0
+    if isinstance(error, ProviderHTTPError):
+        if not error.retryable or error.retry_after > 30:
+            return None
+        minimum = error.retry_after
+    window = min(30.0, base_seconds * (2 ** attempt))
+    return max(minimum, random.uniform(window / 2, window))
 
 
 class AIUnavailableError(AIFallbackError):
@@ -103,14 +126,17 @@ class AIFallback:
                         raise ValueError("Provider token counts cannot be negative")
                     self._record_tokens(response.input_tokens, response.output_tokens, usage_date)
                     return response.translated_text.strip()
-                except AIBudgetExceededError:
+                except (AIBudgetExceededError, ValueError, TypeError):
                     raise
                 except Exception as exc:
                     last_error = exc
                     if attempt >= self.max_retries:
                         raise
-                    if self.retry_backoff_seconds:
-                        time.sleep(self.retry_backoff_seconds * (2 ** attempt))
+                    delay = retry_delay(exc, attempt, self.retry_backoff_seconds)
+                    if delay is None:
+                        raise
+                    if delay:
+                        time.sleep(delay)
             assert last_error is not None
             raise last_error
 

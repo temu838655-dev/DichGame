@@ -134,14 +134,14 @@ object AiRetry {
                 val backoffCap = plan.maxBackoffMs.coerceAtLeast(0L)
                 val multiplier = 1L shl shift
                 val exponential = if (baseBackoff > backoffCap / multiplier) backoffCap else baseBackoff * multiplier
-                val told = if (kind == Kind.QUOTA) (e as? AiException)?.retryAfterMs ?: 0L else 0L
+                val told = (e as? AiException)?.retryAfterMs ?: 0L
                 if (told > plan.maxWaitMs) throw e
 
                 // Honor Retry-After as a lower bound. Otherwise apply bounded jitter so
                 // many game clients do not synchronize retries against a recovering API.
                 val base = maxOf(exponential, told)
                 val ratio = plan.jitterRatio.coerceIn(0.0, 1.0)
-                val wait = if (kind == Kind.QUOTA && told > 0L) {
+                val wait = if (told > 0L) {
                     base
                 } else if (ratio == 0.0 || base == 0L) {
                     base
@@ -159,42 +159,69 @@ object AiRetry {
 
     private val RETRY_DELAY = Regex("\"retryDelay\"\\s*:\\s*\"([0-9]+(?:\\.[0-9]+)?)s\"")
 
-    /** Thời gian máy chủ bảo chờ (mili giây): từ tiêu đề Retry-After (giây) hoặc trường retryDelay trong phản hồi lỗi của Gemini. 0 nếu không có. */
-    fun retryDelayMs(header: String?, body: String): Long {
-        header?.trim()?.toDoubleOrNull()?.let { if (it > 0) return (it * 1000).toLong() }
-        RETRY_DELAY.find(body)?.groupValues?.get(1)?.toDoubleOrNull()?.let { if (it > 0) return (it * 1000).toLong() }
-        return 0L
+    /** Retry-After accepts seconds or an HTTP date. Gemini also sends a duration in the body. */
+    fun retryDelayMs(header: String?, body: String, nowMs: Long = System.currentTimeMillis()): Long {
+        val value = header?.trim().orEmpty()
+        fun millis(seconds: String?): Long {
+            val n = seconds?.toDoubleOrNull() ?: return 0
+            return if (n.isFinite() && n > 0) (n * 1000).toLong().coerceAtMost(Long.MAX_VALUE - nowMs) else 0
+        }
+        val fromHeader = if (value.firstOrNull()?.isLetter() == true) {
+            try {
+                val date = java.time.ZonedDateTime.parse(value, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)
+                (date.toInstant().toEpochMilli() - nowMs).coerceAtLeast(0)
+            } catch (_: java.time.format.DateTimeParseException) {
+                0L
+            }
+        } else millis(value)
+        return maxOf(fromHeader, millis(RETRY_DELAY.find(body)?.groupValues?.get(1)))
     }
 
     /** Hết lượt hết khóa: tạm bỏ AI chừng này mili giây (cho dịch máy ngay, khỏi để mỗi câu chờ vô ích), rồi thử lại AI. */
-    fun cooldownMs(retryAfterMs: Long): Long = if (retryAfterMs > 0) retryAfterMs.coerceIn(5000L, 120000L) else 20000L
+    fun cooldownMs(retryAfterMs: Long): Long = if (retryAfterMs > 0) retryAfterMs.coerceAtLeast(5000L) else 20000L
 
     /**
      * Lấy bản dịch từ phản hồi JSON của Gemini. Ném [AiException] mã [CODE_BLOCKED] nếu bị bộ lọc nội dung chặn, mã 0 nếu phản hồi
      * không có chữ. Bỏ các phần "suy nghĩ" của model; nối các phần chữ còn lại.
      */
-    fun geminiText(json: String): String {
-        val o = JSONObject(json)
+    fun geminiText(json: String) = geminiText(JSONObject(json))
+
+    fun geminiText(o: JSONObject): String {
         o.optJSONObject("promptFeedback")?.optString("blockReason", "")?.takeIf { it.isNotEmpty() }?.let {
             throw AiException(CODE_BLOCKED, "Bộ lọc nội dung chặn câu này: $it")
         }
         val cands = o.optJSONArray("candidates")
         if (cands == null || cands.length() == 0) throw AiException(0, "Phản hồi không có bản dịch")
-        val c = cands.getJSONObject(0)
-        val parts = c.optJSONObject("content")?.optJSONArray("parts")
-        val sb = StringBuilder()
-        if (parts != null) for (i in 0 until parts.length()) {
-            val part = parts.optJSONObject(i) ?: continue
-            if (part.optBoolean("thought", false)) continue
-            sb.append(part.optString("text", ""))
-        }
-        val text = sb.toString().trim()
-        if (text.isNotEmpty()) return text
+        val c = cands.optJSONObject(0) ?: throw AiException(0, "Ứng viên dịch Gemini sai định dạng")
         val fr = c.optString("finishReason", "")
         if (fr in setOf("SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION", "IMAGE_SAFETY")) {
             throw AiException(CODE_BLOCKED, "Bộ lọc nội dung chặn câu này: $fr")
         }
+        if (fr.isNotEmpty() && fr != "STOP") throw AiException(0, "Gemini chưa hoàn tất bản dịch ($fr)")
+        val parts = c.optJSONObject("content")?.optJSONArray("parts")
+        val sb = StringBuilder()
+        if (parts != null) for (i in 0 until parts.length()) {
+            val part = parts.optJSONObject(i) ?: throw AiException(0, "Phần nội dung Gemini sai định dạng")
+            if (part.optBoolean("thought", false)) continue
+            val fragment = part.opt("text") as? String
+                ?: throw AiException(0, "Phần dịch Gemini không chứa văn bản hợp lệ")
+            sb.append(fragment)
+        }
+        val text = sb.toString().trim()
+        if (text.isNotEmpty()) return text
         throw AiException(0, "Phản hồi rỗng" + if (fr.isNotEmpty()) " ($fr)" else "")
+    }
+
+    fun cloudText(json: String) = cloudText(JSONObject(json))
+
+    fun cloudText(json: JSONObject): String {
+        val choice = json.optJSONArray("choices")?.optJSONObject(0)
+            ?: throw AiException(0, "CloudAPI không trả về bản dịch")
+        val reason = choice.optString("finish_reason", "")
+        if (reason == "content_filter") throw AiException(CODE_BLOCKED, "Nhà cung cấp đã lọc nội dung")
+        if (reason.isNotEmpty() && reason != "stop") throw AiException(0, "CloudAPI chưa hoàn tất bản dịch ($reason)")
+        val text = choice.optJSONObject("message")?.opt("content") as? String
+        return text?.trim()?.takeIf { it.isNotEmpty() } ?: throw AiException(0, "CloudAPI trả về nội dung trống hoặc sai định dạng")
     }
 
     /** "21 giây", "5 phút", "3 giờ": thời gian chờ viết cho người đọc. */
@@ -204,21 +231,24 @@ object AiRetry {
         else -> "${(ms + 3_599_999) / 3_600_000} giờ"
     }
 
-    /** Câu báo cho người dùng khi một câu phải dịch bằng dịch máy vì AI lỗi. [coolMs]: còn bao lâu nữa mới thử lại AI. */
-    fun explain(kind: Kind, code: Int, coolMs: Long, detail: String? = null): String = when (kind) {
-        Kind.QUOTA ->
-            "Nhà cung cấp AI báo hết lượt hoặc đã chạm hạn mức sử dụng; các khóa cùng dự án hoặc tài khoản có thể dùng chung hạn mức." +
-                if (coolMs > 0) " Tạm dịch bằng dịch máy khoảng ${humanWait(coolMs)} rồi thử lại AI." else " Câu này tạm dịch bằng dịch máy."
-        Kind.BILLING ->
-            "Tài khoản hoặc dự án AI đã chạm giới hạn thanh toán/chi tiêu. Hãy kiểm tra gói thanh toán hoặc hạn mức chi tiêu; app tạm dùng dịch máy."
-        Kind.NETWORK -> "Không gọi được AI sau vài lần thử (mạng chậm hoặc máy chủ AI quá tải). Câu này tạm dịch bằng dịch máy."
-        Kind.BLOCKED -> "AI từ chối câu này (bộ lọc nội dung). Câu này dịch bằng dịch máy."
-        Kind.BAD -> when (code) {
-            401, 403 -> "Khóa AI sai hoặc không có quyền (lỗi $code). Kiểm tra lại ở Cài đặt › Cách dịch. Đang dùng dịch máy."
-            400 -> "Gemini từ chối yêu cầu (400): " + (detail?.take(320)?.takeIf { it.isNotBlank() } ?: "yêu cầu hoặc cấu hình không hợp lệ") + ". Kiểm tra model, API Key và cấu hình request. Đang dùng dịch máy."
-            404 -> "Sai tên model hoặc địa chỉ AI (lỗi 404). Kiểm tra lại ở Cài đặt › Cách dịch. Đang dùng dịch máy."
-            else -> "AI báo lỗi $code. Đang dùng dịch máy."
+    fun explain(kind: Kind, code: Int, coolMs: Long, detail: String? = null,
+                keepOriginal: Boolean = false): String {
+        val cause = when (kind) {
+            Kind.QUOTA -> "API đã chạm hạn mức yêu cầu (429)."
+            Kind.BILLING -> "Tài khoản hoặc dự án AI đã chạm giới hạn thanh toán. Hãy kiểm tra gói và hạn mức chi tiêu."
+            Kind.NETWORK -> "Mất kết nối hoặc máy chủ AI đang quá tải."
+            Kind.BLOCKED -> "AI từ chối câu này do bộ lọc nội dung."
+            Kind.BAD -> when (code) {
+                401, 403 -> "Khóa AI sai hoặc thiếu quyền (HTTP $code). Kiểm tra Cài đặt › Cách dịch."
+                400 -> "API từ chối yêu cầu (HTTP 400). " +
+                    (detail?.trim()?.take(320)?.takeIf { it.isNotEmpty() } ?: "Kiểm tra model và tham số.")
+                404 -> "Không tìm thấy model hoặc địa chỉ API (HTTP 404). Kiểm tra Cài đặt › Cách dịch."
+                else -> "API báo lỗi HTTP $code."
+            }
+            Kind.OTHER -> "AI trả về dữ liệu không hợp lệ."
         }
-        Kind.OTHER -> "AI trả về dữ liệu lạ. Câu này tạm dịch bằng dịch máy."
+        val wait = if (coolMs > 0) " Có thể thử lại sau ${humanWait(coolMs)}." else ""
+        val action = if (keepOriginal) "Giữ nguyên câu gốc." else "Thử dịch câu này bằng dịch máy."
+        return "$cause$wait $action"
     }
 }

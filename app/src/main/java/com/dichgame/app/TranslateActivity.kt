@@ -39,20 +39,12 @@ class TranslateActivity : Activity() {
         val a = this
         screen("Cách dịch") {
             group(null, 14, 4) {
-                addView(modeSegment())
-                addView(Ui.tv(a,
-                    if (p.narrate) "Chỉ đọc nguyên văn phụ đề tiếng Việt, không dịch; phù hợp phim Vietsub và game Việt hóa."
-                    else "Dịch chữ trên màn hình sang tiếng Việt. AI Tự động là tùy chọn trong chế độ Dịch.", 13f, Ui.SUB).apply {
-                    setPadding(Ui.dp(a, 4), Ui.dp(a, 10), 0, 0)
+                val modes = ProcessingMode.values()
+                addView(Ui.dropRow(a, "Chế độ xử lý", { p.processingMode.label }, { modes.map { it.label } }) {
+                    p.processingMode = modes[it]
+                    render()
                 })
-            }
-            if (!p.narrate) {
-                group("TÙY CHỌN DỊCH", 14) {
-                    addView(Ui.switchRow(a, "✦ AI Tự động", "Tự nhận diện tên game khi đủ chứng cứ, ưu tiên bản Việt hóa và bộ nhớ rồi mới gọi Gemini.", p.aiAuto) {
-                        p.aiAuto = it
-                        render()
-                    })
-                }
+                if (p.narrate) addView(Ui.tv(a, "Đọc nguyên văn phụ đề tiếng Việt trong phim Vietsub và game Việt hóa.", 13f, Ui.SUB))
             }
             if (p.aiAuto) {
                 group("AI TỰ ĐỘNG", 14) {
@@ -81,18 +73,22 @@ class TranslateActivity : Activity() {
             if (p.aiAuto) {
                 group("GEMINI VÀ KHÓA DỰ PHÒNG") {
                     geminiBlock(this)
-                    addView(Ui.tv(a, "Chế độ này ưu tiên bản Việt hóa và câu đã nhớ trước khi gọi Gemini. Hết lượt 401/403/429 sẽ tự thử khóa kế tiếp; các khóa trong cùng dự án Google có thể chung hạn mức. Nếu chưa có khóa, ứng dụng thử dịch trên máy khi được hỗ trợ.", 13f, Ui.SUB), Ui.lpm(a, 8, 2))
+                    addView(Ui.tv(a, "Chế độ này ưu tiên bản Việt hóa và câu đã nhớ trước khi gọi Gemini. Khi khóa sai, ứng dụng thử khóa kế tiếp. Khi gặp 429, các khóa tạm nghỉ; các khóa trong cùng dự án Google có thể chung hạn mức. Nếu chưa có khóa, ứng dụng thử dịch trên máy khi được hỗ trợ.", 13f, Ui.SUB), Ui.lpm(a, 8, 2))
                 }
                 group("CLOUDAPI DỰ PHÒNG") {
                     addView(Ui.switchRow(a, "Dùng CloudAPI khi Gemini lỗi", "Gửi câu thoại và ngữ cảnh tới dịch vụ HTTPS bạn cấu hình (ví dụ Groq). Có thể phát sinh phí.", p.autoCloudFallback) {
                         p.autoCloudFallback = it
                         render()
                     })
-                    if (p.autoCloudFallback) cloudBlock(this, true)
+                    if (p.autoCloudFallback) cloudBlock(this)
                 }
                 group("NGỮ CẢNH AI") { addView(ctxRow()) }
             } else if (!p.narrate) {
                 group("BỘ DỊCH", 0) {
+                addView(engineRow("Việt hóa", null, "Tra gói Việt hóa, bộ nhớ và thuật ngữ trên thiết bị.", Prefs.ENGINE_PACK))
+                divide(16)
+                addView(engineRow("Việt hóa kết hợp Gemini", null, "Tra kho trên thiết bị trước. Chỉ gửi câu còn thiếu tới Gemini.", Prefs.ENGINE_PACK_GEMINI))
+                divide(16)
                 addView(engineRow("Dịch trên máy", null, "Miễn phí, chạy offline, kém chính xác hơn AI", Prefs.ENGINE_LOCAL))
                 divide(16)
                 addView(engineRow("CloudAPI", "AI", "AI đám mây theo chuẩn OpenAI, cần địa chỉ và khóa", Prefs.ENGINE_CLOUD))
@@ -100,7 +96,8 @@ class TranslateActivity : Activity() {
                 addView(engineRow("Google Gemini", "AI", "Miễn phí nhưng nhanh hết lượt, cần khóa", Prefs.ENGINE_GEMINI))
                 }
                 when (p.engine) {
-                Prefs.ENGINE_GEMINI -> {
+                Prefs.ENGINE_PACK -> put(Ui.tv(a, "Câu chưa có trong kho được giữ nguyên và đánh dấu (?).", 13f, Ui.SUB), 12, 0)
+                Prefs.ENGINE_GEMINI, Prefs.ENGINE_PACK_GEMINI -> {
                     group("KHÓA GOOGLE GEMINI") { geminiBlock(this) }
                     group("TÙY CHỌN AI") { addView(ctxRow()) }
                 }
@@ -143,12 +140,6 @@ class TranslateActivity : Activity() {
         }
         return row
     }
-
-    private fun modeSegment(): View =
-        Ui.segmented(this, listOf("Dịch", "Thuyết minh"), if (p.narrate) 1 else 0) { i ->
-            p.narrate = i == 1
-            render()
-        }
 
     private fun engineRow(title: String, badge: String?, sub: String, engine: String): View {
         val row = Ui.hbox(this)
@@ -255,7 +246,7 @@ class TranslateActivity : Activity() {
             if (p.setGeminiKeys(p.geminiStoredKeys() + v)) render()
             else Toast.makeText(a, "Không lưu được khóa mã hóa. Hãy kiểm tra bộ nhớ thiết bị.", Toast.LENGTH_LONG).show()
         }, Ui.lpm(a, 0, 4))
-        c.addView(Ui.tv(a, "Thêm nhiều khóa: có thể sửa, bật hoặc tắt riêng từng khóa. Khi một khóa hết lượt (lỗi 429) hoặc bị từ chối, app tự chuyển sang khóa kế tiếp và tạm bỏ khóa đó tới giờ hồi (hết lượt theo ngày thì tới nửa đêm giờ Thái Bình Dương). Lưu ý: Google tính hạn mức theo dự án, các khóa tạo trong cùng một dự án dùng chung hạn mức nên không thêm lượt; hãy tạo khóa ở dự án khác.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 4))
+        c.addView(Ui.tv(a, "Thêm nhiều khóa: có thể sửa, bật hoặc tắt riêng từng khóa. Khi gặp lỗi 429, ứng dụng tạm dừng các khóa của model theo thời gian chờ.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 4))
         c.addView(Ui.button(a, "Lấy khóa miễn phí ở aistudio.google.com") {
             try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/apikey"))) }
             catch (_: Exception) { Toast.makeText(a, "Không mở được trình duyệt.", Toast.LENGTH_SHORT).show() }
@@ -265,12 +256,13 @@ class TranslateActivity : Activity() {
         watch(model) { p.geminiModel = it }
         c.addView(Ui.tv(a, "Model", 15f, Ui.TEXT, true), Ui.lpm(a, 12, 6))
         c.addView(model)
+        modelPicker(c, model, true)
         val status = Ui.tv(a, "", 13f, Ui.SUB)
         c.addView(Ui.button(a, "Kiểm tra kết nối", true) { runTest(status) }, Ui.lpm(a, 12, 6))
         c.addView(status, Ui.lpm(a, 4, 0))
     }
 
-    private fun cloudBlock(c: LinearLayout, fallback: Boolean = false) {
+    private fun cloudBlock(c: LinearLayout) {
         val a = this
         val url = Ui.field(a, "Địa chỉ CloudAPI (vd https://api.example.com/v1)", p.cloudUrl)
         val key = Ui.field(a, "Khóa API CloudAPI", p.cloudKey, true)
@@ -281,9 +273,47 @@ class TranslateActivity : Activity() {
         c.addView(url, Ui.lpm(a, 0, 8))
         c.addView(key, Ui.lpm(a, 0, 8))
         c.addView(model, Ui.lpm(a, 0, 8))
+        modelPicker(c, model, false)
         val status = Ui.tv(a, "", 13f, Ui.SUB)
-        c.addView(Ui.button(a, "Kiểm tra kết nối", true) { runTest(status, fallback) }, Ui.lpm(a, 4, 6))
+        c.addView(Ui.button(a, "Kiểm tra kết nối", true) { runTest(status, true) }, Ui.lpm(a, 4, 6))
         c.addView(status, Ui.lpm(a, 4, 0))
+    }
+
+    private fun modelPicker(container: LinearLayout, field: EditText, gemini: Boolean) {
+        val button = Ui.button(this, "Chọn model từ API") {}
+        container.addView(button)
+        button.setOnClickListener {
+            button.isEnabled = false
+            button.text = "Đang tải danh sách…"
+            val key = if (gemini) p.geminiKeys().firstOrNull().orEmpty() else p.cloudKey
+            val base = if (gemini) "" else p.cloudUrl
+            Thread {
+                val result = runCatching { TranslationModelCatalog.list(gemini, base, key) }
+                runOnUiThread {
+                    if (!button.isAttachedToWindow || isFinishing || isDestroyed) return@runOnUiThread
+                    button.isEnabled = true
+                    button.text = "Chọn model từ API"
+                    if (!gemini && (base != p.cloudUrl || key != p.cloudKey)) return@runOnUiThread
+                    if (gemini && key != p.geminiKeys().firstOrNull().orEmpty()) return@runOnUiThread
+                    val models = result.getOrNull().orEmpty()
+                    if (models.isEmpty()) {
+                        val message = result.exceptionOrNull()?.let {
+                            if (it is IllegalStateException || it is IllegalArgumentException)
+                                it.localizedMessage else null
+                        } ?: "Không tìm thấy model hoặc máy chủ trả danh sách không hợp lệ."
+                        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                    } else {
+                        val title = if (models.any { it.id == field.text.toString().trim() }) "Chọn model"
+                            else "Model đang đặt chưa có trong danh sách. Chọn model khác"
+                        val official = !gemini && android.net.Uri.parse(base).host.equals("api.openai.com", true)
+                        val preferred = TranslationModelCatalog.preferred(models, gemini, official)
+                        val ordered = models.sortedByDescending { it == preferred }
+                        val labels = ordered.map { if (it == preferred) "${it.label} (ưu tiên)" else it.label }
+                        Ui.pick(this, title, labels) { field.setText(ordered[it].id) }
+                    }
+                }
+            }.start()
+        }
     }
 
     private fun runTest(status: TextView, forceCloud: Boolean = false) {

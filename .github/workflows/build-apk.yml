@@ -138,7 +138,7 @@ jobs:
           python3 samsung/export-project.py app/src/main/assets/tv/DichGame-Samsung-source.zip
 
       - name: Chạy unit test (gói Việt hoá, nhận dạng âm thanh, hợp nhất phụ đề)
-        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
+        run: bash ci/run_android_unit_tests.sh
 
       - name: Build TV receiver và nhúng bộ cài vào điện thoại
         run: |

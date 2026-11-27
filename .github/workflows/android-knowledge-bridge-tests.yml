@@ -47,4 +47,4 @@ jobs:
           gradle-version: "8.7"
 
       - name: Run Android unit tests without native Remote Play build
-        run: gradle :app:testDebugUnitTest -PnoNative --no-daemon --stacktrace
+        run: bash ci/run_android_unit_tests.sh -PnoNative

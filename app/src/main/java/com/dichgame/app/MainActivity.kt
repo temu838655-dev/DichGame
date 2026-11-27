@@ -172,6 +172,17 @@ class MainActivity : Activity() {
             setPadding(Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 9), Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 9))
         }, Ui.lp(0, WRAP_CONTENT, 1f))
         top.addView(segment(), Ui.lp(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = Ui.dp(this@MainActivity, 8) })
+        val apiColor = when (TranslationLog.health()) {
+            TranslationLog.Health.HEALTHY -> Color.parseColor("#25B979")
+            TranslationLog.Health.FALLBACK -> Color.parseColor("#E5A52D")
+            TranslationLog.Health.FAILED -> Color.parseColor("#E05252")
+        }
+        top.addView(Ui.tv(this, "● API", 11f, apiColor, true).apply {
+            gravity = Gravity.CENTER
+            contentDescription = "Trạng thái API: " + TranslationLog.statusLabel()
+            background = Ui.bg(this@MainActivity, Ui.CARD2, 18, Ui.LINE, 1)
+            setOnClickListener { open(TranslationLogActivity::class.java) }
+        }, Ui.lp(Ui.dp(this, 52), Ui.dp(this, 44)).apply { leftMargin = Ui.dp(this@MainActivity, 6) })
         top.addView(Ui.tv(this, "?", 20f, Ui.TEXT, true).apply {
             gravity = Gravity.CENTER
             background = Ui.bg(this@MainActivity, Ui.CARD2, 22, Ui.LINE, 1)
@@ -237,11 +248,6 @@ class MainActivity : Activity() {
         } else {
             c.addView(Ui.tv(this, "Thuyết minh: chỉ đọc phụ đề tiếng Việt đã có, không dịch.", 13.5f, Ui.SUB).apply { setPadding(0, Ui.dp(this@MainActivity, 8), 0, Ui.dp(this@MainActivity, 4)) })
         }
-        if (!narrate) c.addView(Ui.switchRow(this, "✦ AI Tự động",
-            "Ưu tiên Việt hóa → bộ nhớ game → Gemini, tự chuyển khóa dự phòng.", p.aiAuto) { enabled ->
-            if (!CaptureService.active) { p.aiAuto = enabled; render() } else busyToast()
-        })
-
         val dark = Color.parseColor("#2A1A08")
         val act = Ui.hbox(this)
         act.gravity = Gravity.CENTER
@@ -281,16 +287,19 @@ class MainActivity : Activity() {
             if (on) b.background = Ui.goldBg(this, 20)
             b.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8))
             if (glyph) b.addView(GamepadGlyph(this, fg, Ui.GOLD), Ui.lp(Ui.dp(this, 20), Ui.dp(this, 14)).apply { rightMargin = Ui.dp(this@MainActivity, 6) })
-            b.addView(Ui.tv(this, label, 14f, fg).apply { maxLines = 1 })
+            b.addView(Ui.tv(this, label, 14f, fg).apply {
+                setSingleLine(true)
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
             b.setOnClickListener { click() }
             return b
         }
         seg.addView(item("Dịch", !p.narrate, true) {
             if (!CaptureService.active) { p.mode = Prefs.MODE_TRANSLATE; render() } else busyToast()
-        }, Ui.lp(0, WRAP_CONTENT, 1f))
+        }, Ui.lp(0, WRAP_CONTENT, 0.9f))
         seg.addView(item("Thuyết minh", p.narrate, false) {
             if (!CaptureService.active) { p.mode = Prefs.MODE_VIETSUB; render() } else busyToast()
-        }, Ui.lp(0, WRAP_CONTENT, 1f))
+        }, Ui.lp(0, WRAP_CONTENT, 1.1f))
         return seg
     }
 
@@ -298,8 +307,8 @@ class MainActivity : Activity() {
 
     private fun help() {
         AlertDialog.Builder(this, R.style.DgDialog)
-            .setTitle("Hai chế độ DichGame")
-            .setMessage("Dịch: nhận dạng chữ trên màn hình và dịch sang tiếng Việt. Có thể bật tùy chọn AI Tự động để nhận diện tên game, ưu tiên gói Việt hóa và bộ nhớ dịch trước Gemini.\n\n" +
+            .setTitle("Chế độ xử lý")
+            .setMessage("Chỉ dịch hiển thị phụ đề tiếng Việt. Dịch và thuyết minh đọc thêm bản dịch. AI thông minh tự động giữ nguyên câu tiếng Việt và ưu tiên gói Việt hóa, bộ nhớ dịch khi gặp câu ngoại ngữ.\n\n" +
                 "Thuyết minh: chỉ đọc phụ đề tiếng Việt đã có trong phim Vietsub hoặc game Việt hóa, không dịch.\n\n" +
                 "Giọng đọc có hai lựa chọn: Cơ bản và AI (Gemini).\n\n" +
                 "Kéo khung nhận dạng vào vùng có phụ đề và khóa khung để bắt đầu.")
@@ -462,7 +471,7 @@ class MainActivity : Activity() {
                 .putExtra("phoneaudio", q.phoneAudio)
                 .putExtra("speak", q.speak)
                 .putExtra("lang", q.lang)
-                .putExtra("automenu", q.autoMenu).putExtra("slow", q.slow).putExtra("narrate", q.narrate)
+                .putExtra("automenu", q.autoMenu).putExtra("slow", q.slow).putExtra("ocr_quality", q.ocrQuality.name).putExtra("narrate", q.narrate)
             startForegroundService(i)
             CaptureService.active = true
             Toast.makeText(this, "Đang chạy. Quay lại game, kéo khung xanh tới dòng phụ đề.", Toast.LENGTH_LONG).show()

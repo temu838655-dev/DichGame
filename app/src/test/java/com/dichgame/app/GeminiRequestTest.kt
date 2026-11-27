@@ -5,6 +5,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GeminiRequestTest {
+    @org.junit.Test fun previewUsesOnlyAvailableFollowingLinesWithinTheLimit() {
+        val lines = sequenceOf(" ", "A", "B", "C", "D", "E")
+        org.junit.Assert.assertEquals(listOf("A", "B", "C", "D"), Ai.lookahead(lines, 4))
+        org.junit.Assert.assertEquals(listOf("A"), Ai.lookahead(sequenceOf("A"), 4))
+        org.junit.Assert.assertTrue(Ai.lookahead(emptySequence(), 4).isEmpty())
+        org.junit.Assert.assertTrue(Ai.lookahead(lines, 0).isEmpty())
+    }
+
     @Test fun generateContentBodyHasRequiredTextAndBoundedOutput() {
         val body = Ai.geminiBody("Translate: hello", withSafety = false)
         val contents = body.getJSONArray("contents")

@@ -185,6 +185,7 @@ class WebTranslateActivity : Activity() {
     private lateinit var adjustRow: View
     private lateinit var headRow: View
     private lateinit var bodyScroll: ScrollView
+    private var fallbackMessage = ""
     private lateinit var fallbackPill: View
     private lateinit var backBtn: TextView
     private lateinit var fwdBtn: TextView
@@ -205,6 +206,7 @@ class WebTranslateActivity : Activity() {
     private var pendingText: String? = null
     private var scanBusy = false
     private var lastThumb: IntArray? = null
+    private var unchangedSkips = 0
     private var lastCand = ""
     private var lastShown = ""
     private var miss = 0
@@ -346,7 +348,12 @@ class WebTranslateActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             background = Ui.bg(this@WebTranslateActivity, Color.parseColor("#E6201A10"), 18, Color.parseColor("#66FFA040"), 1)
             setPadding(dp(12), dp(7), dp(10), dp(7))
-            addView(Ui.tv(this@WebTranslateActivity, "ⓘ Dịch dự phòng", 14f, Color.parseColor("#FFA040"), true))
+            setOnClickListener {
+                android.app.AlertDialog.Builder(this@WebTranslateActivity)
+                    .setTitle("Trạng thái dịch").setMessage(fallbackMessage)
+                    .setPositiveButton("Đóng", null).show()
+            }
+            addView(Ui.tv(this@WebTranslateActivity, "ⓘ Trạng thái dịch", 14f, Color.parseColor("#FFA040"), true))
             addView(Ui.tv(this@WebTranslateActivity, "✕", 15f, Color.parseColor("#FFA040"), true).apply {
                 setPadding(dp(10), 0, dp(2), 0)
                 setOnClickListener { fallbackPill.visibility = View.GONE }
@@ -467,7 +474,7 @@ class WebTranslateActivity : Activity() {
             "running" -> ui.postDelayed({
                 running = true; everStarted = true; refresh()
                 setPanel("Xin chào, đây là bản dịch thử.", "Hello, this is a test.")
-                showFallback()
+                showFallback("Đang thử dịch bằng dịch máy.")
             }, 800)
         }
     }
@@ -570,7 +577,9 @@ class WebTranslateActivity : Activity() {
         origView.visibility = if (orig.isEmpty()) View.GONE else View.VISIBLE
     }
 
-    private fun showFallback() {
+    private fun showFallback(message: String) {
+        fallbackMessage = message
+        fallbackPill.contentDescription = message
         fallbackPill.visibility = View.VISIBLE
         ui.removeCallbacks(hideFallback)
         ui.postDelayed(hideFallback, 8000)
@@ -596,7 +605,7 @@ class WebTranslateActivity : Activity() {
     private fun prepareTranslator(done: (Boolean) -> Unit) {
         translator?.close()
         val t = TextTranslator(this, p, p.lang)
-        t.onFallback = { showFallback() }
+        t.onFallback = ::showFallback
         translator = t
         setPanel("Đang chuẩn bị bộ dịch...", "")
         // dựng sẵn bộ nhớ câu thoại ở luồng nền để lần dịch đầu không làm đứng màn hình
@@ -623,7 +632,7 @@ class WebTranslateActivity : Activity() {
         running = true
         cloudRefresh.start()
         everStarted = true
-        lastProcessed = ""; lastShown = ""; lastCand = ""; miss = 0; lastThumb = null
+        lastProcessed = ""; lastShown = ""; lastCand = ""; unchangedSkips = 0; miss = 0; lastThumb = null
         resetScanDiag()
         refresh()
         setPanel(if (source == "ocr") "Đang quét chữ trên video..." else "Đang chờ phụ đề của video...", "")
@@ -789,7 +798,15 @@ class WebTranslateActivity : Activity() {
     private fun readBitmap(bmp: Bitmap) {
         if (isDestroyed || !running) { bmp.recycle(); scanBusy = false; return }
         val th = Ocr.thumb(bmp)
-        if (lastThumb != null && Ocr.same(th, lastThumb)) { bmp.recycle(); scanBusy = false; scheduleScan(); return }
+        if (lastThumb != null && Ocr.same(th, lastThumb) &&
+            OcrQuality.maySkipSameFrame(lastCand, lastShown, miss, unchangedSkips)) {
+            unchangedSkips++
+            bmp.recycle()
+            scanBusy = false
+            scheduleScan()
+            return
+        }
+        unchangedSkips = 0
         val blank = isBlank(th)
         engine().read(bmp,
             { m ->
@@ -825,6 +842,7 @@ class WebTranslateActivity : Activity() {
         if (!running) return
         val text = blocks.joinToString(" ") { it.text.replace(Regex("\\s+"), " ").trim() }.trim()
         if (text.length < 2 || text.none { it.isLetterOrDigit() }) {
+            lastCand = ""
             miss++
             emptyScans++
             if (blank) blankScans++ else blankScans = 0
@@ -841,7 +859,7 @@ class WebTranslateActivity : Activity() {
         Log.i(TAG, "ocr doc duoc: $text")
         gotText = true; emptyScans = 0; blankScans = 0
         miss = 0
-        if (p.slow && text != lastCand) { lastCand = text; return } // "Kỹ": chờ chữ ổn định qua hai lần đọc liên tiếp
+        if (p.ocrQuality.frames(OcrGuard.letterCount(text)) > 1 && text != lastCand) { lastCand = text; return } // "Kỹ": chờ chữ ổn định qua hai lần đọc liên tiếp
         lastCand = text
         if (text == lastShown) return
         lastShown = text
@@ -887,7 +905,7 @@ class WebTranslateActivity : Activity() {
             row.setOnClickListener { pw?.dismiss(); onClick() }
             col.addView(row)
         }
-        item("Chữ hiện dần", "Chỉ bật khi phụ đề hiện ra từng chữ", p.slow) { p.slow = !p.slow; lastCand = "" }
+        item("Chữ hiện dần", "Chỉ bật khi phụ đề hiện ra từng chữ", p.slow) { p.ocrQuality = if (p.slow) OcrQuality.FAST else OcrQuality.CAREFUL; lastCand = "" }
         item("Thuyết minh", "Chỉ đọc phụ đề tiếng Việt có sẵn, không dịch", p.narrate) { toggleNarrate() }
         if (!p.narrate) item("✦ AI Tự động (tùy chọn Dịch)",
             "Ưu tiên Việt hóa, bộ nhớ game và Gemini tự đổi khóa", p.aiAuto) { toggleAutoMode() }
@@ -954,7 +972,7 @@ class WebTranslateActivity : Activity() {
                     dlg.dismiss(); pickLang()
                 }, Ui.lpm(a, 6, 0))
                 box.addView(Ui.tv(a, "Cách đọc chữ trên hình", 15f, Ui.TEXT, true), Ui.lpm(a, 14, 0))
-                box.addView(Ui.segmented(a, listOf("Kỹ", "Nhanh"), if (p.slow) 0 else 1) { p.slow = it == 0; lastCand = ""; fill() }, Ui.lpm(a, 6, 0))
+                box.addView(Ui.segmented(a, OcrQuality.values().map { it.label }, p.ocrQuality.ordinal) { p.ocrQuality = OcrQuality.values()[it]; lastCand = ""; fill() }, Ui.lpm(a, 6, 0))
                 box.addView(Ui.tv(a, "Kỹ: chờ chữ hiện đủ rồi mới dịch. Nhanh: dịch ngay khi thấy chữ.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 0))
                 val rates = listOf(3, 4, 6, 8)
                 val sel = rates.indexOfFirst { abs(1000 / it - p.scanMs) <= 20 }

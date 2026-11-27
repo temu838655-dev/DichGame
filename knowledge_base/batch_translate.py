@@ -4,8 +4,8 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from .ai_fallback import AIProvider
-from .db import KnowledgeBase
+from .ai_fallback import AIProvider, ProviderHTTPError, retry_delay
+from .db import KnowledgeBase, preserves_arguments
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,7 @@ class BatchReport:
     reused_existing: int
     failed: int
     errors: tuple[str, ...]
+    deferred: int = 0
 
 
 class BatchTranslator:
@@ -33,7 +34,8 @@ class BatchTranslator:
         if limit < 1 or limit > 1000:
             raise ValueError("limit must be between 1 and 1000")
         rows = self.kb.pending_source_strings(game_id, limit)
-        translated = reused = failed = 0
+        translated = reused = failed = deferred = 0
+        provider_paused = False
         errors: list[str] = []
         for row in rows:
             external_id = row["external_id"]
@@ -45,6 +47,9 @@ class BatchTranslator:
                     self.kb.set_source_string_translation(game_id, external_id, existing["translated_text"])
                     reused += 1
                     continue
+                if provider_paused:
+                    deferred += 1
+                    continue
                 response = None
                 for attempt in range(self.retries + 1):
                     try:
@@ -53,14 +58,18 @@ class BatchTranslator:
                             model=self.model, max_output_tokens=self.max_output_tokens,
                         )
                         break
-                    except Exception:
-                        if attempt >= self.retries:
+                    except Exception as exc:
+                        delay = retry_delay(exc, attempt, 0.5)
+                        if attempt >= self.retries or delay is None:
                             raise
-                        time.sleep(0.5 * (2 ** attempt))
+                        if delay:
+                            time.sleep(delay)
                 result = getattr(response, "translated_text", "") if response else ""
                 result = result.strip() if isinstance(result, str) else ""
                 if not result:
                     raise ValueError("Provider returned an empty translation")
+                if not preserves_arguments(row["source_text"], result):
+                    raise ValueError("Bản dịch làm thay đổi biến, thẻ định dạng hoặc số liệu")
                 self.kb.add_translation(
                     game_id, row["source_text"], result, context=row.get("context"),
                     source_id=row.get("source_id"), external_id=external_id,
@@ -71,7 +80,9 @@ class BatchTranslator:
                 if self.pause_seconds:
                     time.sleep(self.pause_seconds)
             except Exception as exc:
+                if isinstance(exc, ProviderHTTPError) and exc.status in (401, 403, 429):
+                    provider_paused = True
                 failed += 1
                 if len(errors) < 100:
                     errors.append(f"{external_id}: {exc}")
-        return BatchReport(len(rows), translated, reused, failed, tuple(errors))
+        return BatchReport(len(rows), translated, reused, failed, tuple(errors), deferred)
