@@ -1215,7 +1215,7 @@ class CaptureService : Service() {
         val vi = cards.joinToString(" ") { it.tr.text }
         // uncertainty là cảnh báo chất lượng, không phải lý do bỏ đọc một bản dịch đã có nội dung.
         val scene = cards.filter {
-            TranslationSpeechPolicy.isSpeakable(TranslationSpeechPolicy.Candidate(it.tr.text, it.unsure))
+            it.tr.via != "goi_thieu" && TranslationSpeechPolicy.isSpeakable(TranslationSpeechPolicy.Candidate(it.tr.text, it.unsure))
         }.map { VoiceLine(it.tr.text.trim(), it.speaker, it.tr.delivery) }
         val tvSpeaks = speak && tvSpeakOn() && !tvVoiceOn() && scene.size == cards.size
         // TV tự đọc thì chỉ gửi lời dịch; không đọc thì gửi kèm tên người nói

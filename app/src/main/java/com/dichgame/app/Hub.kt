@@ -12,6 +12,7 @@ import android.widget.LinearLayout
 object Hub {
     fun engineLabel(p: Prefs): String = when (p.engine) {
         Prefs.ENGINE_CLOUD -> "CloudAPI"
+        Prefs.ENGINE_PACK -> "Việt hóa"
         Prefs.ENGINE_GEMINI -> "Google Gemini"
         else -> "Dịch trên máy"
     }

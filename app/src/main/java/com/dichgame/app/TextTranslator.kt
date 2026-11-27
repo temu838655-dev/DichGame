@@ -88,7 +88,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     /** Tải mô hình dịch trên máy (lần đầu cần mạng). */
     fun prepare(onDone: (Boolean) -> Unit) {
         val l = local
-        if (l == null) { onDone(true); return }
+        if (p.packOnly || l == null) { onDone(true); return }
         l.downloadModelIfNeeded()
             .addOnSuccessListener { onDone(true) }
             .addOnFailureListener { onDone(false) }
@@ -99,7 +99,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
      * Mô hình ML Kit vẫn tải ở nền; không khóa OCR chỉ vì tải mô hình lỗi.
      */
     fun prepareForPlayback(onDone: (Boolean) -> Unit) {
-        if (local == null) { if (!closed) onDone(true); return }
+        if (p.packOnly || local == null) { if (!closed) onDone(true); return }
         val profile = p.profile
         val game = PackStore.gameName(p)
         try {
@@ -177,7 +177,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         // Một câu dịch đang chờ Gemini khi người chơi đổi game sẽ bị loại,
         // không hiện phụ đề cũ và không lưu vào bộ nhớ của game mới.
         val style = p.styleText()
-        fun stillCurrent(): Boolean = !closed && style == p.styleText() && profile == p.profile && gameDescription == p.game && game == PackStore.gameName(p)
+        val packOnly = p.packOnly
+        fun stillCurrent(): Boolean = !closed && packOnly == p.packOnly && style == p.styleText() && profile == p.profile && gameDescription == p.game && game == PackStore.gameName(p)
         fun emit(result: Tr) { if (stillCurrent()) done(result) }
         if (VietsubGuard.useOriginal(lang, p.aiAuto, text)) {
             st.inc("nguyen_van_vi")
@@ -216,6 +217,16 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 emit(Tr(saved.vi, delivery, false, "nho"))
                 return
             }
+        }
+        if (packOnly) {
+            val term = PackStore.terms(p).exact(text)
+            if (term != null && UiText.samePlaceholders(text, term)) {
+                st.inc("dich_goi")
+                emit(Tr(term, null, false, "goi"))
+            } else {
+                emit(Tr(text, null, true, "goi_thieu"))
+            }
+            return
         }
         cache[key]?.let { st.inc("dich_cache"); emit(it); return }
         val terms = PackStore.terms(p)
