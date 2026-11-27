@@ -175,7 +175,10 @@ object KeyRing {
         if (code == 401) return true
         if (code != 400 && code != 403) return false
         val b = body.lowercase()
-        return listOf("api_key_invalid", "api key not valid", "api key expired", "api key was reported as leaked", "reported as leaked", "api key is invalid", "invalid api key", "invalid api_key", "key is invalid", "key has been revoked", "api key revoked", "api key was revoked").any { b.contains(it) }
+        val invalidCredential = listOf("api_key_invalid", "api key not valid", "api key expired", "api key was reported as leaked", "reported as leaked", "api key is invalid", "invalid api key", "invalid api_key", "key is invalid", "key has been revoked", "api key revoked", "api key was revoked", "invalid credential", "credential is invalid").any { b.contains(it) }
+        val explicitKeyPermission = b.contains("api key") &&
+            listOf("permission", "not authorized", "access denied", "forbidden").any { b.contains(it) }
+        return invalidCredential || code == 403 && explicitKeyPermission
     }
 
     /** Mốc 0 giờ sáng kế tiếp theo giờ Thái Bình Dương (Gemini hồi hạn mức theo ngày vào lúc đó), thêm một phút cho chắc. */
