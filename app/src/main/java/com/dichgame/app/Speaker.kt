@@ -112,10 +112,17 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     init {
         prepare()
-        tts = TextToSpeech(ctx.applicationContext) { status ->
-            if (!disposed && status == TextToSpeech.SUCCESS) {
-                tts?.setLanguage(Locale("vi", "VN"))
-                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+        tts = TextToSpeech(ctx.applicationContext, ::onSystemInitialized)
+    }
+
+    internal fun onSystemInitialized(status: Int) {
+        if (status != TextToSpeech.SUCCESS) return
+        main.post {
+            synchronized(pendingSystemLock) {
+                val engine = tts ?: return@post
+                if (disposed || ready) return@post
+                engine.setLanguage(Locale("vi", "VN"))
+                engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {}
                     override fun onDone(utteranceId: String?) { finished(utteranceId) }
                     @Deprecated("Deprecated in Java")
@@ -123,19 +130,13 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                     override fun onStop(utteranceId: String?, interrupted: Boolean) { finished(utteranceId) }
                 })
                 applyVoice()
-                val waiting = synchronized(pendingSystemLock) {
-                    ready = true
-                    val copy = pendingSystem.toList()
-                    pendingSystem.clear()
-                    copy
+                ready = true
+                while (pendingSystem.isNotEmpty()) {
+                    val item = pendingSystem.removeFirst()
+                    speakSystemLocked(item.text, item.queue, item.delivery, item.interrupt, item.speaker)
                 }
-                main.post {
-                    if (!disposed) waiting.forEach { item ->
-                        speakSystem(item.text, item.queue, item.delivery, item.interrupt, item.speaker)
-                    }
-                }
-                onReady?.invoke()
             }
+            onReady?.invoke()
         }
     }
 
@@ -254,18 +255,19 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     @Volatile private var lastSysAt = 0L
 
     private fun speakSystem(text: String, queue: Boolean, d: Delivery?, interrupt: Boolean = false, speaker: String? = null) {
+        synchronized(pendingSystemLock) { speakSystemLocked(text, queue, d, interrupt, speaker) }
+    }
+
+    private fun speakSystemLocked(text: String, queue: Boolean, d: Delivery?, interrupt: Boolean, speaker: String?) {
         if (disposed) return
-        val t = synchronized(pendingSystemLock) {
-            val engine = tts
-            if (engine == null || !ready) {
-                if (interrupt) pendingSystem.clear()
-                val norm = SpeechPolicy.norm(text)
-                if (pendingSystem.peekLast()?.let { SpeechPolicy.sameSpeaker(it.speaker, speaker) && SpeechPolicy.norm(it.text) == norm } == true) return
-                while (pendingSystem.size >= maxPendingSystem) pendingSystem.removeFirst()
-                pendingSystem.addLast(PendingSystem(text, queue, d, interrupt, speaker))
-                return
-            }
-            engine
+        val t = tts
+        if (t == null || !ready) {
+            if (interrupt) pendingSystem.clear()
+            val norm = SpeechPolicy.norm(text)
+            if (pendingSystem.peekLast()?.let { SpeechPolicy.sameSpeaker(it.speaker, speaker) && SpeechPolicy.norm(it.text) == norm } == true) return
+            while (pendingSystem.size >= maxPendingSystem) pendingSystem.removeFirst()
+            pendingSystem.addLast(PendingSystem(text, queue, d, interrupt, speaker))
+            return
         }
         // Cùng một câu gửi lại liền nhau (chữ OCR nháy, bản dịch được sửa lại) thì chỉ đọc một lần.
         val norm = SpeechPolicy.norm(text)
@@ -553,10 +555,16 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     }
 
     fun stop() {
-        synchronized(pendingSystemLock) { pendingSystem.clear() }
+        synchronized(pendingSystemLock) {
+            pendingSystem.clear()
+            lastSysNorm = ""
+            utterances.clear()
+            try { tts?.stop() } catch (e: RuntimeException) {
+                android.util.Log.w("DG_TTS", "Không dừng được giọng hệ thống", e)
+            }
+        }
         seq.incrementAndGet()
         tvSeq.incrementAndGet()
-        utterances.clear()
         synchronized(lock) {
             for (c in clips.clear()) discard(c)
             nowPlaying = null
@@ -564,7 +572,6 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
             releaseAllLocked()
         }
         main.removeCallbacks(advance)
-        try { tts?.stop() } catch (_: Exception) {}
     }
 
     fun shutdown() {
