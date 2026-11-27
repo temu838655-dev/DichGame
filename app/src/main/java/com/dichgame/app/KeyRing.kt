@@ -137,7 +137,10 @@ object KeyRing {
         dailyUntil.keys.removeAll { it.endsWith("|$key") }
     }
 
-    @Synchronized fun reset() { until.clear(); dailyUntil.clear(); bad.clear(); current.clear(); inFlight.clear(); billingUntil.clear() }
+    /** Reset health/cooldown state without invalidating leases held by in-flight translation/TTS calls. */
+    @Synchronized fun resetStatuses() { until.clear(); dailyUntil.clear(); bad.clear(); current.clear(); billingUntil.clear() }
+
+    @Synchronized fun reset() { resetStatuses(); inFlight.clear() }
 
     /**
      * Mọi khóa đều đang nghỉ: còn bao lâu nữa khóa sớm nhất dùng lại được (mili giây). 0 nếu có khóa dùng được ngay;
