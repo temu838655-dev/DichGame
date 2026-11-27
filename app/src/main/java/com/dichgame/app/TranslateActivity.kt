@@ -87,6 +87,8 @@ class TranslateActivity : Activity() {
                 group("BỘ DỊCH", 0) {
                 addView(engineRow("Việt hóa", null, "Tra gói Việt hóa, bộ nhớ và thuật ngữ trên thiết bị.", Prefs.ENGINE_PACK))
                 divide(16)
+                addView(engineRow("Việt hóa kết hợp Gemini", null, "Tra kho trên thiết bị trước. Chỉ gửi câu còn thiếu tới Gemini.", Prefs.ENGINE_PACK_GEMINI))
+                divide(16)
                 addView(engineRow("Dịch trên máy", null, "Miễn phí, chạy offline, kém chính xác hơn AI", Prefs.ENGINE_LOCAL))
                 divide(16)
                 addView(engineRow("CloudAPI", "AI", "AI đám mây theo chuẩn OpenAI, cần địa chỉ và khóa", Prefs.ENGINE_CLOUD))
@@ -95,7 +97,7 @@ class TranslateActivity : Activity() {
                 }
                 when (p.engine) {
                 Prefs.ENGINE_PACK -> put(Ui.tv(a, "Câu chưa có trong kho được giữ nguyên và đánh dấu (?).", 13f, Ui.SUB), 12, 0)
-                Prefs.ENGINE_GEMINI -> {
+                Prefs.ENGINE_GEMINI, Prefs.ENGINE_PACK_GEMINI -> {
                     group("KHÓA GOOGLE GEMINI") { geminiBlock(this) }
                     group("TÙY CHỌN AI") { addView(ctxRow()) }
                 }

@@ -22,13 +22,13 @@ object Ai {
     private fun translationRequestKey(p: Prefs, prompt: String): String {
         val providerScope = when {
             p.aiAuto -> "auto|fallback:${p.autoCloudFallback}|gemini:${p.geminiModel}|cloud:${cloudEndpoint(p.cloudUrl)}|${p.cloudModel}"
-            p.engine == Prefs.ENGINE_GEMINI -> "gemini|${p.geminiModel}"
+            usesGemini(p) -> "gemini|${p.geminiModel}"
             p.engine == Prefs.ENGINE_CLOUD -> "cloud|${cloudEndpoint(p.cloudUrl)}|${p.cloudModel}"
             else -> p.engine
         }
         val credentials = when {
             p.aiAuto -> p.geminiKeys().joinToString("\u0000") + "\u0001" + p.cloudKey
-            p.engine == Prefs.ENGINE_GEMINI -> p.geminiKeys().joinToString("\u0000")
+            usesGemini(p) -> p.geminiKeys().joinToString("\u0000")
             p.engine == Prefs.ENGINE_CLOUD -> p.cloudKey
             else -> ""
         }
@@ -37,7 +37,7 @@ object Ai {
             .joinToString("") { "%02x".format(it) }
     }
     fun enabled(p: Prefs): Boolean = if (p.aiAuto) p.geminiKeys().isNotEmpty() || autoCloud(p) else when (p.engine) {
-        Prefs.ENGINE_GEMINI -> p.geminiKeys().isNotEmpty()
+        Prefs.ENGINE_GEMINI, Prefs.ENGINE_PACK_GEMINI -> p.geminiKeys().isNotEmpty()
         Prefs.ENGINE_CLOUD -> p.cloudKey.isNotEmpty() && p.cloudUrl.isNotEmpty()
         else -> false
     }
@@ -248,7 +248,7 @@ object Ai {
     }
 
     /** Đang dịch bằng Gemini (cả chế độ AI Tự động, luôn dùng Gemini) hay bằng CloudAPI. */
-    private fun usesGemini(p: Prefs): Boolean = p.aiAuto || p.engine == Prefs.ENGINE_GEMINI
+    private fun usesGemini(p: Prefs): Boolean = p.aiAuto || p.packGemini || p.engine == Prefs.ENGINE_GEMINI
 
     /** Dịch qua CloudAPI hết lượt: tới mốc này (mili giây) mới thử lại. Gemini thì [KeyRing] giữ mốc cho từng khóa. */
     @Volatile private var cooldownUntil = 0L

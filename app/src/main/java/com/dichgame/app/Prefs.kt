@@ -23,6 +23,7 @@ class Prefs(ctx: Context) {
     }
 
     companion object {
+        const val ENGINE_PACK_GEMINI = "pack_gemini"
         const val ENGINE_PACK = "pack"
         const val ENGINE_LOCAL = "local"
         const val ENGINE_CLOUD = "cloud"
@@ -124,6 +125,7 @@ class Prefs(ctx: Context) {
         get() = sp.getString("engine", null) ?: if (geminiKeys().isEmpty()) ENGINE_LOCAL else ENGINE_GEMINI
         set(v) = sp.edit().putString("engine", v).apply()
 
+    val packGemini: Boolean get() = !aiAuto && engine == ENGINE_PACK_GEMINI
     val packOnly: Boolean get() = !aiAuto && engine == ENGINE_PACK
 
     var geminiKey: String
