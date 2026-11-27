@@ -22,11 +22,11 @@ class AiSpeechRequestTest {
     }
 
     @Test fun ttsSanitizesControlCharactersAndRejectsEmptyTranscript() {
-        val body = AiSpeech.generateBody("Xin chào\\u0000\\nđừng đi\\u0007", "", "Kore")
+        val body = AiSpeech.generateBody("Xin chào\u0000\nđừng đi\u0007", "", "Kore")
         val text = body.getJSONArray("contents").getJSONObject(0).getJSONArray("parts").getJSONObject(0).getString("text")
-        assertEquals("Xin chào\\nđừng đi", text)
+        assertEquals("Xin chào\nđừng đi", text)
         try {
-            AiSpeech.generateBody("  \\u0000\\u0007 ", "", "Kore")
+            AiSpeech.generateBody("  \u0000\u0007 ", "", "Kore")
             org.junit.Assert.fail("empty transcript must be rejected")
         } catch (e: AiException) {
             assertEquals(400, e.code)
@@ -34,10 +34,10 @@ class AiSpeechRequestTest {
     }
 
     @Test fun ttsOmitsEmptyStyleMetadata() {
-        val body = AiSpeech.generateBody("Xin chào.", "", "Kore")
+        val body = AiSpeech.generateBody("Xin chào\u0000\nđừng đi\u0007", "", "Kore")
         val part = body.getJSONArray("contents").getJSONObject(0)
             .getJSONArray("parts").getJSONObject(0)
-        assertEquals("Xin chào.", part.getString("text"))
+        assertEquals("Xin chào\nđừng đi", text)
         assertFalse(part.has("speechMetadata"))
         assertTrue(body.getJSONObject("generationConfig").has("speechConfig"))
     }
