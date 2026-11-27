@@ -30,7 +30,9 @@ class KeyRingTest {
         assertEquals(AiRetry.Kind.BILLING, AiRetry.kindOf(KeyRing.unavailableError(keys, "model2", now)!!))
         KeyRing.report("test", "model2", AiException(401, "expired", badKey = true), now)
         assertEquals(AiRetry.Kind.BAD, AiRetry.kindOf(KeyRing.unavailableError(keys, "model2", now)!!))
-        assertNull(KeyRing.unavailableError(keys, "model2", now + 3600001))
+        assertEquals(KeyRing.State.BAD, KeyRing.status("test", "model2", now + 86_400_000L).state)
+        KeyRing.forget("test")
+        assertEquals(KeyRing.State.OK, KeyRing.status("test", "model2", now + 86_400_001L).state)
     }
 
     @Test fun usesFirstKeyAndSticksToTheOneThatWorks() {
