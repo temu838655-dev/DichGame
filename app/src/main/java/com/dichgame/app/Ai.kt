@@ -16,6 +16,8 @@ class AiException(
 
 /** Dịch bằng AI đám mây: Google Gemini hoặc CloudAPI (chuẩn OpenAI /chat/completions). Hàm ở đây chặn luồng, hãy gọi từ luồng nền. */
 object Ai {
+    internal const val HTTP_CONNECT_TIMEOUT_MS = 4000
+    internal const val HTTP_READ_TIMEOUT_MS = 4500
     private val requestDeduplicator = RequestDeduplicator<String, String>()
 
     /** Fingerprint request scope and active credentials without retaining secrets in the map key. */
@@ -105,9 +107,9 @@ object Ai {
     }
 
     private fun autoCloud(p: Prefs): Boolean = p.autoCloudFallback &&
-        p.cloudUrl.startsWith("https://", ignoreCase = true) && p.cloudKey.isNotBlank() && p.cloudModel.isNotBlank()
+        p.cloudUrl.trim().startsWith("https://", ignoreCase = true) && p.cloudKey.trim().isNotBlank() && p.cloudModel.trim().isNotBlank()
 
-    private fun cloudScope(p: Prefs) = "cloud:" + p.cloudUrl + ":" + p.cloudModel
+    private fun cloudScope(p: Prefs) = "cloud:" + p.cloudUrl.trim().trimEnd('/') + ":" + p.cloudModel.trim()
     private fun cloudCooldown(p: Prefs): AiException? {
         if (p.isCloudBillingBlocked()) {
             return AiException(
@@ -120,7 +122,7 @@ object Ai {
     }
 
     private fun reportCloudFailure(p: Prefs, error: AiException) {
-        KeyRing.report(p.cloudKey, cloudScope(p), error)
+        KeyManager.reportSingle("CloudAPI", p.cloudKey.trim(), cloudScope(p), error)
         if (error.billingLimit) p.blockCloudBilling()
     }
 
@@ -133,11 +135,11 @@ object Ai {
         val c = URL(url).openConnection() as HttpURLConnection
         try {
             c.requestMethod = "POST"
-            c.connectTimeout = 8000
-            c.readTimeout = 20000
+            c.connectTimeout = HTTP_CONNECT_TIMEOUT_MS
+            c.readTimeout = HTTP_READ_TIMEOUT_MS
             c.doOutput = true
             c.setRequestProperty("Content-Type", "application/json")
-            for ((k, v) in headers) c.setRequestProperty(k, v)
+            for ((k, v) in headers) c.setRequestProperty(k, v.trim())
             SessionStats.live.inc(metric)
             c.outputStream.use { it.write(body.toString().toByteArray()) }
             val code = c.responseCode
@@ -164,35 +166,8 @@ object Ai {
     }
 
     /** Gọi lần lượt các khóa Gemini: 429 theo khóa chỉ khóa riêng khóa đó; chỉ dừng ngay với giới hạn billing cấp tài khoản/dự án. */
-    internal fun <T> withGeminiKeys(keys: List<String>, scope: String, call: (String) -> T): T {
-        if (keys.isEmpty()) throw AiException(401, "Chưa có khóa Gemini", badKey = true)
-        var last: AiException? = null
-        while (true) {
-            val k = KeyRing.acquire(keys, scope) ?: break
-            try {
-                val r = call(k)
-                if (KeyRing.success(k, scope)) SessionStats.live.inc("khoa_doi")
-                return r
-            } catch (e: AiException) {
-                last = e
-                if (!KeyRing.report(k, scope, e)) throw e
-                // Hết quota của khóa hiện tại: release ở finally rồi thử khóa kế tiếp.
-                // Billing/credit exhausted là giới hạn chung, đổi API key không thể khắc phục.
-                if (e.code == 429 && e.billingLimit) throw e
-            } finally {
-                KeyRing.release(k, scope)
-            }
-        }
-        if (KeyRing.allBad(keys)) throw last ?: AiException(401, "Mọi khóa Gemini đều sai hoặc bị thu hồi", badKey = true)
-        val billingWait = KeyRing.billingWaitMs(scope)
-        if (billingWait > 0L) {
-            throw AiException(429, "Tài khoản/dự án AI đã chạm giới hạn thanh toán hoặc chi tiêu.", billingWait, billingLimit = true)
-        }
-        if (KeyRing.hasInFlight(keys, scope)) {
-            throw AiException(503, "Các khóa API đang được request khác sử dụng; thử lại sau.", retryAfterMs = 500L)
-        }
-        throw AiException(429, "Mọi khóa Gemini đều hết lượt", KeyRing.waitMs(keys, scope), perDay = last?.perDay == true)
-    }
+    internal fun <T> withGeminiKeys(keys: List<String>, scope: String, call: (String) -> T): T =
+        KeyManager.withKeys("Gemini", keys, scope, call)
 
     fun <T> withGeminiKey(p: Prefs, scope: String, call: (String) -> T): T =
         withGeminiKeys(p.geminiKeys(), scope, call)
@@ -223,11 +198,11 @@ object Ai {
         val out: String = if (forceCloud || (!p.aiAuto && p.engine == Prefs.ENGINE_CLOUD)) {
             val endpoint = cloudEndpoint(p.cloudUrl)
             val model = p.cloudModel.trim()
-            if (model.isEmpty()) throw AiException(400, "Hãy chọn model CloudAPI.")
+            if (!model.matches(Regex("[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}"))) throw AiException(400, "Tên model CloudAPI không hợp lệ.")
             val body = JSONObject()
                 .put("model", model)
                 .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
-            val r = post(endpoint, body, mapOf("Authorization" to "Bearer " + p.cloudKey), metric = "api_dich_cloud")
+            val r = post(endpoint, body, mapOf("Authorization" to "Bearer " + p.cloudKey.trim()), metric = "api_dich_cloud")
             val response = JSONObject(r)
             AiRetry.cloudText(response).also {
                 val host = URL(endpoint).host
@@ -264,6 +239,7 @@ object Ai {
     fun cooldownError(p: Prefs): AiException? {
         if (!usesGemini(p)) return cloudCooldown(p)
         val keys = p.geminiKeys()
+        if (KeyRing.allBad(keys)) TranslationLog.setHealth(TranslationLog.Health.FAILED, "Tất cả khóa Gemini sai hoặc bị thu hồi")
         val primary = KeyRing.unavailableError(keys, p.geminiModel)
         if (!p.aiAuto || !autoCloud(p)) return primary
         val backup = cloudCooldown(p)
@@ -283,27 +259,45 @@ object Ai {
             if (p.aiAuto && autoCloud(p)) {
                 var primaryError: Exception? = null
                 if (p.geminiKeys().isNotEmpty() && KeyRing.waitMs(p.geminiKeys(), p.geminiModel) == 0L) {
-                    try { return@execute translate(p, prompt) }
-                    catch (e: Exception) {
+                    try {
+                        val result = translate(p, prompt)
+                        TranslationLog.setHealth(TranslationLog.Health.HEALTHY, "Gemini hoạt động")
+                        return@execute result
+                    } catch (e: Exception) {
                         if (!AiRetry.canFallback(e)) throw e
                         primaryError = e
+                        TranslationLog.write("WARN", "Gemini", null, null, (e as? AiException)?.code, "Gemini lỗi; chuyển sang CloudAPI dự phòng")
                     }
+                } else {
+                    TranslationLog.write("WARN", "Gemini", null, null, 429, "Khóa Gemini đang cooldown hoặc chưa cấu hình; dùng CloudAPI dự phòng")
                 }
-                cloudCooldown(p)?.let { throw primaryError ?: it }
+                cloudCooldown(p)?.let {
+                    TranslationLog.setHealth(TranslationLog.Health.FALLBACK, "CloudAPI đang nghỉ; sẽ dùng dịch máy")
+                    throw primaryError ?: it
+                }
                 try {
-                    return@execute translate(p, prompt, forceCloud = true)
+                    val result = translate(p, prompt, forceCloud = true)
+                    KeyManager.successSingle("CloudAPI", p.cloudKey.trim(), cloudScope(p))
+                    TranslationLog.setHealth(TranslationLog.Health.FALLBACK, "Đang dùng CloudAPI dự phòng")
+                    return@execute result
                 } catch (e: AiException) {
                     reportCloudFailure(p, e)
+                    TranslationLog.setHealth(TranslationLog.Health.FAILED, "Gemini và CloudAPI đều không dùng được")
+                    throw e
+                } catch (e: Exception) {
+                    TranslationLog.setHealth(TranslationLog.Health.FAILED, "Gemini và CloudAPI đều không dùng được")
+                    TranslationLog.write("ERROR", "CloudAPI", 1, p.cloudKey, null, "Nhà cung cấp dự phòng thất bại; chuyển sang dịch máy")
                     throw e
                 }
             }
             cooldownError(p)?.let { throw it }
-            val cloudKey = if (usesGemini(p)) null else p.cloudKey
-            val scope = cloudScope(p)
             try {
-                AiRetry.run(AiRetry.Plan(), { Thread.sleep(it) }) { translate(p, prompt) }
+                val result = translate(p, prompt)
+                if (usesGemini(p)) TranslationLog.setHealth(TranslationLog.Health.HEALTHY, "AI chính hoạt động")
+                else KeyManager.successSingle("CloudAPI", p.cloudKey.trim(), cloudScope(p))
+                result
             } catch (e: AiException) {
-                if (cloudKey != null) reportCloudFailure(p, e)
+                if (!usesGemini(p)) reportCloudFailure(p, e)
                 throw e
             }
         }
