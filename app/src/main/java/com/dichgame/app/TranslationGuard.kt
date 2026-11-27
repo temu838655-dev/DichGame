@@ -66,7 +66,7 @@ object TranslationGuard {
         val t = out.trim()
         if (t.isEmpty()) return Verdict(Level.REJECT, t, listOf("bản dịch rỗng"))
         val low = t.lowercase(Locale.ROOT)
-        if (DIAGNOSTIC.containsMatchIn(low) || listOf("quota", "resource_exhausted", "rate limit", "timeout", "exception", "api key", "lỗi api", "bad request", "unauthorized", "permission_denied").any { it in low }) {
+        if (DIAGNOSTIC.containsMatchIn(low) || listOf("quota", "resource_exhausted", "resource exhausted", "rate limit", "timeout", "exception", "api key", "api_key", "api_key_invalid", "invalid_api_key", "invalid_argument", "invalid argument", "lỗi api", "bad request", "unauthorized", "permission_denied").any { it in low }) {
             return Verdict(Level.REJECT, t, listOf("phản hồi lỗi kỹ thuật, không phải bản dịch"))
         }
         val sourceTokens = protectedTokens(src)
