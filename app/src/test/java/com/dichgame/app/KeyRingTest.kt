@@ -124,6 +124,7 @@ class KeyRingTest {
         assertFalse(KeyRing.isDailyQuota(minute))
         assertTrue(KeyRing.isBadKey(400, """{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","details":[{"reason":"API_KEY_INVALID"}]}}"""))
         assertTrue(KeyRing.isBadKey(403, """{"error":{"message":"Your API key was reported as leaked."}}"""))
+        assertTrue(KeyRing.isBadKey(403, """{"error":{"message":"API key does not have permission to access this service"}}"""))
         assertTrue(KeyRing.isBadKey(401, ""))
         assertFalse(KeyRing.isBadKey(403, """{"error":{"message":"Model not enabled for this project"}}"""))
         assertFalse(KeyRing.isBadKey(400, """{"error":{"message":"Invalid JSON payload"}}"""))
@@ -138,7 +139,7 @@ class KeyRingTest {
     }
 
     @Test fun normalizesMultiKeyInputAndRemovesDuplicates() {
-        assertEquals(listOf("AIzaOne", "AIzaTwo"), KeyRing.normalizeKeys("  AIzaOne  \\n\\nAIzaTwo\\r\\nAIzaOne\\t"))
+        assertEquals(listOf("AIzaOne", "AIzaTwo"), KeyRing.normalizeKeys("  AIzaOne  \n\nAIzaTwo\r\nAIzaOne\t"))
     }
 
     @Test fun emptyKeyListHasNothing() {
