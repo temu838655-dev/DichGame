@@ -30,12 +30,15 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     /** Nếu đặt, mỗi lần dịch AI lỗi và phải dùng dịch trên máy thì gọi hàm này (thay vì hiện thông báo một lần). */
     var onFallback: ((String) -> Unit)? = null
 
-    private val local: Translator? = if (lang == "vi") null else Translation.getClient(
-        TranslatorOptions.Builder()
-            .setSourceLanguage(mlCode(lang))
-            .setTargetLanguage(TranslateLanguage.VIETNAMESE)
-            .build()
-    )
+    private val localClient = lazy<Translator?> {
+        if (lang == "vi") null else Translation.getClient(
+            TranslatorOptions.Builder()
+                .setSourceLanguage(mlCode(lang))
+                .setTargetLanguage(TranslateLanguage.VIETNAMESE)
+                .build()
+        )
+    }
+    private val local by localClient
 
     companion object {
         /** Mã ngôn ngữ của ML Kit cho ngôn ngữ trong game. */
@@ -87,8 +90,8 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
 
     /** Tải mô hình dịch trên máy (lần đầu cần mạng). */
     fun prepare(onDone: (Boolean) -> Unit) {
-        val l = local
-        if (p.packGemini || p.packOnly || l == null) { onDone(true); return }
+        val l = if (p.packGemini || p.packOnly) null else local
+        if (l == null) { onDone(true); return }
         l.downloadModelIfNeeded()
             .addOnSuccessListener { onDone(true) }
             .addOnFailureListener { onDone(false) }
@@ -394,6 +397,6 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     fun close() {
         closed = true
         aiExecutor.shutdownNow()
-        try { local?.close() } catch (_: Exception) {}
+        if (localClient.isInitialized()) local?.close()
     }
 }
