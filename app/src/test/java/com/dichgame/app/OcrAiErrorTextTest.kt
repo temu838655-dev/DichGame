@@ -35,6 +35,7 @@ class OcrAiErrorTextTest {
     @Test fun diagnosticMessagesAreNeverSubtitleText() {
         assertTrue(AiErrorLog.isDiagnosticText("HTTP 429 RESOURCE_EXHAUSTED"))
         assertTrue(AiErrorLog.isDiagnosticText("HTTP 503 Service Unavailable"))
+        assertEquals(TranslationGuard.Level.REJECT, TranslationGuard.check("Hello", "HTTP 429 RESOURCE_EXHAUSTED", sourceLang = "en").level)
         assertTrue(AiErrorLog.isDiagnosticText("Lỗi API: quota exceeded"))
         assertTrue(AiErrorLog.isDiagnosticText("Không dịch được: timeout"))
         assertFalse(AiErrorLog.isDiagnosticText("Đừng bỏ tôi lại!"))
