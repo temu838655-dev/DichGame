@@ -437,6 +437,10 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     private fun notice(t: String) {
         pacer.cleared(); handler.removeCallbacks(hideCheck)
         if (t.isEmpty()) sendTv("clear", "")
+        else if (AiErrorLog.isDiagnosticText(t)) {
+            AiErrorLog.record("WARN", "OCR", summary = t, action = "Ẩn thông báo kỹ thuật khỏi phụ đề")
+            return
+        }
         if (adjusting) return
         view.text = t
         view.visibility = if (t.isEmpty()) View.GONE else View.VISIBLE
