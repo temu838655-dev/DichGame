@@ -85,9 +85,9 @@ object SelfTest {
         }
         return try {
             speaker.speak(text, interrupt = true)
-            val event = firstEvent.await(15, TimeUnit.SECONDS)
-            val didStart = started.count > 0L && !event && failure.get() == null
-            val didFinish = if (started.count == 0L) finished.await(25, TimeUnit.SECONDS) else false
+            firstEvent.await(15, TimeUnit.SECONDS)
+            val didStart = started.count == 0L
+            val didFinish = didStart && finished.await(25, TimeUnit.SECONDS)
             val ok = didStart && didFinish && failure.get() == null
             if (ok) Log.i(TAG, "OK system_tts started and completed Vietnamese utterance")
             else Log.e(TAG, "FAIL system_tts started=$didStart finished=$didFinish error=${failure.get() ?: "timeout"}")
