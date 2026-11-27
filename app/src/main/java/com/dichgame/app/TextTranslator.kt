@@ -180,6 +180,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
         fun stillCurrent(): Boolean = !closed && style == p.styleText() && profile == p.profile && gameDescription == p.game && game == PackStore.gameName(p)
         fun emit(result: Tr) { if (stillCurrent()) done(result) }
         if (VietsubGuard.useOriginal(lang, p.aiAuto, text)) {
+            st.inc("nguyen_van_vi")
             emit(Tr(text, null, false, "vietsub"))
             return
         }
@@ -191,6 +192,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             while (history.size > 10) history.removeAt(0)
         }
         // gói Việt hoá (file đã nhập, bản người dùng sửa) đứng trước mọi thứ, kể cả bộ nhớ đệm: bản vừa sửa phải có hiệu lực ngay
+        st.inc("tra_ban_dich")
         val packHit = PackStore.memory(ctx, p).lookupEx(text)
         // Bản Việt hóa khớp đúng luôn đứng đầu. Với kết quả khớp mờ,
         // ưu tiên bộ nhớ AI khớp chính xác của chính game để tránh câu tương tự bị lẫn.
@@ -252,6 +254,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             TranslationGuard.check(text, packHit.vi, names, lang).ok &&
             (!ui || UiText.samePlaceholders(text, packHit.vi))) {
             st.inc("dich_goi_gan")
+            st.inc("goi_gan_tin_cay")
             emit(Tr(packHit.vi, null, false, "goi"))
             return
         }

@@ -29,6 +29,10 @@ class SessionStats {
             else "$provider · ${actual.take(160)}"
     }
 
+    @Synchronized fun recordHttpStatus(metric: String, code: Int) {
+        if (code == 400 || code == 429) inc("${metric}_http_$code")
+    }
+
     @Synchronized fun recordTokens(metric: String, input: Long, output: Long) {
         if (input < 0 || output < 0) return
         inc(metric + "_usage")
@@ -83,7 +87,16 @@ class SessionStats {
         val heard = get("asr_nhan")
         sb.append("Nghe âm thanh game: $heard câu; loại vì nhiễu hoặc ảo giác: ${get("asr_loc")}; trùng với phụ đề trên màn hình: ${get("asr_trung")}")
         sb.append("; ghép với chữ đọc dở: ${get("ghep")}\n")
-        sb.append("Dịch: AI ${get("dich_ai")}, bộ nhớ đệm ${get("dich_cache")}, gói Việt hoá ${get("dich_goi")}" + (if (get("dich_goi_gan") > 0) " (trong đó ${get("dich_goi_gan")} khớp gần đúng)" else "") + ", dịch trên máy ${get("dich_may")}")
+        val ram = get("dich_cache")
+        val learned = get("dich_nho")
+        val pack = get("dich_goi") + get("goi_gan_tin_cay")
+        val lookups = get("tra_ban_dich")
+        if (lookups > 0) {
+            val hits = ram + learned + pack
+            sb.append("Tái sử dụng bản dịch trên máy: $hits/$lookups lượt tra (${100 * hits / lookups}%). ")
+            sb.append("RAM $ram, bộ nhớ game $learned, gói Việt hóa $pack.\n")
+        }
+        sb.append("Dịch: AI ${get("dich_ai")}, dịch máy ${get("dich_may")}, gói trực tuyến ${get("dich_goi_cloud")}, giữ nguyên tiếng Việt ${get("nguyen_van_vi")}")
         sb.append("; AI bị loại rồi dịch lại ${get("dich_loai")}; còn nghi ngờ ${get("dich_nghi")}\n")
         if (lastTranslationModel.isNotEmpty()) sb.append("Phản hồi dịch AI gần nhất: ").append(lastTranslationModel).append('\n')
         val gemini = get("api_dich_gemini")
@@ -91,6 +104,9 @@ class SessionStats {
         val voice = get("api_giong_gemini")
         sb.append("Lượt thử gửi API: dịch Gemini $gemini, dịch CloudAPI $cloud, giọng Gemini $voice (gồm thử lại; không phải số lượt tính phí).\n")
         for ((metric, label) in listOf("api_dich_gemini" to "Gemini dịch", "api_dich_cloud" to "CloudAPI dịch", "api_giong_gemini" to "Gemini giọng")) {
+            val bad = get("${metric}_http_400")
+            val limited = get("${metric}_http_429")
+            if (get(metric) > 0 || bad + limited > 0) sb.append("HTTP $label: 400 = $bad, 429 = $limited.\n")
             val measured = get(metric + "_usage")
             if (measured > 0) sb.append("Token $label: vào ${get(metric + "_input")}, ra ${get(metric + "_output")} ($measured phản hồi có số liệu).\n")
         }

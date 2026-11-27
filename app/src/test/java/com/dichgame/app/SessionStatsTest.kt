@@ -68,6 +68,20 @@ class SessionStatsTest {
         assertTrue(s.report(5 * 60_000L, 55).contains("tăng 5%"))
     }
 
+    @Test fun reportSeparatesLocalHitsFromProviderErrorsAndUntranslatedText() {
+        val s = SessionStats()
+        s.reset(1, 100)
+        for (key in listOf("dich_cache", "dich_nho", "dich_goi", "goi_gan_tin_cay", "nguyen_van_vi")) s.inc(key)
+        s.inc("tra_ban_dich", 5)
+        s.recordHttpStatus("api_dich_gemini", 429)
+        s.recordHttpStatus("api_dich_gemini", 200)
+        s.recordHttpStatus("api_dich_cloud", 400)
+        val report = s.report(2, 100)
+        assertTrue(report.contains("4/5 lượt tra (80%)"))
+        assertTrue(report.contains("HTTP Gemini dịch: 400 = 0, 429 = 1"))
+        assertTrue(report.contains("HTTP CloudAPI dịch: 400 = 1, 429 = 0"))
+    }
+
     @Test fun speakerColorIsStable() {
         assertEquals(SpeakerColor.of("Geralt"), SpeakerColor.of("geralt"))
         assertNotEquals(SpeakerColor.of("Geralt"), SpeakerColor.of("Yennefer"))

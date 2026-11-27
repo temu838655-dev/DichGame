@@ -127,6 +127,7 @@ object Ai {
             SessionStats.live.inc(metric)
             c.outputStream.use { it.write(body.toString().toByteArray()) }
             val code = c.responseCode
+            SessionStats.live.recordHttpStatus(metric, code)
             val txt = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
             if (code !in 200..299) throw AiException(
                 code, AiRetry.providerErrorMessage(txt), AiRetry.retryDelayMs(c.getHeaderField("Retry-After"), txt),
