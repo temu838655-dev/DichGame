@@ -161,7 +161,7 @@ class SettingsActivity : Activity() {
                 p.voiceEngine = if (i == 0) "offline" else "ai"
                 speaker?.prepare()
                 render()
-            }, 13, 4))
+            })
             c.divide()
         }
         when (p.voiceEngine) {
