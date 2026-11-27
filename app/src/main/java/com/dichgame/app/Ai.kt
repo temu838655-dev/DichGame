@@ -19,6 +19,8 @@ object Ai {
     private val requestDeduplicator = RequestDeduplicator<String, String>()
 
     /** Fingerprint request scope and active credentials without retaining secrets in the map key. */
+    internal fun canonicalRequestText(prompt: String): String = OcrGuard.key(prompt)
+
     private fun translationRequestKey(p: Prefs, prompt: String): String {
         val providerScope = when {
             p.aiAuto -> "auto|fallback:${p.autoCloudFallback}|gemini:${p.geminiModel}|cloud:${cloudEndpoint(p.cloudUrl)}|${p.cloudModel}"
@@ -32,7 +34,7 @@ object Ai {
             p.engine == Prefs.ENGINE_CLOUD -> p.cloudKey
             else -> ""
         }
-        val material = providerScope + "\u0000" + credentials + "\u0000" + prompt
+        val material = providerScope + "\u0000" + credentials + "\u0000" + canonicalRequestText(prompt)
         return MessageDigest.getInstance("SHA-256").digest(material.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
     }
