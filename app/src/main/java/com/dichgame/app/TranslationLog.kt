@@ -44,7 +44,9 @@ object TranslationLog {
     fun write(level: String, provider: String, keyIndex: Int?, key: String?, code: Int?, action: String) {
         val safeLevel = level.uppercase(Locale.ROOT).takeIf { it == "INFO" || it == "WARN" || it == "ERROR" } ?: "INFO"
         val line = formatLine(System.currentTimeMillis(), safeLevel, provider, keyIndex, key, code, action)
-        Log.println(when (safeLevel) { "ERROR" -> Log.ERROR; "WARN" -> Log.WARN; else -> Log.INFO }, "DG_TRANSLATION", line)
+        runCatching {
+            Log.println(when (safeLevel) { "ERROR" -> Log.ERROR; "WARN" -> Log.WARN; else -> Log.INFO }, "DG_TRANSLATION", line)
+        }
         val context = app ?: return
         try {
             io.execute {
