@@ -108,8 +108,11 @@ object Ai {
     private fun autoCloud(p: Prefs): Boolean = p.autoCloudFallback &&
         p.cloudUrl.startsWith("https://", ignoreCase = true) && p.cloudKey.isNotBlank() && p.cloudModel.isNotBlank()
 
-    private fun cloudScope(p: Prefs) = "cloud:" + p.cloudUrl + ":" + p.cloudModel
-    private fun cloudWait(p: Prefs) = KeyRing.waitMs(listOf(p.cloudKey), cloudScope(p))
+    private fun cloudScope(p: Prefs) = "cloud:" + cloudEndpoint(p.cloudUrl) + ":" + p.cloudModel.trim()
+    private fun cloudWait(p: Prefs): Long {
+        val key = p.cloudKey.filterNot { it.isWhitespace() || it.isISOControl() }
+        return if (key.isBlank()) 0L else KeyRing.waitMs(listOf(key), cloudScope(p))
+    }
 
     fun cloudEndpoint(base: String): String {
         val b = base.filterNot { it.isISOControl() }.trim().trimEnd('/')
@@ -286,7 +289,13 @@ object Ai {
                 try {
                     return@execute translate(p, safePrompt, forceCloud = true)
                 } catch (e: AiException) {
-                    KeyRing.report(p.cloudKey, cloudScope(p), e)
+                    val key = p.cloudKey.filterNot { it.isWhitespace() || it.isISOControl() }
+                    val marked = if (key.isBlank()) false else KeyRing.report(key, cloudScope(p), e)
+                    AiErrorLog.record(
+                        if (marked) "WARN" else "ERROR", "DỊCH", httpCode = e.code,
+                        summary = "CloudAPI …${key.takeLast(4)}: ${e.message.orEmpty()}",
+                        action = if (marked) "Tạm khóa CloudAPI và lùi về dịch máy" else "Lùi về dịch máy, không retry payload lỗi"
+                    )
                     throw e
                 }
             }
@@ -297,7 +306,17 @@ object Ai {
             } catch (e: Exception) {
                 if (!usesGemini(p) && AiRetry.kindOf(e) in setOf(AiRetry.Kind.QUOTA, AiRetry.Kind.BILLING)) {
                     val apiError = e as? AiException
-                    if (apiError?.code == 429) KeyRing.report(p.cloudKey, cloudScope(p), apiError)
+                    val cloudKey = p.cloudKey.filterNot { it.isWhitespace() || it.isISOControl() }
+                    if (apiError != null && cloudKey.isNotBlank()) {
+                        val marked = KeyRing.report(cloudKey, cloudScope(p), apiError)
+                        if (marked || apiError.code in 400..499) {
+                            AiErrorLog.record(
+                                if (marked) "WARN" else "ERROR", "DỊCH", httpCode = apiError.code,
+                                summary = "CloudAPI …${cloudKey.takeLast(4)}: ${apiError.message.orEmpty()}",
+                                action = if (marked) "Đánh dấu CloudAPI và dùng dịch máy" else "Không retry payload; dùng dịch máy"
+                            )
+                        }
+                    }
                     val cooldown = if (AiRetry.kindOf(e) == AiRetry.Kind.BILLING) {
                         maxOf(60 * 60_000L, apiError?.retryAfterMs ?: 0L)
                     } else {
