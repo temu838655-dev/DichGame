@@ -73,6 +73,8 @@ object TranslationLog {
         val codePart = if (code == null) "—" else "HTTP " + code
         val safeAction = action.replace('\n', ' ').replace('\r', ' ')
             .replace(Regex("AIza[A-Za-z0-9_-]{20,}")) { it.value.take(4) + "****" }
+            .replace(Regex("gsk_[A-Za-z0-9]{20,}")) { "gsk_****" }
+            .replace(Regex("sk-[A-Za-z0-9_-]{20,}")) { "sk-****" }
             .replace(Regex("(?i)Bearer\\s+[A-Za-z0-9._-]{12,}")) { "Bearer ****" }
             .take(240)
         return "[$stamp] | [$level] | [$provider $keyPart] | [$codePart] | [$safeAction]"
