@@ -34,6 +34,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     private val exec = Executors.newSingleThreadExecutor()
     private val seq = AtomicInteger(0)
     @Volatile private var disposed = false
+    @Volatile private var systemInitFailed = false
     private val lock = Any()
     private data class PendingSystem(val text: String, val queue: Boolean, val delivery: Delivery?, val interrupt: Boolean, val speaker: String?)
     private val pendingSystemLock = Any()
@@ -144,12 +145,14 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     private fun onSystemInitialized(status: Int) {
         if (status != TextToSpeech.SUCCESS) {
+            systemInitFailed = true
             main.post {
                 synchronized(pendingSystemLock) { pendingSystem.clear() }
                 if (!disposed) onSpeechError?.invoke("", "Không khởi động được giọng hệ thống (mã $status).")
             }
             return
         }
+        systemInitFailed = false
         main.post {
             synchronized(pendingSystemLock) {
                 val engine = tts ?: return@post
@@ -303,6 +306,10 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     private fun speakSystemLocked(text: String, queue: Boolean, d: Delivery?, interrupt: Boolean, speaker: String?) {
         if (disposed) return
+        if (systemInitFailed) {
+            main.post { if (!disposed) onSpeechError?.invoke(text, "Giọng hệ thống không khởi động được trên thiết bị.") }
+            return
+        }
         val t = tts
         if (t == null || !ready) {
             if (interrupt) pendingSystem.clear()
@@ -332,7 +339,10 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         rate *= SpeechPolicy.speedFactor(if (flush) 0 else backlog, p.autoFast)
         t.setSpeechRate(rate.coerceIn(0.3f, 3f))
         t.setPitch(pitch)
-        if (flush) utterances.clear()
+        if (flush) {
+            utterances.clear()
+            systemSpeechText.clear()
+        }
         val id = "dg" + utt.incrementAndGet()
         utterances.add(id)
         systemSpeechText[id] = text
