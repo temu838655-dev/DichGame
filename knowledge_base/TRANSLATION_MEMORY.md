@@ -67,3 +67,11 @@ phép thử với SQLite mới, 20 câu dạng `Give {Player} N coins` nhận c�
 phản hồi thử `Tặng xu` thiếu cả biến và số lượng. Trước khi sửa, bộ nhớ lưu
 20 bản dịch lỗi. Sau khi sửa, số bản dịch lỗi được lưu là 0. Kiểm thử cũng
 gửi lại câu có phản hồi hợp lệ để kiểm tra phục hồi sau lỗi.
+
+**Dữ liệu nhập và bản Việt hóa có sẵn.** Cùng một dòng đã đánh dấu VERIFIED
+nhưng thiếu `{Player}` từng được trả về ở cả bốn đường tra cứu Python gồm tra
+ID, tra văn bản trực tiếp, khớp đúng và khớp gần. Trên cùng dữ liệu SQLite
+kiểm thử, sau khi sửa có 0/4 đường trả về dòng lỗi. Khi thêm bản dịch giữ đủ
+biến, cả 4/4 đường chọn được bản hợp lệ. Các bản ghi gốc vẫn được giữ để
+người quản lý đối chiếu. Có thể chạy lại bằng
+`python -m unittest knowledge_base.tests.test_matcher`.

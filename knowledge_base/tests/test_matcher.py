@@ -17,6 +17,36 @@ class MatcherTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_corrupt_import_is_skipped_by_all_lookup_paths(self):
+        source = "Find the hidden key for {Player}"
+        self.kb.add_translation("game", source, "Tìm chìa khóa", external_id="key",
+                                translation_status="VERIFIED")
+        lookups = {
+            "exact": lambda: self.kb.lookup_exact("game", source),
+            "id": lambda: self.kb.lookup_external_id("game", "key"),
+            "matcher": lambda: self.matcher.lookup("game", source),
+            "fuzzy": lambda: self.matcher.lookup("game", source.replace("hidden", "hiden")),
+        }
+        for name, lookup in lookups.items():
+            with self.subTest(path=name):
+                self.assertIsNone(lookup())
+        valid = "Tìm chìa khóa cho {Player}"
+        self.kb.add_translation("game", source, valid, external_id="key")
+        for name, lookup in lookups.items():
+            with self.subTest(path=name):
+                result = lookup()
+                row = result.translation if hasattr(result, "translation") else result
+                self.assertEqual(row["translated_text"], valid)
+
+    def test_duplicate_fuzzy_rows_do_not_hide_third_conflicting_result(self):
+        for vi in ("Mở cổng thành", "Mở cổng thành", "Mở cổng làng"):
+            self.kb.add_translation("game", "Open the hidden gate", vi)
+        self.assertIsNone(self.matcher.lookup("game", "Open the hiden gate"))
+
+    def test_plain_exact_lookup_checks_case_sensitive_source_arguments(self):
+        self.kb.add_translation("game", "Hello {Player}", "Chào {Player}")
+        self.assertIsNone(self.kb.lookup_exact("game", "Hello {player}"))
+
     def test_exact_match_prefers_matching_context(self):
         self.kb.add_translation("game", "Open the gate", "Mở cổng", speaker="Guard",
                                 translation_status="COMMUNITY")

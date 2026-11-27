@@ -242,19 +242,23 @@ class KnowledgeBase:
         if not key:
             return None
         with closing(self.connect()) as db:
-            row = db.execute(
+            rows = db.execute(
                 """SELECT * FROM translations
                    WHERE game_id=? AND external_id=? AND translation_status != 'REJECTED'
                    ORDER BY CASE translation_status
                        WHEN 'VERIFIED' THEN 0 WHEN 'AI_REVIEWED' THEN 1
-                       WHEN 'COMMUNITY' THEN 2 ELSE 3 END, confidence_score DESC LIMIT 1""",
+                       WHEN 'COMMUNITY' THEN 2 ELSE 3 END, confidence_score DESC""",
                 (game_id, key),
-            ).fetchone()
-            return dict(row) if row else None
+            )
+            for row in rows:
+                if preserves_arguments(row["source_text"], row["translated_text"]):
+                    return dict(row)
+        return None
+
     def lookup_exact(self, game_id: str, source_text: str) -> dict[str, Any] | None:
         normalized = normalize_text(source_text)
         with closing(self.connect()) as db:
-            row = db.execute(
+            rows = db.execute(
                 """SELECT * FROM translations
                    WHERE game_id = ? AND normalized_text = ?
                      AND translation_status != 'REJECTED'
@@ -263,11 +267,15 @@ class KnowledgeBase:
                        WHEN 'AI_REVIEWED' THEN 1
                        WHEN 'COMMUNITY' THEN 2
                        ELSE 3 END,
-                       confidence_score DESC
-                   LIMIT 1""",
+                       confidence_score DESC""",
                 (game_id, normalized),
-            ).fetchone()
-            return dict(row) if row else None
+            )
+            arguments = runtime_arguments(source_text)
+            for row in rows:
+                if (runtime_arguments(row["source_text"]) == arguments
+                        and preserves_arguments(source_text, row["translated_text"])):
+                    return dict(row)
+        return None
 
     def search_fts(self, game_id: str, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search indexed text. This is discovery, not a fuzzy-match confidence decision."""
