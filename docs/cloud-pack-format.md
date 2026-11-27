@@ -17,3 +17,19 @@ Từ bản cập nhật này, gói Cloud lưu riêng theo game/hồ sơ và thay
 
 ## Kiểm tra cập nhật ngay trong app
 Thẻ Kho Cloud · offline hiển thị phiên bản đã lưu. Sau lần nhập manifest thành công, app nhớ URL manifest trong kho nội bộ, cho phép kiểm tra bản mới bằng một nút. Không tự gửi bản dịch cá nhân lên server. Có thể xóa riêng lớp Cloud mà không xóa bản nhập tay. Đổi nguồn Cloud cần sao lưu và xóa riêng kho Cloud trước. Manifest cũ chưa lưu URL cần nhập lại một lần. Không hỗ trợ cập nhật định kỳ trong nền ở thay đổi này.
+
+## Thư viện JSON theo từng game (schema 1)
+
+Ngoài CSV, file dữ liệu mà manifest trỏ tới có thể là một thư viện JSON của đúng một game (xem `docs/samples/sample-game.library.json`):
+
+```json
+{"schema":1,"game":"Sample Game","version":1,"items":[
+  {"id":"000001","en_normalized":"press x to open the door","en_raw":"Press X to open the door.","vi":"Nhấn X để mở cửa."}
+]}
+```
+
+- `id` duy nhất trong file, không trống. `en_raw` là câu gốc, `vi` là bản Việt hoá chuẩn, cả hai không trống.
+- `en_normalized` là câu gốc đã chữ thường, bỏ dấu câu thừa và dấu nháy trong từ, gộp khoảng trắng. App luôn tự chuẩn hoá lại từ `en_raw` nên chỗ này chỉ để người làm dữ liệu đối chiếu; sai thì bị đếm và bỏ qua, không làm hỏng gói.
+- Tối đa 100.000 mục, `en_raw` tối đa 2.000 ký tự, `vi` tối đa 4.000 ký tự. Sai một mục là từ chối cả gói.
+- Manifest, SHA-256, kích thước và phiên bản dùng đúng như gói CSV ở trên. App nhận ra JSON qua nội dung, không dựa vào đuôi file.
+- Khi tra: khớp chính xác trước, rồi khớp gần đúng (độ giống từ 0,92 với câu ngắn, 0,88 với câu dài, cùng số và cùng từ phủ định, không mơ hồ). Không khớp thì mới gọi AI.
