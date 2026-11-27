@@ -105,6 +105,7 @@ class MainActivity : Activity() {
             put(navCard("▶", "Dịch video trên web", "Mở trang video, phụ đề tự sang tiếng Việt", "MIỄN PHÍ") {
                 open(WebTranslateActivity::class.java)
             }, 0, 12)
+            put(diagnosticsCard(), 0, 12)
             // bốn mục cài đặt gom trong một thẻ kính: Cách dịch, Giọng đọc, Phụ đề, Hồ sơ game
             put(Hub.card(this@MainActivity, p), 0, 14)
             put(Ui.hbox(this@MainActivity).apply {
@@ -302,6 +303,27 @@ class MainActivity : Activity() {
                 "Giọng đọc có hai lựa chọn: Cơ bản và AI (Gemini).\n\n" +
                 "Kéo khung nhận dạng vào vùng có phụ đề và khóa khung để bắt đầu.")
             .setPositiveButton("Đã hiểu", null).show()
+    }
+
+    private fun diagnosticsCard(): View {
+        val (label, color, summary) = when (TranslationLog.health()) {
+            TranslationLog.Health.HEALTHY -> Triple("HOẠT ĐỘNG TỐT", Color.parseColor("#25B979"), "Các dịch vụ chưa ghi nhận sự cố gần đây")
+            TranslationLog.Health.FALLBACK -> Triple("DỰ PHÒNG", Color.parseColor("#E5A52D"), TranslationLog.healthDetail())
+            TranslationLog.Health.FAILED -> Triple("CẦN KIỂM TRA", Color.parseColor("#E05252"), TranslationLog.healthDetail())
+        }
+        val c = Ui.card(this, 14)
+        val row = Ui.hbox(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        row.addView(View(this).apply {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(color) }
+        }, Ui.lp(Ui.dp(this, 10), Ui.dp(this, 10)))
+        val col = Ui.vbox(this)
+        col.addView(Ui.tv(this, "Nhật ký lỗi & API", 16f, Ui.TEXT, true))
+        col.addView(Ui.tv(this, summary, 12.5f, Ui.SUB).apply { maxLines = 2 })
+        row.addView(col, Ui.lp(0, WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(this@MainActivity, 10) })
+        row.addView(Ui.badge(this, label, color))
+        c.addView(row)
+        c.setOnClickListener { open(TranslationLogActivity::class.java) }
+        return c
     }
 
     private fun navCard(icon: String, title: String, sub: String, badge: String?, onClick: () -> Unit): View {
