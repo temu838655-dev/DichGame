@@ -1,0 +1,108 @@
+name: Live translation provider check
+on:
+  push:
+    branches: [fix/translation-pipeline]
+    paths: ['.github/workflows/live-provider-check.yml']
+  workflow_dispatch:
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [Gemini, OpenAI]
+    steps:
+      - name: Check catalogue and translate one sentence
+        env:
+          PROVIDER: ${{ matrix.provider }}
+          API_KEY: ${{ matrix.provider == 'Gemini' && secrets.GEMINI_API_KEY || '' }}
+          OPENAI_KEY: ${{ matrix.provider == 'OpenAI' && secrets.OPENAI_API_KEY || '' }}
+        shell: python
+        run: |
+          import json, os, re, sys, time
+          from urllib.error import HTTPError
+          from urllib.parse import urlencode
+          from urllib.request import build_opener, HTTPRedirectHandler, Request
+
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self, *args):
+                  return None
+
+          gemini = os.environ["PROVIDER"] == "Gemini"
+          key = os.environ["API_KEY" if gemini else "OPENAI_KEY"].strip()
+          if not key:
+              sys.exit("Repository secret unavailable")
+          headers = {"x-goog-api-key": key} if gemini else {"Authorization": "Bearer " + key}
+          base = "https://generativelanguage.googleapis.com/v1beta" if gemini else "https://api.openai.com/v1"
+          opener = build_opener(NoRedirect)
+          def request(path, payload=None):
+              data = json.dumps(payload).encode() if payload is not None else None
+              req = Request(base + path, data=data, headers={**headers, "Content-Type": "application/json"})
+              try:
+                  with opener.open(req, timeout=35) as response:
+                      return json.load(response)
+              except HTTPError as e:
+                  try:
+                      error = json.load(e).get("error", {})
+                      code = str(error.get("code") or error.get("status") or "")
+                      code = code if re.fullmatch(r"[A-Za-z0-9_-]{1,80}", code) else ""
+                  except (ValueError, AttributeError):
+                      code = ""
+                  sys.exit(f"HTTP {e.code} {code} during " + ("translation" if data else "model listing"))
+
+          def compact(value):
+              return re.sub("[^a-z0-9]", "", value.lower())
+          model = None
+          available = []
+          token = ""
+          for _ in range(30):
+              path = "/models"
+              if gemini:
+                  path += "?" + urlencode({"pageSize": 100, "pageToken": token} if token else {"pageSize": 100})
+              page = request(path)
+              for row in page["models" if gemini else "data"]:
+                  if gemini and "generateContent" not in row.get("supportedGenerationMethods", []):
+                      continue
+                  ident = row["name"].removeprefix("models/") if gemini else row["id"]
+                  if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", ident):
+                      continue
+                  available.append(ident)
+                  if gemini:
+                      if "gemini35flashlite" in (compact(ident), compact(row.get("displayName", ""))):
+                          model = ident
+                  elif ident == "gpt-5-mini":
+                      model = ident
+              token = page.get("nextPageToken") if gemini else None
+              if model or not token:
+                  break
+          if not model:
+              similar = [m for m in available if ("flash-lite" if gemini else "mini") in m]
+              print("Related model IDs listed:", ", ".join(similar[:10]) or "none")
+              sys.exit("Preferred model unavailable; zero generation requests")
+          print("Listed requested model:", model, flush=True)
+          prompt = "Translate to Vietnamese. Preserve {player} and 2. Return only the translation: Give {player} 2 coins."
+          start = time.monotonic()
+          if gemini:
+              reply = request(f"/models/{model}:generateContent", {"contents":[{"parts":[{"text":prompt}]}],
+                              "generationConfig":{"maxOutputTokens":512}})
+              candidate = reply["candidates"][0]
+              if candidate.get("finishReason") != "STOP":
+                  sys.exit("Incomplete Gemini response")
+              result = "".join(p["text"] for p in candidate["content"]["parts"] if not p.get("thought"))
+              actual = reply.get("modelVersion")
+          else:
+              reply = request("/chat/completions", {"model":model,"messages":[{"role":"user","content":prompt}],
+                              "max_completion_tokens":1024})
+              choice = reply["choices"][0]
+              if choice.get("finish_reason") != "stop":
+                  sys.exit("Incomplete OpenAI response")
+              result = choice["message"]["content"]
+              actual = reply.get("model")
+          if not isinstance(actual, str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,160}", actual):
+              sys.exit("Missing or invalid response model")
+          print("Reported model:", actual)
+          if result.count("{player}") != 1 or re.findall(r"\d+", result) != ["2"] or not re.search(r"[À-ỹ]", result):
+              sys.exit("Vietnamese translation or runtime argument check failed")
+          print("Translation passed; one generation request;", round((time.monotonic()-start)*1000), "ms")
