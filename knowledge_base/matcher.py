@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any
 
-from .db import KnowledgeBase, normalize_text
+from .db import KnowledgeBase, normalize_text, runtime_arguments
 
 try:
     from rapidfuzz import fuzz
@@ -44,14 +44,6 @@ def _context_score(row: dict[str, Any], context: dict[str, str]) -> float:
         if normalize_text(str(row.get(key) or "")) == normalize_text(value)
     )
     return matched / len(supplied)
-
-
-# Compare case-sensitive runtime arguments before case folding or fuzzy scoring.
-_ARGUMENT = re.compile(r"\{[^{}\n]+\}|%(?:\d+\$)?[-+#0 ]*\d*(?:\.\d+)?[diuoxXfFeEgGcs]|<[^<>\n]+>|\d+")
-
-
-def _arguments(text: str) -> list[str]:
-    return _ARGUMENT.findall(text)
 
 
 def _compatible(row, context: dict[str, str]) -> bool:
@@ -147,10 +139,10 @@ class TranslationMatcher:
                      AND translation_status != 'REJECTED'""",
                 (game_id, normalized),
             ).fetchall()
-        arguments = _arguments(corrected)
+        arguments = runtime_arguments(corrected)
         if exact_rows:
             exact_rows = [row for row in exact_rows if _compatible(row, context_data)
-                          and _arguments(row["source_text"]) == arguments]
+                          and runtime_arguments(row["source_text"]) == arguments]
             if not exact_rows:
                 return None
             rows = [dict(row) for row in exact_rows]
@@ -180,7 +172,7 @@ class TranslationMatcher:
 
         scored: list[tuple[float, float, dict[str, Any]]] = []
         for row in candidates:
-            if not _compatible(row, context_data) or _arguments(row["source_text"]) != arguments:
+            if not _compatible(row, context_data) or runtime_arguments(row["source_text"]) != arguments:
                 continue
             source_norm = normalize_text(str(row["source_text"]))
             lexical = _similarity(normalized, source_norm)

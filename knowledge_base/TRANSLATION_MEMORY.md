@@ -47,3 +47,17 @@ print(result.translated_text, result.cache_hit)
   to the provider adapter and later orchestration work.
 - Cache entries are AI/provider output, not verified community translations.
   They are kept separate from the reviewed translations table.
+
+## Biến trong câu thoại và dữ liệu phiên bản cũ
+
+Trong backend Python, khóa tra cứu và khóa chống gọi trùng giữ nguyên chữ hoa,
+chữ thường của các biến như `{Player}`, tham số printf và thẻ định dạng.
+Quy tắc này áp dụng cho cả câu gốc lẫn ngữ cảnh. Với dữ liệu cũ, backend đối
+chiếu biến trong câu gốc và câu dịch trước khi dùng lại. Nếu ngữ cảnh cũ chỉ
+còn giá trị băm và không thể xác minh biến, backend tra theo khóa mới.
+
+Phép thử SQLite trên cùng máy dùng 20 lượt xen kẽ `Hello {Player}` và
+`Hello {player}`, với hàm dịch thử giữ nguyên biến. Trước khi sửa, một lần gọi
+hàm dịch tạo 10 kết quả sai biến. Sau khi sửa, hai lần gọi tạo đủ hai bản dịch,
+18 lượt còn lại dùng bộ nhớ và cả 20 kết quả đều đúng biến. Đây là số đo độ
+chính xác và số lượt gọi trong backend. Độ trễ dịch trực tuyến cần đo riêng.

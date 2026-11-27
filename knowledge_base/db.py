@@ -32,6 +32,27 @@ def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+# Compare case-sensitive runtime arguments before case folding or fuzzy scoring.
+_ARGUMENT = re.compile(r"\{[^{}\n]+\}|%(?:\d+\$)?[-+#0 ]*\d*(?:\.\d+)?[diuoxXfFeEgGcs]|<[^<>\n]+>|\d+")
+
+
+def runtime_arguments(text: str) -> list[str]:
+    return _ARGUMENT.findall(text)
+
+
+def _memory_hash(text: str) -> str:
+    normalized = normalize_text(text)
+    args = runtime_arguments(text)
+    if not args:
+        return sha256_text(normalized)
+    payload = json.dumps([normalized, args], ensure_ascii=False, separators=(",", ":"))
+    return sha256_text("runtime-arguments-v1\0" + payload)
+
+
+def memory_key(text: str, context: str) -> tuple[str, str]:
+    return _memory_hash(text), _memory_hash(context) if context else ""
+
+
 class KnowledgeBase:
     def __init__(self, database_path: str | Path):
         self.database_path = str(database_path)
@@ -259,20 +280,24 @@ class KnowledgeBase:
         self, game_id: str, text: str, context: str = "",
         max_age_seconds: int | None = None,
     ) -> tuple[str, str] | None:
-        text_hash = sha256_text(normalize_text(text))
-        context_hash = sha256_text(normalize_text(context)) if context else ""
+        text_hash, context_hash = memory_key(text, context)
         with self.transaction() as db:
             cutoff = None
             if max_age_seconds is not None:
                 from datetime import datetime, timedelta, timezone
                 cutoff = (datetime.now(timezone.utc) - timedelta(seconds=max(0, max_age_seconds))).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-            row = db.execute(
-                """SELECT translated_text, model FROM translation_cache
-                   WHERE game_id=? AND text_hash=? AND context_hash=?
-                     AND (? IS NULL OR created_at >= ?)""",
-                (game_id, text_hash, context_hash, cutoff, cutoff),
-            ).fetchone()
-            if row is None:
+            query = """SELECT source_text, translated_text, model FROM translation_cache
+                       WHERE game_id=? AND text_hash=? AND context_hash=?
+                         AND (? IS NULL OR created_at >= ?)"""
+            row = db.execute(query, (game_id, text_hash, context_hash, cutoff, cutoff)).fetchone()
+            if row is None and runtime_arguments(text) and not runtime_arguments(context):
+                # Old keys folded case. The stored source can prove a safe hit.
+                # Legacy rows lack raw context, so never infer its arguments.
+                text_hash = sha256_text(normalize_text(text))
+                row = db.execute(query, (game_id, text_hash, context_hash, cutoff, cutoff)).fetchone()
+                if row and sorted(runtime_arguments(row["translated_text"])) != sorted(runtime_arguments(text)):
+                    return None
+            if row is None or runtime_arguments(row["source_text"]) != runtime_arguments(text):
                 return None
             db.execute(
                 """UPDATE translation_cache
@@ -287,8 +312,7 @@ class KnowledgeBase:
         self, game_id: str, text: str, translated_text: str,
         model: str, context: str = "",
     ) -> None:
-        text_hash = sha256_text(normalize_text(text))
-        context_hash = sha256_text(normalize_text(context)) if context else ""
+        text_hash, context_hash = memory_key(text, context)
         with self.transaction() as db:
             db.execute(
                 """INSERT INTO translation_cache(

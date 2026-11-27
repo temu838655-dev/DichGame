@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Callable
 
-from .db import KnowledgeBase, normalize_text, sha256_text
+from .db import KnowledgeBase, memory_key, normalize_text
 
 
 @dataclass(frozen=True)
@@ -68,8 +68,7 @@ class TranslationMemory:
         if cached is not None:
             return TranslationResult(cached[0], True, cached[1])
 
-        text_hash = sha256_text(normalize_text(source_text))
-        context_hash = sha256_text(normalize_text(context)) if context else ""
+        text_hash, context_hash = memory_key(source_text, context)
         owner = uuid.uuid4().hex
         deadline = time.monotonic() + self.wait_timeout_seconds
 
