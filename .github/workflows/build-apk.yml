@@ -94,10 +94,21 @@ jobs:
             echo "KEYSTORE_FILE=$GITHUB_WORKSPACE/keystore/dichgame.jks" >> "$GITHUB_ENV"
             echo "Đã nạp keystore lịch sử trong repo (alias/password dùng mặc định Gradle)."
           fi
-          if [ "$IS_PUBLIC_RELEASE" = "true" ]; then
-            echo "CAN_PUBLISH_RELEASE=true" >> "$GITHUB_ENV"
-          else
-            echo "CAN_PUBLISH_RELEASE=false" >> "$GITHUB_ENV"
+          CAN_PUBLISH_RELEASE="$(python3 - <<'PY'
+          import os
+          import sys
+          sys.path.insert(0, "ci")
+          from release_compat import can_publish_public_release
+          allowed = can_publish_public_release(
+              os.environ.get("IS_PUBLIC_RELEASE") == "true",
+              os.environ,
+          )
+          print("true" if allowed else "false")
+          PY
+          )"
+          echo "CAN_PUBLISH_RELEASE=$CAN_PUBLISH_RELEASE" >> "$GITHUB_ENV"
+          if [ "$IS_PUBLIC_RELEASE" = "true" ] && [ "$CAN_PUBLISH_RELEASE" != "true" ]; then
+            echo "::warning::Public Release disabled: configure all four private signing secrets (KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD). CI-only APK artifacts will still be uploaded."
           fi
       # Android NDK đôi lúc được SDK Manager tải thành tệp ZIP hỏng trên runner GitHub.
       # Chuẩn bị NDK trước khi chạy Gradle, thử lại thay vì làm hỏng cả bản phát hành.
