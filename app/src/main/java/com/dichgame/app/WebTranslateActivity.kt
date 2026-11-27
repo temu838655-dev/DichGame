@@ -841,7 +841,7 @@ class WebTranslateActivity : Activity() {
         Log.i(TAG, "ocr doc duoc: $text")
         gotText = true; emptyScans = 0; blankScans = 0
         miss = 0
-        if (p.slow && text != lastCand) { lastCand = text; return } // "Kỹ": chờ chữ ổn định qua hai lần đọc liên tiếp
+        if (p.ocrQuality.frames(OcrGuard.letterCount(text)) > 1 && text != lastCand) { lastCand = text; return } // "Kỹ": chờ chữ ổn định qua hai lần đọc liên tiếp
         lastCand = text
         if (text == lastShown) return
         lastShown = text
@@ -887,7 +887,7 @@ class WebTranslateActivity : Activity() {
             row.setOnClickListener { pw?.dismiss(); onClick() }
             col.addView(row)
         }
-        item("Chữ hiện dần", "Chỉ bật khi phụ đề hiện ra từng chữ", p.slow) { p.slow = !p.slow; lastCand = "" }
+        item("Chữ hiện dần", "Chỉ bật khi phụ đề hiện ra từng chữ", p.slow) { p.ocrQuality = if (p.slow) OcrQuality.FAST else OcrQuality.CAREFUL; lastCand = "" }
         item("Thuyết minh", "Chỉ đọc phụ đề tiếng Việt có sẵn, không dịch", p.narrate) { toggleNarrate() }
         if (!p.narrate) item("✦ AI Tự động (tùy chọn Dịch)",
             "Ưu tiên Việt hóa, bộ nhớ game và Gemini tự đổi khóa", p.aiAuto) { toggleAutoMode() }
@@ -954,7 +954,7 @@ class WebTranslateActivity : Activity() {
                     dlg.dismiss(); pickLang()
                 }, Ui.lpm(a, 6, 0))
                 box.addView(Ui.tv(a, "Cách đọc chữ trên hình", 15f, Ui.TEXT, true), Ui.lpm(a, 14, 0))
-                box.addView(Ui.segmented(a, listOf("Kỹ", "Nhanh"), if (p.slow) 0 else 1) { p.slow = it == 0; lastCand = ""; fill() }, Ui.lpm(a, 6, 0))
+                box.addView(Ui.segmented(a, OcrQuality.values().map { it.label }, p.ocrQuality.ordinal) { p.ocrQuality = OcrQuality.values()[it]; lastCand = ""; fill() }, Ui.lpm(a, 6, 0))
                 box.addView(Ui.tv(a, "Kỹ: chờ chữ hiện đủ rồi mới dịch. Nhanh: dịch ngay khi thấy chữ.", 12.5f, Ui.SUB), Ui.lpm(a, 6, 0))
                 val rates = listOf(3, 4, 6, 8)
                 val sel = rates.indexOfFirst { abs(1000 / it - p.scanMs) <= 20 }

@@ -644,9 +644,10 @@ class Prefs(ctx: Context) {
     var autoMenu: Boolean
         get() = sp.getBoolean("automenu", false)
         set(v) = sp.edit().putBoolean("automenu", v).apply()
-    var slow: Boolean
-        get() = sp.getBoolean("slow", true)
-        set(v) = sp.edit().putBoolean("slow", v).apply()
+    var ocrQuality: OcrQuality
+        get() = OcrQuality.read(sp.getString("ocr_quality", null), sp.getBoolean("slow", true))
+        set(value) = sp.edit().putString("ocr_quality", value.name).putBoolean("slow", value != OcrQuality.FAST).apply()
+    val slow: Boolean get() = ocrQuality != OcrQuality.FAST
     var listenOnly: Boolean
         get() = sp.getBoolean("listen_only", false)
         set(v) = sp.edit().putBoolean("listen_only", v).apply()

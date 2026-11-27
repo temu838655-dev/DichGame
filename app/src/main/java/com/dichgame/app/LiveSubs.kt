@@ -97,7 +97,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     private val autoGameDetector = AutoGameDetector()
     private var lang = "en"
     private var sep = " "
-    private var needStable = 1
+    private var quality = OcrQuality.CAREFUL
     private var cand = ""
     private var stable = 0
     private var last = ""
@@ -207,7 +207,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         // Thuyết minh: chữ trong game đã là tiếng Việt (chữ Latin có dấu), đọc bằng bộ đọc chữ Latin rồi đọc to, không dịch
         lang = if (narrate) "en" else pr.lang
         speak = pr.speak || narrate
-        needStable = if (pr.slow) 2 else 1
+        quality = pr.ocrQuality
         val cjk = Prefs.isCjk(lang)
         sep = if (cjk) "" else " "
         stats.reset(System.currentTimeMillis(), batteryPct())
@@ -467,6 +467,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     private fun requiredStable(utts: List<Utterance>): Int {
         val minLetters = utts.minOf { OcrGuard.letterCount(it.text) }
+        val needStable = quality.frames(minLetters)
         var need = when {
             minLetters <= 1 -> maxOf(needStable, 3)
             minLetters <= 2 -> maxOf(needStable, 2)

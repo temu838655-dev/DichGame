@@ -132,7 +132,7 @@ class CaptureService : Service() {
     private var editing = true
     private var narrate = false
     private val autoGameDetector = AutoGameDetector()
-    private var needStable = 1
+    private var quality = OcrQuality.CAREFUL
     private var cand = ""
     private var stable = 0
     private var prevVi = ""
@@ -251,7 +251,7 @@ class CaptureService : Service() {
         RecentLines.clear()
         narrate = intent.getBooleanExtra("narrate", false)
         speak = intent.getBooleanExtra("speak", false) || narrate || Prefs(this).listenOnly
-        needStable = if (intent.getBooleanExtra("slow", false)) 2 else 1
+        quality = OcrQuality.read(intent.getStringExtra("ocr_quality"), intent.getBooleanExtra("slow", true))
         // chỉ khi bắt đầu từ màn hình chính (game chạy trên điện thoại); chơi PS trong app thì đã có âm thanh từ Remote Play
         val wantPhoneAudio = intent.getBooleanExtra("phoneaudio", false) && !narrate
         autoMenu = intent.getBooleanExtra("automenu", false) && !narrate
@@ -858,6 +858,7 @@ class CaptureService : Service() {
     /** Số lần đọc giống nhau liên tiếp trước khi tin một câu: câu cực ngắn dễ là chữ rác nên cần thấy lâu hơn. */
     private fun requiredStable(utts: List<Utterance>): Int {
         val minLetters = utts.minOf { OcrGuard.letterCount(it.text) }
+        val needStable = quality.frames(minLetters)
         var need = when {
             minLetters <= 1 -> maxOf(needStable, 3)
             minLetters <= 2 -> maxOf(needStable, 2)

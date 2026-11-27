@@ -457,7 +457,7 @@ class MainActivity : Activity() {
                 .putExtra("phoneaudio", q.phoneAudio)
                 .putExtra("speak", q.speak)
                 .putExtra("lang", q.lang)
-                .putExtra("automenu", q.autoMenu).putExtra("slow", q.slow).putExtra("narrate", q.narrate)
+                .putExtra("automenu", q.autoMenu).putExtra("slow", q.slow).putExtra("ocr_quality", q.ocrQuality.name).putExtra("narrate", q.narrate)
             startForegroundService(i)
             CaptureService.active = true
             Toast.makeText(this, "Đang chạy. Quay lại game, kéo khung xanh tới dòng phụ đề.", Toast.LENGTH_LONG).show()

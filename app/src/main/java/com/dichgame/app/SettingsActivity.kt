@@ -335,8 +335,8 @@ class SettingsActivity : Activity() {
         adv.visibility = if (advOpen) View.VISIBLE else View.GONE
 
         adv.addView(Ui.tv(a, "Cách đọc chữ trên hình", 15f, Ui.TEXT, true), Ui.lpm(a, 4, 0))
-        adv.addView(Ui.segmented(a, listOf("Kỹ", "Nhanh"), if (p.slow) 0 else 1) { p.slow = it == 0; render() }, Ui.lpm(a, 6, 0))
-        adv.addView(note("Kỹ: chờ chữ hiện đủ rồi mới dịch, ít dịch nhầm câu đang hiện dở. Nhanh: dịch ngay khi thấy chữ."), Ui.lpm(a, 6, 0))
+        adv.addView(Ui.segmented(a, OcrQuality.values().map { it.label }, p.ocrQuality.ordinal) { p.ocrQuality = OcrQuality.values()[it]; render() }, Ui.lpm(a, 6, 0))
+        adv.addView(note("Kỹ kiểm tra hai lượt quét. Cân bằng kiểm tra lại câu dưới 12 chữ cái. Nhanh xử lý ngay khi chữ vượt qua bộ lọc nhiễu."), Ui.lpm(a, 6, 0))
 
         val rates = listOf(2.0, 2.5, 3.0, 4.0, 6.0, 8.0)
         val rateSel = rates.indexOfFirst { kotlin.math.abs((1000.0 / it).toInt() - p.scanMs) <= 20 }
