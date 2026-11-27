@@ -1363,11 +1363,8 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
                     onTranscript = { text -> ui.post { if (g == gen && session === s) routeAudio(text, 0L, 1f) } },
                     onTranscriptMeta = { text, ms, rms -> ui.post { if (g == gen && session === s) routeAudio(text, ms, rms) } },
                     onError = { message ->
-                        ui.post {
-                            if (!isFinishing && !isDestroyed) {
-                                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-                            }
-                        }
+                        AiErrorLog.initialize(applicationContext)
+                        AiErrorLog.record("WARN", "OCR", summary = message, action = "Tiếp tục Remote Play và OCR phụ đề")
                     },
                 )
                 gameAudioAsrWorker = worker
