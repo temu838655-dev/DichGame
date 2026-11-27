@@ -15,9 +15,9 @@ class GeminiRequestTest {
     }
 
     @Test fun requestTextSanitizerDropsControlCharactersAndBoundsLength() {
-        assertEquals("Xin chào\\nđừng đi", Ai.cleanRequestText("  Xin chào\\u0000\\nđừng đi\\u0007  "))
+        assertEquals("Xin chào\nđừng đi", Ai.cleanRequestText("  Xin chào\u0000\nđừng đi\u0007  "))
         assertEquals(5, Ai.cleanRequestText("123456789", 5).length)
-        assertEquals("", Ai.cleanRequestText("\\u0000\\u0007"))
+        assertEquals("", Ai.cleanRequestText("\u0000\u0007"))
     }
 
     @Test fun safetySettingsAreOnlyIncludedWhenRequested() {
