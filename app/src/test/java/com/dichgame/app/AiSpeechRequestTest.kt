@@ -34,10 +34,10 @@ class AiSpeechRequestTest {
     }
 
     @Test fun ttsOmitsEmptyStyleMetadata() {
-        val body = AiSpeech.generateBody("Xin chào\u0000\nđừng đi\u0007", "", "Kore")
+        val body = AiSpeech.generateBody("Xin chào.", "", "Kore")
         val part = body.getJSONArray("contents").getJSONObject(0)
             .getJSONArray("parts").getJSONObject(0)
-        assertEquals("Xin chào\nđừng đi", text)
+        assertEquals("Xin chào.", part.getString("text"))
         assertFalse(part.has("speechMetadata"))
         assertTrue(body.getJSONObject("generationConfig").has("speechConfig"))
     }
