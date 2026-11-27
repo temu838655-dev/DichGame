@@ -3,7 +3,6 @@ package com.dichgame.app
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.widget.Toast
 import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.TranslateRemoteModel
@@ -386,12 +385,13 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
 
     /** Báo người dùng lý do câu này phải dịch máy. Có ô báo thì báo mỗi lần; không thì nhắn (Toast) tối đa mỗi 45 giây một lần. */
     private fun warn(m: String) {
+        if (TranslationLog.health() != TranslationLog.Health.FAILED) TranslationLog.setHealth(TranslationLog.Health.FALLBACK, m)
         val cb = onFallback
         if (cb != null) { main.post { if (!closed) cb(m) }; return }
         val now = System.currentTimeMillis()
         if (now - lastWarnAt < 45_000L) return
         lastWarnAt = now
-        main.post { Toast.makeText(ctx.applicationContext, m, Toast.LENGTH_LONG).show() }
+        TranslationLog.write("WARN", "Translation", null, null, null, m)
     }
 
     fun close() {
