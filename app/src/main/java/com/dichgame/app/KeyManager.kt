@@ -14,8 +14,10 @@ object KeyManager {
             val index = keys.indexOf(key) + 1
             try {
                 val result = call(key)
-                if (KeyRing.success(key, scope)) SessionStats.live.inc("khoa_doi")
-                TranslationLog.write("INFO", provider, index, key, null, "Key #" + index + " hoạt động; request thành công")
+                if (KeyRing.success(key, scope)) {
+                    SessionStats.live.inc("khoa_doi")
+                    TranslationLog.write("INFO", provider, index, key, null, "Đã chuyển sang Key #" + index + "; request thành công")
+                }
                 return result
             } catch (e: AiException) {
                 last = e
@@ -75,7 +77,9 @@ object KeyManager {
     fun successSingle(provider: String, key: String, scope: String) {
         val clean = key.trim()
         if (clean.isEmpty()) return
-        if (KeyRing.success(clean, scope)) SessionStats.live.inc("khoa_doi")
-        TranslationLog.write("INFO", provider, 1, clean, null, "Request thành công")
+        if (KeyRing.success(clean, scope)) {
+            SessionStats.live.inc("khoa_doi")
+            TranslationLog.write("INFO", provider, 1, clean, null, "Đã chuyển sang key dự phòng; request thành công")
+        }
     }
 }
