@@ -52,6 +52,80 @@ run_screens() {  # $1 = tiền tố tên ảnh
   done
 }
 
+# --- "Cách dịch" (giao diện mới): dựng sẵn từng trạng thái bằng extra demo (chỉ bản debug), chụp ảnh và thử thao tác thật bằng adb ---
+ui_dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb exec-out cat /sdcard/ui.xml 2>/dev/null; }
+ui_has() { ui_dump | grep -q "text=\"$1\""; }      # $1 = chữ đang hiện trên màn hình
+ui_center() {                                        # $1 = chữ; in "x y" là tâm của phần tử đó (rỗng nếu không thấy)
+  ui_dump | grep -o "text=\"$1\"[^>]*bounds=\"\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]\"" | head -1 \
+    | sed -E 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]"/\1 \2 \3 \4/' | awk 'NF==4 {print int(($1+$3)/2), int(($2+$4)/2)}'
+}
+open_demo() { set_prefs ""; adb shell am start -W -n "$PKG/.TranslateActivity" --es demo "$1" >/dev/null 2>&1; sleep 4; }
+tap_text() {                                         # $1 = chữ cần bấm; cuộn xuống tối đa 4 lần tới khi thấy
+  local c="" y=""
+  for i in 1 2 3 4; do
+    c=$(ui_center "$1"); y=${c#* }
+    if [ -n "$c" ] && [ "$y" -gt 250 ] && [ "$y" -lt 2100 ]; then adb shell input tap ${c}; sleep 1; return 0; fi
+    swipe_up
+  done
+  return 1
+}
+cachdich() {
+  adb logcat -c
+  for d in gemini auto cloud local narrate; do
+    open_demo "$d"
+    shot "cachdich-$d-1"; swipe_up; shot "cachdich-$d-2"; swipe_up; shot "cachdich-$d-3"
+    adb shell am force-stop "$PKG"
+  done
+  # Gemini: đổi sang "Dịch trên máy" thì mục khóa phải biến mất và ngôn ngữ trong game vẫn còn
+  open_demo gemini
+  ui_has "Khóa Gemini" || echo "Gemini: không thấy mục Khóa Gemini" >> "$OUT/cachdich-fail.txt"
+  tap_text "Dịch trên máy" || echo "Không bấm được hàng Dịch trên máy" >> "$OUT/cachdich-fail.txt"
+  shot cachdich-doi-sang-may
+  ui_has "Khóa Gemini" && echo "Đổi sang Dịch trên máy mà mục Khóa Gemini vẫn còn" >> "$OUT/cachdich-fail.txt"
+  ui_has "Ngôn ngữ trong game" || echo "Dịch trên máy: mất mục Ngôn ngữ trong game" >> "$OUT/cachdich-fail.txt"
+  adb shell am force-stop "$PKG"
+  # Gemini: vuốt khóa 1 sang trái -> hỏi xóa; bấm vào khóa -> menu Sửa/Tắt/Xóa; Thêm khóa -> hộp nhập
+  open_demo gemini
+  c=""; y=""
+  for i in 1 2 3 4; do
+    c=$(ui_center "Khóa 1"); y=${c#* }
+    if [ -n "$c" ] && [ "$y" -gt 250 ] && [ "$y" -lt 2000 ]; then break; fi
+    c=""; swipe_up
+  done
+  if [ -z "$c" ]; then
+    echo "Không tìm thấy hàng Khóa 1 để vuốt" >> "$OUT/cachdich-fail.txt"
+  else
+    shot cachdich-khoa-truoc
+    adb shell input swipe 950 "$y" 250 "$y" 350; sleep 1
+    shot cachdich-vuot-xoa
+    ui_has "Xóa khóa 1?" || echo "Vuốt khóa sang trái không hiện hộp xác nhận xóa" >> "$OUT/cachdich-fail.txt"
+    adb shell input keyevent KEYCODE_BACK; sleep 1
+    adb shell input tap 500 "$y"; sleep 1
+    shot cachdich-bam-khoa
+    ui_has "Sửa khóa" || echo "Bấm vào khóa không hiện menu Sửa khóa" >> "$OUT/cachdich-fail.txt"
+    adb shell input keyevent KEYCODE_BACK; sleep 1
+    tap_text "Thêm khóa" || echo "Không bấm được hàng Thêm khóa" >> "$OUT/cachdich-fail.txt"
+    shot cachdich-them-khoa
+    ui_has "Thêm khóa Gemini" || echo "Bấm Thêm khóa không hiện hộp nhập" >> "$OUT/cachdich-fail.txt"
+  fi
+  adb shell am force-stop "$PKG"
+  # CloudAPI: bấm Địa chỉ -> hộp nhập
+  open_demo cloud
+  tap_text "Địa chỉ" || echo "Không bấm được hàng Địa chỉ" >> "$OUT/cachdich-fail.txt"
+  shot cachdich-cloud-dia-chi
+  ui_has "Địa chỉ CloudAPI" || echo "CloudAPI: bấm Địa chỉ không hiện hộp nhập" >> "$OUT/cachdich-fail.txt"
+  adb shell am force-stop "$PKG"
+  adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/cachdich-fail.txt"
+  [ -s "$OUT/cachdich-fail.txt" ] || rm -f "$OUT/cachdich-fail.txt"
+}
+
+if [ "${SMOKE_ONLY:-}" = "cachdich" ]; then
+  cachdich
+  adb logcat -d -b crash > "$OUT/crash.txt" 2>&1
+  grep -q "dichgame" "$OUT/crash.txt" || : > "$OUT/crash.txt"
+  exit 0
+fi
+
 set_prefs ""
 run_screens a-default
 set_prefs ci/prefs-full.xml
@@ -341,6 +415,8 @@ grep -qE "DG_SELFTEST.*OK" "$OUT/selftest.txt" || echo "Giọng offline không c
 adb exec-out run-as "$PKG" cat files/selftest.wav > "$OUT/selftest.wav" 2>/dev/null || true
 adb shell am force-stop "$PKG"
 start_page voice; shot offline-da-tai
+
+cachdich
 
 adb logcat -d -b crash > "$OUT/crash.txt" 2>&1
 adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime|ANR in|dichgame" > "$OUT/logcat-filtered.txt" 2>&1
