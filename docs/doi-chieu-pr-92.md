@@ -7,8 +7,8 @@ Ngày 27/11/2026. Bảng này ghi bằng chứng theo nền tảng và các phé
 | 1. Mục tiêu | Có luồng dịch Android, kho tri thức Python và đầu nhận TV. | Chạy kịch bản tích hợp theo game, phim và phụ đề có sẵn. |
 | 2. Kiểm tra mã | Thay đổi tập trung ở nhánh riêng và PR #92. | Đo bộ nhớ và tải dài hạn trên thiết bị. |
 | 3. Tên AI | Android có TranslationModelCatalogTest và SessionStatsTest. | So tên hiển thị với model trả về của API thật khi chuyển dự phòng. |
-| 4. HTTP 429 | AiRetryTest cùng test_ai_fallback và test_batch_translate kiểm tra các đường thử lại, dừng khi hết hạn mức và dùng dữ liệu cục bộ. | Đo tốc độ gửi tổng khi nhiều câu khác nhau tới cùng nhà cung cấp. |
-| 5. HTTP 400 | Kiểm thử backend xác nhận một lần gửi cho phản hồi 400 và giải phóng khóa xử lý. | Kiểm tra thông báo tiếng Việt trên giao diện với từng dịch vụ. |
+| 4. HTTP 429 | KeyRingTest phân biệt chờ hạn mức, chặn thanh toán và khóa sai trong thời gian nghỉ. AiRetryTest, test_ai_fallback và test_batch_translate kiểm tra thử lại và dừng khi hết hạn mức. | Đo tốc độ gửi tổng khi nhiều câu khác nhau tới cùng nhà cung cấp. |
+| 5. HTTP 400 | Backend kiểm tra một lần gửi khi gặp 400. Android kiểm tra thông báo 400 dùng được cho CloudAPI và Gemini; chế độ Việt hóa kết hợp Gemini báo giữ câu gốc cho cả sáu nhóm lỗi. | Kiểm tra thông báo tiếng Việt trên giao diện với từng dịch vụ. |
 | 6. Tốc độ | Kiểm thử SQLite xác nhận yêu cầu trùng chỉ gọi hàm dịch một lần. | Đo p50/p95 từ thay đổi khung hình tới phụ đề, cùng thiết bị và cảnh. |
 | 7. TTS | SpeechQueueTest kiểm tra thứ tự, tồn đọng và nhận diện sự kiện của từng người nói. | Gây lỗi âm thanh giữa câu và đo phục hồi đầu ra thực. |
 | 8. Màu nhân vật | Android có cấu hình màu theo game và truyền tên riêng sang TV. | Kiểm tra sau đổi cảnh, khởi động lại và trên TV thật. |
@@ -16,7 +16,7 @@ Ngày 27/11/2026. Bảng này ghi bằng chứng theo nền tảng và các phé
 | 10. Kho game | Kho tri thức có bảng game, nhân vật, nguồn dữ liệu và kiểm thử nhập, sao lưu. | Kiểm kê các trường hồ sơ và thao tác sửa từ giao diện. |
 | 11. Thuật ngữ | HybridTranslationIntegrationTest kiểm tra tra thuật ngữ khi dịch trên Android. | Kiểm hết vòng đề xuất, duyệt, khóa, xuất và nhập lại. |
 | 12. Bộ nhớ dịch | Backend có kiểm thử khởi động lại, khác game, ngữ cảnh, số lượng, biến và người nói. | Kiểm hết trạng thái chất lượng, lịch sử chỉnh sửa và ưu tiên bản khóa trên từng client. |
-| 13. Chất lượng | TranslationGuardTest và test_matcher kiểm tra lỗi có thể phát hiện tự động. | Đánh giá xưng hô, giọng văn và ngữ cảnh bằng hội thoại thật. |
+| 13. Chất lượng | TranslationGuardTest và test_matcher kiểm tra bản dịch. AiRetryTest gửi năm kiểu phần tử JSON lỗi sau một đoạn hợp lệ và kiểm tra cả năm phản hồi Gemini đều bị loại. | Đánh giá xưng hô, giọng văn và ngữ cảnh bằng hội thoại thật. |
 | 14. Giao diện | Có quản lý cài đặt và thống kê phiên. Màn hình chính Android chỉ đưa ra Dịch và Thuyết minh trong bộ chọn. | Đi hết các màn quản trị và đối chiếu số thống kê với nhật ký. |
 | 15. Kiến trúc | Android đi qua OCR, TextTranslator, hiển thị và hàng đợi đọc. Smoke test chạy luồng phụ đề trong màn chơi. | Kiểm tra hủy sự kiện cũ khi đổi cảnh lúc AI hoặc TTS đang bận. |
 | 16. Bảo toàn dữ liệu | Có kiểm thử sao lưu Python. Dữ liệu dịch cũ được kiểm tra khi đọc. | Diễn tập cập nhật, phục hồi dữ liệu và bảo toàn thiết lập khóa trên bản phát hành. |
@@ -44,3 +44,5 @@ Ngày 27/11/2026. Bảng này ghi bằng chứng theo nền tảng và các phé
 - [Kho tri thức trước lần sửa tra dữ liệu nhập, commit e1aa917](https://github.com/temu838655-dev/DichGame/actions/runs/45980865906)
 - [Phép đo SQLite và cách kiểm thử dữ liệu nhập](../knowledge_base/TRANSLATION_MEMORY.md)
 - [Các commit trên PR #92](https://github.com/temu838655-dev/DichGame/pull/92/commits)
+
+- [Kiểm thử JVM Android về thông báo lỗi, thời gian nghỉ theo model và cấu trúc phản hồi Gemini tại ab574dc](https://github.com/temu838655-dev/DichGame/actions/runs/45984756549)
