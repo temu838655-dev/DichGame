@@ -4,6 +4,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class OcrQualityTest {
+    @Test fun identicalFrameStillConfirmsPendingTextOrDisappearance() {
+        assertEquals(false, OcrQuality.maySkipSameFrame("Xin chào", "", 0, 0))
+        assertEquals(true, OcrQuality.maySkipSameFrame("Xin chào", "Xin chào", 0, 0))
+        assertEquals(false, OcrQuality.maySkipSameFrame("", "Xin chào", 1, 0))
+        assertEquals(true, OcrQuality.maySkipSameFrame("", "", 3, 0))
+        assertEquals(false, OcrQuality.maySkipSameFrame("", "", 3, 12))
+    }
+
     @Test fun preservesExistingChoiceAndChecksShortCaptions() {
         assertEquals(OcrQuality.CAREFUL, OcrQuality.read(null, true))
         assertEquals(OcrQuality.FAST, OcrQuality.read(null, false))

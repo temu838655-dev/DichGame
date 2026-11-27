@@ -10,6 +10,9 @@ enum class OcrQuality(val label: String) {
     }
 
     companion object {
+        fun maySkipSameFrame(candidate: String, shown: String, misses: Int, skipped: Int): Boolean =
+            (candidate.isEmpty() || candidate == shown) && misses !in 1..2 && skipped < 12
+
         fun read(saved: String?, legacySlow: Boolean) = values().find { it.name == saved }
             ?: if (legacySlow) CAREFUL else FAST
     }

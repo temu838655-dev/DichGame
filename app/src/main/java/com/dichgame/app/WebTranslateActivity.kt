@@ -205,6 +205,7 @@ class WebTranslateActivity : Activity() {
     private var pendingText: String? = null
     private var scanBusy = false
     private var lastThumb: IntArray? = null
+    private var unchangedSkips = 0
     private var lastCand = ""
     private var lastShown = ""
     private var miss = 0
@@ -623,7 +624,7 @@ class WebTranslateActivity : Activity() {
         running = true
         cloudRefresh.start()
         everStarted = true
-        lastProcessed = ""; lastShown = ""; lastCand = ""; miss = 0; lastThumb = null
+        lastProcessed = ""; lastShown = ""; lastCand = ""; unchangedSkips = 0; miss = 0; lastThumb = null
         resetScanDiag()
         refresh()
         setPanel(if (source == "ocr") "Đang quét chữ trên video..." else "Đang chờ phụ đề của video...", "")
@@ -789,7 +790,15 @@ class WebTranslateActivity : Activity() {
     private fun readBitmap(bmp: Bitmap) {
         if (isDestroyed || !running) { bmp.recycle(); scanBusy = false; return }
         val th = Ocr.thumb(bmp)
-        if (lastThumb != null && Ocr.same(th, lastThumb)) { bmp.recycle(); scanBusy = false; scheduleScan(); return }
+        if (lastThumb != null && Ocr.same(th, lastThumb) &&
+            OcrQuality.maySkipSameFrame(lastCand, lastShown, miss, unchangedSkips)) {
+            unchangedSkips++
+            bmp.recycle()
+            scanBusy = false
+            scheduleScan()
+            return
+        }
+        unchangedSkips = 0
         val blank = isBlank(th)
         engine().read(bmp,
             { m ->
@@ -825,6 +834,7 @@ class WebTranslateActivity : Activity() {
         if (!running) return
         val text = blocks.joinToString(" ") { it.text.replace(Regex("\\s+"), " ").trim() }.trim()
         if (text.length < 2 || text.none { it.isLetterOrDigit() }) {
+            lastCand = ""
             miss++
             emptyScans++
             if (blank) blankScans++ else blankScans = 0
