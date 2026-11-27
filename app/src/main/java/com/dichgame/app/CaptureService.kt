@@ -235,7 +235,7 @@ class CaptureService : Service() {
     /** Bắt đầu thất bại: ghi lại, báo cho người dùng và dừng gọn thay vì để app đóng đột ngột. */
     private fun failStart(msg: String): Int {
         CrashLog.mark("capture:loi $msg")
-        try { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show() } catch (_: Throwable) {}
+        AiErrorLog.record(if (mode.startsWith("none")) "WARN" else "INFO", "OCR", summary = msg, action = "Không làm gián đoạn phụ đề đang hiển thị")
         stopSelf()
         return START_NOT_STICKY
     }
@@ -350,9 +350,10 @@ class CaptureService : Service() {
 
     /** Nghe âm thanh game trên điện thoại: thu PCM -> VAD + Whisper offline -> bộ hợp nhất. Lỗi gì cũng chỉ báo và vẫn dịch bằng chữ. */
     private fun startPhoneAudio(micFgs: Boolean) {
+        AiErrorLog.initialize(applicationContext)
         val dir = java.io.File(filesDir, "whisper-tiny")
         if (!WhisperTinyModelInstaller(dir).isInstalled()) {
-            android.widget.Toast.makeText(this, "Chưa tải mô hình nhận dạng giọng nói (Cài đặt › Nhận dạng lời thoại bằng âm thanh). Đang dịch chỉ bằng chữ trên màn hình.", android.widget.Toast.LENGTH_LONG).show()
+            AiErrorLog.record("WARN", "OCR", summary = "Chưa tải mô hình nhận dạng giọng nói", action = "Tiếp tục dịch bằng OCR trên màn hình")
             stats.inc("nguon_khong")
             return
         }
@@ -364,7 +365,7 @@ class CaptureService : Service() {
                 modelDirectory = dir,
                 language = lang,
                 onTranscript = { t -> handler.post { acceptAudioTranscript(t, 0L, 1f) } },
-                onError = { m -> handler.post { android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_LONG).show() } },
+                onError = { m -> AiErrorLog.record("WARN", "OCR", summary = m, action = "Tiếp tục nhận dạng ở đoạn âm thanh tiếp theo") },
                 onTranscriptMeta = { t, ms, rms -> handler.post { acceptAudioTranscript(t, ms, rms) } },
             )
             audioWorker = w
@@ -375,7 +376,7 @@ class CaptureService : Service() {
             phoneAudio = cap
             cap.start()
         } catch (e: Throwable) {
-            android.widget.Toast.makeText(this, "Không bật được nghe âm thanh game: ${e.message ?: e.javaClass.simpleName}. Vẫn dịch bằng chữ trên màn hình.", android.widget.Toast.LENGTH_LONG).show()
+            AiErrorLog.record("WARN", "OCR", summary = e.message ?: e.javaClass.simpleName, action = "Tiếp tục dịch bằng OCR trên màn hình")
             stats.inc("nguon_khong")
         }
     }
@@ -391,7 +392,7 @@ class CaptureService : Service() {
             "none:system" -> { stats.inc("nguon_khong"); "Máy hoặc game không cho thu âm thanh trong và micro đang tắt (Cài đặt › Nhận dạng lời thoại). Vẫn dịch bằng chữ trên màn hình." }
             else -> { stats.inc("nguon_khong"); "Không mở được micro. Vẫn dịch bằng chữ trên màn hình." }
         }
-        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
+        AiErrorLog.record(if (mode.startsWith("none")) "WARN" else "INFO", "OCR", summary = msg, action = "Không làm gián đoạn phụ đề đang hiển thị")
     }
 
     private fun addOverlay() {
