@@ -626,7 +626,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         showCards(p.cards, item.src, p.seenAt)
         val at = System.currentTimeMillis()
         for (c in p.cards) RecentLines.add(c.orig, c.tr.text, c.speaker, c.unsure, at)
-        stats.latency(SystemClock.elapsedRealtime() - p.seenAt)
+        if (item.src == Src.OCR) stats.latency(SystemClock.elapsedRealtime() - p.seenAt)
         scheduleHide()
     }
 
@@ -763,7 +763,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         }
         if (speak && ready && !tvSpeakOn() && scene.isNotEmpty()) {
             val key = SpeechPolicy.norm(scene.joinToString(" ") { it.text })
-            if (key.isNotEmpty()) {
+            if (key.isNotEmpty() && src == Src.OCR) {
                 val cutoff = SystemClock.elapsedRealtime() - 120_000L
                 pendingSpeechSeenAt.entries.removeIf { it.value < cutoff }
                 pendingSpeechSeenAt[key] = seenAt
