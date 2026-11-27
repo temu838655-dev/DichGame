@@ -312,11 +312,11 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             }
             var chosen: Tr? = null
             var strict: String? = null
-            val cool = Ai.coolingMs(p)
-            if (cool > 0) {
-                // vừa hết lượt: dịch máy ngay cho câu này, khỏi chờ AI vô ích; hết thời gian nghỉ sẽ thử AI lại
-                st.inc(AiRetry.statKey(AiRetry.Kind.QUOTA))
-                warn(AiRetry.explain(AiRetry.Kind.QUOTA, 429, cool, keepOriginal = hybrid))
+            val cooldown = Ai.cooldownError(p)
+            if (cooldown != null) {
+                val kind = AiRetry.kindOf(cooldown)
+                st.inc(AiRetry.statKey(kind))
+                warn(AiRetry.explain(kind, cooldown.code, cooldown.retryAfterMs, keepOriginal = hybrid))
             } else for (attempt in 0..1) {
                 if (!stillCurrent()) return@execute
                 val prompt = Ai.prompt(p, srcName(), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui, style = style, following = following)

@@ -133,6 +133,18 @@ object KeyRing {
         return best
     }
 
+    /** Explain why this route is unavailable without sending another HTTP request. */
+    @Synchronized fun unavailableError(keys: List<String>, scope: String,
+                                       now: Long = System.currentTimeMillis()): AiException? {
+        val wait = waitMs(keys, scope, now)
+        if (wait <= 0L) return null
+        return when {
+            allBad(keys, now) -> AiException(401, "Khóa không còn hiệu lực", wait, badKey = true)
+            billingWaitMs(scope, now) > 0L -> AiException(429, "Đã chạm giới hạn thanh toán", wait, billingLimit = true)
+            else -> AiException(429, "Đang chờ hạn mức yêu cầu", wait)
+        }
+    }
+
     /** Mọi khóa đều sai (không phải hết lượt): chờ cũng vô ích, phải sửa khóa. */
     @Synchronized fun allBad(keys: List<String>, now: Long = System.currentTimeMillis()): Boolean =
         keys.isNotEmpty() && keys.all { (bad[it] ?: 0L) > now }

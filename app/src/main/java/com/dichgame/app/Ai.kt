@@ -108,7 +108,7 @@ object Ai {
         p.cloudUrl.startsWith("https://", ignoreCase = true) && p.cloudKey.isNotBlank() && p.cloudModel.isNotBlank()
 
     private fun cloudScope(p: Prefs) = "cloud:" + p.cloudUrl + ":" + p.cloudModel
-    private fun cloudWait(p: Prefs) = KeyRing.waitMs(listOf(p.cloudKey), cloudScope(p))
+    private fun cloudCooldown(p: Prefs) = KeyRing.unavailableError(listOf(p.cloudKey), cloudScope(p))
 
     fun cloudEndpoint(base: String): String {
         val b = base.trim().trimEnd('/')
@@ -250,16 +250,18 @@ object Ai {
     /** Đang dịch bằng Gemini (cả chế độ AI Tự động, luôn dùng Gemini) hay bằng CloudAPI. */
     private fun usesGemini(p: Prefs): Boolean = p.aiAuto || p.packGemini || p.engine == Prefs.ENGINE_GEMINI
 
-    /** Dịch qua CloudAPI hết lượt: tới mốc này (mili giây) mới thử lại. Gemini thì [KeyRing] giữ mốc cho từng khóa. */
-    @Volatile private var cooldownUntil = 0L
+    fun cooldownError(p: Prefs): AiException? {
+        if (!usesGemini(p)) return cloudCooldown(p)
+        val keys = p.geminiKeys()
+        val primary = KeyRing.unavailableError(keys, p.geminiModel)
+        if (!p.aiAuto || !autoCloud(p)) return primary
+        val backup = cloudCooldown(p)
+        if (keys.isEmpty()) return backup
+        if (primary == null || backup == null) return null
+        return if (primary.retryAfterMs <= backup.retryAfterMs) primary else backup
+    }
 
-    /** Còn bao lâu nữa AI mới được thử lại sau khi hết lượt (0 nếu đang dùng được); trong lúc đó câu dịch thẳng bằng dịch máy, khỏi chờ vô ích. */
-    fun coolingMs(p: Prefs): Long =
-        if (p.aiAuto && autoCloud(p)) {
-            if (p.geminiKeys().isEmpty()) cloudWait(p)
-            else minOf(KeyRing.waitMs(p.geminiKeys(), p.geminiModel), cloudWait(p))
-        } else if (usesGemini(p)) KeyRing.waitMs(p.geminiKeys(), p.geminiModel)
-        else (cooldownUntil - System.currentTimeMillis()).coerceAtLeast(0L)
+    fun coolingMs(p: Prefs): Long = cooldownError(p)?.retryAfterMs ?: 0L
 
     /**
      * Dịch một câu, tự thử lại khi lỗi tạm thời (hết lượt ngắn hạn, 5xx, quá thời gian, mạng chập chờn). Hết lượt kéo dài thì ghi
@@ -276,7 +278,7 @@ object Ai {
                         primaryError = e
                     }
                 }
-                if (cloudWait(p) > 0L) throw primaryError ?: AiException(429, "CloudAPI đang nghỉ", cloudWait(p))
+                cloudCooldown(p)?.let { throw primaryError ?: it }
                 try {
                     return@execute translate(p, prompt, forceCloud = true)
                 } catch (e: AiException) {
@@ -284,21 +286,13 @@ object Ai {
                     throw e
                 }
             }
+            cooldownError(p)?.let { throw it }
+            val cloudKey = if (usesGemini(p)) null else p.cloudKey
+            val scope = cloudScope(p)
             try {
-                val r = AiRetry.run(AiRetry.Plan(), { Thread.sleep(it) }) { translate(p, prompt) }
-                if (!usesGemini(p)) cooldownUntil = 0L
-                r
-            } catch (e: Exception) {
-                if (!usesGemini(p) && AiRetry.kindOf(e) in setOf(AiRetry.Kind.QUOTA, AiRetry.Kind.BILLING)) {
-                    val apiError = e as? AiException
-                    if (apiError?.code == 429) KeyRing.report(p.cloudKey, cloudScope(p), apiError)
-                    val cooldown = if (AiRetry.kindOf(e) == AiRetry.Kind.BILLING) {
-                        maxOf(60 * 60_000L, apiError?.retryAfterMs ?: 0L)
-                    } else {
-                        AiRetry.cooldownMs(apiError?.retryAfterMs ?: 0L)
-                    }
-                    cooldownUntil = System.currentTimeMillis() + cooldown
-                }
+                AiRetry.run(AiRetry.Plan(), { Thread.sleep(it) }) { translate(p, prompt) }
+            } catch (e: AiException) {
+                if (cloudKey != null) KeyRing.report(cloudKey, scope, e)
                 throw e
             }
         }

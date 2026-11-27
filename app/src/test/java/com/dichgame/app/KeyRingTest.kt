@@ -20,6 +20,19 @@ class KeyRingTest {
 
     private fun quota(retry: Long = 0, daily: Boolean = false) = AiException(429, "q", retry, perDay = daily)
 
+    @Test fun cooldownPreservesBillingAuthAndRateLimitReasons() {
+        val now = 1000L
+        val keys = listOf("test")
+        KeyRing.report("test", "model1", AiException(429, "quota", 60000), now)
+        assertEquals(AiRetry.Kind.QUOTA, AiRetry.kindOf(KeyRing.unavailableError(keys, "model1", now)!!))
+        assertNull(KeyRing.unavailableError(keys, "model2", now))
+        KeyRing.report("test", "model2", AiException(429, "billing", billingLimit = true), now)
+        assertEquals(AiRetry.Kind.BILLING, AiRetry.kindOf(KeyRing.unavailableError(keys, "model2", now)!!))
+        KeyRing.report("test", "model2", AiException(401, "expired", badKey = true), now)
+        assertEquals(AiRetry.Kind.BAD, AiRetry.kindOf(KeyRing.unavailableError(keys, "model2", now)!!))
+        assertNull(KeyRing.unavailableError(keys, "model2", now + 3600001))
+    }
+
     @Test fun usesFirstKeyAndSticksToTheOneThatWorks() {
         assertEquals("A", KeyRing.pick(keys, m, 0))
         KeyRing.success("A", m)
