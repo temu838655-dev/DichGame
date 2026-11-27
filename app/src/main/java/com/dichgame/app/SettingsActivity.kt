@@ -566,7 +566,7 @@ class SettingsActivity : Activity() {
                     addView(Ui.tv(a, "Khóa ${index + 1} (…$suffix) · $state", 13.5f, Ui.TEXT))
                 }
                 row(Ui.button(a, "Đặt lại trạng thái khóa") {
-                    KeyRing.reset()
+                    KeyRing.resetStatuses()
                     Toast.makeText(a, "Đã đặt lại cooldown và trạng thái khóa trong phiên.", Toast.LENGTH_SHORT).show()
                     render()
                 }, 8, 0)
