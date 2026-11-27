@@ -276,16 +276,19 @@ class MainActivity : Activity() {
             if (on) b.background = Ui.goldBg(this, 20)
             b.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8))
             if (glyph) b.addView(GamepadGlyph(this, fg, Ui.GOLD), Ui.lp(Ui.dp(this, 20), Ui.dp(this, 14)).apply { rightMargin = Ui.dp(this@MainActivity, 6) })
-            b.addView(Ui.tv(this, label, 14f, fg).apply { maxLines = 1 })
+            b.addView(Ui.tv(this, label, 14f, fg).apply {
+                setSingleLine(true)
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
             b.setOnClickListener { click() }
             return b
         }
         seg.addView(item("Dịch", !p.narrate, true) {
             if (!CaptureService.active) { p.mode = Prefs.MODE_TRANSLATE; render() } else busyToast()
-        }, Ui.lp(0, WRAP_CONTENT, 1f))
+        }, Ui.lp(0, WRAP_CONTENT, 0.9f))
         seg.addView(item("Thuyết minh", p.narrate, false) {
             if (!CaptureService.active) { p.mode = Prefs.MODE_VIETSUB; render() } else busyToast()
-        }, Ui.lp(0, WRAP_CONTENT, 1f))
+        }, Ui.lp(0, WRAP_CONTENT, 1.1f))
         return seg
     }
 

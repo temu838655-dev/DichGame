@@ -279,7 +279,7 @@ object LineClean {
     private val BR = Regex("(?i)<br\\s*/?>|\\\\[nr]|\\r?\\n")
     private val TAG = Regex("</?[A-Za-z][^<>\\n]{0,60}>")
     private val SPACES = Regex("\\s+")
-    private val VAR = Regex("\\{[^{}\\n]{1,40}\\}|%(?:\\d+\\$)?[sdfi]\\b|\\$\\w+\\$|\\\\[cCnNvVpPiI]\\[\\d+\\]|\\[\\[[^\\]]+\\]\\]|\\[[A-Za-z_][\\w.]{0,30}\\]|<<[^>]{1,40}>>|@\\{[^}]+\\}")
+    private val VAR = Regex("\\{[^{}\\n]{1,40}\\}|%(?:\\d+\\$)?[-+# 0,(<]*\\d*(?:\\.\\d+)?[bBhHsScCdoxXeEfgGaAi]\\b|\\$\\w+\\$|\\\\[cCnNvVpPiI]\\[\\d+\\]|\\[\\[[^\\]]+\\]\\]|\\[[A-Za-z_][\\w.]{0,30}\\]|<<[^>]{1,40}>>|@\\{[^}]+\\}")
     /** Thẻ định dạng chữ (không phải biến số): {b} {i} {w} {color=#f00} của Ren'Py, mã màu §Y và §! của Paradox. */
     private val FMT = Regex("\\{/?(?:i|b|u|s|w|p|nw|fast|plain|k|a|font|color|size|alpha|cps|rt|rb|image|space|vspace|art|clear|noalt)(?:=[^{}]*)?\\}|§[A-Za-z0-9!]")
 

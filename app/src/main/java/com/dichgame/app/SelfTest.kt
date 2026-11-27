@@ -109,13 +109,34 @@ object SelfTest {
             emotion = false
         })
         return try {
+            val beforePlayed = speaker.played
+            val beforeCompleted = speaker.completedAudioTracks
             speaker.speak(text, interrupt = true)
-            val deadline = System.currentTimeMillis() + 15_000L
-            while (System.currentTimeMillis() < deadline && speaker.played == 0) Thread.sleep(50L)
-            val playing = speaker.played > 0 && speaker.isAudioTrackPlaying()
-            if (playing) Log.i(TAG, "OK offline_track AudioTrack entered PLAYSTATE_PLAYING")
-            else Log.e(TAG, "FAIL offline_track played=${speaker.played} active=${speaker.isAudioTrackPlaying()}")
-            playing
+            val startDeadline = System.currentTimeMillis() + 15_000L
+            while (System.currentTimeMillis() < startDeadline &&
+                (speaker.played <= beforePlayed || !speaker.isAudioTrackPlaying())) Thread.sleep(50L)
+            val started = speaker.played > beforePlayed && speaker.isAudioTrackPlaying()
+            val finishDeadline = System.currentTimeMillis() + 15_000L
+            while (System.currentTimeMillis() < finishDeadline &&
+                speaker.completedAudioTracks <= beforeCompleted) Thread.sleep(50L)
+            val completed = started && speaker.completedAudioTracks > beforeCompleted
+            if (completed) Log.i(TAG, "OK offline_track consumed complete PCM buffer and advanced")
+            else Log.e(TAG, "FAIL offline_track started=$started completed=${speaker.completedAudioTracks > beforeCompleted}")
+
+            val stopBeforePlayed = speaker.played
+            val stopBeforeCompleted = speaker.completedAudioTracks
+            speaker.speak(text, interrupt = true)
+            val stopStartDeadline = System.currentTimeMillis() + 15_000L
+            while (System.currentTimeMillis() < stopStartDeadline &&
+                (speaker.played <= stopBeforePlayed || !speaker.isAudioTrackPlaying())) Thread.sleep(50L)
+            val wasPlaying = speaker.played > stopBeforePlayed && speaker.isAudioTrackPlaying()
+            speaker.stop()
+            Thread.sleep(150L)
+            val interrupted = wasPlaying && !speaker.isAudioTrackPlaying() &&
+                speaker.completedAudioTracks == stopBeforeCompleted
+            if (interrupted) Log.i(TAG, "OK offline_stop interrupted active utterance")
+            else Log.e(TAG, "FAIL offline_stop wasPlaying=$wasPlaying stillPlaying=${speaker.isAudioTrackPlaying()} completed=${speaker.completedAudioTracks > stopBeforeCompleted}")
+            completed && interrupted
         } finally {
             speaker.shutdown()
         }

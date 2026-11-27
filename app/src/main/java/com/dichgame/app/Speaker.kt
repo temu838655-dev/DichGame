@@ -48,6 +48,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         @Volatile var alive = true
         @Volatile var track: AudioTrack? = null   // đã dựng sẵn và nạp âm thanh, chờ tới lượt
         @Volatile var durMs = 0L
+        @Volatile var frameCount = 0L
         @Volatile var failed: Throwable? = null
     }
 
@@ -102,6 +103,8 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     private val utt = AtomicInteger(0)
     /** Số lần đã bắt đầu phát một đoạn âm thanh (giọng AI hoặc giọng offline); dùng cho bản tự kiểm tra. */
     @Volatile var played = 0
+        private set
+    @Volatile var completedAudioTracks = 0
         private set
 
     /** Trạng thái phát thật của AudioTrack, dùng cho kiểm thử smoke trên Android. */
@@ -444,7 +447,9 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                 if (clip.alive && !disposed) {
                     if (pcm.data.isEmpty()) throw IllegalStateException("Âm thanh rỗng")
                     built = buildTrack(pcm)
-                    clip.durMs = pcm.data.size * 1000L / (pcm.rate * 2L * (if (pcm.channels == 2) 2 else 1)).coerceAtLeast(1)
+                    val channels = if (pcm.channels == 2) 2 else 1
+                    clip.frameCount = (pcm.data.size / (2L * channels)).coerceAtLeast(0L)
+                    clip.durMs = pcm.data.size * 1000L / (pcm.rate * 2L * channels).coerceAtLeast(1)
                 }
             } catch (_: java.util.concurrent.CancellationException) {
                 clip.alive = false   // đã bị bỏ hoặc dừng trong lúc tạo
@@ -496,25 +501,46 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     private fun tryPlay() {
         if (disposed) return
         var fb: Clip? = null
+        var finished: Clip? = null
         var wait = 0L
         synchronized(lock) {
             if (disposed) return
             val now = SystemClock.elapsedRealtime()
-            if (nowPlaying != null && now < nowEnds) return
-            nowPlaying = null
-            val stale = clips.dropStale(now)
-            for (c in stale) discard(c)
-            if (stale.isNotEmpty()) count("doc_bo", stale.size.toLong())
-            while (true) {
-                val head = clips.peek() ?: return
-                if (!head.alive) { clips.poll(); continue }
-                if (head.failed != null) { clips.poll(); fb = head; break }
-                val t = head.track ?: return   // chưa tạo xong: prepareClips sẽ gọi lại
-                clips.poll()
-                wait = startLocked(head, t, now)
-                if (head.failed != null) fb = head
-                break
+            val current = nowPlaying
+            if (current != null) {
+                if (now < nowEnds) return
+                val currentTrack = track
+                val consumed = currentTrack?.playbackHeadPosition?.toLong()?.and(0xffffffffL) ?: current.frameCount
+                if (currentTrack != null && current.frameCount > 0L && consumed < current.frameCount) {
+                    wait = 80L
+                } else {
+                    finished = current
+                    nowPlaying = null
+                    nowEnds = 0L
+                    completedAudioTracks++
+                }
             }
+            if (wait == 0L && finished == null) {
+                val stale = clips.dropStale(now)
+                for (c in stale) discard(c)
+                if (stale.isNotEmpty()) count("doc_bo", stale.size.toLong())
+                while (true) {
+                    val head = clips.peek() ?: return
+                    if (!head.alive) { clips.poll(); continue }
+                    if (head.failed != null) { clips.poll(); fb = head; break }
+                    val t = head.track ?: return   // chưa tạo xong: prepareClips sẽ gọi lại
+                    clips.poll()
+                    wait = startLocked(head, t, now)
+                    if (head.failed != null) fb = head
+                    break
+                }
+            }
+        }
+        val completed = finished
+        if (completed != null) {
+            onSpeechFinished?.invoke(completed.text)
+            main.post(advance)
+            return
         }
         val f = fb
         if (f != null) {

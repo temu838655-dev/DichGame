@@ -1,0 +1,107 @@
+name: Live Gemini TTS check
+on:
+  push:
+    branches: [fix/translation-pipeline]
+    paths: ['.github/workflows/live-tts-check.yml']
+  workflow_dispatch:
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Synthesize one short Vietnamese sentence and validate audio
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        shell: python
+        run: |
+          import base64, json, os, struct, sys, time
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+
+          key = os.environ.get("GEMINI_API_KEY", "").strip()
+          if not key:
+              sys.exit("Repository secret unavailable")
+          model = "gemini-3.8-flash-lite-tts"
+          body = {
+              "contents": [{"role": "user", "parts": [{
+                  "text": "Xin chào. Đây là câu kiểm tra giọng đọc tiếng Việt.",
+                  "speechMetadata": {"style": "clear, natural Vietnamese narration"}
+              }]}],
+              "generationConfig": {
+                  "responseModalities": ["AUDIO"],
+                  "speechConfig": {"voiceConfig": {
+                      "prebuiltVoiceConfig": {"voiceName": "Kore"}
+                  }}
+              }
+          }
+          req = Request(
+              f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+              data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+              headers={"x-goog-api-key": key, "Content-Type": "application/json"},
+              method="POST",
+          )
+          start = time.monotonic()
+          try:
+              with urlopen(req, timeout=35) as response:
+                  result = json.load(response)
+          except HTTPError as error:
+              code = error.code
+              try:
+                  payload = json.load(error)
+                  api_code = payload.get("error", {}).get("status", "")
+                  if not isinstance(api_code, str) or len(api_code) > 80:
+                      api_code = ""
+              except Exception:
+                  api_code = ""
+              sys.exit(f"Gemini TTS HTTP {code} {api_code}".strip())
+          except (URLError, TimeoutError) as error:
+              sys.exit("Gemini TTS network/timeout failure: " + type(error).__name__)
+
+          candidate = (result.get("candidates") or [{}])[0]
+          if candidate.get("finishReason") != "STOP":
+              sys.exit("Gemini TTS response incomplete")
+          audio = None
+          for part in candidate.get("content", {}).get("parts", []):
+              data = part.get("inlineData", {}).get("data")
+              if isinstance(data, str) and data:
+                  audio = base64.b64decode(data, validate=True)
+                  break
+          if not audio or len(audio) < 2048:
+              sys.exit("Gemini TTS returned no usable audio")
+
+          if audio[:4] == b"RIFF" and audio[8:12] == b"WAVE":
+              pos, fmt, pcm = 12, None, None
+              while pos + 8 <= len(audio):
+                  name = audio[pos:pos+4]
+                  size = struct.unpack_from("<I", audio, pos+4)[0]
+                  chunk = audio[pos+8:pos+8+size]
+                  if len(chunk) < size:
+                      sys.exit("Truncated WAV chunk")
+                  if name == b"fmt " and len(chunk) >= 16:
+                      fmt = struct.unpack_from("<HHIIHH", chunk, 0)
+                  if name == b"data":
+                      pcm = chunk
+                      break
+                  pos += 8 + size + (size & 1)
+              if fmt is None or pcm is None:
+                  sys.exit("WAV missing fmt/data chunk")
+              audio_format, channels, rate, _, _, bits = fmt
+              if audio_format != 1 or bits != 16 or channels not in (1, 2):
+                  sys.exit("Unexpected Gemini PCM format")
+          else:
+              pcm, rate, channels, bits = audio, 24000, 1, 16
+          frame_bytes = channels * bits // 8
+          frames = len(pcm) // frame_bytes
+          duration = frames / rate
+          peak = max((abs(struct.unpack_from("<h", pcm, i)[0]) for i in range(0, len(pcm)-1, 2)), default=0)
+          if rate < 16000 or rate > 48000 or duration < 0.3 or peak < 100:
+              sys.exit("Gemini TTS audio failed duration/rate/peak validation")
+          actual = result.get("modelVersion")
+          if actual and (not isinstance(actual, str) or len(actual) > 160):
+              sys.exit("Invalid modelVersion metadata")
+          print("Gemini TTS model:", actual or model)
+          print("Audio validation: PASS")
+          print("Sample rate:", rate, "Hz; channels:", channels, "bits:", bits)
+          print("Duration:", round(duration, 2), "s; PCM bytes:", len(pcm), "; peak:", peak)
+          print("Request latency:", round((time.monotonic() - start) * 1000), "ms")
