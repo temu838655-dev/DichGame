@@ -11,9 +11,9 @@ import java.util.TimeZone
  */
 object KeyRing {
     /** Khóa sai: nghỉ chừng này rồi mới thử lại (người dùng sửa khóa thì thành khóa mới nên dùng được ngay). */
-    const val BAD_MS = 30 * 60_000L
+    const val BAD_MS = Long.MAX_VALUE // Key sai bị vô hiệu hóa trong phiên hiện tại.
     /** Hết lượt mà máy chủ không nói chờ bao lâu: coi như hết lượt theo phút. */
-    const val DEFAULT_QUOTA_MS = 30_000L
+    const val DEFAULT_QUOTA_MS = 60_000L
     private const val MIN_QUOTA_MS = 1_000L
 
     private val until = HashMap<String, Long>()
@@ -108,7 +108,7 @@ object KeyRing {
     @Synchronized fun clearBilling() { billingUntil.clear() }
 
     /** Khóa sai (hoặc bị thu hồi): bỏ qua một lúc ở mọi model. */
-    @Synchronized fun blockBad(key: String, now: Long = System.currentTimeMillis()) { bad[key] = now + BAD_MS }
+    @Synchronized fun blockBad(key: String, now: Long = System.currentTimeMillis()) { bad[key] = Long.MAX_VALUE }
 
     /** Khóa người dùng vừa sửa hoặc thêm lại thì cho dùng ngay. */
     @Synchronized fun forget(key: String) {
