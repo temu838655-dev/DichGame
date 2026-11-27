@@ -308,6 +308,7 @@ object Ai {
                 throw e
             }
         }
+    }
 
     /** Thử dịch một câu để kiểm tra khóa. Trả về chuỗi bắt đầu bằng "OK" nếu chạy được, ngược lại là lý do lỗi. */
     fun test(p: Prefs, forceCloud: Boolean = false): String = try {
