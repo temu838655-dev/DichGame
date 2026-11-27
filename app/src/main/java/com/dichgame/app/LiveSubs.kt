@@ -427,7 +427,10 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     private fun reportErr(m: String) {
         val now = System.currentTimeMillis()
-        if (now - lastErrAt > 8000) { lastErrAt = now; notice(m) }
+        if (now - lastErrAt > 8000) {
+            lastErrAt = now
+            AiErrorLog.record("WARN", "OCR", summary = m, action = "Tiếp tục quét khung hình tiếp theo")
+        }
     }
 
     /** Thông báo của app (đang tải, lỗi...): thay dòng phụ đề đang hiện. */
@@ -768,7 +771,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
                 sendTv("sub", text, true, force = true)
                 if (!tvVoiceWarned) {
                     tvVoiceWarned = true
-                    handler.post { Toast.makeText(act, "Không gửi được tiếng sang TV ($err). TV đọc bằng giọng của TV.", Toast.LENGTH_LONG).show() }
+                    AiErrorLog.record("WARN", "THUYẾT MINH", summary = err, action = "Chuyển sang giọng đọc tích hợp của TV")
                 }
             }
         }
