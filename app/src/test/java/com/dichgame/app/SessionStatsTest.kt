@@ -51,6 +51,18 @@ class SessionStatsTest {
         assertTrue(r, r.contains("20 phút"))
     }
 
+    @Test fun reportsP95ForSubtitleAndSpeechStartSeparately() {
+        val s = SessionStats()
+        s.reset(1_000, 80)
+        for (ms in listOf(100L, 200L, 300L, 400L, 500L)) s.latency(ms)
+        for (ms in listOf(150L, 250L, 350L, 450L)) s.speechLatency(ms)
+        assertEquals(500L, s.percentile(95))
+        assertEquals(450L, s.speechPercentile(95))
+        val report = s.report(2_000, 80)
+        assertTrue(report.contains("p95 0.5 giây"))
+        assertTrue(report.contains("p95 0.5 giây"))
+    }
+
     @Test fun ignoresAbsurdLatencies() {
         val s = SessionStats()
         s.reset(1, 50)
