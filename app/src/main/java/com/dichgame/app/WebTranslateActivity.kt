@@ -185,6 +185,7 @@ class WebTranslateActivity : Activity() {
     private lateinit var adjustRow: View
     private lateinit var headRow: View
     private lateinit var bodyScroll: ScrollView
+    private var fallbackMessage = ""
     private lateinit var fallbackPill: View
     private lateinit var backBtn: TextView
     private lateinit var fwdBtn: TextView
@@ -347,7 +348,12 @@ class WebTranslateActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             background = Ui.bg(this@WebTranslateActivity, Color.parseColor("#E6201A10"), 18, Color.parseColor("#66FFA040"), 1)
             setPadding(dp(12), dp(7), dp(10), dp(7))
-            addView(Ui.tv(this@WebTranslateActivity, "ⓘ Dịch dự phòng", 14f, Color.parseColor("#FFA040"), true))
+            setOnClickListener {
+                android.app.AlertDialog.Builder(this@WebTranslateActivity)
+                    .setTitle("Trạng thái dịch").setMessage(fallbackMessage)
+                    .setPositiveButton("Đóng", null).show()
+            }
+            addView(Ui.tv(this@WebTranslateActivity, "ⓘ Trạng thái dịch", 14f, Color.parseColor("#FFA040"), true))
             addView(Ui.tv(this@WebTranslateActivity, "✕", 15f, Color.parseColor("#FFA040"), true).apply {
                 setPadding(dp(10), 0, dp(2), 0)
                 setOnClickListener { fallbackPill.visibility = View.GONE }
@@ -468,7 +474,7 @@ class WebTranslateActivity : Activity() {
             "running" -> ui.postDelayed({
                 running = true; everStarted = true; refresh()
                 setPanel("Xin chào, đây là bản dịch thử.", "Hello, this is a test.")
-                showFallback()
+                showFallback("Đang thử dịch bằng dịch máy.")
             }, 800)
         }
     }
@@ -571,7 +577,9 @@ class WebTranslateActivity : Activity() {
         origView.visibility = if (orig.isEmpty()) View.GONE else View.VISIBLE
     }
 
-    private fun showFallback() {
+    private fun showFallback(message: String) {
+        fallbackMessage = message
+        fallbackPill.contentDescription = message
         fallbackPill.visibility = View.VISIBLE
         ui.removeCallbacks(hideFallback)
         ui.postDelayed(hideFallback, 8000)
@@ -597,7 +605,7 @@ class WebTranslateActivity : Activity() {
     private fun prepareTranslator(done: (Boolean) -> Unit) {
         translator?.close()
         val t = TextTranslator(this, p, p.lang)
-        t.onFallback = { showFallback() }
+        t.onFallback = ::showFallback
         translator = t
         setPanel("Đang chuẩn bị bộ dịch...", "")
         // dựng sẵn bộ nhớ câu thoại ở luồng nền để lần dịch đầu không làm đứng màn hình

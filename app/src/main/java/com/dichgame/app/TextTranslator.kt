@@ -316,7 +316,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             if (cool > 0) {
                 // vừa hết lượt: dịch máy ngay cho câu này, khỏi chờ AI vô ích; hết thời gian nghỉ sẽ thử AI lại
                 st.inc(AiRetry.statKey(AiRetry.Kind.QUOTA))
-                warn(AiRetry.explain(AiRetry.Kind.QUOTA, 429, cool))
+                warn(AiRetry.explain(AiRetry.Kind.QUOTA, 429, cool, keepOriginal = hybrid))
             } else for (attempt in 0..1) {
                 if (!stillCurrent()) return@execute
                 val prompt = Ai.prompt(p, srcName(), gameDescription, hist, text, terms, if (ui) emptyList() else cast, emo, speaker, strict, ui, style = style, following = following)
@@ -326,7 +326,7 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
                 } catch (e: Exception) {
                     val kind = AiRetry.kindOf(e)
                     st.inc(AiRetry.statKey(kind))
-                    warn(AiRetry.explain(kind, (e as? AiException)?.code ?: 0, Ai.coolingMs(p), (e as? AiException)?.message))
+                    warn(AiRetry.explain(kind, (e as? AiException)?.code ?: 0, Ai.coolingMs(p), (e as? AiException)?.message, keepOriginal = hybrid))
                 }
                 if (raw.isNullOrEmpty()) break
                 val parsed = if (emo) Emo.parse(raw) else Emo.Parsed(raw, null)

@@ -229,21 +229,24 @@ object AiRetry {
         else -> "${(ms + 3_599_999) / 3_600_000} giờ"
     }
 
-    /** Câu báo cho người dùng khi một câu phải dịch bằng dịch máy vì AI lỗi. [coolMs]: còn bao lâu nữa mới thử lại AI. */
-    fun explain(kind: Kind, code: Int, coolMs: Long, detail: String? = null): String = when (kind) {
-        Kind.QUOTA ->
-            "Nhà cung cấp AI báo hết lượt hoặc đã chạm hạn mức sử dụng; các khóa cùng dự án hoặc tài khoản có thể dùng chung hạn mức." +
-                if (coolMs > 0) " Tạm dịch bằng dịch máy khoảng ${humanWait(coolMs)} rồi thử lại AI." else " Câu này tạm dịch bằng dịch máy."
-        Kind.BILLING ->
-            "Tài khoản hoặc dự án AI đã chạm giới hạn thanh toán/chi tiêu. Hãy kiểm tra gói thanh toán hoặc hạn mức chi tiêu; app tạm dùng dịch máy."
-        Kind.NETWORK -> "Không gọi được AI sau vài lần thử (mạng chậm hoặc máy chủ AI quá tải). Câu này tạm dịch bằng dịch máy."
-        Kind.BLOCKED -> "AI từ chối câu này (bộ lọc nội dung). Câu này dịch bằng dịch máy."
-        Kind.BAD -> when (code) {
-            401, 403 -> "Khóa AI sai hoặc không có quyền (lỗi $code). Kiểm tra lại ở Cài đặt › Cách dịch. Đang dùng dịch máy."
-            400 -> "Gemini từ chối yêu cầu (400): " + (detail?.take(320)?.takeIf { it.isNotBlank() } ?: "yêu cầu hoặc cấu hình không hợp lệ") + ". Kiểm tra model, API Key và cấu hình request. Đang dùng dịch máy."
-            404 -> "Sai tên model hoặc địa chỉ AI (lỗi 404). Kiểm tra lại ở Cài đặt › Cách dịch. Đang dùng dịch máy."
-            else -> "AI báo lỗi $code. Đang dùng dịch máy."
+    fun explain(kind: Kind, code: Int, coolMs: Long, detail: String? = null,
+                keepOriginal: Boolean = false): String {
+        val cause = when (kind) {
+            Kind.QUOTA -> "API đã chạm hạn mức yêu cầu (429)."
+            Kind.BILLING -> "Tài khoản hoặc dự án AI đã chạm giới hạn thanh toán. Hãy kiểm tra gói và hạn mức chi tiêu."
+            Kind.NETWORK -> "Mất kết nối hoặc máy chủ AI đang quá tải."
+            Kind.BLOCKED -> "AI từ chối câu này do bộ lọc nội dung."
+            Kind.BAD -> when (code) {
+                401, 403 -> "Khóa AI sai hoặc thiếu quyền (HTTP $code). Kiểm tra Cài đặt › Cách dịch."
+                400 -> "API từ chối yêu cầu (HTTP 400). " +
+                    (detail?.trim()?.take(320)?.takeIf { it.isNotEmpty() } ?: "Kiểm tra model và tham số.")
+                404 -> "Không tìm thấy model hoặc địa chỉ API (HTTP 404). Kiểm tra Cài đặt › Cách dịch."
+                else -> "API báo lỗi HTTP $code."
+            }
+            Kind.OTHER -> "AI trả về dữ liệu không hợp lệ."
         }
-        Kind.OTHER -> "AI trả về dữ liệu lạ. Câu này tạm dịch bằng dịch máy."
+        val wait = if (coolMs > 0) " Có thể thử lại sau ${humanWait(coolMs)}." else ""
+        val action = if (keepOriginal) "Giữ nguyên câu gốc." else "Thử dịch câu này bằng dịch máy."
+        return "$cause$wait $action"
     }
 }

@@ -285,6 +285,18 @@ class AiRetryTest {
         }
     }
 
+    @Test fun hybridErrorsKeepOriginalAnd400DoesNotAssumeGemini() {
+        for (kind in AiRetry.Kind.values()) {
+            val message = AiRetry.explain(kind, 400, 0, keepOriginal = true)
+            assertTrue(message.contains("Giữ nguyên câu gốc"))
+            assertFalse(message.contains("dịch máy"))
+        }
+        val cloud = AiRetry.explain(AiRetry.Kind.BAD, 400, 0, "invalid model")
+        assertTrue(cloud.contains("invalid model"))
+        assertFalse(cloud.contains("Gemini"))
+        assertTrue(cloud.contains("dịch máy"))
+    }
+
     @Test fun explainMentionsWhatToDo() {
         assertTrue(AiRetry.explain(AiRetry.Kind.QUOTA, 429, 21_000).contains("21 giây"))
         assertTrue(AiRetry.explain(AiRetry.Kind.QUOTA, 429, 0).contains("hạn mức"))
