@@ -95,7 +95,7 @@ object AiErrorLog {
     fun isDiagnosticText(value: String): Boolean {
         val t = value.trim().lowercase(Locale.ROOT)
         if (t.isEmpty()) return true
-        return Regex("(^|\\\\b)(http\\\\s*)?[45]\\\\d{2}(\\\\b|:)").containsMatchIn(t) ||
+        return Regex("(^|\\b)(http\\s*)?[45]\\d{2}(\\b|:)").containsMatchIn(t) ||
             listOf("lỗi api", "lỗi gemini", "quota", "resource_exhausted", "rate limit",
                 "timeout", "exception", "stacktrace", "bad request", "unauthorized", "forbidden", "resource exhausted", "service unavailable", "internal server error", "không kết nối được", "không dịch được",
                 "đang tự thử lại", "api key", "invalid_argument", "permission_denied", "không tải được mô hình", "lỗi khi đọc chữ", "chưa lấy được hình", "không chụp được khung hình", "giọng đọc lỗi", "không gửi được tiếng", "không bật được dịch").any { it in t }
