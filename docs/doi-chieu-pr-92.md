@@ -58,3 +58,10 @@ mã `credit_balance_exhausted` khi dịch. Chưa có câu dịch hoặc model ph
 từ OpenAI. Phép thử gọi REST trực tiếp, chưa xác minh giao diện thiết bị.
 
 [Nhật ký hai nhà cung cấp](https://github.com/temu838655-dev/DichGame/actions/runs/46023042121)
+
+Lần thử Gemini tiếp theo dùng hướng dẫn tiếng Việt, phân cách câu nguồn và
+kiểm riêng ba tiêu chí. Model trả về là `gemini-3.5-flash-lite`. Phản hồi
+giữ đúng một biến `{player}`, giữ số 2 và chứa từ tiếng Việt chỉ tiền xu.
+Thời gian từ lúc gửi yêu cầu sinh bản dịch đến khi kiểm xong phản hồi là
+483 ms cho một câu. Phép đo REST này chưa bao gồm OCR, giao diện và TTS.
+Lần thử chỉ chạy Gemini. [Nhật ký từng tiêu chí](https://github.com/temu838655-dev/DichGame/actions/runs/46023393694).
