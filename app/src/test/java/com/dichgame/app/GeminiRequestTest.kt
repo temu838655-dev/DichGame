@@ -20,6 +20,10 @@ class GeminiRequestTest {
         assertEquals("", Ai.cleanRequestText("\u0000\u0007"))
     }
 
+    @Test fun translationDedupIgnoresOcrPunctuationAndSpacingNoise() {
+        assertEquals(Ai.canonicalRequestText("  Don't move!  "), Ai.canonicalRequestText("dont   move"))
+    }
+
     @Test fun safetySettingsAreOnlyIncludedWhenRequested() {
         val body = Ai.geminiBody("hello", withSafety = true)
         assertEquals(4, body.getJSONArray("safetySettings").length())
