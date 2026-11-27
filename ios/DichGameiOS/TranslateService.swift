@@ -76,6 +76,8 @@ enum GameImageTranslator {
         ]
         let payload = try JSONSerialization.data(withJSONObject: body)
         var lastError: Error = GameTranslationError.noText
+        var lastStatusCode: Int?
+        var lastRetryAfter: String?
         for key in keys {
             var request = URLRequest(
                 url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent")!
@@ -91,14 +93,22 @@ enum GameImageTranslator {
                     throw GameTranslationError.api("Máy chủ không trả về HTTP.")
                 }
                 guard (200..<300).contains(http.statusCode) else {
-                    let message = String(data: responseData, encoding: .utf8)?
-                        .prefix(240).description ?? "Lỗi không rõ"
+                    let responseBody = String(data: responseData, encoding: .utf8) ?? "Lỗi không rõ"
+                    let message = responseBody.prefix(240).description
                     let error = GameTranslationError.api("Gemini HTTP \(http.statusCode): \(message)")
-                    if [401, 403].contains(http.statusCode) {
-                        lastError = error
-                        continue
+                    guard GeminiKeyRotationPolicy.shouldTryNextKey(
+                        statusCode: http.statusCode,
+                        responseBody: responseBody
+                    ) else {
+                        // Billing/credit exhaustion is shared by the account/project; another key cannot fix it.
+                        throw error
                     }
-                    throw error
+                    lastError = error
+                    lastStatusCode = http.statusCode
+                    lastRetryAfter = http.statusCode == 429
+                        ? GeminiKeyRotationPolicy.retryAfterDescription(http.value(forHTTPHeaderField: "Retry-After"))
+                        : nil
+                    continue
                 }
                 guard let json = try JSONSerialization.jsonObject(with: responseData) as? [String: Any],
                       let candidates = json["candidates"] as? [[String: Any]],
@@ -117,6 +127,9 @@ enum GameImageTranslator {
                 // Lỗi mạng không có nghĩa khóa hết lượt; thông báo rõ thay vì xoay khóa vô hạn.
                 throw error
             }
+        }
+        if lastStatusCode == 429, let wait = lastRetryAfter {
+            throw GameTranslationError.api("Tất cả khóa Gemini đều hết hạn mức. Hãy thử lại sau \(wait).")
         }
         throw lastError
     }
