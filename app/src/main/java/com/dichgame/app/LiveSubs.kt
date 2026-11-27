@@ -779,18 +779,23 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (speak && tvVoiceOn() && scene.isNotEmpty()) {
             tvVoice(scene.joinToString(" ") { it.text }, scene.last().delivery, scene.last().speaker, scene)
         }
-        if (speak && ready && !tvSpeakOn() && scene.isNotEmpty()) {
-            val key = SpeechPolicy.norm(scene.joinToString(" ") { it.text })
-            if (key.isNotEmpty() && src == Src.OCR) {
-                val cutoff = SystemClock.elapsedRealtime() - 120_000L
-                pendingSpeechSeenAt.entries.removeIf { it.value < cutoff }
-                pendingSpeechSeenAt[key] = seenAt
-                speaker?.onSpeechStarted = { spoken ->
-                    val at = pendingSpeechSeenAt.remove(SpeechPolicy.norm(spoken))
-                    if (at != null) stats.speechLatency(SystemClock.elapsedRealtime() - at)
+        if (speak && ready && !tvSpeakOn()) {
+            if (scene.isEmpty()) {
+                // Bản dịch mới không đủ tin cậy để đọc: không để câu cũ tiếp tục lệch nhịp game.
+                speaker?.stop()
+            } else {
+                val key = SpeechPolicy.norm(scene.joinToString(" ") { it.text })
+                if (key.isNotEmpty() && src == Src.OCR) {
+                    val cutoff = SystemClock.elapsedRealtime() - 120_000L
+                    pendingSpeechSeenAt.entries.removeIf { it.value < cutoff }
+                    pendingSpeechSeenAt[key] = seenAt
+                    speaker?.onSpeechStarted = { spoken ->
+                        val at = pendingSpeechSeenAt.remove(SpeechPolicy.norm(spoken))
+                        if (at != null) stats.speechLatency(SystemClock.elapsedRealtime() - at)
+                    }
                 }
+                speaker?.speakLatestScene(scene)
             }
-            speaker?.speakLatestScene(scene)
         }
         prevVi = vi
     }
