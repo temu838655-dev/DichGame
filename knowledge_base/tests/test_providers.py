@@ -113,6 +113,20 @@ class ProviderAdapterTests(unittest.TestCase):
         with self.assertRaises(ProviderHTTPError):
             GeminiProvider("test").translate_many([{"id": "1", "text": "Hello"}], model="test", max_output_tokens=64)
 
+    @patch("knowledge_base.providers.urlopen")
+    def test_batch_checks_each_output_against_its_own_source_id(self, mocked):
+        mocked.return_value = FakeResponse({
+            "candidates": [{"content": {"parts": [{"text": json.dumps([
+                {"id": "B", "translation": "Chào {hero}"},
+                {"id": "A", "translation": "Chào {guard}"},
+            ])}]}}],
+        })
+        with self.assertRaises(ProviderHTTPError):
+            GeminiProvider("test").translate_many(
+                [{"id": "A", "text": "Hello {hero}"}, {"id": "B", "text": "Hello {guard}"}],
+                model="test", max_output_tokens=64,
+            )
+
     def test_https_and_credentials_are_required(self):
         with self.assertRaises(ValueError):
             OpenAICompatibleProvider("key", base_url="http://insecure.example")

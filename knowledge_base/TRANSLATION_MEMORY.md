@@ -61,3 +61,9 @@ Phép thử SQLite trên cùng máy dùng 20 lượt xen kẽ `Hello {Player}` v
 hàm dịch tạo 10 kết quả sai biến. Sau khi sửa, hai lần gọi tạo đủ hai bản dịch,
 18 lượt còn lại dùng bộ nhớ và cả 20 kết quả đều đúng biến. Đây là số đo độ
 chính xác và số lượt gọi trong backend. Độ trễ dịch trực tuyến cần đo riêng.
+
+Backend kiểm tra biến trước khi ghi kết quả AI và khi đọc bộ nhớ cũ. Trong
+phép thử với SQLite mới, 20 câu dạng `Give {Player} N coins` nhận cùng một
+phản hồi thử `Tặng xu` thiếu cả biến và số lượng. Trước khi sửa, bộ nhớ lưu
+20 bản dịch lỗi. Sau khi sửa, số bản dịch lỗi được lưu là 0. Kiểm thử cũng
+gửi lại câu có phản hồi hợp lệ để kiểm tra phục hồi sau lỗi.

@@ -40,6 +40,24 @@ def runtime_arguments(text: str) -> list[str]:
     return _ARGUMENT.findall(text)
 
 
+def preserves_arguments(source: str, translation: str) -> bool:
+    expected = runtime_arguments(source)
+    actual = runtime_arguments(translation)
+    if expected == actual:
+        return True
+    if sorted(expected) != sorted(actual):
+        return False
+    # Named/indexed arguments can move. Markup and unnumbered printf arguments
+    # must retain their relative order within their respective groups.
+    for prefix in ("<", "%"):
+        def ordered(tokens):
+            return [t for t in tokens if t.startswith(prefix) and
+                    (prefix != "%" or "$" not in t)]
+        if ordered(expected) != ordered(actual):
+            return False
+    return True
+
+
 def _memory_hash(text: str) -> str:
     normalized = normalize_text(text)
     args = runtime_arguments(text)
@@ -295,9 +313,9 @@ class KnowledgeBase:
                 # Legacy rows lack raw context, so never infer its arguments.
                 text_hash = sha256_text(normalize_text(text))
                 row = db.execute(query, (game_id, text_hash, context_hash, cutoff, cutoff)).fetchone()
-                if row and sorted(runtime_arguments(row["translated_text"])) != sorted(runtime_arguments(text)):
-                    return None
             if row is None or runtime_arguments(row["source_text"]) != runtime_arguments(text):
+                return None
+            if not preserves_arguments(text, row["translated_text"]):
                 return None
             db.execute(
                 """UPDATE translation_cache
@@ -312,6 +330,8 @@ class KnowledgeBase:
         self, game_id: str, text: str, translated_text: str,
         model: str, context: str = "",
     ) -> None:
+        if not preserves_arguments(text, translated_text):
+            raise ValueError("Bản dịch làm thay đổi biến, thẻ định dạng hoặc số liệu")
         text_hash, context_hash = memory_key(text, context)
         with self.transaction() as db:
             db.execute(

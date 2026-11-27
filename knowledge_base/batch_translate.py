@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 
 from .ai_fallback import AIProvider, ProviderHTTPError, retry_delay
-from .db import KnowledgeBase
+from .db import KnowledgeBase, preserves_arguments
 
 
 @dataclass(frozen=True)
@@ -68,6 +68,8 @@ class BatchTranslator:
                 result = result.strip() if isinstance(result, str) else ""
                 if not result:
                     raise ValueError("Provider returned an empty translation")
+                if not preserves_arguments(row["source_text"], result):
+                    raise ValueError("Bản dịch làm thay đổi biến, thẻ định dạng hoặc số liệu")
                 self.kb.add_translation(
                     game_id, row["source_text"], result, context=row.get("context"),
                     source_id=row.get("source_id"), external_id=external_id,

@@ -13,6 +13,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from .ai_fallback import ProviderHTTPError, ProviderResponse
+from .db import preserves_arguments
 
 
 def _retry_after(value: str) -> float:
@@ -184,6 +185,9 @@ class GeminiProvider:
             translations[key] = value.strip()
         if set(translations) != set(source_ids):
             raise ProviderHTTPError("Gemini batch did not return every source ID")
+        for item in source:
+            if not preserves_arguments(item["text"], translations[item["id"]]):
+                raise ProviderHTTPError("Bản dịch theo lô làm thay đổi biến, thẻ định dạng hoặc số liệu")
         return translations
 
 class OpenAICompatibleProvider:

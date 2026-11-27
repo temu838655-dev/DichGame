@@ -57,6 +57,22 @@ class TranslationMemoryTests(unittest.TestCase):
             db.execute("UPDATE translation_cache SET translated_text='Mở {gate}'")
         self.assertIsNone(self.kb.cache_get("memory-game", source))
 
+    def test_invalid_output_is_not_remembered_and_recovery_is_cached(self):
+        source = "Give {player} 2 <b>coins</b> %s %d"
+        good = "Tặng 2 <b>xu</b> cho {player} %s %d"
+        memory = TranslationMemory(self.kb)
+        for broken in (good.replace("{player}", "{Player}"), good.replace("2", "3"),
+                       good.replace("<b>xu</b>", "</b>xu<b>"), good.replace("%s %d", "%d %s")):
+            with self.assertRaises(ValueError):
+                memory.get_or_translate("memory-game", source, lambda *_: broken, model="test")
+            self.assertIsNone(self.kb.cache_get("memory-game", source))
+        result = memory.get_or_translate("memory-game", source, lambda *_: good, model="test")
+        self.assertFalse(result.cache_hit)
+        self.assertEqual(self.kb.cache_get("memory-game", source), good)
+        with self.kb.transaction() as db:
+            db.execute("UPDATE translation_cache SET translated_text='Hỏng'")
+        self.assertIsNone(self.kb.cache_get("memory-game", source))
+
     def test_concurrent_identical_requests_call_provider_once(self):
         memory = TranslationMemory(
             self.kb, wait_timeout_seconds=5, poll_interval_seconds=0.02,
