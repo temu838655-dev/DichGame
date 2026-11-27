@@ -271,9 +271,15 @@ object Ai {
                 } else {
                     TranslationLog.write("WARN", "Gemini", null, null, 429, "Khóa Gemini đang cooldown hoặc chưa cấu hình; dùng CloudAPI dự phòng")
                 }
-                cloudCooldown(p)?.let {
-                    TranslationLog.setHealth(TranslationLog.Health.FALLBACK, "CloudAPI đang nghỉ; sẽ dùng dịch máy")
-                    throw primaryError ?: it
+                cloudCooldown(p)?.let { cloudError ->
+                    val everyGeminiKeyInvalid = p.geminiKeys().isNotEmpty() && KeyRing.allBad(p.geminiKeys())
+                    val everyConfiguredProviderInvalid = everyGeminiKeyInvalid && cloudError.badKey
+                    TranslationLog.setHealth(
+                        if (everyConfiguredProviderInvalid) TranslationLog.Health.FAILED else TranslationLog.Health.FALLBACK,
+                        if (everyConfiguredProviderInvalid) "Tất cả khóa Gemini và CloudAPI đều không hợp lệ"
+                        else "CloudAPI đang nghỉ; sẽ dùng dịch máy"
+                    )
+                    throw primaryError ?: cloudError
                 }
                 try {
                     val result = translate(p, prompt, forceCloud = true)
