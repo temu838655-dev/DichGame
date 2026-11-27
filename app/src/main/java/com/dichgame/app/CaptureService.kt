@@ -954,7 +954,10 @@ class CaptureService : Service() {
         finishBusy()
         lastSig = null; lastFine = null
         overlay?.let { if (it.visibility != View.VISIBLE) it.visibility = View.VISIBLE }
-        if (m.isNotEmpty() && System.currentTimeMillis() - lastErrAt > 8000) { lastErrAt = System.currentTimeMillis(); show(m) }
+        if (m.isNotEmpty() && System.currentTimeMillis() - lastErrAt > 8000) {
+            lastErrAt = System.currentTimeMillis()
+            AiErrorLog.record("WARN", "OCR", summary = m, action = "Bỏ qua khung lỗi và tiếp tục quét")
+        }
     }
 
     /** Vùng dịch: khung cam, thả tay là dịch ngay vùng đó (nhiệm vụ, thư, mô tả vật phẩm). Bấm lần nữa để đóng. */
@@ -1124,7 +1127,7 @@ class CaptureService : Service() {
                 sendTv("sub", text, true, force = true)
                 if (!tvVoiceWarned) {
                     tvVoiceWarned = true
-                    handler.post { android.widget.Toast.makeText(this, "Không gửi được tiếng sang TV ($err). TV đọc bằng giọng của TV; nếu TV chưa cập nhật hãy cài bản TV mới.", android.widget.Toast.LENGTH_LONG).show() }
+                    AiErrorLog.record("WARN", "THUYẾT MINH", summary = err, action = "Chuyển sang giọng đọc tích hợp của TV")
                 }
             }
         }
