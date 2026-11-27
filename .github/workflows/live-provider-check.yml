@@ -4,15 +4,20 @@ on:
     branches: [fix/translation-pipeline]
     paths: ['.github/workflows/live-provider-check.yml']
   workflow_dispatch:
+    inputs:
+      provider:
+        type: choice
+        description: Provider to check
+        options: [Gemini, OpenAI]
+        default: Gemini
 permissions: {}
 jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     strategy:
-      fail-fast: false
       matrix:
-        provider: [Gemini, OpenAI]
+        provider: ["${{ inputs.provider || 'Gemini' }}"]
     steps:
       - name: Check catalogue and translate one sentence
         env:
@@ -21,7 +26,7 @@ jobs:
           OPENAI_KEY: ${{ matrix.provider == 'OpenAI' && secrets.OPENAI_API_KEY || '' }}
         shell: python
         run: |
-          import json, os, re, sys, time
+          import json, os, re, sys, time, unicodedata
           from urllib.error import HTTPError
           from urllib.parse import urlencode
           from urllib.request import build_opener, HTTPRedirectHandler, Request
@@ -82,7 +87,9 @@ jobs:
               print("Related model IDs listed:", ", ".join(similar[:10]) or "none")
               sys.exit("Preferred model unavailable; zero generation requests")
           print("Listed requested model:", model, flush=True)
-          prompt = "Translate to Vietnamese. Preserve {player} and 2. Return only the translation: Give {player} 2 coins."
+          prompt = ("Dịch câu tiếng Anh giữa hai dấu ngoặc kép sang tiếng Việt. "
+                    "Giữ nguyên từng biến trong dấu ngoặc nhọn và từng chữ số. "
+                    'Chỉ trả về lời dịch. Câu gốc: "Give {player} 2 coins."')
           start = time.monotonic()
           if gemini:
               reply = request(f"/models/{model}:generateContent", {"contents":[{"parts":[{"text":prompt}]}],
@@ -103,6 +110,16 @@ jobs:
           if not isinstance(actual, str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,160}", actual):
               sys.exit("Missing or invalid response model")
           print("Reported model:", actual)
-          if result.count("{player}") != 1 or re.findall(r"\d+", result) != ["2"] or not re.search(r"[À-ỹ]", result):
-              sys.exit("Vietnamese translation or runtime argument check failed")
-          print("Translation passed; one generation request;", round((time.monotonic()-start)*1000), "ms")
+          if not isinstance(result, str):
+              sys.exit("Response did not contain a translation string")
+          normalized = unicodedata.normalize("NFC", result).casefold()
+          checks = {
+              "placeholder": re.findall(r"\{[^{}]*\}", result) == ["{player}"],
+              "quantity": re.findall(r"\d+", result) == ["2"],
+              "Vietnamese coin vocabulary": bool(re.search(r"\b(xu|đồng|tiền)\b", normalized)),
+          }
+          for label, passed in checks.items():
+              print(label, "PASS" if passed else "FAIL")
+          print("Generation latency (ms):", round((time.monotonic() - start) * 1000))
+          if not all(checks.values()):
+              sys.exit("Translation acceptance failed")
