@@ -24,7 +24,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
-import android.widget.Toast
 import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
@@ -79,7 +78,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (!running || speaker == null) return
         runCatching { speaker?.shutdown() }
         speaker = try {
-            Speaker(act, Prefs(act)).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() }; sp.onSpeechError = { _, m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() }; sp.onSpeechWarning = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() }; if (Prefs(act).voiceEngine == "offline") sp.prepare() }
+            Speaker(act, Prefs(act)).also { sp -> sp.onAiError = { m -> TranslationLog.write("WARN", "TTS", null, null, null, m) }; sp.onSpeechError = { text, m -> TranslationLog.write("ERROR", "TTS", null, null, null, "Lỗi phát câu (" + text.length + " ký tự): " + m) }; sp.onSpeechWarning = { m -> TranslationLog.write("WARN", "TTS", null, null, null, m) }; if (Prefs(act).voiceEngine == "offline") sp.prepare() }
         } catch (_: Throwable) { null }
     }
 
@@ -121,6 +120,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     private var pendingLang: String? = null
     private val retired = ArrayList<TextTranslator>()
     private val fusion = SubtitleFusion()
+    private val recentTextGate = RecentTextGate()
     private val rate = SubtitlePacer.SpeechRate()
     private val maxJobs = 12
     private val jobs = java.util.ArrayDeque<Job>()
@@ -193,7 +193,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (!running) return
         if (on && speaker == null) {
             try {
-                speaker = Speaker(act, Prefs(act)).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() }; sp.onSpeechError = { _, m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() }; sp.onSpeechWarning = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() } }
+                speaker = Speaker(act, Prefs(act)).also { sp -> sp.onAiError = { m -> TranslationLog.write("WARN", "TTS", null, null, null, m) }; sp.onSpeechError = { text, m -> TranslationLog.write("ERROR", "TTS", null, null, null, "Lỗi phát câu (" + text.length + " ký tự): " + m) }; sp.onSpeechWarning = { m -> TranslationLog.write("WARN", "TTS", null, null, null, m) } }
             } catch (_: Throwable) { speaker = null }
         } else if (!on) {
             runCatching { speaker?.shutdown() }
@@ -222,12 +222,12 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         cand = ""; stable = 0; last = ""; prevVi = ""
         lastFine = null; lastSig = null; skipRun = 0; copyFails = 0
         textOnScreen = false; textGoneSince = 0L
-        jobs.clear(); pacer.cleared(); fusion.clear()
+        jobs.clear(); pacer.cleared(); fusion.clear(); recentTextGate.reset()
         CrashLog.mark("dich:bat")
         try {
             ocr = Ocr(pr, lang)
             if (speak) {
-                speaker = Speaker(act, pr).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() }; sp.onSpeechError = { _, m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() }; sp.onSpeechWarning = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() } }
+                speaker = Speaker(act, pr).also { sp -> sp.onAiError = { m -> TranslationLog.write("WARN", "TTS", null, null, null, m) }; sp.onSpeechError = { text, m -> TranslationLog.write("ERROR", "TTS", null, null, null, "Lỗi phát câu (" + text.length + " ký tự): " + m) }; sp.onSpeechWarning = { m -> TranslationLog.write("WARN", "TTS", null, null, null, m) } }
             }
             activeGameContext = gameContext(pr)
             speakers = SpeakerBook(PackStore.cast(pr).map { it.name } + pr.detectedSpeakers())
@@ -240,6 +240,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             } else {
                 val tr = TextTranslator(act, pr, lang)
                 tt = tr
+                tr.onFallback = { m -> TranslationLog.write("WARN", "Translation", null, null, null, m) }
                 val warmPrefs = pr
                 Thread { try { PackStore.memory(act.applicationContext, warmPrefs).warm() } catch (_: Throwable) {} }.start()
                 langTrack = LangSwitchTracker(lang)
@@ -254,7 +255,8 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         } catch (e: Throwable) {
             Log.e(TAG, "start loi", e)
             CrashLog.mark("dich:loi " + e.javaClass.simpleName)
-            Toast.makeText(act, "Không bật được dịch phụ đề: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+            TranslationLog.setHealth(TranslationLog.Health.FAILED, "Không khởi động được OCR/overlay")
+            TranslationLog.write("ERROR", "OCR", null, null, null, "Không bật được dịch phụ đề: " + (e.message ?: e.javaClass.simpleName))
             stop()
         }
     }
@@ -307,6 +309,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         translating = false
         jobs.clear()
         fusion.clear()
+        recentTextGate.reset()
         pacer.cleared()
         RecentLines.clear()
         last = ""; cand = ""; candidateSeenAt = 0L; stable = 0; prevVi = ""
@@ -434,16 +437,23 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     private fun reportErr(m: String) {
         val now = System.currentTimeMillis()
-        if (now - lastErrAt > 8000) { lastErrAt = now; notice(m) }
+        if (now - lastErrAt > 8000) {
+            lastErrAt = now
+            TranslationLog.write("WARN", "OCR", null, null, null, m)
+        }
     }
 
-    /** Thông báo của app (đang tải, lỗi...): thay dòng phụ đề đang hiện. */
+    /** Trạng thái/lỗi không bao giờ được vẽ vào vùng phụ đề; vùng này chỉ chứa bản dịch hợp lệ. */
     private fun notice(t: String) {
+        if (t.isNotEmpty()) {
+            TranslationLog.write("INFO", "Overlay", null, null, null, t)
+            return
+        }
         pacer.cleared(); handler.removeCallbacks(hideCheck)
-        if (t.isEmpty()) sendTv("clear", "")
         if (adjusting) return
-        view.text = t
-        view.visibility = if (t.isEmpty()) View.GONE else View.VISIBLE
+        sendTv("clear", "")
+        view.text = ""
+        view.visibility = View.GONE
     }
 
     // ---- nhận lời nghe được từ âm thanh game
@@ -525,6 +535,13 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (sig != cand) { cand = sig; stable = 1; candidateSeenAt = scanAt } else stable++
         if (stable < requiredStable(utts)) { finishBusy(); return }
         val detectedAt = candidateSeenAt.takeIf { it > 0L } ?: scanAt
+        val gateText = utts.joinToString(" ") { it.text }
+        if (!recentTextGate.shouldAccept(gateText, SystemClock.elapsedRealtime())) {
+            last = sig
+            stats.inc("ocr_trung")
+            finishBusy()
+            return
+        }
         last = sig
         // Chỉ nhớ người nói khi OCR đã ổn định; không lưu tên chưa được xác nhận.
         for (u in utts) if (!u.nameLike && !u.speaker.isNullOrBlank()) prefs.rememberSpeaker(u.speaker!!)
@@ -698,7 +715,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             lang = newLang
             langTrack?.current = newLang
             stats.inc("doi_ngon_ngu")
-            Toast.makeText(act, "Chữ trong game đã đổi sang ${Prefs.srcNameOf(newLang)}: đã chuyển bộ dịch.", Toast.LENGTH_SHORT).show()
+            TranslationLog.write("INFO", "Translation", null, null, null, "Đã chuyển bộ dịch theo ngôn ngữ " + Prefs.srcNameOf(newLang))
         }
     }
 
@@ -773,7 +790,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
                     if (at != null) stats.speechLatency(SystemClock.elapsedRealtime() - at)
                 }
             }
-            speaker?.speakScene(scene)
+            speaker?.speakLatestScene(scene)
         }
         prevVi = vi
     }
@@ -800,7 +817,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
                 sendTv("sub", text, true, force = true)
                 if (!tvVoiceWarned) {
                     tvVoiceWarned = true
-                    handler.post { Toast.makeText(act, "Không gửi được tiếng sang TV ($err). TV đọc bằng giọng của TV.", Toast.LENGTH_LONG).show() }
+                    TranslationLog.write("WARN", "TTS-TV", null, null, null, "Không gửi được âm thanh sang TV; dùng giọng TV dự phòng: " + err)
                 }
             }
         }
