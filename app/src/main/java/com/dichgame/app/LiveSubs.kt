@@ -249,7 +249,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         } catch (e: Throwable) {
             Log.e(TAG, "start loi", e)
             CrashLog.mark("dich:loi " + e.javaClass.simpleName)
-            Toast.makeText(act, "Không bật được dịch phụ đề: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+            AiErrorLog.record("ERROR", "DỊCH", summary = e.message ?: e.javaClass.simpleName, action = "Dừng luồng lỗi, giữ nguyên phiên Remote Play")
             stop()
         }
     }
