@@ -23,6 +23,14 @@ class OcrAiErrorTextTest {
         assertTrue(ocrAiErrorText(AiException(404, "model missing")).contains("model hoặc endpoint"))
     }
 
+    @Test fun diagnosticMessagesAreNeverSubtitleText() {
+        assertTrue(AiErrorLog.isDiagnosticText("HTTP 429 RESOURCE_EXHAUSTED"))
+        assertTrue(AiErrorLog.isDiagnosticText("Lỗi API: quota exceeded"))
+        assertTrue(AiErrorLog.isDiagnosticText("Không dịch được: timeout"))
+        assertFalse(AiErrorLog.isDiagnosticText("Đừng bỏ tôi lại!"))
+        assertFalse(AiErrorLog.isDiagnosticText("Cẩn thận, phía trước có kẻ địch!"))
+    }
+
     @Test fun networkAndServerErrorsHaveDistinctMessages() {
         assertTrue(ocrAiErrorText(AiException(408, "timeout")).contains("thời gian chờ"))
         assertTrue(ocrAiErrorText(AiException(503, "unavailable")).contains("HTTP 503"))
