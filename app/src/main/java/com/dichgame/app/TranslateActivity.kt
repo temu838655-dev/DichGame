@@ -113,6 +113,11 @@ class TranslateActivity : Activity() {
                     13f, Ui.SUB).apply { setPadding(Ui.dp(a, 10), 0, Ui.dp(a, 10), 0) }, 12, 0)
                 }
             }
+            group("CHẨN ĐOÁN", 14) {
+                addView(Ui.navRow(a, null, "Nhật ký lỗi AI", "Xem lỗi dịch/thuyết minh, trạng thái khóa và sao chép nhật ký") {
+                    startActivity(Intent(a, SettingsActivity::class.java).putExtra("page", "logs"))
+                })
+            }
         }
     }
 
