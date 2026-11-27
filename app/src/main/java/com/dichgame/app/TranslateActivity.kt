@@ -182,7 +182,7 @@ class TranslateActivity : Activity() {
         if (keys.isNotEmpty()) {
             val enabledCount = keys.count { p.isGeminiKeyEnabled(it) }
             val usableCount = keys.count { p.isGeminiKeyEnabled(it) && KeyRing.status(it, p.geminiModel).state == KeyRing.State.OK }
-            val cooldownCount = keys.count { p.isGeminiKeyEnabled(it) && KeyRing.status(it, p.geminiModel).state == KeyRing.State.QUOTA }
+            val cooldownCount = keys.count { p.isGeminiKeyEnabled(it) && KeyRing.status(it, p.geminiModel).state in setOf(KeyRing.State.QUOTA, KeyRing.State.DAILY) }
             val invalidCount = keys.count { p.isGeminiKeyEnabled(it) && KeyRing.status(it, p.geminiModel).state == KeyRing.State.BAD }
             c.addView(
                 Ui.tv(a, "Tổng ${keys.size} khóa · bật ${enabledCount} · khả dụng ${usableCount} · tạm nghỉ ${cooldownCount} · cần kiểm tra ${invalidCount} · tắt ${keys.size - enabledCount}", 12.5f, Ui.SUB),
