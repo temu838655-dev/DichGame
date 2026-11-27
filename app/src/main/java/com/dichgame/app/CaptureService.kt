@@ -232,10 +232,11 @@ class CaptureService : Service() {
         }
     }
 
-    /** Bắt đầu thất bại: ghi lại, báo cho người dùng và dừng gọn thay vì để app đóng đột ngột. */
+    /** Bắt đầu thất bại: ghi log riêng và dừng gọn thay vì đưa lỗi lên màn hình game. */
     private fun failStart(msg: String): Int {
         CrashLog.mark("capture:loi $msg")
-        AiErrorLog.record(if (mode.startsWith("none")) "WARN" else "INFO", "OCR", summary = msg, action = "Không làm gián đoạn phụ đề đang hiển thị")
+        AiErrorLog.initialize(applicationContext)
+        AiErrorLog.record("ERROR", "OCR", summary = msg, action = "Không hiển thị lỗi lên màn hình game")
         stopSelf()
         return START_NOT_STICKY
     }
@@ -949,11 +950,10 @@ class CaptureService : Service() {
         if (running && ready && !editing && !narrate && (jobs.isNotEmpty() || pacer.queued > 0)) handler.post { pump() }
     }
 
-    /** Lỗi đọc chữ: mở khóa để quét lại, chỉ hiện thông báo lỗi của Gemini (không báo lỗi đọc trên máy), tối đa 8 giây một lần. */
+    /** Lỗi OCR: ghi log riêng, mở khóa để tiếp tục quét; không thay phụ đề hiện tại bằng lỗi. */
     private fun ocrFail(m: String) {
         finishBusy()
         lastSig = null; lastFine = null
-        overlay?.let { if (it.visibility != View.VISIBLE) it.visibility = View.VISIBLE }
         if (m.isNotEmpty() && System.currentTimeMillis() - lastErrAt > 8000) {
             lastErrAt = System.currentTimeMillis()
             AiErrorLog.record("WARN", "OCR", summary = m, action = "Bỏ qua khung lỗi và tiếp tục quét")
