@@ -336,13 +336,15 @@ for i in $(seq 1 180); do
   sleep 2
   adb logcat -d -s DG_SELFTEST:I > "$OUT/selftest.txt" 2>&1
   if grep -qE "OK system_tts|FAIL system_tts" "$OUT/selftest.txt" && \
-     grep -qE "OK offline_track|FAIL offline_track|FAIL download|FAIL offline_synthesis" "$OUT/selftest.txt"; then
+     grep -qE "OK offline_track|FAIL offline_track|FAIL download|FAIL offline_synthesis" "$OUT/selftest.txt" && \
+     grep -qE "OK offline_stop|FAIL offline_stop" "$OUT/selftest.txt"; then
     break
   fi
 done
 cat "$OUT/selftest.txt"
 grep -q "OK system_tts" "$OUT/selftest.txt" || echo "Không xác nhận được engine TTS hệ thống phát và đọc hết câu." > "$OUT/selftest-fail.txt"
-grep -q "OK offline_track" "$OUT/selftest.txt" || echo "Không xác nhận được AudioTrack offline vào trạng thái PLAYSTATE_PLAYING." >> "$OUT/selftest-fail.txt"
+grep -q "OK offline_track" "$OUT/selftest.txt" || echo "Không xác nhận được AudioTrack offline phát hết bộ đệm PCM." >> "$OUT/selftest-fail.txt"
+grep -q "OK offline_stop" "$OUT/selftest.txt" || echo "Không xác nhận được nút Dừng ngắt câu Offline đang phát." >> "$OUT/selftest-fail.txt"
 adb exec-out run-as "$PKG" cat files/selftest.wav > "$OUT/selftest.wav" 2>/dev/null || true
 adb shell am force-stop "$PKG"
 start_page voice; shot offline-da-tai
