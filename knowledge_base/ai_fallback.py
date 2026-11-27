@@ -40,10 +40,25 @@ class AIFallbackError(RuntimeError):
 
 
 class ProviderHTTPError(RuntimeError):
-    def __init__(self, message: str, *, retryable: bool = False, retry_after: float = 0):
+    def __init__(self, message: str, *, retryable: bool = False, retry_after: float = 0,
+                 status: int | None = None):
         super().__init__(message)
         self.retryable = retryable
         self.retry_after = retry_after
+        self.status = status
+
+
+def retry_delay(error: Exception, attempt: int, base_seconds: float) -> float | None:
+    """None means the caller must stop retrying this request."""
+    if isinstance(error, (TypeError, ValueError)):
+        return None
+    minimum = 0.0
+    if isinstance(error, ProviderHTTPError):
+        if not error.retryable or error.retry_after > 30:
+            return None
+        minimum = error.retry_after
+    window = min(30.0, base_seconds * (2 ** attempt))
+    return max(minimum, random.uniform(window / 2, window))
 
 
 class AIUnavailableError(AIFallbackError):
@@ -117,14 +132,9 @@ class AIFallback:
                     last_error = exc
                     if attempt >= self.max_retries:
                         raise
-                    if isinstance(exc, ProviderHTTPError) and not exc.retryable:
+                    delay = retry_delay(exc, attempt, self.retry_backoff_seconds)
+                    if delay is None:
                         raise
-                    minimum = exc.retry_after if isinstance(exc, ProviderHTTPError) else 0
-                    # Let the caller resume later instead of holding the translation lease.
-                    if minimum > 30:
-                        raise
-                    window = min(30.0, self.retry_backoff_seconds * (2 ** attempt))
-                    delay = max(minimum, random.uniform(window / 2, window))
                     if delay:
                         time.sleep(delay)
             assert last_error is not None

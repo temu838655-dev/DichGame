@@ -55,7 +55,7 @@ def _post_json(url: str, payload: dict, headers: dict[str, str], timeout: float)
         raise ProviderHTTPError(
             f"{message} HTTP {exc.code}",
             retryable=exc.code in (408, 429, 500, 502, 503, 504) and not quota,
-            retry_after=retry_after,
+            retry_after=retry_after, status=exc.code,
         ) from None
     except (URLError, TimeoutError):
         raise ProviderHTTPError("Mất kết nối với API", retryable=True) from None
