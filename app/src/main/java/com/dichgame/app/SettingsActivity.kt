@@ -35,6 +35,7 @@ class SettingsActivity : Activity() {
         speaker = Speaker(this, p)
         speaker?.onAiError = { m -> Toast.makeText(this, m, Toast.LENGTH_LONG).show() }
         speaker?.onSpeechError = { _, m -> Toast.makeText(this, m, Toast.LENGTH_LONG).show() }
+        speaker?.onSpeechWarning = { m -> Toast.makeText(this, m, Toast.LENGTH_LONG).show() }
         render()
         if (BuildConfig.DEBUG && intent?.getBooleanExtra("selftest", false) == true) SelfTest.voice(applicationContext)
     }
