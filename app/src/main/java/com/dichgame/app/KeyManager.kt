@@ -16,7 +16,6 @@ object KeyManager {
                 val result = call(key)
                 if (KeyRing.success(key, scope)) SessionStats.live.inc("khoa_doi")
                 TranslationLog.write("INFO", provider, index, key, null, "Key #" + index + " hoạt động; request thành công")
-                TranslationLog.setHealth(TranslationLog.Health.HEALTHY, provider + " hoạt động")
                 return result
             } catch (e: AiException) {
                 last = e
