@@ -204,6 +204,7 @@ class TranslateActivity : Activity() {
             val (label, color) = if (!enabled) "ĐÃ TẮT" to Ui.SUB else when (st.state) {
                 KeyRing.State.BAD -> "CẦN KIỂM TRA" to Ui.DANGER
                 KeyRing.State.QUOTA -> "TẠM NGHỈ · ${AiRetry.humanWait(st.leftMs)}" to Ui.DANGER
+                KeyRing.State.DAILY -> "HẾT LƯỢT NGÀY · ${AiRetry.humanWait(st.leftMs)}" to Ui.DANGER
                 KeyRing.State.OK -> if (st.active) "ĐANG DÙNG" to Ui.OK else "SẴN SÀNG" to Ui.GOLD
             }
             row.addView(Ui.badge(a, label, color))
