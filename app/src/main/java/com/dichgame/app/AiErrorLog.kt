@@ -6,6 +6,7 @@ import java.text.SimpleDateFormat
 import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
 
 /**
  * Private diagnostic log for translation, OCR and speech failures.
@@ -16,6 +17,7 @@ object AiErrorLog {
     private const val MAX_FILE_BYTES = 256 * 1024
     private val lock = Any()
     private val memory = ArrayDeque<String>()
+    private val writer = Executors.newSingleThreadExecutor { r -> Thread(r, "dg-ai-log").apply { isDaemon = true } }
     @Volatile private var logFile: File? = null
 
     fun initialize(context: Context) {
@@ -44,15 +46,22 @@ object AiErrorLog {
         synchronized(lock) {
             memory.addFirst(line)
             while (memory.size > MAX_MEMORY) memory.removeLast()
-            runCatching {
-                val file = logFile ?: return@runCatching
-                if (file.exists() && file.length() > MAX_FILE_BYTES) {
-                    val old = File(file.parentFile, file.name + ".1")
-                    if (old.exists()) old.delete()
-                    file.renameTo(old)
+        }
+        // Disk writes are serialized off the gameplay/OCR/TTS threads.
+        runCatching {
+            writer.execute {
+                synchronized(lock) {
+                    runCatching {
+                        val file = logFile ?: return@synchronized
+                        if (file.exists() && file.length() > MAX_FILE_BYTES) {
+                            val old = File(file.parentFile, file.name + ".1")
+                            if (old.exists()) old.delete()
+                            file.renameTo(old)
+                        }
+                        file.parentFile?.mkdirs()
+                        file.appendText(line + "\n", Charsets.UTF_8)
+                    }
                 }
-                file.parentFile?.mkdirs()
-                file.appendText(line + "\n", Charsets.UTF_8)
             }
         }
     }
@@ -63,10 +72,14 @@ object AiErrorLog {
     }
 
     fun clear() {
-        synchronized(lock) {
-            memory.clear()
-            runCatching { logFile?.delete() }
-            runCatching { logFile?.let { File(it.parentFile, it.name + ".1").delete() } }
+        synchronized(lock) { memory.clear() }
+        runCatching {
+            writer.execute {
+                synchronized(lock) {
+                    runCatching { logFile?.delete() }
+                    runCatching { logFile?.let { File(it.parentFile, it.name + ".1").delete() } }
+                }
+            }
         }
     }
 
