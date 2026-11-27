@@ -300,7 +300,10 @@ object Ai {
             try {
                 val result = translate(p, prompt)
                 if (usesGemini(p)) TranslationLog.setHealth(TranslationLog.Health.HEALTHY, "AI chính hoạt động")
-                else KeyManager.successSingle("CloudAPI", p.cloudKey.trim(), cloudScope(p))
+                else {
+                    KeyManager.successSingle("CloudAPI", p.cloudKey.trim(), cloudScope(p))
+                    TranslationLog.setHealth(TranslationLog.Health.HEALTHY, "CloudAPI hoạt động")
+                }
                 result
             } catch (e: AiException) {
                 if (!usesGemini(p)) reportCloudFailure(p, e)
