@@ -50,7 +50,7 @@ object AiErrorLog {
                     file.renameTo(old)
                 }
                 file.parentFile?.mkdirs()
-                file.appendText(line + "\\n", Charsets.UTF_8)
+                file.appendText(line + "\n", Charsets.UTF_8)
             }
         }
     }
@@ -68,13 +68,13 @@ object AiErrorLog {
         }
     }
 
-    fun exportText(): String = entries().joinToString("\\n")
+    fun exportText(): String = entries().joinToString("\n")
 
     private fun redact(value: String): String {
         var result = value
         // Defensive redaction for accidental provider messages containing credentials.
-        result = result.replace(Regex("(?i)(AIza)[A-Za-z0-9_-]{20,}"), "$1…[REDACTED]")
-        result = result.replace(Regex("(?i)(Bearer\\s+)[A-Za-z0-9._~-]{12,}"), "$1[REDACTED]")
+        result = result.replace(Regex("(?i)(AIza)[A-Za-z0-9_-]{20,}"), "\\$1…[REDACTED]")
+        result = result.replace(Regex("(?i)(Bearer\\s+)[A-Za-z0-9._~-]{12,}"), "\\$1[REDACTED]")
         return result
     }
 }
