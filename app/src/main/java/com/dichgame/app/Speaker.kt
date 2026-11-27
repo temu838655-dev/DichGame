@@ -94,6 +94,8 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
 
     @Volatile var ready = false
         private set
+    @Volatile var systemLanguageAvailable = false
+        private set
 
     /** Số câu đang đọc hoặc đang chờ (giọng máy), để biết câu có đang dồn lại không. */
     private val utterances = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -113,6 +115,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     var onSpeechStarted: ((String) -> Unit)? = null
     var onSpeechFinished: ((String) -> Unit)? = null
     var onSpeechError: ((String, String) -> Unit)? = null
+    var onSpeechWarning: ((String) -> Unit)? = null
 
     private fun finished(id: String?) { if (id != null) utterances.remove(id) }
 
@@ -164,13 +167,11 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                 val engine = tts ?: return@post
                 if (disposed || ready) return@post
                 val languageStatus = engine.setLanguage(Locale("vi", "VN"))
-                if (languageStatus < TextToSpeech.LANG_AVAILABLE) {
-                    systemInitFailed = true
-                    pendingSystem.clear()
+                systemLanguageAvailable = languageStatus >= TextToSpeech.LANG_AVAILABLE
+                if (!systemLanguageAvailable) {
                     main.post {
-                        if (!disposed) onSpeechError?.invoke("", "Thiết bị chưa có dữ liệu giọng tiếng Việt (mã $languageStatus).")
+                        if (!disposed) onSpeechWarning?.invoke("Thiết bị chưa có dữ liệu giọng tiếng Việt; giọng hệ thống có thể dùng ngôn ngữ mặc định.")
                     }
-                    return@post
                 }
                 engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) { systemStarted(utteranceId) }
