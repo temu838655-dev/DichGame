@@ -554,6 +554,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         nowEnds = now + dur + 30
         played++
         count("doc_doc")
+        onSpeechStarted?.invoke(c.text)
         return dur
     }
 
