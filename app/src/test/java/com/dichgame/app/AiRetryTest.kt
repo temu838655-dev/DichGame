@@ -235,6 +235,10 @@ class AiRetryTest {
         assertEquals(0L, AiRetry.retryDelayMs("0", ""))
     }
 
+    @Test fun parsesRetryAfterHttpDate() {
+        assertEquals(10_000L, AiRetry.retryDelayMs("Thu, 01 Jan 1970 00:00:10 GMT", "", now = 0L))
+    }
+
     @Test fun cooldownIsClamped() {
         assertEquals(20_000L, AiRetry.cooldownMs(0))
         assertEquals(5_000L, AiRetry.cooldownMs(1_000))
