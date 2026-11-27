@@ -59,8 +59,8 @@ class SessionStatsTest {
         assertEquals(500L, s.percentile(95))
         assertEquals(450L, s.speechPercentile(95))
         val report = s.report(2_000, 80)
-        assertTrue(report.contains("p95 0.5 giây"))
-        assertTrue(report.contains("p95 0.5 giây"))
+        assertTrue(report.contains("hiện phụ đề (5 câu): p50 0.3 giây, p95 0.5 giây"))
+        assertTrue(report.contains("bắt đầu đọc (4 câu): p50 0.3 giây, p95 0.5 giây"))
     }
 
     @Test fun ignoresAbsurdLatencies() {
