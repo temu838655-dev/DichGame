@@ -71,6 +71,7 @@ object SelfTest {
         val firstEvent = CountDownLatch(1)
         val finished = CountDownLatch(1)
         val failure = AtomicReference<String?>(null)
+        val warning = AtomicReference<String?>(null)
         val speaker = Speaker(ctx, Prefs(ctx).apply {
             voiceEngine = "system"
             rate10 = 10
@@ -83,14 +84,17 @@ object SelfTest {
             firstEvent.countDown()
             finished.countDown()
         }
+        speaker.onSpeechWarning = { warning.set(it) }
         return try {
             speaker.speak(text, interrupt = true)
             firstEvent.await(15, TimeUnit.SECONDS)
             val didStart = started.count == 0L
             val didFinish = didStart && finished.await(25, TimeUnit.SECONDS)
             val ok = didStart && didFinish && failure.get() == null
-            if (ok) Log.i(TAG, "OK system_tts started and completed Vietnamese utterance")
-            else Log.e(TAG, "FAIL system_tts started=$didStart finished=$didFinish error=${failure.get() ?: "timeout"}")
+            if (ok) {
+                Log.i(TAG, "OK system_tts started and completed utterance; viLocale=${speaker.systemLanguageAvailable}")
+                warning.get()?.let { Log.w(TAG, "WARN system_tts_locale: $it") }
+            } else Log.e(TAG, "FAIL system_tts started=$didStart finished=$didFinish error=${failure.get() ?: "timeout"}")
             ok
         } finally {
             speaker.shutdown()
