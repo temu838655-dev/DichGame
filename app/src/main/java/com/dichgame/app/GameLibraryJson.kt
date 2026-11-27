@@ -20,7 +20,7 @@ internal object GameLibraryJson {
         var space = false
         for (ch in n) {
             if (ch == '\'' || ch == '’' || ch == '‘' || ch == 'ʼ' || ch == '`') continue
-            if (Character.isLetterOrDigit(ch)) {
+            if (ch.isLetterOrDigit()) {
                 if (space && sb.isNotEmpty()) sb.append(' ')
                 sb.append(ch)
                 space = false
