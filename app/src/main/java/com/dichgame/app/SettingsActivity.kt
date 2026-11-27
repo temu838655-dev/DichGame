@@ -573,7 +573,7 @@ class SettingsActivity : Activity() {
             }
             group("SỰ KIỆN GẦN ĐÂY", 16, 4) {
                 val lines = AiErrorLog.entries()
-                addView(Ui.tv(a, if (lines.isEmpty()) "Chưa có nhật ký." else lines.take(100).joinToString("\\n"), 12.5f, Ui.SUB))
+                addView(Ui.tv(a, if (lines.isEmpty()) "Chưa có nhật ký." else lines.take(100).joinToString("\n"), 12.5f, Ui.SUB))
                 row(Ui.button(a, "Sao chép nhật ký") {
                     val clip = android.content.ClipData.newPlainText("DichGame AI log", AiErrorLog.exportText())
                     (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
