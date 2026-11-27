@@ -19,6 +19,7 @@ object AiErrorLog {
     private val memory = ArrayDeque<String>()
     private val writer = Executors.newSingleThreadExecutor { r -> Thread(r, "dg-ai-log").apply { isDaemon = true } }
     @Volatile private var logFile: File? = null
+    @Volatile private var clearPending = false
 
     fun initialize(context: Context) {
         logFile = File(context.applicationContext.filesDir, "ai-events.log")
@@ -67,17 +68,22 @@ object AiErrorLog {
     }
 
     fun entries(): List<String> = synchronized(lock) {
-        val fileLines = runCatching { logFile?.takeIf { it.exists() }?.readLines(Charsets.UTF_8).orEmpty() }.getOrDefault(emptyList())
+        val fileLines = if (clearPending) emptyList() else
+            runCatching { logFile?.takeIf { it.exists() }?.readLines(Charsets.UTF_8).orEmpty() }.getOrDefault(emptyList())
         (memory.toList() + fileLines.asReversed()).distinct().take(MAX_MEMORY)
     }
 
     fun clear() {
-        synchronized(lock) { memory.clear() }
+        synchronized(lock) {
+            memory.clear()
+            clearPending = true
+        }
         runCatching {
             writer.execute {
                 synchronized(lock) {
                     runCatching { logFile?.delete() }
                     runCatching { logFile?.let { File(it.parentFile, it.name + ".1").delete() } }
+                    clearPending = false
                 }
             }
         }
