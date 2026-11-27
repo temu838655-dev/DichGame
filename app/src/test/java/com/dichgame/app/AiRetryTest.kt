@@ -76,6 +76,8 @@ class AiRetryTest {
         assertTrue(AiRetry.canFallback(AiException(429, "insufficient_quota", billingLimit = true)))
         assertTrue(AiRetry.canFallback(ex(503)))
         assertTrue(AiRetry.canFallback(ex(401)))
+        assertFalse(AiRetry.canFallback(AiException(400, "Invalid JSON payload")))
+        assertTrue(AiRetry.canFallback(AiException(400, "API key not valid", badKey = true)))
         assertTrue(AiRetry.canFallback(SocketTimeoutException("timeout")))
         assertFalse(AiRetry.canFallback(ex(AiRetry.CODE_BLOCKED)))
         assertFalse(AiRetry.canFallback(ex(0)))
@@ -233,6 +235,10 @@ class AiRetryTest {
         assertEquals(0L, AiRetry.retryDelayMs(null, """{"error":{"code":429}}"""))
         assertEquals(0L, AiRetry.retryDelayMs("Wed, 21 Oct 2026 07:28:00 GMT", ""))   // dạng ngày: bỏ qua
         assertEquals(0L, AiRetry.retryDelayMs("0", ""))
+    }
+
+    @Test fun parsesRetryAfterHttpDate() {
+        assertEquals(10_000L, AiRetry.retryDelayMs("Thu, 01 Jan 1970 00:00:10 GMT", "", now = 0L))
     }
 
     @Test fun cooldownIsClamped() {

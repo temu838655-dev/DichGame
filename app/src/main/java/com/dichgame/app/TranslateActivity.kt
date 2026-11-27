@@ -113,6 +113,11 @@ class TranslateActivity : Activity() {
                     13f, Ui.SUB).apply { setPadding(Ui.dp(a, 10), 0, Ui.dp(a, 10), 0) }, 12, 0)
                 }
             }
+            group("CHẨN ĐOÁN", 14) {
+                addView(Ui.navRow(a, null, "Nhật ký lỗi AI", "Xem lỗi dịch/thuyết minh, trạng thái khóa và sao chép nhật ký") {
+                    startActivity(Intent(a, SettingsActivity::class.java).putExtra("page", "logs"))
+                })
+            }
         }
     }
 
@@ -177,7 +182,7 @@ class TranslateActivity : Activity() {
         if (keys.isNotEmpty()) {
             val enabledCount = keys.count { p.isGeminiKeyEnabled(it) }
             val usableCount = keys.count { p.isGeminiKeyEnabled(it) && KeyRing.status(it, p.geminiModel).state == KeyRing.State.OK }
-            val cooldownCount = keys.count { p.isGeminiKeyEnabled(it) && KeyRing.status(it, p.geminiModel).state == KeyRing.State.QUOTA }
+            val cooldownCount = keys.count { p.isGeminiKeyEnabled(it) && KeyRing.status(it, p.geminiModel).state in setOf(KeyRing.State.QUOTA, KeyRing.State.DAILY) }
             val invalidCount = keys.count { p.isGeminiKeyEnabled(it) && KeyRing.status(it, p.geminiModel).state == KeyRing.State.BAD }
             c.addView(
                 Ui.tv(a, "Tổng ${keys.size} khóa · bật ${enabledCount} · khả dụng ${usableCount} · tạm nghỉ ${cooldownCount} · cần kiểm tra ${invalidCount} · tắt ${keys.size - enabledCount}", 12.5f, Ui.SUB),
@@ -199,6 +204,7 @@ class TranslateActivity : Activity() {
             val (label, color) = if (!enabled) "ĐÃ TẮT" to Ui.SUB else when (st.state) {
                 KeyRing.State.BAD -> "CẦN KIỂM TRA" to Ui.DANGER
                 KeyRing.State.QUOTA -> "TẠM NGHỈ · ${AiRetry.humanWait(st.leftMs)}" to Ui.DANGER
+                KeyRing.State.DAILY -> "HẾT LƯỢT NGÀY · ${AiRetry.humanWait(st.leftMs)}" to Ui.DANGER
                 KeyRing.State.OK -> if (st.active) "ĐANG DÙNG" to Ui.OK else "SẴN SÀNG" to Ui.GOLD
             }
             row.addView(Ui.badge(a, label, color))

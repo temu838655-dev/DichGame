@@ -76,7 +76,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (!running || speaker == null) return
         runCatching { speaker?.shutdown() }
         speaker = try {
-            Speaker(act, Prefs(act)).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() }; if (Prefs(act).voiceEngine == "offline") sp.prepare() }
+            Speaker(act, Prefs(act)).also { sp -> if (Prefs(act).voiceEngine == "offline") sp.prepare() }
         } catch (_: Throwable) { null }
     }
 
@@ -188,7 +188,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (!running) return
         if (on && speaker == null) {
             try {
-                speaker = Speaker(act, Prefs(act)).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() } }
+                speaker = Speaker(act, Prefs(act)).also { sp ->  }
             } catch (_: Throwable) { speaker = null }
         } else if (!on) {
             runCatching { speaker?.shutdown() }
@@ -222,7 +222,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         try {
             ocr = Ocr(pr, lang)
             if (speak) {
-                speaker = Speaker(act, pr).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() } }
+                speaker = Speaker(act, pr)
             }
             activeGameContext = gameContext(pr)
             speakers = SpeakerBook(PackStore.cast(pr).map { it.name } + pr.detectedSpeakers())
@@ -249,7 +249,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         } catch (e: Throwable) {
             Log.e(TAG, "start loi", e)
             CrashLog.mark("dich:loi " + e.javaClass.simpleName)
-            Toast.makeText(act, "Không bật được dịch phụ đề: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+            AiErrorLog.record("ERROR", "DỊCH", summary = e.message ?: e.javaClass.simpleName, action = "Dừng luồng lỗi, giữ nguyên phiên Remote Play")
             stop()
         }
     }
@@ -427,16 +427,24 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     private fun reportErr(m: String) {
         val now = System.currentTimeMillis()
-        if (now - lastErrAt > 8000) { lastErrAt = now; notice(m) }
+        if (now - lastErrAt > 8000) {
+            lastErrAt = now
+            AiErrorLog.record("WARN", "OCR", summary = m, action = "Tiếp tục quét khung hình tiếp theo")
+        }
     }
 
-    /** Thông báo của app (đang tải, lỗi...): thay dòng phụ đề đang hiện. */
+    /** Status/error messages are private diagnostics; this overlay only carries translated captions. */
     private fun notice(t: String) {
-        pacer.cleared(); handler.removeCallbacks(hideCheck)
-        if (t.isEmpty()) sendTv("clear", "")
+        if (t.isNotEmpty()) {
+            AiErrorLog.record(if (AiErrorLog.isDiagnosticText(t)) "WARN" else "INFO", "OCR", summary = t, action = "Không thay phụ đề game bằng trạng thái ứng dụng")
+            return
+        }
+        pacer.cleared()
+        handler.removeCallbacks(hideCheck)
+        sendTv("clear", "")
         if (adjusting) return
-        view.text = t
-        view.visibility = if (t.isEmpty()) View.GONE else View.VISIBLE
+        view.text = ""
+        view.visibility = View.GONE
     }
 
     // ---- nhận lời nghe được từ âm thanh game
@@ -768,7 +776,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
                 sendTv("sub", text, true, force = true)
                 if (!tvVoiceWarned) {
                     tvVoiceWarned = true
-                    handler.post { Toast.makeText(act, "Không gửi được tiếng sang TV ($err). TV đọc bằng giọng của TV.", Toast.LENGTH_LONG).show() }
+                    AiErrorLog.record("WARN", "THUYẾT MINH", summary = err, action = "Chuyển sang giọng đọc tích hợp của TV")
                 }
             }
         }

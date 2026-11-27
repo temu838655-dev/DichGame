@@ -13,11 +13,12 @@ object KeyRing {
     /** Khóa sai: nghỉ chừng này rồi mới thử lại (người dùng sửa khóa thì thành khóa mới nên dùng được ngay). */
     const val BAD_MS = 30 * 60_000L
     /** Hết lượt mà máy chủ không nói chờ bao lâu: coi như hết lượt theo phút. */
-    const val DEFAULT_QUOTA_MS = 30_000L
+    const val DEFAULT_QUOTA_MS = 60_000L
     private const val MIN_QUOTA_MS = 1_000L
-    private const val MAX_MINUTE_QUOTA_MS = 10 * 60_000L
+    private const val MAX_MINUTE_QUOTA_MS = 24 * 60 * 60_000L
 
     private val until = HashMap<String, Long>()
+    private val dailyUntil = HashMap<String, Long>()
     private val bad = HashMap<String, Long>()
     private val current = HashMap<String, String>()
     /** Provider/model-wide billing cap shared by every key in the same scope. */
@@ -27,7 +28,17 @@ object KeyRing {
 
     private fun id(key: String, scope: String) = scope + "|" + key
 
-    enum class State { OK, QUOTA, BAD }
+    /** Normalize pasted multi-key input. */
+    fun normalizeKeys(raw: String): List<String> {
+        val seen = LinkedHashSet<String>()
+        raw.split(Regex("[\\r\\n,;]+")).forEach { line ->
+            val key = line.filterNot { it.isWhitespace() || it.isISOControl() }.trim()
+            if (key.isNotEmpty()) seen.add(key)
+        }
+        return seen.toList()
+    }
+
+    enum class State { OK, QUOTA, DAILY, BAD }
 
     /** Tình trạng một khóa: [state], và còn [leftMs] mili giây nữa mới dùng lại được (0 nếu đang dùng được). */
     class Status(val state: State, val leftMs: Long, val active: Boolean)
@@ -37,6 +48,8 @@ object KeyRing {
         if (b > 0) return Status(State.BAD, b, false)
         val billing = (billingUntil[scope] ?: 0L) - now
         if (billing > 0) return Status(State.QUOTA, billing, false)
+        val daily = (dailyUntil[id(key, scope)] ?: 0L) - now
+        if (daily > 0) return Status(State.DAILY, daily, false)
         val q = (until[id(key, scope)] ?: 0L) - now
         if (q > 0) return Status(State.QUOTA, q, false)
         return Status(State.OK, 0L, current[scope] == key)
@@ -96,6 +109,12 @@ object KeyRing {
         if (t > (until[id(key, scope)] ?: 0L)) until[id(key, scope)] = t
     }
 
+    /** Daily RPD is exhausted for this key/model until the provider's Pacific-midnight reset. */
+    @Synchronized fun blockDaily(key: String, scope: String, ms: Long, now: Long = System.currentTimeMillis()) {
+        val t = now + ms
+        if (t > (dailyUntil[id(key, scope)] ?: 0L)) dailyUntil[id(key, scope)] = t
+    }
+
     /** Billing/spend caps apply to every key in the same provider/model scope. */
     @Synchronized fun blockBilling(scope: String, ms: Long, now: Long = System.currentTimeMillis()) {
         val t = now + ms
@@ -115,9 +134,13 @@ object KeyRing {
     @Synchronized fun forget(key: String) {
         bad.remove(key)
         until.keys.removeAll { it.endsWith("|$key") }
+        dailyUntil.keys.removeAll { it.endsWith("|$key") }
     }
 
-    @Synchronized fun reset() { until.clear(); bad.clear(); current.clear(); inFlight.clear(); billingUntil.clear() }
+    /** Reset health/cooldown state without invalidating leases held by in-flight translation/TTS calls. */
+    @Synchronized fun resetStatuses() { until.clear(); dailyUntil.clear(); bad.clear(); current.clear(); billingUntil.clear() }
+
+    @Synchronized fun reset() { resetStatuses(); inFlight.clear() }
 
     /**
      * Mọi khóa đều đang nghỉ: còn bao lâu nữa khóa sớm nhất dùng lại được (mili giây). 0 nếu có khóa dùng được ngay;
@@ -165,8 +188,10 @@ object KeyRing {
         if (code == 401) return true
         if (code != 400 && code != 403) return false
         val b = body.lowercase()
-        return b.contains("api_key_invalid") || b.contains("api key not valid") || b.contains("api key expired") ||
-            b.contains("api key was reported as leaked") || b.contains("reported as leaked") || b.contains("api key is invalid")
+        val invalidCredential = listOf("api_key_invalid", "api key not valid", "api key expired", "api key was reported as leaked", "reported as leaked", "api key is invalid", "invalid api key", "invalid api_key", "key is invalid", "key has been revoked", "api key revoked", "api key was revoked", "invalid credential", "credential is invalid").any { b.contains(it) }
+        val explicitKeyPermission = b.contains("api key") &&
+            listOf("permission", "not authorized", "access denied", "forbidden").any { b.contains(it) }
+        return invalidCredential || code == 403 && explicitKeyPermission
     }
 
     /** Mốc 0 giờ sáng kế tiếp theo giờ Thái Bình Dương (Gemini hồi hạn mức theo ngày vào lúc đó), thêm một phút cho chắc. */
@@ -192,7 +217,8 @@ object KeyRing {
     fun report(key: String, scope: String, e: AiException, now: Long = System.currentTimeMillis()): Boolean = when {
         e.badKey -> { blockBad(key, now); true }
         e.billingLimit -> { blockBilling(scope, maxOf(60 * 60_000L, e.retryAfterMs), now); true }
-        e.code == 429 -> { blockQuota(key, scope, quotaBlockMs(e.retryAfterMs, e.perDay, now), now); true }
+        e.code == 429 && e.perDay -> { blockDaily(key, scope, quotaBlockMs(e.retryAfterMs, true, now), now); true }
+        e.code == 429 -> { blockQuota(key, scope, quotaBlockMs(e.retryAfterMs, false, now), now); true }
         else -> false
     }
 }

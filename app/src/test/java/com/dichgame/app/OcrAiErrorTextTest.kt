@@ -1,5 +1,6 @@
 package com.dichgame.app
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,6 +22,28 @@ class OcrAiErrorTextTest {
     @Test fun authAndModelErrorsAreNotCalledQuota() {
         assertTrue(ocrAiErrorText(AiException(401, "unauthorized")).contains("khóa API sai"))
         assertTrue(ocrAiErrorText(AiException(404, "model missing")).contains("model hoặc endpoint"))
+    }
+
+    @Test fun privateLogNeverPersistsAFullGeminiKey() {
+        val key = "AIzaSyExamplePrivateKey1234567890"
+        AiErrorLog.clear()
+        AiErrorLog.record("WARN", "DỊCH", 1, key, 429, "Quota for key $key", "Đổi sang khóa #2")
+        val line = AiErrorLog.entries().first()
+        assertTrue(line.contains(key.takeLast(4)))
+        assertFalse(line.contains(key))
+    }
+
+    @Test fun diagnosticMessagesAreNeverSubtitleText() {
+        assertTrue(AiErrorLog.isDiagnosticText("HTTP 429 RESOURCE_EXHAUSTED"))
+        assertTrue(AiErrorLog.isDiagnosticText("HTTP 503 Service Unavailable"))
+        assertFalse(AiErrorLog.isDiagnosticText("Bạn còn lại 520 vàng"))
+        assertEquals(TranslationGuard.Level.REJECT, TranslationGuard.check("Hello", "HTTP 429 RESOURCE_EXHAUSTED", sourceLang = "en").level)
+        assertEquals(TranslationGuard.Level.REJECT, TranslationGuard.check("Hello", "400 INVALID_ARGUMENT", sourceLang = "en").level)
+        assertEquals(TranslationGuard.Level.SUSPECT, TranslationGuard.check("You have 250 gold left.", "Bạn còn lại 520 vàng.", sourceLang = "en").level)
+        assertTrue(AiErrorLog.isDiagnosticText("Lỗi API: quota exceeded"))
+        assertTrue(AiErrorLog.isDiagnosticText("Không dịch được: timeout"))
+        assertFalse(AiErrorLog.isDiagnosticText("Đừng bỏ tôi lại!"))
+        assertFalse(AiErrorLog.isDiagnosticText("Cẩn thận, phía trước có kẻ địch!"))
     }
 
     @Test fun networkAndServerErrorsHaveDistinctMessages() {

@@ -585,9 +585,7 @@ class PackActivity : Activity() {
             return
         }
         if (voicePreview == null) {
-            voicePreview = Speaker(this, p).apply {
-                onAiError = { message -> Toast.makeText(this@PackActivity, message, Toast.LENGTH_LONG).show() }
-            }
+            voicePreview = Speaker(this, p)
         }
         voicePreview?.speak("Xin chào, đây là giọng đọc tiếng Việt của nhân vật $name.", speakerName = name, interrupt = true)
     }

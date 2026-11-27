@@ -452,7 +452,6 @@ class WebTranslateActivity : Activity() {
         setContentView(root)
 
         speaker = Speaker(this, p)
-        speaker?.onAiError = { m -> Toast.makeText(this, m, Toast.LENGTH_LONG).show() }
         applyFont()
         applyOrientation()
         refresh()
@@ -562,6 +561,10 @@ class WebTranslateActivity : Activity() {
 
     private fun setPanel(vi: String, orig: String) {
         applyFont()
+        if (AiErrorLog.isDiagnosticText(vi)) {
+            AiErrorLog.record("WARN", "OCR", summary = vi, action = "Không hiển thị lỗi trong khung phụ đề video")
+            return
+        }
         val grey = vi.startsWith("Bấm nút dịch") || vi.startsWith("Đang ") || vi.startsWith("Đã tạm") || vi.startsWith("Không ") ||
             vi.startsWith("Khung đang") || vi.startsWith("Chưa thấy") || vi.startsWith("Máy không") || vi.startsWith("Bộ đọc chữ")
         if (grey) textView.setTextColor(Ui.SUB)
@@ -721,7 +724,7 @@ class WebTranslateActivity : Activity() {
             }
         } catch (e: Throwable) {
             Log.e(TAG, "dich loi", e)
-            setPanel("Không dịch được: ${e.message ?: e.javaClass.simpleName}", "")
+            AiErrorLog.record("ERROR", "DỊCH", summary = e.message ?: e.javaClass.simpleName, action = "Giữ phụ đề trước đó và tiếp tục quét")
         }
     }
 
@@ -797,9 +800,11 @@ class WebTranslateActivity : Activity() {
                 failScans++
                 Log.i(TAG, "ocr loi '$m' (lan $failScans)")
                 // lần đọc lỗi thì chưa coi là đã đọc ảnh này: ảnh đứng yên vẫn được thử lại
-                if (m.isNotEmpty()) { setPanel(m, ""); scheduleScan(4000) }
-                else {
-                    if (failScans >= 3 && !gotText) setPanel("Bộ đọc chữ trên máy chưa chạy được. Đang thử lại…", "")
+                if (m.isNotEmpty()) {
+                    AiErrorLog.record("WARN", "OCR", summary = m, action = "Tiếp tục quét video")
+                    scheduleScan(4000)
+                } else {
+                    if (failScans >= 3 && !gotText) AiErrorLog.record("WARN", "OCR", summary = "Bộ đọc chữ trên máy chưa chạy được", action = "Thử lại ở khung hình tiếp theo")
                     scheduleScan(if (failScans >= 3) 2000 else interval())
                 }
             },

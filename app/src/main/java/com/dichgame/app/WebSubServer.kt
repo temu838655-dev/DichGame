@@ -62,6 +62,10 @@ class WebSubServer(private val port: Int = 8780, private val clock: () -> Long =
 
     /** Đặt phụ đề hiện tại (chuỗi rỗng = xóa chữ). */
     fun push(t: String, kind: String = "sub", speak: Boolean = false) {
+        if (kind != "clear" && AiErrorLog.isDiagnosticText(t)) {
+            AiErrorLog.record("WARN", "OCR", summary = "WebSubServer chặn nội dung chẩn đoán", action = "Không phát thông báo lỗi lên trình duyệt TV")
+            return
+        }
         synchronized(lock) {
             val oldText = text
             val oldRegion = region

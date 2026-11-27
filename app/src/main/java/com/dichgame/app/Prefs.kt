@@ -119,7 +119,7 @@ class Prefs(ctx: Context) {
 
     /** All Gemini keys in display order, including keys manually disabled by the player. */
     fun geminiStoredKeys(): List<String> =
-        (listOf(geminiKey) + geminiSpare.lines()).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        KeyRing.normalizeKeys(listOf(geminiKey, geminiSpare).joinToString("\n"))
 
     private fun geminiKeyId(key: String): String =
         java.security.MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8))
@@ -142,7 +142,7 @@ class Prefs(ctx: Context) {
     /** Save keys atomically; newly added keys become usable and removed keys lose their disabled marker. */
     fun setGeminiKeys(list: List<String>): Boolean {
         val before = geminiStoredKeys().toSet()
-        val k = list.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val k = KeyRing.normalizeKeys(list.joinToString("\n"))
         if (!ApiSecrets.write(app, mapOf("key" to k.firstOrNull().orEmpty(), "keys2" to k.drop(1).joinToString("\n")))) return false
         val keepIds = k.map { geminiKeyId(it) }.toSet()
         val disabled = (sp.getStringSet("gemini_disabled_keys", emptySet()) ?: emptySet()).filter { it in keepIds }.toSet()

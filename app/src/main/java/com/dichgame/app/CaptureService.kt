@@ -232,10 +232,11 @@ class CaptureService : Service() {
         }
     }
 
-    /** Bắt đầu thất bại: ghi lại, báo cho người dùng và dừng gọn thay vì để app đóng đột ngột. */
+    /** Bắt đầu thất bại: ghi log riêng và dừng gọn thay vì đưa lỗi lên màn hình game. */
     private fun failStart(msg: String): Int {
         CrashLog.mark("capture:loi $msg")
-        try { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show() } catch (_: Throwable) {}
+        AiErrorLog.initialize(applicationContext)
+        AiErrorLog.record("ERROR", "OCR", summary = msg, action = "Không hiển thị lỗi lên màn hình game")
         stopSelf()
         return START_NOT_STICKY
     }
@@ -275,7 +276,6 @@ class CaptureService : Service() {
         addOverlay()
         if (speak) {
             val sp = Speaker(this, Prefs(this))
-            sp.onAiError = { m -> android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_LONG).show() }
             speaker = sp
         }
 
@@ -350,9 +350,10 @@ class CaptureService : Service() {
 
     /** Nghe âm thanh game trên điện thoại: thu PCM -> VAD + Whisper offline -> bộ hợp nhất. Lỗi gì cũng chỉ báo và vẫn dịch bằng chữ. */
     private fun startPhoneAudio(micFgs: Boolean) {
+        AiErrorLog.initialize(applicationContext)
         val dir = java.io.File(filesDir, "whisper-tiny")
         if (!WhisperTinyModelInstaller(dir).isInstalled()) {
-            android.widget.Toast.makeText(this, "Chưa tải mô hình nhận dạng giọng nói (Cài đặt › Nhận dạng lời thoại bằng âm thanh). Đang dịch chỉ bằng chữ trên màn hình.", android.widget.Toast.LENGTH_LONG).show()
+            AiErrorLog.record("WARN", "OCR", summary = "Chưa tải mô hình nhận dạng giọng nói", action = "Tiếp tục dịch bằng OCR trên màn hình")
             stats.inc("nguon_khong")
             return
         }
@@ -364,7 +365,7 @@ class CaptureService : Service() {
                 modelDirectory = dir,
                 language = lang,
                 onTranscript = { t -> handler.post { acceptAudioTranscript(t, 0L, 1f) } },
-                onError = { m -> handler.post { android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_LONG).show() } },
+                onError = { m -> AiErrorLog.record("WARN", "OCR", summary = m, action = "Tiếp tục nhận dạng ở đoạn âm thanh tiếp theo") },
                 onTranscriptMeta = { t, ms, rms -> handler.post { acceptAudioTranscript(t, ms, rms) } },
             )
             audioWorker = w
@@ -375,7 +376,7 @@ class CaptureService : Service() {
             phoneAudio = cap
             cap.start()
         } catch (e: Throwable) {
-            android.widget.Toast.makeText(this, "Không bật được nghe âm thanh game: ${e.message ?: e.javaClass.simpleName}. Vẫn dịch bằng chữ trên màn hình.", android.widget.Toast.LENGTH_LONG).show()
+            AiErrorLog.record("WARN", "OCR", summary = e.message ?: e.javaClass.simpleName, action = "Tiếp tục dịch bằng OCR trên màn hình")
             stats.inc("nguon_khong")
         }
     }
@@ -391,7 +392,7 @@ class CaptureService : Service() {
             "none:system" -> { stats.inc("nguon_khong"); "Máy hoặc game không cho thu âm thanh trong và micro đang tắt (Cài đặt › Nhận dạng lời thoại). Vẫn dịch bằng chữ trên màn hình." }
             else -> { stats.inc("nguon_khong"); "Không mở được micro. Vẫn dịch bằng chữ trên màn hình." }
         }
-        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
+        AiErrorLog.record(if (mode.startsWith("none")) "WARN" else "INFO", "OCR", summary = msg, action = "Không làm gián đoạn phụ đề đang hiển thị")
     }
 
     private fun addOverlay() {
@@ -949,12 +950,14 @@ class CaptureService : Service() {
         if (running && ready && !editing && !narrate && (jobs.isNotEmpty() || pacer.queued > 0)) handler.post { pump() }
     }
 
-    /** Lỗi đọc chữ: mở khóa để quét lại, chỉ hiện thông báo lỗi của Gemini (không báo lỗi đọc trên máy), tối đa 8 giây một lần. */
+    /** Lỗi OCR: ghi log riêng, mở khóa để tiếp tục quét; không thay phụ đề hiện tại bằng lỗi. */
     private fun ocrFail(m: String) {
         finishBusy()
         lastSig = null; lastFine = null
-        overlay?.let { if (it.visibility != View.VISIBLE) it.visibility = View.VISIBLE }
-        if (m.isNotEmpty() && System.currentTimeMillis() - lastErrAt > 8000) { lastErrAt = System.currentTimeMillis(); show(m) }
+        if (m.isNotEmpty() && System.currentTimeMillis() - lastErrAt > 8000) {
+            lastErrAt = System.currentTimeMillis()
+            AiErrorLog.record("WARN", "OCR", summary = m, action = "Bỏ qua khung lỗi và tiếp tục quét")
+        }
     }
 
     /** Vùng dịch: khung cam, thả tay là dịch ngay vùng đó (nhiệm vụ, thư, mô tả vật phẩm). Bấm lần nữa để đóng. */
@@ -1086,7 +1089,7 @@ class CaptureService : Service() {
                 val canNarrate = TranslationSpeechPolicy.isSpeakable(
                     TranslationSpeechPolicy.Candidate(vi.text, vi.uncertain)
                 )
-                show(vi.caption, readAloud = canNarrate)
+                show(vi.caption, readAloud = canNarrate, translated = true)
                 hideRegionFrame()
                 sendTv("region", vi.caption, canNarrate && speak && tvSpeakOn() && !tvVoiceOn())
                 if (canNarrate && speak && tvVoiceOn()) tvVoice(vi.text)
@@ -1124,7 +1127,7 @@ class CaptureService : Service() {
                 sendTv("sub", text, true, force = true)
                 if (!tvVoiceWarned) {
                     tvVoiceWarned = true
-                    handler.post { android.widget.Toast.makeText(this, "Không gửi được tiếng sang TV ($err). TV đọc bằng giọng của TV; nếu TV chưa cập nhật hãy cài bản TV mới.", android.widget.Toast.LENGTH_LONG).show() }
+                    AiErrorLog.record("WARN", "THUYẾT MINH", summary = err, action = "Chuyển sang giọng đọc tích hợp của TV")
                 }
             }
         }
@@ -1396,8 +1399,11 @@ class CaptureService : Service() {
         if (tlp.gravity != g) { tlp.gravity = g; wm.updateViewLayout(o, tlp) }
     }
 
-    private fun show(t: String, readAloud: Boolean = true) {
-        // mọi thông báo hay lệnh xoá đều thay thế dòng phụ đề đang hiện: bộ giữ nhịp phải biết là đã hết
+    private fun show(t: String, readAloud: Boolean = true, translated: Boolean = false) {
+        if (t.isNotEmpty() && (!translated || AiErrorLog.isDiagnosticText(t))) {
+            AiErrorLog.record("WARN", "OCR", summary = t, action = "Không thay phụ đề bằng thông báo kỹ thuật")
+            return
+        }
         pacer.cleared(); handler.removeCallbacks(hideCheck)
         if (t.isEmpty()) { clearMenuOverlay(); sendTv("clear", "") }
         overlay?.apply { text = t; visibility = if (t.isEmpty()) View.GONE else View.VISIBLE }

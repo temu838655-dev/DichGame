@@ -12,6 +12,11 @@ import java.util.concurrent.FutureTask
 internal class RequestDeduplicator<K : Any, V> {
     private val inFlight = ConcurrentHashMap<K, FutureTask<V>>()
 
+    companion object {
+        /** Stable OCR text identity: ignore casing, punctuation and spacing noise. */
+        fun normalizedTextKey(text: String): String = OcrGuard.key(text)
+    }
+
     fun execute(key: K, call: () -> V): V {
         val created = FutureTask(Callable { call() })
         val existing = inFlight.putIfAbsent(key, created)

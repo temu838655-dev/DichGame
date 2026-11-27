@@ -72,6 +72,17 @@ class SpeechQueueTest {
         assertFalse(SpeechPolicy.isDraftOf(SpeechPolicy.norm("Đi thôi nào"), SpeechPolicy.norm("Chờ đã, đi thôi nào")))
     }
 
+    @Test fun newerCompleteLineReplacesAnOlderIncrementalDraft() {
+        val q = SpeechQueue<String>(maxPending = 3)
+        q.add("The door is", 0)
+        val finalLine = "The door is open"
+        val removed = q.removeAll { SpeechPolicy.isDraftOf(SpeechPolicy.norm(it), SpeechPolicy.norm(finalLine)) }
+        assertEquals(listOf("The door is"), removed)
+        q.add(finalLine, 100)
+        assertEquals(finalLine, q.poll())
+        assertNull(q.poll())
+    }
+
     @Test fun limitsAreSane() {
         assertTrue(SpeechPolicy.MAX_PENDING in 1..4)
         assertTrue(SpeechPolicy.STALE_MS in 3_000L..30_000L)

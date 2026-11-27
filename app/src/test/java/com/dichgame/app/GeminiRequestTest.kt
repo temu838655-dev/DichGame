@@ -14,6 +14,16 @@ class GeminiRequestTest {
         assertTrue(!body.has("safetySettings"))
     }
 
+    @Test fun requestTextSanitizerDropsControlCharactersAndBoundsLength() {
+        assertEquals("Xin chào\nđừng đi", Ai.cleanRequestText("  Xin chào\u0000\nđừng đi\u0007  "))
+        assertEquals(5, Ai.cleanRequestText("123456789", 5).length)
+        assertEquals("", Ai.cleanRequestText("\u0000\u0007"))
+    }
+
+    @Test fun translationDedupIgnoresOcrPunctuationAndSpacingNoise() {
+        assertEquals(Ai.canonicalRequestText("  Don't move!  "), Ai.canonicalRequestText("dont   move"))
+    }
+
     @Test fun safetySettingsAreOnlyIncludedWhenRequested() {
         val body = Ai.geminiBody("hello", withSafety = true)
         assertEquals(4, body.getJSONArray("safetySettings").length())

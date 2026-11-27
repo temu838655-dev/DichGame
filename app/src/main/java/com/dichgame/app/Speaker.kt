@@ -28,6 +28,7 @@ data class VoiceLine(val text: String, val speaker: String?, val delivery: Deliv
 
 class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Unit)? = null) {
     private val app = ctx.applicationContext
+    init { AiErrorLog.initialize(app) }
     private val offline = OfflineVoice(app)
     private var tts: TextToSpeech? = null
     private val main = Handler(Looper.getMainLooper())
@@ -106,8 +107,6 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         try { exec.execute { if (!disposed) task() } } catch (_: java.util.concurrent.RejectedExecutionException) {}
     }
 
-    /** Được gọi (ở luồng chính) khi giọng AI lỗi; Speaker tự đọc bằng giọng máy thay thế. */
-    var onAiError: ((String) -> Unit)? = null
     private var aiErrorShown = false
 
     init {
@@ -506,13 +505,19 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                 if (useOffline) {
                     val pcm: Pcm? = try {
                         offlinePcm(id, text, speed)
-                    } catch (_: Throwable) { null }
+                    } catch (e: Throwable) {
+                        AiErrorLog.record("ERROR", "THUYẾT MINH", summary = e.message ?: e.javaClass.simpleName, action = "Dùng giọng đọc thay thế")
+                        null
+                    }
                     if (!disposed && my == tvSeq.get()) cb(pcm, 1f) // tốc độ đã nằm trong âm thanh
                 } else {
                     val voiceName = p.aiVoiceFor(speakerName, text)
                     val pcm: Pcm? = try {
                         aiPcm(text, style, voiceName)
-                    } catch (_: Exception) { null }
+                    } catch (e: Exception) {
+                        AiErrorLog.record("ERROR", "THUYẾT MINH", httpCode = (e as? AiException)?.code, summary = e.message ?: e.javaClass.simpleName, action = "Dùng giọng máy trên TV")
+                        null
+                    }
                     if (!disposed && my == tvSeq.get()) cb(pcm, speed)
                 }
             }
@@ -527,7 +532,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
                 e is AiException -> "Giọng AI lỗi ${e.code}, đọc bằng giọng máy."
                 else -> "Giọng AI không dùng được, đọc bằng giọng máy."
             }
-            onAiError?.invoke(m)
+            AiErrorLog.record("ERROR", "THUYẾT MINH", httpCode = (e as? AiException)?.code, summary = m, action = "Lùi về giọng máy")
         }
         speakSystem(text, false, d)
     }

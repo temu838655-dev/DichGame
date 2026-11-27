@@ -19,6 +19,8 @@ object Ai {
     private val requestDeduplicator = RequestDeduplicator<String, String>()
 
     /** Fingerprint request scope and active credentials without retaining secrets in the map key. */
+    internal fun canonicalRequestText(prompt: String): String = RequestDeduplicator.normalizedTextKey(prompt)
+
     private fun translationRequestKey(p: Prefs, prompt: String): String {
         val providerScope = when {
             p.aiAuto -> "auto|fallback:${p.autoCloudFallback}|gemini:${p.geminiModel}|cloud:${cloudEndpoint(p.cloudUrl)}|${p.cloudModel}"
@@ -32,7 +34,7 @@ object Ai {
             p.engine == Prefs.ENGINE_CLOUD -> p.cloudKey
             else -> ""
         }
-        val material = providerScope + "\u0000" + credentials + "\u0000" + prompt
+        val material = providerScope + "\u0000" + credentials + "\u0000" + canonicalRequestText(prompt)
         return MessageDigest.getInstance("SHA-256").digest(material.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
     }
@@ -46,6 +48,12 @@ object Ai {
      * Câu lệnh dịch một câu thoại. [terms] là bảng thuật ngữ (chỉ đưa các từ có trong câu, bắt buộc dùng đúng),
      * [cast] là thẻ nhân vật, [emo] bật dịch theo cảm xúc và tiết tấu (AI mở đầu bằng thẻ [cảm xúc|nhịp]).
      */
+    internal fun cleanRequestText(value: String, maxChars: Int = 6000): String =
+        value.replace(Regex("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]"), "")
+            .replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
+            .trim()
+            .take(maxChars)
+
     internal fun boundedHistory(history: List<String>, budget: Int = 1200): List<String> {
         var remaining = budget.coerceAtLeast(0)
         val kept = ArrayList<String>()
@@ -102,12 +110,15 @@ object Ai {
     private fun autoCloud(p: Prefs): Boolean = p.autoCloudFallback &&
         p.cloudUrl.startsWith("https://", ignoreCase = true) && p.cloudKey.isNotBlank() && p.cloudModel.isNotBlank()
 
-    private fun cloudScope(p: Prefs) = "cloud:" + p.cloudUrl + ":" + p.cloudModel
-    private fun cloudWait(p: Prefs) = KeyRing.waitMs(listOf(p.cloudKey), cloudScope(p))
+    private fun cloudScope(p: Prefs) = "cloud:" + cloudEndpoint(p.cloudUrl) + ":" + p.cloudModel.trim()
+    private fun cloudWait(p: Prefs): Long {
+        val key = p.cloudKey.filterNot { it.isWhitespace() || it.isISOControl() }
+        return if (key.isBlank()) 0L else KeyRing.waitMs(listOf(key), cloudScope(p))
+    }
 
     fun cloudEndpoint(base: String): String {
-        val b = base.trim().trimEnd('/')
-        return if (b.endsWith("/chat/completions")) b else "$b/chat/completions"
+        val b = base.filterNot { it.isISOControl() }.trim().trimEnd('/')
+        return if (b.endsWith("/chat/completions", ignoreCase = true)) b else "$b/chat/completions"
     }
 
     internal fun post(url: String, body: JSONObject, headers: Map<String, String>, metric: String = "api_dich_gemini"): String {
@@ -149,19 +160,29 @@ object Ai {
      * [scope] là model (hạn mức tính theo model). Mọi khóa đều không dùng được thì ném [AiException] 429 kèm số mili giây phải chờ
      * (hoặc lỗi sai khóa nếu mọi khóa đều sai).
      */
-    fun <T> withGeminiKey(p: Prefs, scope: String, call: (String) -> T): T {
+    fun <T> withGeminiKey(p: Prefs, scope: String, flow: String = "DỊCH", call: (String) -> T): T {
         val keys = p.geminiKeys()
         if (keys.isEmpty()) throw AiException(401, "Chưa có khóa Gemini", badKey = true)
         var last: AiException? = null
         while (true) {
             val k = KeyRing.acquire(keys, scope) ?: break
+            val index = keys.indexOf(k) + 1
             try {
                 val r = call(k)
-                if (KeyRing.success(k, scope)) SessionStats.live.inc("khoa_doi")
+                if (KeyRing.success(k, scope)) {
+                    SessionStats.live.inc("khoa_doi")
+                    AiErrorLog.record("INFO", flow, index, k, null, "Khóa Gemini hoạt động trở lại", "Tiếp tục dùng khóa #$index")
+                }
                 return r
             } catch (e: AiException) {
                 last = e
-                if (!KeyRing.report(k, scope, e)) throw e
+                val rotated = KeyRing.report(k, scope, e)
+                AiErrorLog.record(
+                    if (rotated) "WARN" else "ERROR", flow, index, k, e.code,
+                    e.message.orEmpty(),
+                    if (rotated && !e.billingLimit) "Đổi sang khóa kế tiếp" else "Dừng gọi AI và dùng phương án dự phòng"
+                )
+                if (!rotated) throw e
                 if (e.billingLimit) throw e
             } finally {
                 KeyRing.release(k, scope)
@@ -201,22 +222,29 @@ object Ai {
 
     /** Một lần gọi AI (không thử lại). Dịch câu thì dùng [translateRetry]. */
     fun translate(p: Prefs, prompt: String, forceCloud: Boolean = false): String {
+        val safePrompt = cleanRequestText(prompt)
+        if (safePrompt.isBlank()) throw AiException(400, "Nội dung yêu cầu trống hoặc chỉ chứa ký tự OCR không hợp lệ.")
         val out: String = if (forceCloud || (!p.aiAuto && p.engine == Prefs.ENGINE_CLOUD)) {
+            val endpoint = cloudEndpoint(p.cloudUrl)
+            val model = cleanRequestText(p.cloudModel, 100)
+            val key = p.cloudKey.filterNot { it.isWhitespace() || it.isISOControl() }
+            if (!endpoint.startsWith("https://", true) || !model.matches(Regex("[A-Za-z0-9._:/-]{1,100}")) || key.isBlank())
+                throw AiException(400, "Cấu hình CloudAPI không hợp lệ.")
             val body = JSONObject()
-                .put("model", p.cloudModel)
-                .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
-            val r = post(cloudEndpoint(p.cloudUrl), body, mapOf("Authorization" to "Bearer " + p.cloudKey), metric = "api_dich_cloud")
+                .put("model", model)
+                .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", safePrompt)))
+            val r = post(endpoint, body, mapOf("Authorization" to "Bearer " + key), metric = "api_dich_cloud")
             JSONObject(r).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
         } else {
             val model = p.geminiModel.trim()
             if (!model.matches(Regex("[A-Za-z0-9._-]{1,100}"))) throw AiException(400, "Tên model Gemini không hợp lệ. Chỉ dùng mã model, không thêm URL hoặc tham số.")
             val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
             val r = try {
-                geminiPost(p, url, geminiBody(prompt, safetyAccepted))
+                geminiPost(p, url, geminiBody(safePrompt, safetyAccepted))
             } catch (e: AiException) {
                 if (safetyAccepted && AiRetry.shouldRetryWithoutSafetySettings(e.code, e.message.orEmpty())) {
                     // Chỉ fallback khi response nêu rõ safetySettings không tương thích; không retry lỗi key/model/request 400 chung chung.
-                    val r2 = geminiPost(p, url, geminiBody(prompt, false))
+                    val r2 = geminiPost(p, url, geminiBody(safePrompt, false))
                     safetyAccepted = false
                     r2
                 } else throw e
@@ -246,12 +274,14 @@ object Ai {
      * Dịch một câu, tự thử lại khi lỗi tạm thời (hết lượt ngắn hạn, 5xx, quá thời gian, mạng chập chờn). Hết lượt kéo dài thì ghi
      * mốc nghỉ [coolingMs] để các câu sau không phải chờ. Hàm chặn luồng, gọi từ luồng nền.
      */
-    fun translateRetry(p: Prefs, prompt: String): String =
-        requestDeduplicator.execute(translationRequestKey(p, prompt)) {
+    fun translateRetry(p: Prefs, prompt: String): String {
+        val safePrompt = cleanRequestText(prompt)
+        if (safePrompt.isBlank()) throw AiException(400, "Nội dung yêu cầu trống.")
+        return requestDeduplicator.execute(translationRequestKey(p, safePrompt)) {
             if (p.aiAuto && autoCloud(p)) {
                 var primaryError: Exception? = null
                 if (p.geminiKeys().isNotEmpty() && KeyRing.waitMs(p.geminiKeys(), p.geminiModel) == 0L) {
-                    try { return@execute translate(p, prompt) }
+                    try { return@execute translate(p, safePrompt) }
                     catch (e: Exception) {
                         if (!AiRetry.canFallback(e)) throw e
                         primaryError = e
@@ -259,20 +289,36 @@ object Ai {
                 }
                 if (cloudWait(p) > 0L) throw primaryError ?: AiException(429, "CloudAPI đang nghỉ", cloudWait(p))
                 try {
-                    return@execute translate(p, prompt, forceCloud = true)
+                    return@execute translate(p, safePrompt, forceCloud = true)
                 } catch (e: AiException) {
-                    KeyRing.report(p.cloudKey, cloudScope(p), e)
+                    val key = p.cloudKey.filterNot { it.isWhitespace() || it.isISOControl() }
+                    val marked = if (key.isBlank()) false else KeyRing.report(key, cloudScope(p), e)
+                    AiErrorLog.record(
+                        if (marked) "WARN" else "ERROR", "DỊCH", httpCode = e.code,
+                        summary = "CloudAPI …${key.takeLast(4)}: ${e.message.orEmpty()}",
+                        action = if (marked) "Tạm khóa CloudAPI và lùi về dịch máy" else "Lùi về dịch máy, không retry payload lỗi"
+                    )
                     throw e
                 }
             }
             try {
-                val r = AiRetry.run(AiRetry.Plan(), { Thread.sleep(it) }) { translate(p, prompt) }
+                val r = AiRetry.run(AiRetry.Plan(), { Thread.sleep(it) }) { translate(p, safePrompt) }
                 if (!usesGemini(p)) cooldownUntil = 0L
                 r
             } catch (e: Exception) {
                 if (!usesGemini(p) && AiRetry.kindOf(e) in setOf(AiRetry.Kind.QUOTA, AiRetry.Kind.BILLING)) {
                     val apiError = e as? AiException
-                    if (apiError?.code == 429) KeyRing.report(p.cloudKey, cloudScope(p), apiError)
+                    val cloudKey = p.cloudKey.filterNot { it.isWhitespace() || it.isISOControl() }
+                    if (apiError != null && cloudKey.isNotBlank()) {
+                        val marked = KeyRing.report(cloudKey, cloudScope(p), apiError)
+                        if (marked || apiError.code in 400..499) {
+                            AiErrorLog.record(
+                                if (marked) "WARN" else "ERROR", "DỊCH", httpCode = apiError.code,
+                                summary = "CloudAPI …${cloudKey.takeLast(4)}: ${apiError.message.orEmpty()}",
+                                action = if (marked) "Đánh dấu CloudAPI và dùng dịch máy" else "Không retry payload; dùng dịch máy"
+                            )
+                        }
+                    }
                     val cooldown = if (AiRetry.kindOf(e) == AiRetry.Kind.BILLING) {
                         maxOf(60 * 60_000L, apiError?.retryAfterMs ?: 0L)
                     } else {
@@ -283,6 +329,7 @@ object Ai {
                 throw e
             }
         }
+    }
 
     /** Thử dịch một câu để kiểm tra khóa. Trả về chuỗi bắt đầu bằng "OK" nếu chạy được, ngược lại là lý do lỗi. */
     fun test(p: Prefs, forceCloud: Boolean = false): String = try {

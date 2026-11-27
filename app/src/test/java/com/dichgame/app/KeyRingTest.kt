@@ -51,6 +51,26 @@ class KeyRingTest {
         assertEquals("B", KeyRing.pick(keys, m, 20_001))
     }
 
+    @Test fun rateLimitedFirstKeyImmediatelyMovesToSecondKey() {
+        val first = KeyRing.acquire(keys, m, 0)
+        assertEquals("A", first)
+        assertTrue(KeyRing.report("A", m, quota(60_000), now = 0))
+        KeyRing.release("A", m)
+        assertEquals("B", KeyRing.acquire(keys, m, 1))
+        assertEquals(KeyRing.State.QUOTA, KeyRing.status("A", m, 1).state)
+        KeyRing.success("B", m)
+    }
+
+    @Test fun invalid400Or401KeyIsSkippedImmediately() {
+        assertEquals("A", KeyRing.acquire(keys, m, 0))
+        assertTrue(KeyRing.report("A", m, AiException(400, "API key not valid", badKey = true), now = 0))
+        KeyRing.release("A", m)
+        assertEquals("B", KeyRing.acquire(keys, m, 1))
+        KeyRing.release("B", m)
+        assertTrue(KeyRing.report("B", m, AiException(401, "unauthorized", badKey = true), now = 2))
+        assertEquals("C", KeyRing.pick(keys, m, 3))
+    }
+
     @Test fun quotaIsPerModel() {
         KeyRing.report("A", "tts-model", quota(retry = 60_000), now = 0)
         assertNull(KeyRing.pick(listOf("A"), "tts-model", 1_000))
@@ -85,14 +105,16 @@ class KeyRingTest {
         val ms = KeyRing.quotaBlockMs(0, true, noon)
         assertEquals(12 * 3_600_000L + 60_000L, ms)
         KeyRing.report("A", m, quota(daily = true), now = noon)
+        assertEquals(KeyRing.State.DAILY, KeyRing.status("A", m, noon + 3_600_000L).state)
         assertEquals("B", KeyRing.pick(keys, m, noon + 3_600_000L))
         assertEquals("A", KeyRing.pick(keys, m, noon + ms + 1))
     }
 
     @Test fun minuteQuotaDefaultsAndClamps() {
-        assertEquals(KeyRing.DEFAULT_QUOTA_MS, KeyRing.quotaBlockMs(0, false, 0))
+        assertEquals(60_000L, KeyRing.DEFAULT_QUOTA_MS)
+        assertEquals(60_000L, KeyRing.quotaBlockMs(0, false, 0))
         assertEquals(1_000L, KeyRing.quotaBlockMs(100, false, 0))
-        assertEquals(600_000L, KeyRing.quotaBlockMs(7_200_000, false, 0))
+        assertEquals(7_200_000L, KeyRing.quotaBlockMs(7_200_000, false, 0))
         assertEquals(21_000L, KeyRing.quotaBlockMs(21_000, false, 0))
     }
 
@@ -103,6 +125,7 @@ class KeyRingTest {
         assertFalse(KeyRing.isDailyQuota(minute))
         assertTrue(KeyRing.isBadKey(400, """{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","details":[{"reason":"API_KEY_INVALID"}]}}"""))
         assertTrue(KeyRing.isBadKey(403, """{"error":{"message":"Your API key was reported as leaked."}}"""))
+        assertTrue(KeyRing.isBadKey(403, """{"error":{"message":"API key does not have permission to access this service"}}"""))
         assertTrue(KeyRing.isBadKey(401, ""))
         assertFalse(KeyRing.isBadKey(403, """{"error":{"message":"Model not enabled for this project"}}"""))
         assertFalse(KeyRing.isBadKey(400, """{"error":{"message":"Invalid JSON payload"}}"""))
@@ -114,6 +137,10 @@ class KeyRingTest {
         KeyRing.report("A", m, quota(retry = 60_000), now = 0)
         KeyRing.report("B", m, AiException(401, "x", badKey = true), now = 0)
         assertEquals(1, KeyRing.usable(keys, m, 1))
+    }
+
+    @Test fun normalizesMultiKeyInputAndRemovesDuplicates() {
+        assertEquals(listOf("AIzaOne", "AIzaTwo"), KeyRing.normalizeKeys("  AIzaOne  \n\nAIzaTwo\r\nAIzaOne\t"))
     }
 
     @Test fun emptyKeyListHasNothing() {

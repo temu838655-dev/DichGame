@@ -15,6 +15,8 @@ object TranslationGuard {
     }
 
     private val LABEL = Regex("^\\s*(bản dịch|dịch|translation|translated|vietnamese|tiếng việt|vi)\\s*[:：]\\s*", RegexOption.IGNORE_CASE)
+    private val ZERO_WIDTH = Regex("[\\u200B-\\u200D\\uFEFF]")
+    private val DIAGNOSTIC = Regex("(^|\\b)http\\s*[45]\\d{2}(\\b|:)|^\\s*[45]\\d{2}\\s*(?::|bad request|unauthorized|forbidden|quota|resource exhausted)|^\\s*[45]\\d{2}\\s*$", RegexOption.IGNORE_CASE)
     private val FENCE = Regex("^```[a-zA-Z]*\\s*|\\s*```$")
     private val NOTE_LINE = Regex("^\\s*(\\(?\\s*(lưu ý|ghi chú|chú thích|giải thích|note|notes|translator'?s? note|hoặc|or)(?![\\p{L}]).*|[*•]\\s.*|\\d+[.)]\\s.*)$", RegexOption.IGNORE_CASE)
     private val REFUSAL = listOf(
@@ -35,7 +37,9 @@ object TranslationGuard {
 
     /** Bỏ phần AI hay thêm vào quanh bản dịch: rào markdown, nhãn "Bản dịch:", dấu ngoặc kép bao ngoài, dòng ghi chú. */
     fun clean(out: String, src: String): String {
-        var t = out.trim().replace(FENCE, "").trim()
+        var t = out.filter { it == '\n' || it == '\t' || !it.isISOControl() }
+            .replace(ZERO_WIDTH, "").take((src.length * 4 + 512).coerceIn(512, 12_000))
+            .trim().replace(FENCE, "").trim()
         t = t.replace(LABEL, "").trim()
         val srcLines = src.lines().count { it.isNotBlank() }.coerceAtLeast(1)
         var lines = t.lines().map { it.trim() }.filter { it.isNotEmpty() }
@@ -62,6 +66,9 @@ object TranslationGuard {
         val t = out.trim()
         if (t.isEmpty()) return Verdict(Level.REJECT, t, listOf("bản dịch rỗng"))
         val low = t.lowercase(Locale.ROOT)
+        if (DIAGNOSTIC.containsMatchIn(low) || listOf("quota", "resource_exhausted", "resource exhausted", "rate limit", "timeout", "exception", "api key", "api_key", "api_key_invalid", "invalid_api_key", "invalid_argument", "invalid argument", "lỗi api", "bad request", "unauthorized", "permission_denied").any { it in low }) {
+            return Verdict(Level.REJECT, t, listOf("phản hồi lỗi kỹ thuật, không phải bản dịch"))
+        }
         val sourceTokens = protectedTokens(src)
         val outputTokens = protectedTokens(t)
         if (sourceTokens != outputTokens) {

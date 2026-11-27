@@ -16,17 +16,22 @@ object AiSpeech {
 
     /** Đọc nguyên văn [text]. Chỉ dẫn phong cách nằm trong speechMetadata, không trộn vào transcript. */
     fun synth(p: Prefs, text: String, style: String, voiceName: String = p.aiVoice): Pcm {
-        val model = p.ttsModel.trim()
+        val safeText = Ai.cleanRequestText(text, 3000)
+        if (safeText.isBlank()) throw AiException(400, "Nội dung thuyết minh trống.")
+        val model = p.ttsModel.filterNot { it.isWhitespace() || it.isISOControl() }.trim()
         if (!model.matches(Regex("[A-Za-z0-9._-]{1,100}"))) {
             throw AiException(400, "Tên model giọng Gemini không hợp lệ. Chỉ dùng mã model, không thêm URL hoặc tham số.")
         }
-        return viaGenerate(p, model, text, style, voiceName)
+        return viaGenerate(p, model, safeText, Ai.cleanRequestText(style, 240), voiceName.trim())
     }
 
     /** Request schema chính thức: transcript nguyên văn + speechMetadata tùy chọn ở cùng TextPart. */
     internal fun generateBody(text: String, style: String, voiceName: String): JSONObject {
-        val part = JSONObject().put("text", text)
-        if (style.isNotBlank()) part.put("speechMetadata", JSONObject().put("style", style))
+        val safeText = Ai.cleanRequestText(text, 3000)
+        if (safeText.isBlank()) throw AiException(400, "Nội dung thuyết minh trống.")
+        val part = JSONObject().put("text", safeText)
+        val safeStyle = Ai.cleanRequestText(style, 240)
+        if (safeStyle.isNotBlank()) part.put("speechMetadata", JSONObject().put("style", safeStyle))
         val voice = JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voiceName))
         return JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(part))))
@@ -37,7 +42,7 @@ object AiSpeech {
 
     private fun viaGenerate(p: Prefs, model: String, text: String, style: String, voiceName: String): Pcm {
         val body = generateBody(text, style, voiceName)
-        val r = Ai.withGeminiKey(p, model) { key ->
+        val r = Ai.withGeminiKey(p, model, flow = "THUYẾT MINH") { key ->
             Ai.post("$BASE/models/$model:generateContent", body, mapOf("x-goog-api-key" to key), metric = "api_giong_gemini")
         }
         val b64 = JSONObject(r).getJSONArray("candidates").getJSONObject(0).getJSONObject("content")

@@ -54,6 +54,10 @@ object TvOut {
     fun publish(ctx: Context, kind: String, text: String, speak: Boolean = false) {
         if (kind !in listOf("sub", "clear", "region")) return
         val t = if (kind == "clear") "" else text
+        if (kind != "clear" && AiErrorLog.isDiagnosticText(t)) {
+            AiErrorLog.record("WARN", "OCR", summary = "Chặn chuỗi chẩn đoán khỏi đầu ra TV/Web: $t", action = "Không gửi nội dung lỗi ra màn hình")
+            return
+        }
         val p = ctx.applicationContext.getSharedPreferences("dg", Context.MODE_PRIVATE)
         if (p.getBoolean("websub", false)) {
             if (web?.running != true) startWeb(ctx)

@@ -31,9 +31,9 @@ class SettingsActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         p = Prefs(this)
+        AiErrorLog.initialize(applicationContext)
         page = intent?.getStringExtra("page") ?: if (intent?.getStringExtra("goto") == "profile") "profile" else "hub"
         speaker = Speaker(this, p)
-        speaker?.onAiError = { m -> Toast.makeText(this, m, Toast.LENGTH_LONG).show() }
         render()
         if (BuildConfig.DEBUG && intent?.getBooleanExtra("selftest", false) == true) SelfTest.voice(applicationContext)
     }
@@ -62,6 +62,7 @@ class SettingsActivity : Activity() {
             "subs" -> subsPage()
             "profile" -> profilePage()
             "about" -> aboutPage()
+            "logs" -> logPage()
             else -> hubPage()
         }
     }
@@ -84,6 +85,7 @@ class SettingsActivity : Activity() {
             put(Hub.card(a, p), 4, 0)
             val ver = try { packageManager.getPackageInfo(packageName, 0).versionName.orEmpty() } catch (_: Exception) { "" }
             group("KHÁC", 0) {
+                addView(Ui.navRow(a, null, "Nhật ký lỗi AI", "Lịch sử dịch, OCR, thuyết minh và trạng thái từng khóa Gemini") { open("logs") })
                 addView(Ui.navRow(a, Ui.iconTile(a, ToolIcon.Kind.HELP, Color.parseColor("#9AA3B2"), Color.parseColor("#5C6678")),
                     "Giới thiệu và hỗ trợ", "Phiên bản $ver · cập nhật, báo lỗi, giấy phép") { open("about") })
             }
@@ -542,6 +544,48 @@ class SettingsActivity : Activity() {
                 else Toast.makeText(this, "Tên trống hoặc đã có.", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Hủy", null).show()
+    }
+
+    // ---------------- Nhật ký lỗi AI ----------------
+
+    private fun logPage() {
+        val a = this
+        screen("Nhật ký lỗi") {
+            group("TRẠNG THÁI KHÓA GEMINI", 16, 4) {
+                val keys = p.geminiStoredKeys()
+                if (keys.isEmpty()) addView(note("Chưa cấu hình khóa Gemini."))
+                keys.forEachIndexed { index, key ->
+                    val status = KeyRing.status(key, p.geminiModel)
+                    val state = if (!p.isGeminiKeyEnabled(key)) "Đã tắt thủ công" else when (status.state) {
+                        KeyRing.State.OK -> "Hoạt động"
+                        KeyRing.State.QUOTA -> "Cooldown còn ${AiRetry.humanWait(status.leftMs)}"
+                        KeyRing.State.DAILY -> "Hết lượt ngày · hồi sau ${AiRetry.humanWait(status.leftMs)}"
+                        KeyRing.State.BAD -> "Lỗi / khóa không hợp lệ"
+                    }
+                    val suffix = key.takeLast(4)
+                    addView(Ui.tv(a, "Khóa ${index + 1} (…$suffix) · $state", 13.5f, Ui.TEXT))
+                }
+                row(Ui.button(a, "Đặt lại trạng thái khóa") {
+                    KeyRing.resetStatuses()
+                    Toast.makeText(a, "Đã đặt lại cooldown và trạng thái khóa trong phiên.", Toast.LENGTH_SHORT).show()
+                    render()
+                }, 8, 0)
+            }
+            group("SỰ KIỆN GẦN ĐÂY", 16, 4) {
+                val lines = AiErrorLog.entries()
+                addView(Ui.tv(a, if (lines.isEmpty()) "Chưa có nhật ký." else lines.take(100).joinToString("\n"), 12.5f, Ui.SUB))
+                row(Ui.button(a, "Sao chép nhật ký") {
+                    val clip = android.content.ClipData.newPlainText("DichGame AI log", AiErrorLog.exportText())
+                    (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
+                    Toast.makeText(a, "Đã sao chép nhật ký.", Toast.LENGTH_SHORT).show()
+                }, 8, 4)
+                row(Ui.button(a, "Xóa nhật ký") {
+                    AiErrorLog.clear()
+                    Toast.makeText(a, "Đã xóa nhật ký.", Toast.LENGTH_SHORT).show()
+                    render()
+                }, 4, 0)
+            }
+        }
     }
 
     // ---------------- Giới thiệu và hỗ trợ ----------------

@@ -22,7 +22,8 @@ object OcrGuard {
 
     /** Gộp khoảng trắng, bỏ ký tự vô hình, bỏ ký hiệu thừa (| _ ~ ...) dính ở hai đầu mỗi dòng. */
     fun clean(raw: String): String =
-        raw.replace(ZERO_WIDTH, "").lines()
+        raw.filter { it == '\n' || it == '\t' || !it.isISOControl() }
+            .replace(ZERO_WIDTH, "").lines()
             .map { it.replace(SPACES, " ").trim().replace(EDGE_JUNK, "").trim() }
             .filter { it.isNotEmpty() }
             .joinToString("\n")

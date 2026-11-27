@@ -21,6 +21,18 @@ class AiSpeechRequestTest {
             .getJSONObject("prebuiltVoiceConfig").getString("voiceName"))
     }
 
+    @Test fun ttsSanitizesControlCharactersAndRejectsEmptyTranscript() {
+        val body = AiSpeech.generateBody("Xin chào\u0000\nđừng đi\u0007", "", "Kore")
+        val text = body.getJSONArray("contents").getJSONObject(0).getJSONArray("parts").getJSONObject(0).getString("text")
+        assertEquals("Xin chào\nđừng đi", text)
+        try {
+            AiSpeech.generateBody("  \u0000\u0007 ", "", "Kore")
+            org.junit.Assert.fail("empty transcript must be rejected")
+        } catch (e: AiException) {
+            assertEquals(400, e.code)
+        }
+    }
+
     @Test fun ttsOmitsEmptyStyleMetadata() {
         val body = AiSpeech.generateBody("Xin chào.", "", "Kore")
         val part = body.getJSONArray("contents").getJSONObject(0)
