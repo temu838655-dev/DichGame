@@ -101,6 +101,12 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     /** Số lần đã bắt đầu phát một đoạn âm thanh (giọng AI hoặc giọng offline); dùng cho bản tự kiểm tra. */
     @Volatile var played = 0
         private set
+
+    /** Trạng thái phát thật của AudioTrack, dùng cho kiểm thử smoke trên Android. */
+    internal fun isAudioTrackPlaying(): Boolean = synchronized(lock) {
+        track?.playState == AudioTrack.PLAYSTATE_PLAYING
+    }
+
     private val systemSpeechText = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /** Engine callbacks: dùng cho thống kê độ trễ và kiểm thử phát giọng thật trên máy Android. */
