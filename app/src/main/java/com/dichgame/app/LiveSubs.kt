@@ -99,6 +99,8 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     private var sep = " "
     private var quality = OcrQuality.CAREFUL
     private var cand = ""
+    private var candidateSeenAt = 0L
+    private val pendingSpeechSeenAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private var stable = 0
     private var last = ""
     private var prevVi = ""
@@ -306,7 +308,8 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         fusion.clear()
         pacer.cleared()
         RecentLines.clear()
-        last = ""; cand = ""; stable = 0; prevVi = ""
+        last = ""; cand = ""; candidateSeenAt = 0L; stable = 0; prevVi = ""
+        pendingSpeechSeenAt.clear()
         lastFine = null; lastSig = null
         textOnScreen = false
         speaker?.stop()
@@ -358,7 +361,8 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         val bmp = try { Bitmap.createBitmap(r - l, b - t, Bitmap.Config.ARGB_8888) } catch (_: Throwable) { return }
         busy = true
         try {
-            PixelCopy.request(sv, Rect(l, t, r, b), bmp, { res -> onCopied(res, bmp) }, handler)
+            val capturedAt = SystemClock.elapsedRealtime()
+            PixelCopy.request(sv, Rect(l, t, r, b), bmp, { res -> onCopied(res, bmp, capturedAt) }, handler)
         } catch (e: Throwable) {
             runCatching { bmp.recycle() }
             busy = false
@@ -368,7 +372,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         }
     }
 
-    private fun onCopied(res: Int, bmp: Bitmap) {
+    private fun onCopied(res: Int, bmp: Bitmap, capturedAt: Long) {
         if (!running) { runCatching { bmp.recycle() }; busy = false; return }
         if (res != PixelCopy.SUCCESS) {
             runCatching { bmp.recycle() }
@@ -410,7 +414,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             busy = false
             return
         }
-        val scanAt = System.currentTimeMillis()
+        val scanAt = capturedAt
         o.read(bmp, { m -> ocrFail(m) }) { r ->
             try { onOcrResult(r, scanAt) } catch (t: Throwable) { Log.e(TAG, "ocr xu ly loi", t); busy = false }
         }
@@ -450,13 +454,14 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             try {
                 if (!running || !ready || syncGameContext()) return@post
                 val now = System.currentTimeMillis()
+                val seenAt = (SystemClock.elapsedRealtime() - speechMs.coerceAtLeast(0L)).coerceAtLeast(0L)
                 stats.inc("asr_nhan")
                 val v = AsrGuard.check(raw, rms, lang)
                 if (!v.ok || v.ambiguous) { stats.inc("asr_loc"); return@post }
                 rate.add(v.text, speechMs)
                 val fresh = ArrayList<Line>()
-                applyOuts(fusion.onAsr(v.text, now), false, fresh, speechMs, now)
-                enqueue(fresh, speechMs, now, false)
+                applyOuts(fusion.onAsr(v.text, now), false, fresh, speechMs, seenAt)
+                enqueue(fresh, speechMs, seenAt, false)
             } catch (t: Throwable) {
                 Log.e(TAG, "asr loi", t)
             }
@@ -508,7 +513,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (utts.isEmpty()) {
             if (textOnScreen) { textOnScreen = false; textGoneSince = now }
             fusion.onScreenEmpty(now)
-            last = ""; cand = ""; stable = 0
+            last = ""; cand = ""; candidateSeenAt = 0L; stable = 0
             if (pacer.showing == null) notice("") else if (canHide(now)) softHide() else scheduleHide()
             finishBusy()
             return
@@ -516,8 +521,9 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         textOnScreen = true
         val sig = DialogueSplitter.signature(utts)
         if (sig == last) { finishBusy(); return }
-        if (sig != cand) { cand = sig; stable = 1 } else stable++
+        if (sig != cand) { cand = sig; stable = 1; candidateSeenAt = scanAt } else stable++
         if (stable < requiredStable(utts)) { finishBusy(); return }
+        val detectedAt = candidateSeenAt.takeIf { it > 0L } ?: scanAt
         last = sig
         // Chỉ nhớ người nói khi OCR đã ổn định; không lưu tên chưa được xác nhận.
         for (u in utts) if (!u.nameLike && !u.speaker.isNullOrBlank()) prefs.rememberSpeaker(u.speaker!!)
@@ -529,8 +535,8 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
             }
         }
         val fresh = ArrayList<Line>()
-        for (u in utts) applyOuts(fusion.onOcr(u.text, u.speaker, now), u.nameLike, fresh, 0L, scanAt)
-        enqueue(fresh, 0L, scanAt, false)
+        for (u in utts) applyOuts(fusion.onOcr(u.text, u.speaker, now), u.nameLike, fresh, 0L, detectedAt)
+        enqueue(fresh, 0L, detectedAt, false)
         finishBusy()
     }
 
@@ -617,10 +623,10 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     private fun render(item: SubtitlePacer.Item) {
         val p = item.payload as? Payload ?: return
-        showCards(p.cards, item.src)
+        showCards(p.cards, item.src, p.seenAt)
         val at = System.currentTimeMillis()
         for (c in p.cards) RecentLines.add(c.orig, c.tr.text, c.speaker, c.unsure, at)
-        stats.latency(System.currentTimeMillis() - p.seenAt)
+        stats.latency(SystemClock.elapsedRealtime() - p.seenAt)
         scheduleHide()
     }
 
@@ -663,8 +669,9 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         val outs = fusion.poll(now)
         if (outs.isNotEmpty()) {
             val fresh = ArrayList<Line>()
-            applyOuts(outs, false, fresh, 0L, now)
-            enqueue(fresh, 0L, now, false)
+            val seenAt = SystemClock.elapsedRealtime()
+            applyOuts(outs, false, fresh, 0L, seenAt)
+            enqueue(fresh, 0L, seenAt, false)
         }
         pump()
         if (!textOnScreen) fusion.onScreenEmpty(now)
@@ -696,7 +703,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
 
     // ---- hiển thị
 
-    private fun showCards(cards: List<Card>, src: Src) {
+    private fun showCards(cards: List<Card>, src: Src, seenAt: Long) {
         if (adjusting) return
         styleView()
         val sb = SpannableStringBuilder()
@@ -754,7 +761,19 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (speak && tvVoiceOn() && scene.isNotEmpty()) {
             tvVoice(scene.joinToString(" ") { it.text }, scene.last().delivery, scene.last().speaker, scene)
         }
-        if (speak && ready && !tvSpeakOn()) speaker?.speakScene(scene)
+        if (speak && ready && !tvSpeakOn() && scene.isNotEmpty()) {
+            val key = SpeechPolicy.norm(scene.joinToString(" ") { it.text })
+            if (key.isNotEmpty()) {
+                val cutoff = SystemClock.elapsedRealtime() - 120_000L
+                pendingSpeechSeenAt.entries.removeIf { it.value < cutoff }
+                pendingSpeechSeenAt[key] = seenAt
+                speaker?.onSpeechStarted = { spoken ->
+                    val at = pendingSpeechSeenAt.remove(SpeechPolicy.norm(spoken))
+                    if (at != null) stats.speechLatency(SystemClock.elapsedRealtime() - at)
+                }
+            }
+            speaker?.speakScene(scene)
+        }
         prevVi = vi
     }
 
