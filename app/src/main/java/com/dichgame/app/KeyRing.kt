@@ -13,9 +13,9 @@ object KeyRing {
     /** Khóa sai: nghỉ chừng này rồi mới thử lại (người dùng sửa khóa thì thành khóa mới nên dùng được ngay). */
     const val BAD_MS = 30 * 60_000L
     /** Hết lượt mà máy chủ không nói chờ bao lâu: coi như hết lượt theo phút. */
-    const val DEFAULT_QUOTA_MS = 30_000L
+    const val DEFAULT_QUOTA_MS = 60_000L
     private const val MIN_QUOTA_MS = 1_000L
-    private const val MAX_MINUTE_QUOTA_MS = 10 * 60_000L
+    private const val MAX_MINUTE_QUOTA_MS = 24 * 60 * 60_000L
 
     private val until = HashMap<String, Long>()
     private val bad = HashMap<String, Long>()
@@ -26,6 +26,16 @@ object KeyRing {
     private val inFlight = HashMap<String, MutableSet<String>>()
 
     private fun id(key: String, scope: String) = scope + "|" + key
+
+    /** Normalize pasted multi-key input. */
+    fun normalizeKeys(raw: String): List<String> {
+        val seen = LinkedHashSet<String>()
+        raw.split(Regex("[\\r\\n,;]+")).forEach { line ->
+            val key = line.filterNot { it.isWhitespace() || it.isISOControl() }.trim()
+            if (key.isNotEmpty()) seen.add(key)
+        }
+        return seen.toList()
+    }
 
     enum class State { OK, QUOTA, BAD }
 
@@ -165,8 +175,7 @@ object KeyRing {
         if (code == 401) return true
         if (code != 400 && code != 403) return false
         val b = body.lowercase()
-        return b.contains("api_key_invalid") || b.contains("api key not valid") || b.contains("api key expired") ||
-            b.contains("api key was reported as leaked") || b.contains("reported as leaked") || b.contains("api key is invalid")
+        return listOf("api_key_invalid", "api key not valid", "api key expired", "api key was reported as leaked", "reported as leaked", "api key is invalid", "invalid api key", "invalid api_key", "key is invalid", "key has been revoked", "api key revoked", "api key was revoked").any { b.contains(it) }
     }
 
     /** Mốc 0 giờ sáng kế tiếp theo giờ Thái Bình Dương (Gemini hồi hạn mức theo ngày vào lúc đó), thêm một phút cho chắc. */
