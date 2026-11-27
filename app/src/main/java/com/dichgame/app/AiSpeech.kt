@@ -27,8 +27,11 @@ object AiSpeech {
 
     /** Request schema chính thức: transcript nguyên văn + speechMetadata tùy chọn ở cùng TextPart. */
     internal fun generateBody(text: String, style: String, voiceName: String): JSONObject {
-        val part = JSONObject().put("text", text)
-        if (style.isNotBlank()) part.put("speechMetadata", JSONObject().put("style", style))
+        val safeText = Ai.cleanRequestText(text, 3000)
+        if (safeText.isBlank()) throw AiException(400, "Nội dung thuyết minh trống.")
+        val part = JSONObject().put("text", safeText)
+        val safeStyle = Ai.cleanRequestText(style, 240)
+        if (safeStyle.isNotBlank()) part.put("speechMetadata", JSONObject().put("style", safeStyle))
         val voice = JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voiceName))
         return JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(part))))
