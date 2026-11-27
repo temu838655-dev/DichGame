@@ -67,7 +67,10 @@ object KeyManager {
             else -> "Nhà cung cấp dự phòng trả lỗi; chuyển dịch máy nếu cần"
         }
         TranslationLog.write(if (marked) "WARN" else "ERROR", provider, if (clean.isEmpty()) null else 1, clean, error.code, action)
-        if (marked) TranslationLog.setHealth(TranslationLog.Health.FALLBACK, provider + " đang cooldown hoặc không hợp lệ")
+        if (marked) TranslationLog.setHealth(
+            if (error.badKey) TranslationLog.Health.FAILED else TranslationLog.Health.FALLBACK,
+            if (error.badKey) provider + " key sai hoặc bị thu hồi" else provider + " đang cooldown"
+        )
     }
 
     fun successSingle(provider: String, key: String, scope: String) {
