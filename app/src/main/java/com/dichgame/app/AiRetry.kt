@@ -87,9 +87,14 @@ object AiRetry {
     }
 
     /** Chỉ chuyển nhà cung cấp khi lỗi kết nối, hạn mức hoặc cấu hình; không thử vượt bộ lọc nội dung. */
-    fun canFallback(e: Throwable): Boolean = when (kindOf(e)) {
-        Kind.QUOTA, Kind.BILLING, Kind.NETWORK, Kind.BAD -> true
-        else -> false
+    fun canFallback(e: Throwable): Boolean {
+        // A 400 payload/content error is request-specific: do not resend the same bad payload
+        // to another provider. Invalid credentials and transient provider failures may fall back.
+        if (e is AiException && e.code == 400 && !e.badKey) return false
+        return when (kindOf(e)) {
+            Kind.QUOTA, Kind.BILLING, Kind.NETWORK, Kind.BAD -> true
+            else -> false
+        }
     }
 
     /** Tên bộ đếm thống kê cho mỗi loại lỗi (xem [SessionStats]). */
