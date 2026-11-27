@@ -1,6 +1,11 @@
+import io
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.error import HTTPError
+from unittest.mock import patch
+
+from knowledge_base.providers import GeminiProvider, ProviderHTTPError
 
 from knowledge_base.ai_fallback import (
     AIBudgetExceededError,
@@ -97,6 +102,36 @@ class AIFallbackTests(unittest.TestCase):
         with self.assertRaises(AIUnavailableError):
             ai.translate("ai-game", "No cached line")
         self.assertEqual(provider.calls, 0)
+
+    def test_http_rejections_release_lease_without_retry_or_cache(self):
+        ai = AIFallback(self.kb, self.memory, GeminiProvider("test"), model="test")
+        for status, body, headers in [
+            (400, b"{}", {}),
+            (429, b'{"error":{"type":"insufficient_quota"}}', {}),
+            (429, b"{}", {"Retry-After": "90"}),
+        ]:
+            with self.subTest(status=status, headers=headers):
+                error = HTTPError("https://example.invalid", status, "", headers, io.BytesIO(body))
+                with patch("knowledge_base.providers.urlopen", side_effect=error) as transport:
+                    with self.assertRaisesRegex(ProviderHTTPError, f"HTTP {status}"):
+                        ai.translate("ai-game", "Open the gate")
+                    self.assertEqual(transport.call_count, 1)
+                self.assertIsNone(self.kb.cache_get("ai-game", "Open the gate"))
+                with self.kb.connect() as db:
+                    self.assertEqual(db.execute("SELECT count(*) FROM translation_request_locks").fetchone()[0], 0)
+
+    def test_temporary_http_429_waits_then_caches_success(self):
+        ai = AIFallback(self.kb, self.memory, GeminiProvider("test"), model="test")
+        responses = [
+            HTTPError("https://example.invalid", 429, "", {"Retry-After": "3"}, io.BytesIO(b"{}")),
+            io.BytesIO(b'{"candidates":[{"content":{"parts":[{"text":"Mo cong"}]}}]}'),
+        ]
+        with patch("knowledge_base.providers.urlopen", side_effect=responses) as transport, \
+                patch("knowledge_base.ai_fallback.time.sleep") as sleep:
+            self.assertFalse(ai.translate("ai-game", "Open the gate").cache_hit)
+            self.assertTrue(ai.translate("ai-game", "Open the gate").cache_hit)
+            sleep.assert_called_once_with(3.0)
+            self.assertEqual(transport.call_count, 2)
 
     def test_input_limit_is_enforced(self):
         provider = FakeProvider([])

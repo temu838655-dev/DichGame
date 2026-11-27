@@ -6,15 +6,33 @@ from __future__ import annotations
 
 import json
 import os
+import time
+from email.utils import parsedate_to_datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from .ai_fallback import ProviderResponse
+from .ai_fallback import ProviderHTTPError, ProviderResponse
 
 
-class ProviderHTTPError(RuntimeError):
-    pass
+def _retry_after(value: str) -> float:
+    if value.isascii() and value.isdecimal():
+        return float(value)
+    try:
+        return max(0.0, parsedate_to_datetime(value).timestamp() - time.time())
+    except (ValueError, TypeError, OverflowError):
+        return 0.0
+
+
+def _quota_exhausted(payload: bytes) -> bool:
+    try:
+        error = json.loads(payload)["error"]
+        return isinstance(error, dict) and any(
+            error.get(key) in ("insufficient_quota", "billing_hard_limit_reached")
+            for key in ("type", "code")
+        )
+    except (ValueError, TypeError, KeyError):
+        return False
 
 
 def _post_json(url: str, payload: dict, headers: dict[str, str], timeout: float) -> dict:
@@ -30,9 +48,17 @@ def _post_json(url: str, payload: dict, headers: dict[str, str], timeout: float)
             if len(raw) > 2_000_000:
                 raise ProviderHTTPError("Provider response exceeded 2 MB")
     except HTTPError as exc:
-        raise ProviderHTTPError(f"Provider returned HTTP {exc.code}") from None
-    except URLError as exc:
-        raise ProviderHTTPError("Provider network request failed") from None
+        with exc:
+            quota = exc.code == 429 and _quota_exhausted(exc.read(16_384))
+            retry_after = _retry_after((exc.headers or {}).get("Retry-After", "").strip())
+        message = "API đã hết hạn mức" if quota else "API trả về lỗi"
+        raise ProviderHTTPError(
+            f"{message} HTTP {exc.code}",
+            retryable=exc.code in (408, 429, 500, 502, 503, 504) and not quota,
+            retry_after=retry_after,
+        ) from None
+    except (URLError, TimeoutError):
+        raise ProviderHTTPError("Mất kết nối với API", retryable=True) from None
     try:
         result = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:

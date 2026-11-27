@@ -5,6 +5,7 @@ adapter that implements the small AIProvider protocol below.
 """
 from __future__ import annotations
 
+import random
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -36,6 +37,13 @@ class AIProvider(Protocol):
 
 class AIFallbackError(RuntimeError):
     """Base class for controlled AI fallback failures."""
+
+
+class ProviderHTTPError(RuntimeError):
+    def __init__(self, message: str, *, retryable: bool = False, retry_after: float = 0):
+        super().__init__(message)
+        self.retryable = retryable
+        self.retry_after = retry_after
 
 
 class AIUnavailableError(AIFallbackError):
@@ -103,14 +111,22 @@ class AIFallback:
                         raise ValueError("Provider token counts cannot be negative")
                     self._record_tokens(response.input_tokens, response.output_tokens, usage_date)
                     return response.translated_text.strip()
-                except AIBudgetExceededError:
+                except (AIBudgetExceededError, ValueError, TypeError):
                     raise
                 except Exception as exc:
                     last_error = exc
                     if attempt >= self.max_retries:
                         raise
-                    if self.retry_backoff_seconds:
-                        time.sleep(self.retry_backoff_seconds * (2 ** attempt))
+                    if isinstance(exc, ProviderHTTPError) and not exc.retryable:
+                        raise
+                    minimum = exc.retry_after if isinstance(exc, ProviderHTTPError) else 0
+                    # Let the caller resume later instead of holding the translation lease.
+                    if minimum > 30:
+                        raise
+                    window = min(30.0, self.retry_backoff_seconds * (2 ** attempt))
+                    delay = max(minimum, random.uniform(window / 2, window))
+                    if delay:
+                        time.sleep(delay)
             assert last_error is not None
             raise last_error
 
