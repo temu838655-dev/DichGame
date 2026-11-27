@@ -23,6 +23,15 @@ class OcrAiErrorTextTest {
         assertTrue(ocrAiErrorText(AiException(404, "model missing")).contains("model hoặc endpoint"))
     }
 
+    @Test fun privateLogNeverPersistsAFullGeminiKey() {
+        val key = "AIzaSyExamplePrivateKey1234567890"
+        AiErrorLog.clear()
+        AiErrorLog.record("WARN", "DỊCH", 1, key, 429, "Quota for key $key", "Đổi sang khóa #2")
+        val line = AiErrorLog.entries().first()
+        assertTrue(line.contains(key.takeLast(4)))
+        assertFalse(line.contains(key))
+    }
+
     @Test fun diagnosticMessagesAreNeverSubtitleText() {
         assertTrue(AiErrorLog.isDiagnosticText("HTTP 429 RESOURCE_EXHAUSTED"))
         assertTrue(AiErrorLog.isDiagnosticText("Lỗi API: quota exceeded"))
