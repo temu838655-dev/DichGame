@@ -3,7 +3,6 @@ package com.dichgame.app
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.widget.Toast
 import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.TranslateRemoteModel
@@ -17,6 +16,7 @@ import com.google.mlkit.nl.translate.TranslatorOptions
  */
 class TextTranslator(private val ctx: Context, private val p: Prefs, private val lang: String) {
     private val main = Handler(Looper.getMainLooper())
+    init { AiErrorLog.initialize(ctx.applicationContext) }
     private val history = ArrayList<String>()
     // Một instance có thể sống qua thao tác chọn game ở Kho game. Không cho cache
     // hoặc ngữ cảnh của game cũ đi vào lời nhắc của game mới.
@@ -160,7 +160,9 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
     fun translateFullById(text: String, speaker: String?, ui: Boolean, externalId: String, done: (Tr) -> Unit) =
         translateFullWithId(text, speaker, ui, externalId, done)
 
-    private fun translateFullWithId(text: String, speaker: String?, ui: Boolean, externalId: String?, done: (Tr) -> Unit) {
+    private fun translateFullWithId(rawText: String, speaker: String?, ui: Boolean, externalId: String?, done: (Tr) -> Unit) {
+        val text = Ai.cleanRequestText(rawText, 4000)
+        if (text.isBlank()) { done(Tr("", null, true, "may")); return }
         val st = SessionStats.live
         val profile = p.profile
         val game = PackStore.gameName(p)
@@ -353,16 +355,9 @@ class TextTranslator(private val ctx: Context, private val p: Prefs, private val
             .addOnFailureListener { done(Tr(text, null, true, "may")) }
     }
 
-    private var lastWarnAt = 0L
-
-    /** Báo người dùng lý do câu này phải dịch máy. Có ô báo thì báo mỗi lần; không thì nhắn (Toast) tối đa mỗi 45 giây một lần. */
+    /** Diagnostics stay in the private log; never replace a game subtitle or show a Toast. */
     private fun warn(m: String) {
-        val cb = onFallback
-        if (cb != null) { main.post { if (!closed) cb(m) }; return }
-        val now = System.currentTimeMillis()
-        if (now - lastWarnAt < 45_000L) return
-        lastWarnAt = now
-        main.post { Toast.makeText(ctx.applicationContext, m, Toast.LENGTH_LONG).show() }
+        AiErrorLog.record("WARN", "DỊCH", summary = m, action = "Dùng dịch trên máy hoặc tiếp tục an toàn")
     }
 
     fun close() {
