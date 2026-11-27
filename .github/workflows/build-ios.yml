@@ -18,6 +18,10 @@ jobs:
         run: |
           swiftc ios/DichGameiOS/SamsungOAuthCallback.swift ios/tests/SamsungOAuthCallbackTests.swift -o "$RUNNER_TEMP/samsung-oauth-tests"
           "$RUNNER_TEMP/samsung-oauth-tests"
+      - name: Test Gemini key rotation policy
+        run: |
+          swiftc ios/DichGameiOS/GeminiKeyRotationPolicy.swift ios/tests/GeminiKeyRotationPolicyTests.swift -o "$RUNNER_TEMP/gemini-key-policy-tests"
+          "$RUNNER_TEMP/gemini-key-policy-tests"
       - name: Bundle LG receiver IPK
         run: |
           npm install -g @webos-tools/cli
