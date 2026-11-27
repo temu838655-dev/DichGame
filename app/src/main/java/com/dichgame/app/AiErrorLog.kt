@@ -36,7 +36,9 @@ object AiErrorLog {
             val suffix = key.orEmpty().filterNot { it.isWhitespace() || it.isISOControl() }.takeLast(4)
             "Gemini #$keyIndex" + if (suffix.isNotEmpty()) " (…$suffix)" else ""
         } else "—"
-        val safeSummary = redact(summary).replace(Regex("[\\r\\n\\t]+"), " ").take(240)
+        val safeSummary = redact(summary).let { value ->
+            key?.takeIf { it.isNotBlank() }?.let { value.replace(it, "[REDACTED]") } ?: value
+        }.replace(Regex("[\\r\\n\\t]+"), " ").take(240)
         val safeAction = redact(action).replace(Regex("[\\r\\n\\t]+"), " ").take(160)
         val line = "[$time] | [${level.uppercase(Locale.ROOT)}] | [$flow] | [Khóa: $keyLabel] | [HTTP ${httpCode ?: "—"}] | $safeSummary | $safeAction"
         synchronized(lock) {
