@@ -269,10 +269,10 @@ object Ai {
      * Dịch một câu, tự thử lại khi lỗi tạm thời (hết lượt ngắn hạn, 5xx, quá thời gian, mạng chập chờn). Hết lượt kéo dài thì ghi
      * mốc nghỉ [coolingMs] để các câu sau không phải chờ. Hàm chặn luồng, gọi từ luồng nền.
      */
-    fun translateRetry(p: Prefs, prompt: String): String =
+    fun translateRetry(p: Prefs, prompt: String): String {
         val safePrompt = cleanRequestText(prompt)
         if (safePrompt.isBlank()) throw AiException(400, "Nội dung yêu cầu trống.")
-        requestDeduplicator.execute(translationRequestKey(p, safePrompt)) {
+        return requestDeduplicator.execute(translationRequestKey(p, safePrompt)) {
             if (p.aiAuto && autoCloud(p)) {
                 var primaryError: Exception? = null
                 if (p.geminiKeys().isNotEmpty() && KeyRing.waitMs(p.geminiKeys(), p.geminiModel) == 0L) {
@@ -291,7 +291,7 @@ object Ai {
                 }
             }
             try {
-                val r = AiRetry.run(AiRetry.Plan(), { Thread.sleep(it) }) { translate(p, prompt) }
+                val r = AiRetry.run(AiRetry.Plan(), { Thread.sleep(it) }) { translate(p, safePrompt) }
                 if (!usesGemini(p)) cooldownUntil = 0L
                 r
             } catch (e: Exception) {
