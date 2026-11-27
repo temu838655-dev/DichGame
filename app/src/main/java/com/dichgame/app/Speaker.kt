@@ -107,8 +107,6 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         try { exec.execute { if (!disposed) task() } } catch (_: java.util.concurrent.RejectedExecutionException) {}
     }
 
-    /** Được gọi (ở luồng chính) khi giọng AI lỗi; Speaker tự đọc bằng giọng máy thay thế. */
-    var onAiError: ((String) -> Unit)? = null
     private var aiErrorShown = false
 
     init {
