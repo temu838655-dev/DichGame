@@ -61,7 +61,7 @@ object SelfTest {
                     }
                 }
             } catch (e: Throwable) {
-                Log.e(TAG, "FAIL " + e.javaClass.simpleName + ": " + e.message)
+                Log.e(TAG, "FAIL offline_synthesis: " + e.javaClass.simpleName + ": " + e.message)
             }
         }.start()
     }

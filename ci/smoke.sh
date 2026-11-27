@@ -53,23 +53,6 @@ run_screens() {  # $1 = tiền tố tên ảnh
 }
 
 set_prefs ""
-
-# Kiểm tra engine TTS hệ thống và AudioTrack offline thật trên Android 14.
-adb logcat -c
-adb shell am start -W -n "$PKG/.SettingsActivity" --ez selftest true >/dev/null 2>&1
-for i in $(seq 1 180); do
-  sleep 2
-  adb logcat -d -s DG_SELFTEST:I > "$OUT/selftest.txt" 2>&1
-  if grep -qE "OK system_tts|FAIL system_tts" "$OUT/selftest.txt" && \
-     grep -qE "OK offline_track|FAIL offline_track|FAIL download" "$OUT/selftest.txt"; then
-    break
-  fi
-done
-cat "$OUT/selftest.txt"
-grep -q "OK system_tts" "$OUT/selftest.txt" || echo "Không xác nhận được engine TTS hệ thống phát và đọc hết câu." > "$OUT/selftest-fail.txt"
-grep -q "OK offline_track" "$OUT/selftest.txt" || echo "Không xác nhận được AudioTrack offline vào trạng thái PLAYSTATE_PLAYING." >> "$OUT/selftest-fail.txt"
-adb shell am force-stop "$PKG"
-
 run_screens a-default
 set_prefs ci/prefs-full.xml
 run_screens b-full
@@ -347,14 +330,19 @@ adb shell settings put global hide_error_dialogs 1 2>/dev/null || true  # ẩn h
 adb shell settings put secure immersive_mode_confirmations confirmed 2>/dev/null || true
 adb logcat -c
 adb shell am force-stop "$PKG"
+adb logcat -c
 adb shell am start -W -n "$PKG/.SettingsActivity" --es page voice --ez selftest true >/dev/null 2>&1
-for i in $(seq 1 90); do
-  sleep 5
+for i in $(seq 1 180); do
+  sleep 2
   adb logcat -d -s DG_SELFTEST:I > "$OUT/selftest.txt" 2>&1
-  grep -qE "DG_SELFTEST.*(OK|FAIL)" "$OUT/selftest.txt" && break
+  if grep -qE "OK system_tts|FAIL system_tts" "$OUT/selftest.txt" && \
+     grep -qE "OK offline_track|FAIL offline_track|FAIL download|FAIL offline_synthesis" "$OUT/selftest.txt"; then
+    break
+  fi
 done
 cat "$OUT/selftest.txt"
-grep -qE "DG_SELFTEST.*OK" "$OUT/selftest.txt" || echo "Giọng offline không chạy được trên máy giả lập" > "$OUT/selftest-fail.txt"
+grep -q "OK system_tts" "$OUT/selftest.txt" || echo "Không xác nhận được engine TTS hệ thống phát và đọc hết câu." > "$OUT/selftest-fail.txt"
+grep -q "OK offline_track" "$OUT/selftest.txt" || echo "Không xác nhận được AudioTrack offline vào trạng thái PLAYSTATE_PLAYING." >> "$OUT/selftest-fail.txt"
 adb exec-out run-as "$PKG" cat files/selftest.wav > "$OUT/selftest.wav" 2>/dev/null || true
 adb shell am force-stop "$PKG"
 start_page voice; shot offline-da-tai

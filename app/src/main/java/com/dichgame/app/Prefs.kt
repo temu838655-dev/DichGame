@@ -304,10 +304,24 @@ class Prefs(ctx: Context) {
         get() = sp.getInt("scanms", 333).coerceIn(100, 3000)
         set(v) = sp.edit().putInt("scanms", v.coerceIn(100, 3000)).apply()
 
-    /** Hai lựa chọn giọng: "system" (cơ bản) và "ai" (Gemini); tự đọc cơ bản nếu AI lỗi. */
+    /** "system" là Giọng cơ bản; "ai" và "offline" là hai engine nằm trong nhóm Giọng AI. */
     var voiceEngine: String
         get() = sp.getString("voiceengine", "system").orEmpty().takeIf { it in setOf("ai", "offline") } ?: "system"
-        set(v) = sp.edit().putString("voiceengine", if (v in setOf("ai", "offline")) v else "system").apply()
+        set(v) {
+            val value = if (v in setOf("ai", "offline")) v else "system"
+            sp.edit().putString("voiceengine", value).apply()
+            if (value in setOf("ai", "offline")) lastAiVoiceEngine = value
+        }
+
+    /** Giữ lựa chọn Offline/Gemini khi người dùng tạm chuyển sang Giọng cơ bản. */
+    var lastAiVoiceEngine: String
+        get() = sp.getString("last_ai_voice_engine", null)
+            ?.takeIf { it in setOf("ai", "offline") }
+            ?: voiceEngine.takeIf { it in setOf("ai", "offline") }
+            ?: "ai"
+        set(v) {
+            if (v in setOf("ai", "offline")) sp.edit().putString("last_ai_voice_engine", v).apply()
+        }
     var aiVoice: String
         get() = sp.getString("aivoice", "Kore").orEmpty().ifBlank { "Kore" }
         set(v) = sp.edit().putString("aivoice", v).apply()

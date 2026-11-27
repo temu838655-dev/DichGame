@@ -13,8 +13,8 @@ permissions:
 
 concurrency:
   group: smoke-${{ github.ref }}
-  # Emulator builds are expensive; do not cancel an in-flight smoke run when another commit arrives.
-  cancel-in-progress: false
+  # Keep the newest candidate on the working branch; preserve main-branch smoke runs.
+  cancel-in-progress: ${{ github.ref == 'refs/heads/fix/translation-pipeline' }}
 
 jobs:
   smoke:
