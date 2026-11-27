@@ -1746,7 +1746,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         } catch (e: Throwable) {
             CrashLog.mark("choi:dich-loi " + e.javaClass.simpleName)
             syncTools()
-            Toast.makeText(this, "Không bật được dịch phụ đề: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+            AiErrorLog.record("ERROR", "DỊCH", summary = e.message ?: e.javaClass.simpleName, action = "Không hiển thị lỗi trong Remote Play")
         }
     }
 
@@ -1763,7 +1763,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         } catch (e: Throwable) {
             CrashLog.mark("choi:dich-loi " + e.javaClass.simpleName)
             syncTools()
-            Toast.makeText(this, "Không bật được dịch phụ đề: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+            AiErrorLog.record("ERROR", "DỊCH", summary = e.message ?: e.javaClass.simpleName, action = "Không hiển thị lỗi trong Remote Play")
         }
     }
 
@@ -1798,7 +1798,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         } catch (e: Throwable) {
             CrashLog.mark("choi:dich-gd-loi " + e.javaClass.simpleName)
             syncTools()
-            Toast.makeText(this, "Không bật được dịch giao diện: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+            AiErrorLog.record("ERROR", "DỊCH", summary = e.message ?: e.javaClass.simpleName, action = "Giữ nguyên màn chơi và không hiển thị lỗi")
         }
     }
 
@@ -1812,7 +1812,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         } catch (e: Throwable) {
             CrashLog.mark("choi:dich-gd-loi " + e.javaClass.simpleName)
             syncTools()
-            Toast.makeText(this, "Không bật được dịch giao diện: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+            AiErrorLog.record("ERROR", "DỊCH", summary = e.message ?: e.javaClass.simpleName, action = "Giữ nguyên màn chơi và không hiển thị lỗi")
         }
     }
 
@@ -1841,7 +1841,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         } catch (e: Throwable) {
             CrashLog.mark("choi:dich-het-loi " + e.javaClass.simpleName)
             syncTools()
-            Toast.makeText(this, "Không bật được Dịch hết chữ: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+            AiErrorLog.record("ERROR", "OCR", summary = e.message ?: e.javaClass.simpleName, action = "Tiếp tục Remote Play, bỏ qua tác vụ OCR lỗi")
         }
     }
 
@@ -1909,7 +1909,7 @@ class PsPlayActivity : Activity(), SurfaceHolder.Callback {
         var tester: Speaker? = null
         fun testerSp(): Speaker? {
             if (tester == null) tester = try {
-                Speaker(a, pr).also { sp -> sp.onAiError = { m -> Toast.makeText(a, m, Toast.LENGTH_LONG).show() } }
+                Speaker(a, pr)
             } catch (_: Throwable) { null }
             return tester
         }
