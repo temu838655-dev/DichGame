@@ -53,6 +53,23 @@ run_screens() {  # $1 = tiền tố tên ảnh
 }
 
 set_prefs ""
+
+# Kiểm tra engine TTS hệ thống và AudioTrack offline thật trên Android 14.
+adb logcat -c
+adb shell am start -W -n "$PKG/.SettingsActivity" --ez selftest true >/dev/null 2>&1
+for i in $(seq 1 180); do
+  sleep 2
+  adb logcat -d -s DG_SELFTEST:I > "$OUT/selftest.txt" 2>&1
+  if grep -qE "OK system_tts|FAIL system_tts" "$OUT/selftest.txt" && \
+     grep -qE "OK offline_track|FAIL offline_track|FAIL download" "$OUT/selftest.txt"; then
+    break
+  fi
+done
+cat "$OUT/selftest.txt"
+grep -q "OK system_tts" "$OUT/selftest.txt" || echo "Không xác nhận được engine TTS hệ thống phát và đọc hết câu." > "$OUT/selftest-fail.txt"
+grep -q "OK offline_track" "$OUT/selftest.txt" || echo "Không xác nhận được AudioTrack offline vào trạng thái PLAYSTATE_PLAYING." >> "$OUT/selftest-fail.txt"
+adb shell am force-stop "$PKG"
+
 run_screens a-default
 set_prefs ci/prefs-full.xml
 run_screens b-full
