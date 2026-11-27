@@ -556,9 +556,10 @@ class SettingsActivity : Activity() {
                 if (keys.isEmpty()) addView(note("Chưa cấu hình khóa Gemini."))
                 keys.forEachIndexed { index, key ->
                     val status = KeyRing.status(key, p.geminiModel)
-                    val state = when (status.state) {
+                    val state = if (!p.isGeminiKeyEnabled(key)) "Đã tắt thủ công" else when (status.state) {
                         KeyRing.State.OK -> "Hoạt động"
                         KeyRing.State.QUOTA -> "Cooldown còn ${AiRetry.humanWait(status.leftMs)}"
+                        KeyRing.State.DAILY -> "Hết lượt ngày · hồi sau ${AiRetry.humanWait(status.leftMs)}"
                         KeyRing.State.BAD -> "Lỗi / khóa không hợp lệ"
                     }
                     val suffix = key.takeLast(4)
