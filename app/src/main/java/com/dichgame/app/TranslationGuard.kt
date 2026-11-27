@@ -16,7 +16,7 @@ object TranslationGuard {
 
     private val LABEL = Regex("^\\s*(bản dịch|dịch|translation|translated|vietnamese|tiếng việt|vi)\\s*[:：]\\s*", RegexOption.IGNORE_CASE)
     private val ZERO_WIDTH = Regex("[\\u200B-\\u200D\\uFEFF]")
-    private val DIAGNOSTIC = Regex("(^|\\b)(http\\s*)?[45]\\d{2}(\\b|:)", RegexOption.IGNORE_CASE)
+    private val DIAGNOSTIC = Regex("(^|\\b)http\\s*[45]\\d{2}(\\b|:)|^\\s*[45]\\d{2}\\s*(?::|bad request|unauthorized|forbidden|quota|resource exhausted)|^\\s*[45]\\d{2}\\s*$", RegexOption.IGNORE_CASE)
     private val FENCE = Regex("^```[a-zA-Z]*\\s*|\\s*```$")
     private val NOTE_LINE = Regex("^\\s*(\\(?\\s*(lưu ý|ghi chú|chú thích|giải thích|note|notes|translator'?s? note|hoặc|or)(?![\\p{L}]).*|[*•]\\s.*|\\d+[.)]\\s.*)$", RegexOption.IGNORE_CASE)
     private val REFUSAL = listOf(
