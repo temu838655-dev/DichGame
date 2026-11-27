@@ -149,9 +149,8 @@ object Ai {
         }
     }
 
-    /** Khóa lỗi xác thực có thể được thay thế. Hạn mức áp dụng cho nhóm khóa đã cấu hình. */
-    fun <T> withGeminiKey(p: Prefs, scope: String, call: (String) -> T): T {
-        val keys = p.geminiKeys()
+    /** Gọi lần lượt các khóa Gemini: 429 theo khóa chỉ khóa riêng khóa đó; chỉ dừng ngay với giới hạn billing cấp tài khoản/dự án. */
+    internal fun <T> withGeminiKeys(keys: List<String>, scope: String, call: (String) -> T): T {
         if (keys.isEmpty()) throw AiException(401, "Chưa có khóa Gemini", badKey = true)
         var last: AiException? = null
         while (true) {
@@ -163,14 +162,9 @@ object Ai {
             } catch (e: AiException) {
                 last = e
                 if (!KeyRing.report(k, scope, e)) throw e
-                if (e.code == 429) {
-                    if (!e.billingLimit) {
-                        val now = System.currentTimeMillis()
-                        val delay = maxOf(e.retryAfterMs, KeyRing.quotaBlockMs(e.retryAfterMs, e.perDay, now))
-                        keys.forEach { KeyRing.blockQuota(it, scope, delay, now) }
-                    }
-                    throw e
-                }
+                // Hết quota của khóa hiện tại: release ở finally rồi thử khóa kế tiếp.
+                // Billing/credit exhausted là giới hạn chung, đổi API key không thể khắc phục.
+                if (e.code == 429 && e.billingLimit) throw e
             } finally {
                 KeyRing.release(k, scope)
             }
@@ -185,6 +179,9 @@ object Ai {
         }
         throw AiException(429, "Mọi khóa Gemini đều hết lượt", KeyRing.waitMs(keys, scope), perDay = last?.perDay == true)
     }
+
+    fun <T> withGeminiKey(p: Prefs, scope: String, call: (String) -> T): T =
+        withGeminiKeys(p.geminiKeys(), scope, call)
 
     private fun geminiPost(p: Prefs, url: String, body: JSONObject): String =
         withGeminiKey(p, p.geminiModel) { key -> post(url, body, mapOf("x-goog-api-key" to key)) }
