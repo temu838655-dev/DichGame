@@ -1,6 +1,9 @@
 package com.dichgame.app
 
 import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import org.json.JSONObject
 
 /**
@@ -160,8 +163,18 @@ object AiRetry {
     private val RETRY_DELAY = Regex("\"retryDelay\"\\s*:\\s*\"([0-9]+(?:\\.[0-9]+)?)s\"")
 
     /** Thời gian máy chủ bảo chờ (mili giây): từ tiêu đề Retry-After (giây) hoặc trường retryDelay trong phản hồi lỗi của Gemini. 0 nếu không có. */
-    fun retryDelayMs(header: String?, body: String): Long {
-        header?.trim()?.toDoubleOrNull()?.let { if (it > 0) return (it * 1000).toLong() }
+    fun retryDelayMs(header: String?, body: String, now: Long = System.currentTimeMillis()): Long {
+        val value = header?.trim().orEmpty()
+        value.toDoubleOrNull()?.let { if (it > 0) return (it * 1000).toLong() }
+        if (value.isNotEmpty()) {
+            val parsed = runCatching {
+                SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("GMT")
+                    isLenient = false
+                }.parse(value)?.time
+            }.getOrNull()
+            if (parsed != null && parsed > now) return parsed - now
+        }
         RETRY_DELAY.find(body)?.groupValues?.get(1)?.toDoubleOrNull()?.let { if (it > 0) return (it * 1000).toLong() }
         return 0L
     }
