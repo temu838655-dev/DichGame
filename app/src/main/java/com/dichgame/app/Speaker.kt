@@ -163,7 +163,15 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
             synchronized(pendingSystemLock) {
                 val engine = tts ?: return@post
                 if (disposed || ready) return@post
-                engine.setLanguage(Locale("vi", "VN"))
+                val languageStatus = engine.setLanguage(Locale("vi", "VN"))
+                if (languageStatus < TextToSpeech.LANG_AVAILABLE) {
+                    systemInitFailed = true
+                    pendingSystem.clear()
+                    main.post {
+                        if (!disposed) onSpeechError?.invoke("", "Thiết bị chưa có dữ liệu giọng tiếng Việt (mã $languageStatus).")
+                    }
+                    return@post
+                }
                 engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) { systemStarted(utteranceId) }
                     override fun onDone(utteranceId: String?) { systemFinished(utteranceId) }
