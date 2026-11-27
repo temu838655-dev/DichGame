@@ -26,6 +26,7 @@
         android:usesCleartextTraffic="true"
         android:theme="@style/DgTheme">
         <receiver android:name="com.dichgame.update.UpdateReceiver" android:exported="false" />
+        <activity android:name=".TranslationLogActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
