@@ -101,6 +101,8 @@ class GameLibraryJsonTest {
         fun p(l: List<Double>, q: Double) = l.sorted()[((l.size - 1) * q).toInt()]
         println("BENCH_THUVIEN dòng=${rows.size} dựng_chỉ_mục=%.0fms | chính xác p50=%.3fms p95=%.3fms | gần đúng p50=%.3fms p95=%.3fms | không có p50=%.3fms p95=%.3fms | trúng_gần_đúng=%d/300 sai=%d"
             .format(buildMs, p(exact, .5), p(exact, .95), p(fuzzy, .5), p(fuzzy, .95), p(miss, .5), p(miss, .95), fuzzyHit, fuzzyWrong))
+        fail("SỐ ĐO: dòng=${rows.size} dựng_chỉ_mục=%.0fms | chính xác p50=%.3f p95=%.3f | gần đúng p50=%.3f p95=%.3f | không có p50=%.3f p95=%.3f | trúng_gần_đúng=%d/300 sai=%d exactOk=%d missWrong=%d"
+            .format(buildMs, p(exact, .5), p(exact, .95), p(fuzzy, .5), p(fuzzy, .95), p(miss, .5), p(miss, .95), fuzzyHit, fuzzyWrong, exactOk, missWrong))
         assertEquals(300, exactOk)
         assertEquals(0, fuzzyWrong)
         assertEquals(0, missWrong)
