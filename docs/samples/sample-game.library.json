@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "game": "Sample Game",
+  "version": 1,
+  "items": [
+    {"id": "000001", "en_normalized": "press x to open the door", "en_raw": "Press X to open the door.", "vi": "Nhấn X để mở cửa."},
+    {"id": "000002", "en_normalized": "we cant go back now", "en_raw": "We can't go back now!", "vi": "Giờ chúng ta không thể quay lại được nữa!"},
+    {"id": "000003", "en_normalized": "checkpoint reached", "en_raw": "CHECKPOINT REACHED", "vi": "ĐÃ ĐẾN ĐIỂM LƯU"}
+  ]
+}

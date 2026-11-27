@@ -115,7 +115,11 @@ internal object RemotePack {
         require(bytes.size == m.bytes) { "Kích thước gói không khớp." }
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
         require(digest == m.sha256) { "SHA-256 không khớp, không nhập gói." }
-        val pack = PackText.parseScopedCsv(PackText.decode(bytes)) ?: error("Gói Cloud cần CSV source,vi,game.")
+        val text = PackText.decode(bytes)
+        val pack = if (GameLibraryJson.looksLike(text)) {
+            val lib = GameLibraryJson.parse(text, m.game)
+            PackText.Pack(lib.game, emptyList(), emptyList(), lib.lines)
+        } else PackText.parseScopedCsv(text) ?: error("Gói Cloud cần CSV source,vi,game hoặc thư viện JSON (schema 1).")
         require(pack.name.isNotBlank() && GamePackMatch.selected(m.game, pack.name) && pack.lines.isNotEmpty()) { "Nội dung CSV không đúng game hoặc trống." }
         return pack
     }
