@@ -18,6 +18,7 @@ object KeyRing {
     private const val MAX_MINUTE_QUOTA_MS = 24 * 60 * 60_000L
 
     private val until = HashMap<String, Long>()
+    private val dailyUntil = HashMap<String, Long>()
     private val bad = HashMap<String, Long>()
     private val current = HashMap<String, String>()
     /** Provider/model-wide billing cap shared by every key in the same scope. */
@@ -37,7 +38,7 @@ object KeyRing {
         return seen.toList()
     }
 
-    enum class State { OK, QUOTA, BAD }
+    enum class State { OK, QUOTA, DAILY, BAD }
 
     /** Tình trạng một khóa: [state], và còn [leftMs] mili giây nữa mới dùng lại được (0 nếu đang dùng được). */
     class Status(val state: State, val leftMs: Long, val active: Boolean)
@@ -47,6 +48,8 @@ object KeyRing {
         if (b > 0) return Status(State.BAD, b, false)
         val billing = (billingUntil[scope] ?: 0L) - now
         if (billing > 0) return Status(State.QUOTA, billing, false)
+        val daily = (dailyUntil[id(key, scope)] ?: 0L) - now
+        if (daily > 0) return Status(State.DAILY, daily, false)
         val q = (until[id(key, scope)] ?: 0L) - now
         if (q > 0) return Status(State.QUOTA, q, false)
         return Status(State.OK, 0L, current[scope] == key)
@@ -106,6 +109,12 @@ object KeyRing {
         if (t > (until[id(key, scope)] ?: 0L)) until[id(key, scope)] = t
     }
 
+    /** Daily RPD is exhausted for this key/model until the provider's Pacific-midnight reset. */
+    @Synchronized fun blockDaily(key: String, scope: String, ms: Long, now: Long = System.currentTimeMillis()) {
+        val t = now + ms
+        if (t > (dailyUntil[id(key, scope)] ?: 0L)) dailyUntil[id(key, scope)] = t
+    }
+
     /** Billing/spend caps apply to every key in the same provider/model scope. */
     @Synchronized fun blockBilling(scope: String, ms: Long, now: Long = System.currentTimeMillis()) {
         val t = now + ms
@@ -125,9 +134,10 @@ object KeyRing {
     @Synchronized fun forget(key: String) {
         bad.remove(key)
         until.keys.removeAll { it.endsWith("|$key") }
+        dailyUntil.keys.removeAll { it.endsWith("|$key") }
     }
 
-    @Synchronized fun reset() { until.clear(); bad.clear(); current.clear(); inFlight.clear(); billingUntil.clear() }
+    @Synchronized fun reset() { until.clear(); dailyUntil.clear(); bad.clear(); current.clear(); inFlight.clear(); billingUntil.clear() }
 
     /**
      * Mọi khóa đều đang nghỉ: còn bao lâu nữa khóa sớm nhất dùng lại được (mili giây). 0 nếu có khóa dùng được ngay;
@@ -204,7 +214,8 @@ object KeyRing {
     fun report(key: String, scope: String, e: AiException, now: Long = System.currentTimeMillis()): Boolean = when {
         e.badKey -> { blockBad(key, now); true }
         e.billingLimit -> { blockBilling(scope, maxOf(60 * 60_000L, e.retryAfterMs), now); true }
-        e.code == 429 -> { blockQuota(key, scope, quotaBlockMs(e.retryAfterMs, e.perDay, now), now); true }
+        e.code == 429 && e.perDay -> { blockDaily(key, scope, quotaBlockMs(e.retryAfterMs, true, now), now); true }
+        e.code == 429 -> { blockQuota(key, scope, quotaBlockMs(e.retryAfterMs, false, now), now); true }
         else -> false
     }
 }
