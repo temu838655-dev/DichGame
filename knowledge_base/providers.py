@@ -29,7 +29,7 @@ def _quota_exhausted(payload: bytes) -> bool:
     try:
         error = json.loads(payload)["error"]
         return isinstance(error, dict) and any(
-            error.get(key) in ("insufficient_quota", "billing_hard_limit_reached")
+            error.get(key) in ("insufficient_quota", "billing_hard_limit_reached", "credit_balance_exhausted")
             for key in ("type", "code")
         )
     except (ValueError, TypeError, KeyError):

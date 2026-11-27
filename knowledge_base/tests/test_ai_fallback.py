@@ -108,6 +108,7 @@ class AIFallbackTests(unittest.TestCase):
         for status, body, headers in [
             (400, b"{}", {}),
             (429, b'{"error":{"type":"insufficient_quota"}}', {}),
+            (429, b'{"error":{"code":"credit_balance_exhausted"}}', {}),
             (429, b"{}", {"Retry-After": "90"}),
         ]:
             with self.subTest(status=status, headers=headers):

@@ -46,3 +46,15 @@ Ngày 27/11/2026. Bảng này ghi bằng chứng theo nền tảng và các phé
 - [Các commit trên PR #92](https://github.com/temu838655-dev/DichGame/pull/92/commits)
 
 - [Kiểm thử JVM Android về thông báo lỗi, thời gian nghỉ theo model và cấu trúc phản hồi Gemini tại ab574dc](https://github.com/temu838655-dev/DichGame/actions/runs/45984756549)
+
+## Thử API thật ngày 27/11/2026
+
+Workflow dùng hai secret độc lập, tra danh mục và gửi đúng một yêu cầu dịch
+cho mỗi nhà cung cấp. Google liệt kê và trả về model
+`gemini-3.5-flash-lite`. Câu trả lời chưa đạt phép kiểm tổng hợp tiếng Việt,
+biến `{player}` và số lượng 2. Log không lưu câu trả lời nên chưa xác định
+được điều kiện nào trượt. OpenAI liệt kê `gpt-5-mini`, rồi trả HTTP 429 với
+mã `credit_balance_exhausted` khi dịch. Chưa có câu dịch hoặc model phản hồi
+từ OpenAI. Phép thử gọi REST trực tiếp, chưa xác minh giao diện thiết bị.
+
+[Nhật ký hai nhà cung cấp](https://github.com/temu838655-dev/DichGame/actions/runs/46023042121)
