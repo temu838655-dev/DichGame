@@ -76,7 +76,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (!running || speaker == null) return
         runCatching { speaker?.shutdown() }
         speaker = try {
-            Speaker(act, Prefs(act)).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() }; if (Prefs(act).voiceEngine == "offline") sp.prepare() }
+            Speaker(act, Prefs(act)).also { sp -> if (Prefs(act).voiceEngine == "offline") sp.prepare() }
         } catch (_: Throwable) { null }
     }
 
@@ -188,7 +188,7 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         if (!running) return
         if (on && speaker == null) {
             try {
-                speaker = Speaker(act, Prefs(act)).also { sp -> sp.onAiError = { m -> Toast.makeText(act, m, Toast.LENGTH_LONG).show() } }
+                speaker = Speaker(act, Prefs(act)).also { sp ->  }
             } catch (_: Throwable) { speaker = null }
         } else if (!on) {
             runCatching { speaker?.shutdown() }
@@ -433,17 +433,18 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
         }
     }
 
-    /** Thông báo của app (đang tải, lỗi...): thay dòng phụ đề đang hiện. */
+    /** Status/error messages are private diagnostics; this overlay only carries translated captions. */
     private fun notice(t: String) {
-        pacer.cleared(); handler.removeCallbacks(hideCheck)
-        if (t.isEmpty()) sendTv("clear", "")
-        else if (AiErrorLog.isDiagnosticText(t)) {
-            AiErrorLog.record("WARN", "OCR", summary = t, action = "Ẩn thông báo kỹ thuật khỏi phụ đề")
+        if (t.isNotEmpty()) {
+            AiErrorLog.record(if (AiErrorLog.isDiagnosticText(t)) "WARN" else "INFO", "OCR", summary = t, action = "Không thay phụ đề game bằng trạng thái ứng dụng")
             return
         }
+        pacer.cleared()
+        handler.removeCallbacks(hideCheck)
+        sendTv("clear", "")
         if (adjusting) return
-        view.text = t
-        view.visibility = if (t.isEmpty()) View.GONE else View.VISIBLE
+        view.text = ""
+        view.visibility = View.GONE
     }
 
     // ---- nhận lời nghe được từ âm thanh game
