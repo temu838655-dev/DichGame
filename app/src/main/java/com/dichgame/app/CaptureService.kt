@@ -275,7 +275,6 @@ class CaptureService : Service() {
         addOverlay()
         if (speak) {
             val sp = Speaker(this, Prefs(this))
-            sp.onAiError = { m -> android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_LONG).show() }
             speaker = sp
         }
 
@@ -1090,7 +1089,7 @@ class CaptureService : Service() {
                 val canNarrate = TranslationSpeechPolicy.isSpeakable(
                     TranslationSpeechPolicy.Candidate(vi.text, vi.uncertain)
                 )
-                show(vi.caption, readAloud = canNarrate)
+                show(vi.caption, readAloud = canNarrate, translated = true)
                 hideRegionFrame()
                 sendTv("region", vi.caption, canNarrate && speak && tvSpeakOn() && !tvVoiceOn())
                 if (canNarrate && speak && tvVoiceOn()) tvVoice(vi.text)
@@ -1400,8 +1399,11 @@ class CaptureService : Service() {
         if (tlp.gravity != g) { tlp.gravity = g; wm.updateViewLayout(o, tlp) }
     }
 
-    private fun show(t: String, readAloud: Boolean = true) {
-        // mọi thông báo hay lệnh xoá đều thay thế dòng phụ đề đang hiện: bộ giữ nhịp phải biết là đã hết
+    private fun show(t: String, readAloud: Boolean = true, translated: Boolean = false) {
+        if (t.isNotEmpty() && (!translated || AiErrorLog.isDiagnosticText(t))) {
+            AiErrorLog.record("WARN", "OCR", summary = t, action = "Không thay phụ đề bằng thông báo kỹ thuật")
+            return
+        }
         pacer.cleared(); handler.removeCallbacks(hideCheck)
         if (t.isEmpty()) { clearMenuOverlay(); sendTv("clear", "") }
         overlay?.apply { text = t; visibility = if (t.isEmpty()) View.GONE else View.VISIBLE }
