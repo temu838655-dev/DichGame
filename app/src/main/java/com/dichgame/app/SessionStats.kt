@@ -130,9 +130,9 @@ class SessionStats {
         val why = machineReasons()
         if (why.isNotEmpty()) sb.append("Dịch trên máy vì AI không dùng được: ").append(why).append('\n')
         val n = synchronized(this) { latencies.size }
-        if (n > 0) sb.append("Từ lần quét đầu tiên phát hiện câu mới tới lúc hiện phụ đề (${n} câu): p50 ${sec(percentile(50))} giây, p95 ${sec(percentile(95))} giây\n")
+        if (n > 0) sb.append("Từ lần chụp đầu tiên phát hiện câu mới tới lúc hiện phụ đề (${n} câu): p50 ${sec(percentile(50))} giây, p95 ${sec(percentile(95))} giây\n")
         val speechN = synchronized(this) { speechLatencies.size }
-        if (speechN > 0) sb.append("Từ lần quét đầu tiên phát hiện câu mới tới lúc bắt đầu đọc (${speechN} câu): p50 ${sec(speechPercentile(50))} giây, p95 ${sec(speechPercentile(95))} giây\n")
+        if (speechN > 0) sb.append("Từ lần chụp đầu tiên phát hiện câu mới tới lúc bắt đầu đọc (${speechN} câu): p50 ${sec(speechPercentile(50))} giây, p95 ${sec(speechPercentile(95))} giây\n")
         if (startBattery in 0..100 && batteryPct in 0..100 && nowMs > startAt) {
             val drop = startBattery - batteryPct
             val perHour = if (nowMs - startAt >= 10 * 60_000L) " (khoảng ${drop * 3_600_000L / (nowMs - startAt)}% mỗi giờ)" else " (dịch trên 10 phút mới ước lượng được mỗi giờ)"
