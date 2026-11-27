@@ -34,7 +34,6 @@ class SettingsActivity : Activity() {
         AiErrorLog.initialize(applicationContext)
         page = intent?.getStringExtra("page") ?: if (intent?.getStringExtra("goto") == "profile") "profile" else "hub"
         speaker = Speaker(this, p)
-        speaker?.onAiError = { m -> Toast.makeText(this, m, Toast.LENGTH_LONG).show() }
         render()
         if (BuildConfig.DEBUG && intent?.getBooleanExtra("selftest", false) == true) SelfTest.voice(applicationContext)
     }
