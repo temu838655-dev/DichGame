@@ -100,7 +100,34 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     /** Số lần đã bắt đầu phát một đoạn âm thanh (giọng AI hoặc giọng offline); dùng cho bản tự kiểm tra. */
     @Volatile var played = 0
         private set
+    private val systemSpeechText = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** Engine callbacks: dùng cho thống kê độ trễ và kiểm thử phát giọng thật trên máy Android. */
+    var onSpeechStarted: ((String) -> Unit)? = null
+    var onSpeechFinished: ((String) -> Unit)? = null
+    var onSpeechError: ((String, String) -> Unit)? = null
+
     private fun finished(id: String?) { if (id != null) utterances.remove(id) }
+
+    private fun systemStarted(id: String?) {
+        val text = id?.let { systemSpeechText[it] } ?: return
+        main.post { if (!disposed) onSpeechStarted?.invoke(text) }
+    }
+
+    private fun systemFinished(id: String?) {
+        if (id == null) return
+        utterances.remove(id)
+        val text = systemSpeechText.remove(id) ?: return
+        main.post { if (!disposed) onSpeechFinished?.invoke(text) }
+    }
+
+    private fun systemFailed(id: String?, reason: String) {
+        if (id == null) return
+        utterances.remove(id)
+        val text = systemSpeechText.remove(id) ?: return
+        main.post { if (!disposed) onSpeechError?.invoke(text, reason) }
+    }
+
     private fun submit(task: () -> Unit) {
         if (disposed) return
         try { exec.execute { if (!disposed) task() } } catch (_: java.util.concurrent.RejectedExecutionException) {}
@@ -116,18 +143,34 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     }
 
     private fun onSystemInitialized(status: Int) {
-        if (status != TextToSpeech.SUCCESS) return
+        if (status != TextToSpeech.SUCCESS) {
+            main.post {
+                synchronized(pendingSystemLock) { pendingSystem.clear() }
+                if (!disposed) onSpeechError?.invoke("", "Không khởi động được giọng hệ thống (mã $status).")
+            }
+            return
+        }
         main.post {
             synchronized(pendingSystemLock) {
                 val engine = tts ?: return@post
                 if (disposed || ready) return@post
                 engine.setLanguage(Locale("vi", "VN"))
                 engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {}
-                    override fun onDone(utteranceId: String?) { finished(utteranceId) }
+                    override fun onStart(utteranceId: String?) { systemStarted(utteranceId) }
+                    override fun onDone(utteranceId: String?) { systemFinished(utteranceId) }
                     @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) { finished(utteranceId) }
-                    override fun onStop(utteranceId: String?, interrupted: Boolean) { finished(utteranceId) }
+                    override fun onError(utteranceId: String?) { systemFailed(utteranceId, "Giọng hệ thống gặp lỗi khi đọc câu.") }
+                    override fun onError(utteranceId: String?, errorCode: Int) {
+                        systemFailed(utteranceId, "Giọng hệ thống gặp lỗi $errorCode khi đọc câu.")
+                    }
+                    override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                        if (interrupted) {
+                            if (utteranceId != null) {
+                                utterances.remove(utteranceId)
+                                systemSpeechText.remove(utteranceId)
+                            }
+                        } else systemFailed(utteranceId, "Giọng hệ thống dừng trước khi đọc hết câu.")
+                    }
                 })
                 applyVoice()
                 ready = true
@@ -292,10 +335,19 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         if (flush) utterances.clear()
         val id = "dg" + utt.incrementAndGet()
         utterances.add(id)
+        systemSpeechText[id] = text
         count("doc_doc")
         try {
-            if (t.speak(text, if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, id) != TextToSpeech.SUCCESS) finished(id)
-        } catch (_: Exception) { finished(id) }
+            if (t.speak(text, if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, id) != TextToSpeech.SUCCESS) {
+                utterances.remove(id)
+                systemSpeechText.remove(id)
+                main.post { if (!disposed) onSpeechError?.invoke(text, "Engine TTS từ chối phát câu.") }
+            }
+        } catch (e: Exception) {
+            utterances.remove(id)
+            systemSpeechText.remove(id)
+            main.post { if (!disposed) onSpeechError?.invoke(text, e.message ?: "Không gửi được câu tới engine TTS.") }
+        }
     }
 
     // ---------------- Giọng AI ----------------
@@ -559,6 +611,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
             pendingSystem.clear()
             lastSysNorm = ""
             utterances.clear()
+            systemSpeechText.clear()
             try { tts?.stop() } catch (e: RuntimeException) {
                 android.util.Log.w("DG_TTS", "Không dừng được giọng hệ thống", e)
             }
@@ -578,6 +631,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         disposed = true
         synchronized(pendingSystemLock) { pendingSystem.clear() }
         utterances.clear()
+        systemSpeechText.clear()
         tvSeq.incrementAndGet()
         seq.incrementAndGet()
         synchronized(lock) {
