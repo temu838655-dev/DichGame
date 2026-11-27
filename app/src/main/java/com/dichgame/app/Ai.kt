@@ -108,7 +108,21 @@ object Ai {
         p.cloudUrl.startsWith("https://", ignoreCase = true) && p.cloudKey.isNotBlank() && p.cloudModel.isNotBlank()
 
     private fun cloudScope(p: Prefs) = "cloud:" + p.cloudUrl + ":" + p.cloudModel
-    private fun cloudCooldown(p: Prefs) = KeyRing.unavailableError(listOf(p.cloudKey), cloudScope(p))
+    private fun cloudCooldown(p: Prefs): AiException? {
+        if (p.isCloudBillingBlocked()) {
+            return AiException(
+                429,
+                "Cloud API đã tạm dừng vì lần trước báo hết credit. Nạp tiền hoặc đổi API key, sau đó bấm Kiểm tra API để thử lại.",
+                billingLimit = true
+            )
+        }
+        return KeyRing.unavailableError(listOf(p.cloudKey), cloudScope(p))
+    }
+
+    private fun reportCloudFailure(p: Prefs, error: AiException) {
+        KeyRing.report(p.cloudKey, cloudScope(p), error)
+        if (error.billingLimit) p.blockCloudBilling()
+    }
 
     fun cloudEndpoint(base: String): String {
         val b = base.trim().trimEnd('/')
@@ -279,7 +293,7 @@ object Ai {
                 try {
                     return@execute translate(p, prompt, forceCloud = true)
                 } catch (e: AiException) {
-                    KeyRing.report(p.cloudKey, cloudScope(p), e)
+                    reportCloudFailure(p, e)
                     throw e
                 }
             }
@@ -289,23 +303,32 @@ object Ai {
             try {
                 AiRetry.run(AiRetry.Plan(), { Thread.sleep(it) }) { translate(p, prompt) }
             } catch (e: AiException) {
-                if (cloudKey != null) KeyRing.report(cloudKey, scope, e)
+                if (cloudKey != null) reportCloudFailure(p, e)
                 throw e
             }
         }
 
     /** Thử dịch một câu để kiểm tra khóa. Trả về chuỗi bắt đầu bằng "OK" nếu chạy được, ngược lại là lý do lỗi. */
-    fun test(p: Prefs, forceCloud: Boolean = false): String = try {
-        "OK: " + translate(p, prompt(p, "tiếng Anh", "", emptyList(), "Hello, how are you?"), forceCloud = forceCloud)
-    } catch (e: AiException) {
-        when (e.code) {
-            400 -> "Lỗi 400: sai tên model hoặc yêu cầu không hợp lệ. ${e.message.orEmpty()}"
-            401, 403 -> "Lỗi ${e.code}: khóa API sai hoặc không có quyền."
-            404 -> "Lỗi 404: sai địa chỉ hoặc tên model."
-            429 -> "Lỗi 429: hết lượt dùng, chờ đến khi hạn mức được phục hồi."
-            else -> "Lỗi ${e.code}: ${e.message.orEmpty()}"
+    fun test(p: Prefs, forceCloud: Boolean = false): String {
+        val cloudTest = forceCloud || p.engine == Prefs.ENGINE_CLOUD
+        if (cloudTest) {
+            // Đây là thao tác kiểm tra do người dùng chủ động; cho phép một request mới sau khi đã nạp tiền.
+            p.clearCloudBillingBlock()
+            KeyRing.clearBilling()
         }
-    } catch (e: Exception) {
-        "Không kết nối được: ${e.message.orEmpty()}"
+        return try {
+            "OK: " + translate(p, prompt(p, "tiếng Anh", "", emptyList(), "Hello, how are you?"), forceCloud = forceCloud)
+        } catch (e: AiException) {
+            if (cloudTest && e.billingLimit) p.blockCloudBilling()
+            when (e.code) {
+                400 -> "Lỗi 400: sai tên model hoặc yêu cầu không hợp lệ. ${e.message.orEmpty()}"
+                401, 403 -> "Lỗi ${e.code}: khóa API sai hoặc không có quyền."
+                404 -> "Lỗi 404: sai địa chỉ hoặc tên model."
+                429 -> if (e.billingLimit) "Cloud API hết credit; đã tạm dừng tự động. Nạp tiền hoặc đổi khóa rồi bấm Kiểm tra API." else "Lỗi 429: hết lượt dùng, chờ đến khi hạn mức được phục hồi."
+                else -> "Lỗi ${e.code}: ${e.message.orEmpty()}"
+            }
+        } catch (e: Exception) {
+            "Không kết nối được: ${e.message.orEmpty()}"
+        }
     }
 }

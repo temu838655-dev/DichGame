@@ -205,8 +205,27 @@ class Prefs(ctx: Context) {
     var cloudKey: String
         get() = ApiSecrets.read(app, "ckey")
         set(v) {
-            if (ApiSecrets.write(app, mapOf("ckey" to v.trim()))) KeyRing.clearBilling()
+            if (ApiSecrets.write(app, mapOf("ckey" to v.trim()))) {
+                KeyRing.clearBilling()
+                clearCloudBillingBlock()
+            }
         }
+
+    /** Billing lock survives process death; only a key/endpoint change or explicit API test clears it. */
+    private fun cloudBillingFingerprint(): String {
+        val value = cloudKey.trim() + "\u0000" + cloudUrl.trim().trimEnd('/')
+        return java.security.MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    fun isCloudBillingBlocked(): Boolean =
+        CloudBillingGate(sp).isBlocked(cloudBillingFingerprint())
+
+    fun blockCloudBilling(): Boolean =
+        CloudBillingGate(sp).block(cloudBillingFingerprint())
+
+    fun clearCloudBillingBlock(): Boolean = CloudBillingGate(sp).clear()
     var cloudModel: String
         get() = sp.getString("cmodel", "gemini-3.1-flash-lite").orEmpty()
         set(v) = sp.edit().putString("cmodel", v.trim()).apply()
