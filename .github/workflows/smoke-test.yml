@@ -5,7 +5,7 @@ name: Smoke test (máy giả lập)
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: [main, master, fix/translation-pipeline]
     paths: ["app/**", "ci/**", ".github/workflows/smoke-test.yml", "*.kts", "gradle.properties"]
 
 permissions:
@@ -84,7 +84,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Đẩy ảnh lên nhánh ci-shots
-        if: always()
+        if: always() && github.ref != 'refs/heads/fix/translation-pipeline'
         run: |
           if [ ! -d shots ] || [ -z "$(find shots -type f -print -quit)" ]; then
             echo "Không có ảnh kiểm thử để đẩy."
