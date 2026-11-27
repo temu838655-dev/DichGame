@@ -266,6 +266,26 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         enqueue(all, last.delivery, (p.rate10 / 10f).coerceIn(0.5f, 2.5f), false, org.json.JSONArray(items.map { it.speaker.orEmpty() }).toString()) { alive -> synthScenePcm(items, alive) }
     }
 
+    /** Latest-Wins: dừng câu đang đọc và bỏ hàng chờ cũ, tạo/phát scene mới trên luồng nền. */
+    fun speakLatestScene(lines: List<VoiceLine>) {
+        if (disposed) return
+        val items = lines.mapNotNull { line ->
+            val spoken = LineClean.clean(line.text)
+            if (spoken.isEmpty()) null else line.copy(text = spoken)
+        }
+        if (items.isEmpty()) return
+        val all = items.joinToString(" ") { it.text }
+        val last = items.last()
+        val multipleVoices = p.aiVoiceOn && p.characterVoices &&
+            items.map { p.aiVoiceFor(it.speaker, it.text) }.distinct().size > 1
+        if (!multipleVoices) {
+            speak(all, false, last.delivery, last.speaker, interrupt = true)
+            return
+        }
+        enqueue(all, last.delivery, (p.rate10 / 10f).coerceIn(0.5f, 2.5f), true,
+            org.json.JSONArray(items.map { it.speaker.orEmpty() }).toString()) { alive -> synthScenePcm(items, alive) }
+    }
+
     /** Hợp nhất PCM 24 kHz theo thứ tự, thêm nhịp nghỉ ngắn để tách lời hai người. */
     private fun synthScenePcm(items: List<VoiceLine>, current: () -> Boolean): Pcm {
         val chunks = items.map { line ->
