@@ -115,7 +115,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         tts = TextToSpeech(ctx.applicationContext, ::onSystemInitialized)
     }
 
-    internal fun onSystemInitialized(status: Int) {
+    private fun onSystemInitialized(status: Int) {
         if (status != TextToSpeech.SUCCESS) return
         main.post {
             synchronized(pendingSystemLock) {
