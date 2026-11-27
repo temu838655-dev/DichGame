@@ -77,7 +77,7 @@ object AiErrorLog {
         return Regex("(^|\\\\b)(http\\\\s*)?4(00|01|03|04|29|08)(\\\\b|:)").containsMatchIn(t) ||
             listOf("lỗi api", "lỗi gemini", "quota", "resource_exhausted", "rate limit",
                 "timeout", "exception", "stacktrace", "không kết nối được", "không dịch được",
-                "đang tự thử lại", "api key", "invalid_argument", "permission_denied").any { it in t }
+                "đang tự thử lại", "api key", "invalid_argument", "permission_denied", "không tải được mô hình", "lỗi khi đọc chữ", "chưa lấy được hình", "không chụp được khung hình", "giọng đọc lỗi", "không gửi được tiếng", "không bật được dịch").any { it in t }
     }
 
     private fun redact(value: String): String {
