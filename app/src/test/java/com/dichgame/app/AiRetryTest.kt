@@ -76,6 +76,8 @@ class AiRetryTest {
         assertTrue(AiRetry.canFallback(AiException(429, "insufficient_quota", billingLimit = true)))
         assertTrue(AiRetry.canFallback(ex(503)))
         assertTrue(AiRetry.canFallback(ex(401)))
+        assertFalse(AiRetry.canFallback(AiException(400, "Invalid JSON payload")))
+        assertTrue(AiRetry.canFallback(AiException(400, "API key not valid", badKey = true)))
         assertTrue(AiRetry.canFallback(SocketTimeoutException("timeout")))
         assertFalse(AiRetry.canFallback(ex(AiRetry.CODE_BLOCKED)))
         assertFalse(AiRetry.canFallback(ex(0)))
