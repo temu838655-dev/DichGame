@@ -256,6 +256,18 @@ class AiRetryTest {
         assertEquals("Xin chào", AiRetry.geminiText(j))
     }
 
+    @Test fun malformedGeminiPartInvalidatesTheWholeTranslation() {
+        for (part in listOf("null", "7", "{}", """{"text":false}""", """{"text":{"value":"sai"}}""")) {
+            val json = """{"candidates":[{"content":{"parts":[{"text":"Một phần"},$part]}}]}"""
+            try {
+                AiRetry.geminiText(json)
+                fail("Không được nhận phần còn lại làm bản dịch hoàn chỉnh")
+            } catch (error: AiException) {
+                assertEquals(0, error.code)
+            }
+        }
+    }
+
     @Test fun promptBlockedByFilter() {
         val j = """{"promptFeedback":{"blockReason":"PROHIBITED_CONTENT"}}"""
         try { AiRetry.geminiText(j); fail("phải ném lỗi") }

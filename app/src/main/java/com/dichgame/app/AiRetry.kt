@@ -192,7 +192,7 @@ object AiRetry {
         }
         val cands = o.optJSONArray("candidates")
         if (cands == null || cands.length() == 0) throw AiException(0, "Phản hồi không có bản dịch")
-        val c = cands.getJSONObject(0)
+        val c = cands.optJSONObject(0) ?: throw AiException(0, "Ứng viên dịch Gemini sai định dạng")
         val fr = c.optString("finishReason", "")
         if (fr in setOf("SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION", "IMAGE_SAFETY")) {
             throw AiException(CODE_BLOCKED, "Bộ lọc nội dung chặn câu này: $fr")
@@ -201,9 +201,11 @@ object AiRetry {
         val parts = c.optJSONObject("content")?.optJSONArray("parts")
         val sb = StringBuilder()
         if (parts != null) for (i in 0 until parts.length()) {
-            val part = parts.optJSONObject(i) ?: continue
+            val part = parts.optJSONObject(i) ?: throw AiException(0, "Phần nội dung Gemini sai định dạng")
             if (part.optBoolean("thought", false)) continue
-            sb.append(part.optString("text", ""))
+            val fragment = part.opt("text") as? String
+                ?: throw AiException(0, "Phần dịch Gemini không chứa văn bản hợp lệ")
+            sb.append(fragment)
         }
         val text = sb.toString().trim()
         if (text.isNotEmpty()) return text
