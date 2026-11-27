@@ -10,13 +10,14 @@ import java.util.Locale
 class SessionStats {
     private val counts = HashMap<String, Long>()
     private val latencies = ArrayList<Long>()
+    private val speechLatencies = ArrayList<Long>()
     private var lastTranslationModel = ""
     private var startAt = 0L
     private var startBattery = -1
 
     @Synchronized fun reset(nowMs: Long, batteryPct: Int) {
         lastTranslationModel = ""
-        counts.clear(); latencies.clear(); startAt = nowMs; startBattery = batteryPct
+        counts.clear(); latencies.clear(); speechLatencies.clear(); startAt = nowMs; startBattery = batteryPct
     }
 
     @Synchronized fun inc(key: String, n: Long = 1) { counts[key] = (counts[key] ?: 0L) + n }
@@ -47,11 +48,22 @@ class SessionStats {
         latencies.add(ms)
     }
 
-    @Synchronized fun percentile(p: Int): Long {
-        if (latencies.isEmpty()) return -1
-        val s = latencies.sorted()
-        return s[((s.size - 1) * p / 100).coerceIn(0, s.size - 1)]
+    @Synchronized fun speechLatency(ms: Long) {
+        if (ms < 0 || ms > 120_000) return
+        if (speechLatencies.size >= 2_000) speechLatencies.removeAt(0)
+        speechLatencies.add(ms)
     }
+
+    private fun percentileOf(values: List<Long>, p: Int): Long {
+        if (values.isEmpty()) return -1
+        val sorted = values.sorted()
+        val rank = kotlin.math.ceil((p.coerceIn(0, 100) / 100.0) * sorted.size).toInt() - 1
+        return sorted[rank.coerceIn(0, sorted.lastIndex)]
+    }
+
+    @Synchronized fun percentile(p: Int): Long = percentileOf(latencies, p)
+
+    @Synchronized fun speechPercentile(p: Int): Long = percentileOf(speechLatencies, p)
 
     private fun sec(ms: Long) = String.format(Locale.US, "%.1f", ms / 1000.0)
 
@@ -118,7 +130,9 @@ class SessionStats {
         val why = machineReasons()
         if (why.isNotEmpty()) sb.append("Dịch trên máy vì AI không dùng được: ").append(why).append('\n')
         val n = synchronized(this) { latencies.size }
-        if (n > 0) sb.append("Từ lúc câu xuất hiện tới lúc hiện bản dịch (${n} câu): giữa ${sec(percentile(50))} giây, 90% dưới ${sec(percentile(90))} giây\n")
+        if (n > 0) sb.append("Từ lần quét đầu tiên phát hiện câu mới tới lúc hiện phụ đề (${n} câu): p50 ${sec(percentile(50))} giây, p95 ${sec(percentile(95))} giây\n")
+        val speechN = synchronized(this) { speechLatencies.size }
+        if (speechN > 0) sb.append("Từ lần quét đầu tiên phát hiện câu mới tới lúc bắt đầu đọc (${speechN} câu): p50 ${sec(speechPercentile(50))} giây, p95 ${sec(speechPercentile(95))} giây\n")
         if (startBattery in 0..100 && batteryPct in 0..100 && nowMs > startAt) {
             val drop = startBattery - batteryPct
             val perHour = if (nowMs - startAt >= 10 * 60_000L) " (khoảng ${drop * 3_600_000L / (nowMs - startAt)}% mỗi giờ)" else " (dịch trên 10 phút mới ước lượng được mỗi giờ)"
