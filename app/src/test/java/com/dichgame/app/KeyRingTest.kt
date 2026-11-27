@@ -105,6 +105,7 @@ class KeyRingTest {
         val ms = KeyRing.quotaBlockMs(0, true, noon)
         assertEquals(12 * 3_600_000L + 60_000L, ms)
         KeyRing.report("A", m, quota(daily = true), now = noon)
+        assertEquals(KeyRing.State.DAILY, KeyRing.status("A", m, noon + 3_600_000L).state)
         assertEquals("B", KeyRing.pick(keys, m, noon + 3_600_000L))
         assertEquals("A", KeyRing.pick(keys, m, noon + ms + 1))
     }
