@@ -19,6 +19,15 @@ class AiRetryTest {
 
     private fun ex(code: Int, after: Long = 0L) = AiException(code, "x", after)
 
+    @Test fun validatesGeminiModelIdentifierBeforeSending() {
+        assertTrue(Ai.validGeminiModelName("gemini-3.5-flash-lite"))
+        assertTrue(Ai.validGeminiModelName("gemini-2.5-flash-preview_05"))
+        assertFalse(Ai.validGeminiModelName(""))
+        assertFalse(Ai.validGeminiModelName(" gemini-2.5-flash"))
+        assertFalse(Ai.validGeminiModelName("gemini/../../other"))
+        assertFalse(Ai.validGeminiModelName("gemini model"))
+    }
+
     @Test fun safetySettingsFallbackOnlyForExplicitCompatibilityErrors() {
         assertTrue(AiRetry.shouldRetryWithoutSafetySettings(400,
             """{"error":{"message":"Unknown name 'safetySettings' in request"}}"""))

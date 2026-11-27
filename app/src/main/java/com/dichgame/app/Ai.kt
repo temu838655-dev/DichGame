@@ -172,8 +172,15 @@ object Ai {
     fun <T> withGeminiKey(p: Prefs, scope: String, call: (String) -> T): T =
         withGeminiKeys(p.geminiKeys(), scope, call)
 
-    private fun geminiPost(p: Prefs, url: String, body: JSONObject): String =
-        withGeminiKey(p, p.geminiModel) { key -> post(url, body, mapOf("x-goog-api-key" to key)) }
+    /** Reject malformed model identifiers locally instead of spending a request or misclassifying it as a bad key. */
+    internal fun validGeminiModelName(model: String): Boolean =
+        model == model.trim() && model.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}"))
+
+    private fun geminiPost(p: Prefs, url: String, body: JSONObject): String {
+        val model = p.geminiModel
+        if (!validGeminiModelName(model)) throw AiException(400, "Tên model Gemini không hợp lệ.")
+        return withGeminiKey(p, model) { key -> post(url, body, mapOf("x-goog-api-key" to key.trim())) }
+    }
 
     /** Tắt bộ lọc nội dung của Gemini: lời thoại game hay có cảnh đánh nhau, chửi thề... mà bị chặn thì câu đó rơi sang dịch máy. */
     private val SAFETY_CATEGORIES = listOf(
