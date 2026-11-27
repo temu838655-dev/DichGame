@@ -70,6 +70,16 @@ object AiErrorLog {
 
     fun exportText(): String = entries().joinToString("\n")
 
+    /** Guard used at every subtitle/TV egress to keep diagnostic text out of the game view. */
+    fun isDiagnosticText(value: String): Boolean {
+        val t = value.trim().lowercase(Locale.ROOT)
+        if (t.isEmpty()) return true
+        return Regex("(^|\\\\b)(http\\\\s*)?4(00|01|03|04|29|08)(\\\\b|:)").containsMatchIn(t) ||
+            listOf("lỗi api", "lỗi gemini", "quota", "resource_exhausted", "rate limit",
+                "timeout", "exception", "stacktrace", "không kết nối được", "không dịch được",
+                "đang tự thử lại", "api key", "invalid_argument", "permission_denied").any { it in t }
+    }
+
     private fun redact(value: String): String {
         var result = value
         // Defensive redaction for accidental provider messages containing credentials.
