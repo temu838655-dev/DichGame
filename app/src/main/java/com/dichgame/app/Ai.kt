@@ -19,7 +19,7 @@ object Ai {
     private val requestDeduplicator = RequestDeduplicator<String, String>()
 
     /** Fingerprint request scope and active credentials without retaining secrets in the map key. */
-    internal fun canonicalRequestText(prompt: String): String = OcrGuard.key(prompt)
+    internal fun canonicalRequestText(prompt: String): String = RequestDeduplicator.normalizedTextKey(prompt)
 
     private fun translationRequestKey(p: Prefs, prompt: String): String {
         val providerScope = when {
