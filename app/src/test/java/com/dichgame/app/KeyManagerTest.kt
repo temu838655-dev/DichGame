@@ -37,6 +37,12 @@ class KeyManagerTest {
         assertEquals(KeyRing.State.BAD, KeyRing.status(keys[0], "another-model").state)
     }
 
+    @Test fun invalidSingleProviderKeySetsRedHealth() {
+        KeyRing.reset()
+        KeyManager.reportSingle("CloudAPI", "cloud-secret", "cloud:model", AiException(401, "unauthorized", badKey = true))
+        assertEquals(TranslationLog.Health.FAILED, TranslationLog.health())
+    }
+
     @Test fun billingLimitDoesNotWasteOtherKeys() {
         val attempts = mutableListOf<String>()
         try {
