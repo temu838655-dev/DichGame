@@ -452,7 +452,6 @@ class WebTranslateActivity : Activity() {
         setContentView(root)
 
         speaker = Speaker(this, p)
-        speaker?.onAiError = { m -> Toast.makeText(this, m, Toast.LENGTH_LONG).show() }
         applyFont()
         applyOrientation()
         refresh()
