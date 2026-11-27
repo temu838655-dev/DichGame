@@ -37,7 +37,7 @@ object TranslationGuard {
 
     /** Bỏ phần AI hay thêm vào quanh bản dịch: rào markdown, nhãn "Bản dịch:", dấu ngoặc kép bao ngoài, dòng ghi chú. */
     fun clean(out: String, src: String): String {
-        var t = out.filter { it == '\\n' || it == '\\t' || !it.isISOControl() }
+        var t = out.filter { it == '\n' || it == '\t' || !it.isISOControl() }
             .replace(ZERO_WIDTH, "").take((src.length * 4 + 512).coerceIn(512, 12_000))
             .trim().replace(FENCE, "").trim()
         t = t.replace(LABEL, "").trim()
