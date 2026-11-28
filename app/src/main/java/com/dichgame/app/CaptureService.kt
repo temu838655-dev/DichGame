@@ -716,7 +716,7 @@ class CaptureService : Service() {
         translating = true
         translatingSince = now
         val token = translationEpoch.begin()
-        translateLines(w) { cards ->
+        translateLines(w, token) { cards ->
             if (!translationEpoch.isCurrent(token) || !running) return@translateLines
             translating = false
             deliver(w, cards)
@@ -724,10 +724,13 @@ class CaptureService : Service() {
         }
     }
 
-    private fun translateLines(w: Job, done: (List<Card>) -> Unit) {
+    private fun translateLines(w: Job, token: Long, done: (List<Card>) -> Unit) {
         val t = tt
         val out = ArrayList<Card>()
         fun next(i: Int) {
+            // Nếu game đã đổi hoặc watchdog đã mở request mới, dừng cả chuỗi dịch nhiều dòng.
+            // Không chỉ chặn kết quả cuối: tránh tiếp tục gọi Gemini cho các dòng còn lại của job cũ.
+            if (!running || !translationEpoch.isCurrent(token)) return
             if (i >= w.lines.size) { done(out); return }
             val line = w.lines[i]
             if (t == null) {
@@ -735,6 +738,7 @@ class CaptureService : Service() {
                 next(i + 1)
             } else {
                 t.translateFull(line.text, line.speaker) { tr ->
+                    if (!running || !translationEpoch.isCurrent(token)) return@translateFull
                     // một cái tên đứng riêng được giữ nguyên là bình thường, không đánh dấu "chưa chắc"
                     out.add(Card(line.speaker, line.text, tr, tr.uncertain && !line.nameLike))
                     next(i + 1)
