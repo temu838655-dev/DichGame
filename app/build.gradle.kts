@@ -83,13 +83,14 @@ android {
             isUniversalApk = true
         }
     }
-    // Giữ khóa ký lịch sử tương thích các bản 1251+; Secrets có thể ghi đè khi đã cấu hình.
+    // Không có fallback sang khóa cũ hoặc mật khẩu mặc định.
+    // Release chỉ được ký khi CI cung cấp đủ thông tin từ GitHub Secrets.
     signingConfigs {
         create("release") {
-            storeFile = file(System.getenv("KEYSTORE_FILE") ?: "$rootDir/keystore/dichgame.jks")
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "dichgame123"
-            keyAlias = System.getenv("KEY_ALIAS") ?: "dichgame"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: "dichgame123"
+            storeFile = file(System.getenv("KEYSTORE_FILE") ?: "$buildDir/UNCONFIGURED_RELEASE_KEYSTORE")
+            storePassword = System.getenv("KEYSTORE_PASSWORD").orEmpty()
+            keyAlias = System.getenv("KEY_ALIAS").orEmpty()
+            keyPassword = System.getenv("KEY_PASSWORD").orEmpty()
         }
     }
     buildTypes {
