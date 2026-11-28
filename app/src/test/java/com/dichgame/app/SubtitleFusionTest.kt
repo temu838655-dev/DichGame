@@ -162,6 +162,30 @@ class SubtitleFusionTest {
         assertEquals(listOf(Kind.HOLD), kinds(f.onAsr("Nobody knows where she went.", 1_800)))
     }
 
+    @Test fun newerFullLineSupersedesAnInFlightPartialLine() {
+        val f = SubtitleFusion()
+        assertTrue(f.isSupersededBy(
+            "We need to leave before",
+            "We need to leave before they find us tonight."
+        ))
+    }
+
+    @Test fun sameLineWithCorrectedOcrSpellingSupersedesOldTranslation() {
+        val f = SubtitleFusion()
+        assertTrue(f.isSupersededBy(
+            "We need to leave before they find us.",
+            "We need to leave before they find us"
+        ))
+    }
+
+    @Test fun unrelatedLineDoesNotSupersedeInFlightTranslation() {
+        val f = SubtitleFusion()
+        assertTrue(!f.isSupersededBy(
+            "We need to leave before they find us.",
+            "Nobody knows where she went."
+        ))
+    }
+
     @Test fun growingOcrLineReplacesThePartialOneInsteadOfBeingDropped() {
         val f = SubtitleFusion()
         assertEquals(listOf(Kind.SHOW), kinds(f.onOcr("We need to leave before", null, 1_000)))
