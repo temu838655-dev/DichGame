@@ -141,6 +141,28 @@ class DialogueSplitterTest {
         assertEquals(2, r.size)
     }
 
+    @Test fun missingGeometryDoesNotGuessThatCastNameBelongsToNextBlock() {
+        val r = DialogueSplitter.split(
+            listOf(OcrLine("Geralt", null), OcrLine("I hate portals.", null)),
+            false, SpeakerBook(listOf("Geralt"))
+        )
+        assertEquals(2, r.size)
+        assertNull(r[0].speaker)
+        assertNull(r[1].speaker)
+        assertEquals("Geralt", r[0].text)
+        assertEquals("I hate portals.", r[1].text)
+    }
+
+    @Test fun explicitColonSpeakerLabelCanPairWithoutGeometry() {
+        val r = DialogueSplitter.split(
+            listOf(OcrLine("Geralt:", null), OcrLine("I hate portals.", null)),
+            false, SpeakerBook(listOf("Geralt"))
+        )
+        assertEquals(1, r.size)
+        assertEquals("Geralt", r.single().speaker)
+        assertEquals("I hate portals.", r.single().text)
+    }
+
     @Test fun nameThenDialogueInOneBlock() {
         val r = DialogueSplitter.split(listOf(OcrLine("GERALT:\nI hate portals.", Box(0, 0, 400, 60))), false)
         assertEquals("GERALT", r[0].speaker)
