@@ -87,6 +87,16 @@ class AiRetryTest {
         assertEquals(keys.size, keys.toSet().size)
     }
 
+    @Test fun ttsRetryPolicyIsBoundedToOneQuickRetry() {
+        val plan = AiRetry.ttsPlan()
+        assertEquals(2, plan.maxAttempts)
+        assertEquals(1_000L, plan.maxWaitMs)
+        assertEquals(350L, plan.backoffMs)
+        assertEquals(350L, plan.maxBackoffMs)
+        assertEquals(0.0, plan.jitterRatio, 0.0)
+        assertEquals(22_000L, plan.budgetMs)
+    }
+
     @Test fun succeedsFirstTimeWithoutSleeping() {
         val c = Clock()
         val r = AiRetry.run(AiRetry.Plan(), c::sleep, c::now) { "xin chào" }
