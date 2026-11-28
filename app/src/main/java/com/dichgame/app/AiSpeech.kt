@@ -37,8 +37,10 @@ object AiSpeech {
 
     private fun viaGenerate(p: Prefs, model: String, text: String, style: String, voiceName: String): Pcm {
         val body = generateBody(text, style, voiceName)
-        val r = Ai.withGeminiKey(p, model) { key ->
-            Ai.post("$BASE/models/$model:generateContent", body, mapOf("x-goog-api-key" to key), metric = "api_giong_gemini")
+        val r = AiRetry.run(AiRetry.ttsPlan(), sleep = { Thread.sleep(it) }) {
+            Ai.withGeminiKey(p, model) { key ->
+                Ai.post("$BASE/models/$model:generateContent", body, mapOf("x-goog-api-key" to key), metric = "api_giong_gemini")
+            }
         }
         val b64 = JSONObject(r).getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
             .getJSONArray("parts").getJSONObject(0).getJSONObject("inlineData").getString("data")
