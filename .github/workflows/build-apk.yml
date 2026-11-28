@@ -187,6 +187,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           IS_PUBLIC_RELEASE: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
+          ALLOW_SIGNING_KEY_ROTATION: ${{ secrets.ALLOW_SIGNING_KEY_ROTATION }}
         shell: bash
         run: |
           set -euo pipefail
@@ -243,8 +244,19 @@ jobs:
                 exit 1
               fi
               if [ "$PHONE_CERT" != "$PREVIOUS_PHONE_CERT" ] || [ "$TV_CERT" != "$PREVIOUS_TV_CERT" ]; then
-                echo "::error::Chứng thư APK mới khác Release $LATEST_TAG (điện thoại hoặc TV). Dừng phát hành để tránh làm người dùng không thể cập nhật."
-                exit 1
+                if [ "${ALLOW_SIGNING_KEY_ROTATION:-false}" = "true" ]; then
+                  echo "::warning::ĐANG CHO PHÉP ĐỔI CHỨNG THƯ KÝ so với $LATEST_TAG theo xác nhận thủ công. APK mới KHÔNG thể cài đè lên app cũ; người dùng phải sao lưu dữ liệu, gỡ bản cũ và cài lại."
+                  {
+                    echo "### CẢNH BÁO ĐỔI KHÓA KÝ"
+                    echo
+                    echo "Đã bật ALLOW_SIGNING_KEY_ROTATION=true. Chứng thư ký mới khác Release $LATEST_TAG."
+                    echo "Người dùng không thể cập nhật đè; phải sao lưu dữ liệu, gỡ app cũ và cài lại."
+                    echo "Xóa secret ALLOW_SIGNING_KEY_ROTATION ngay sau lần phát hành chuyển khóa."
+                  } >> "$GITHUB_STEP_SUMMARY"
+                else
+                  echo "::error::Chứng thư APK mới khác Release $LATEST_TAG. Mặc định chặn phát hành để bảo vệ khả năng cập nhật. Chỉ bật ALLOW_SIGNING_KEY_ROTATION=true sau khi đã có kế hoạch chuyển khóa và chấp nhận cài đặt lại."
+                  exit 1
+                fi
               fi
               PREVIOUS_PHONE_VERSION="$("$AAPT" dump badging "$PREVIOUS_PHONE" | sed -n "s/^package:.*versionCode='\([0-9][0-9]*\)'.*/\1/p" | head -n1)"
               PREVIOUS_TV_VERSION="$("$AAPT" dump badging "$PREVIOUS_TV" | sed -n "s/^package:.*versionCode='\([0-9][0-9]*\)'.*/\1/p" | head -n1)"
