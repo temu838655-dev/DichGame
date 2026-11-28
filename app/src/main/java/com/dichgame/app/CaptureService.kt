@@ -443,7 +443,7 @@ class CaptureService : Service() {
     }
 
     private data class MenuItem(val source: String, val rect: android.graphics.Rect, val colors: Pair<Int, Int>,
-                                val corners: FloatArray?, val lines: Int)
+                                val corners: FloatArray?, val lines: Int, val confidence: Float)
 
     private fun scanScope() = listOf(gameContext(Prefs(this)), cw.toString(), ch.toString(), lang).joinToString("\u0000")
 
@@ -457,7 +457,7 @@ class CaptureService : Service() {
             val src = UiText.joinLines(b.text, Prefs.isCjk(lang))
             if (UiText.verdict(src, b.conf) != UiText.Verdict.TRANSLATE) return@mapNotNull null
             val colors = NativeTextStyle.sample(image, b) ?: return@mapNotNull null
-            MenuItem(src, android.graphics.Rect(box), colors, b.corners, b.lineCount)
+            MenuItem(src, android.graphics.Rect(box), colors, b.corners, b.lineCount, b.conf)
         }.take(80)
     }
 
@@ -633,14 +633,19 @@ class CaptureService : Service() {
         ocrNow.read(bmp, { m -> keep?.recycle(); if (validScan(scope)) ocrFail(m) else finishBusy() }) { r ->
             if (!validScan(scope)) { keep?.recycle(); finishBusy(); return@read }
             val items = try { menuItems(r, keep, skip) } catch (_: Exception) { emptyList() } finally { keep?.recycle() }
-            val long = items.filter { it.source.length >= longLen }
-            if (long.size < 2) {
+            val longCount = items.count { it.source.length >= longLen }
+            val single = items.singleOrNull()
+            val standalone = single != null && UiText.isStandaloneAutoCandidate(single.source, single.confidence)
+            // Nhiều nhãn ngắn (tên vật phẩm/kỹ năng) cũng là UI hợp lệ; một khối đơn lẻ
+            // cần OCR >= 0.75 và được nhìn thấy ổn định 3 lần để tránh dịch nhầm HUD.
+            if (items.size < 2 && longCount < 2 && !standalone) {
                 autoCand = ""; autoStable = 0; autoDone = ""
                 finishBusy(); return@read
             }
             val sig = items.joinToString("|") { it.source }
             if (sig != autoCand) { autoCand = sig; autoStable = 1 } else autoStable++
-            if (autoStable < 2 || sig == autoDone) { finishBusy(); return@read }
+            val requiredStable = if (items.size == 1) 3 else 2
+            if (autoStable < requiredStable || sig == autoDone) { finishBusy(); return@read }
             autoDone = sig
             renderMenuItems(items, scene)
         }
