@@ -148,6 +148,35 @@ class KeyRingTest {
         KeyRing.release("B", m)
     }
 
+    @Test fun coolingCheckDoesNotTreatAnInFlightGeminiKeyAsExhausted() {
+        assertEquals("A", KeyRing.acquire(listOf("A"), m, 0L))
+        // A request is already using the only configured key, but its quota state is still OK.
+        // The translation layer must wait for it rather than switching to local machine translation.
+        assertEquals(0L, KeyRing.waitMs(listOf("A"), m, 1L))
+        assertTrue(KeyRing.hasInFlight(listOf("A"), m, 1L))
+        KeyRing.release("A", m)
+        assertEquals("A", KeyRing.acquire(listOf("A"), m, 2L))
+        KeyRing.release("A", m)
+    }
+
+    @Test fun rotatesThroughEveryGeminiKeyBeforeReportingAllQuotaExhausted() {
+        val ordered = listOf("A", "B", "C")
+        assertEquals("A", KeyRing.acquire(ordered, m, 0L))
+        assertTrue(KeyRing.report("A", m, quota(60_000L), now = 1L))
+        KeyRing.release("A", m)
+
+        assertEquals("B", KeyRing.acquire(ordered, m, 2L))
+        assertTrue(KeyRing.report("B", m, quota(30_000L), now = 3L))
+        KeyRing.release("B", m)
+
+        assertEquals("C", KeyRing.acquire(ordered, m, 4L))
+        assertTrue(KeyRing.report("C", m, quota(90_000L), now = 5L))
+        KeyRing.release("C", m)
+
+        assertNull(KeyRing.acquire(ordered, m, 6L))
+        assertEquals(29_997L, KeyRing.waitMs(ordered, m, 6L))
+    }
+
     @Test fun acquireWaitingWaitsForBusyKeyInsteadOfTreatingItAsExhausted() {
         assertEquals("A", KeyRing.acquire(keys, m, 0))
         var clock = 0L
