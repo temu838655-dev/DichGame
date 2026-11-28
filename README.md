@@ -14,7 +14,7 @@ Dịch phụ đề game và phim sang tiếng Việt ngay trên màn hình, có 
 
 - `app/` – app điện thoại Android (`com.dichgame.app`): chụp màn hình, đọc chữ (OCR), dịch, hiện bản dịch nổi.
 - `tv/` – app nhận phụ đề cho Android TV / Google TV (`com.dichgame.tv`), vẽ nổi trên hình HDMI.
-- `keystore/` – khóa ký APK mặc định (xem mục "Khóa ký").
+- Khóa ký Release được nạp riêng từ GitHub Actions Secrets; repository không chứa khóa ký production.
 - `.github/workflows/build-apk.yml` – tự build toàn bộ trên GitHub.
 
 ## Tính năng (app điện thoại)
@@ -42,7 +42,7 @@ Trong lúc chạy, thông báo có 3 nút: **Chỉnh/Khóa khung**, **Dịch men
 
 ## Build trên GitHub
 
-1. Tạo repo mới trên GitHub, đẩy **toàn bộ** thư mục này lên (nhớ cả thư mục ẩn `.github` và thư mục `keystore`).
+1. Đẩy mã nguồn lên GitHub (bao gồm thư mục ẩn `.github`). **Không tạo, tải lên hoặc commit thư mục/keystore chứa khóa ký production.**
    Dùng dòng lệnh: `git init && git add -A && git commit -m "Dịch game" && git branch -M main && git remote add origin <địa chỉ repo> && git push -u origin main`
 2. Vào tab **Actions** › workflow **Build APK**. Nó chạy tự động mỗi lần đẩy code, hoặc bấm **Run workflow**.
 3. Khi xong có 2 file APK:
@@ -61,15 +61,21 @@ Mỗi bản dựng trên nhánh `main` có số thứ tự (`build-N`), số nà
 
 ### Khóa ký
 
-**CẢNH BÁO BẢO MẬT (2026-11-26):** repository này đang ở chế độ public và `keystore/dichgame.jks` đã được commit vào Git. Vì vậy khóa ký dùng cho các bản APK cũ (bao gồm build-1872) phải được coi là **đã lộ/không còn bí mật**. Không dùng khóa này để ký một sản phẩm mới có yêu cầu bảo mật cao; người có bản sao keystore có thể ký APK giả cùng package và cùng chứng thư.
+**CẢNH BÁO BẢO MẬT (2026-11-26):** repository này từng ở chế độ public và khóa cũ `keystore/dichgame.jks` đã được commit. Dù tệp đã bị xóa khỏi phiên bản hiện tại, khóa cũ vẫn có thể còn trong lịch sử Git và các bản sao/fork. Hãy coi khóa cũ là **đã lộ**, tuyệt đối không dùng lại. Việc xóa tệp khỏi commit mới không xóa lịch sử cũ.
 
-Workflow đã được sửa theo nguyên tắc fail-closed: **Release công khai mới sẽ bị từ chối nếu thiếu đủ 4 GitHub Actions secrets**: `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. Build kiểm thử PR vẫn có thể dùng keystore test trong repo; không cài APK PR làm bản phát hành.
+Release công khai chỉ được ký bằng bộ GitHub Actions Secrets mới, gồm:
+- `KEYSTORE_BASE64`: nội dung keystore PKCS#12 đã mã hóa Base64.
+- `KEYSTORE_PASSWORD`: mật khẩu kho khóa.
+- `KEY_ALIAS`: alias của khóa.
+- `KEY_PASSWORD`: mật khẩu khóa riêng.
 
-Lưu ý tương thích quan trọng:
-- Nếu đưa chính keystore cũ đã lộ vào Secrets, người dùng vẫn cập nhật đè được, nhưng rủi ro khóa ký bị lộ **không được khắc phục**.
-- Nếu chuyển sang khóa mới, Android sẽ không cho cài đè APK cũ bằng cùng package ID/chứng thư khác. Người dùng hiện tại cần một kế hoạch chuyển đổi có sao lưu/khôi phục dữ liệu và cài đặt lại; không được tự ý đổi khóa trước khi có kế hoạch này.
-- Không commit keystore hoặc mật khẩu ký vào Git. Khóa bí mật phải được lưu ngoài repository, giới hạn quyền truy cập và có bản sao lưu an toàn.
+Tạo khóa mới ngoại tuyến trên máy cá nhân, giữ ít nhất một bản sao lưu an toàn và không gửi keystore/mật khẩu vào chat, issue, log hoặc Git. Trên macOS có thể tạo mật khẩu ngẫu nhiên bằng `openssl rand -base64 32`, tạo PKCS#12 bằng `keytool -genkeypair -v -keystore dichgame-release.p12 -storetype PKCS12 -alias dichgame-release -keyalg RSA -keysize 3072 -validity 10000`, rồi mã hóa để nhập vào Secret bằng `base64 < dichgame-release.p12 | tr -d '\\n'`. Không dùng mật khẩu dễ đoán hoặc mật khẩu đã gửi trong cuộc trò chuyện. Thêm bốn giá trị vào **Settings → Secrets and variables → Actions** của repository; không đưa giá trị Secret vào file workflow.
 
+**Tương thích cập nhật:** khóa mới có chứng thư khác khóa cũ nên Android không cho cài đè lên bản cũ. Người đang cài bản ký bằng khóa cũ phải sao lưu dữ liệu cần giữ, gỡ bản cũ rồi cài bản mới; gỡ ứng dụng có thể xóa dữ liệu cục bộ. Chưa được bật phát hành đổi khóa cho tới khi đã thông báo người dùng và có hướng dẫn sao lưu/khôi phục rõ ràng.
+
+Mặc định workflow chặn mọi Release có chứng thư khác Release trước. Chỉ khi chủ dự án đã chủ động chấp nhận việc người dùng phải cài lại, mới thêm Secret tạm thời `ALLOW_SIGNING_KEY_ROTATION=true` cho đúng lần phát hành chuyển khóa. Sau khi phát hành, xóa Secret này ngay; không để nó bật cho các Release sau. Cờ này không tự sao lưu dữ liệu và không làm cho Android chấp nhận cập nhật đè.
+
+Build nhánh thử nghiệm dùng khóa CI tạm thời. APK artifact của nhánh thử nghiệm không phải APK production, không được cài đè lên bản production và không được đưa vào Releases.
 ## Ghép TV
 
 1. Cài `DichGame-TV.apk` lên TV (app **Downloader** trên TV, nhập đường dẫn tải file trong Releases; hoặc USB).
