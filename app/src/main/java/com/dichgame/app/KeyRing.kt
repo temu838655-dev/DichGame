@@ -73,6 +73,35 @@ object KeyRing {
         return keys.any { it in busy && status(it, scope, now).state == State.OK }
     }
 
+    /**
+     * Wait briefly for an already-running request to release a usable key.
+     * A busy key is not an exhausted key, so callers must not fall back to machine translation
+     * merely because parallel subtitle requests currently occupy every credential.
+     *
+     * Clock and sleep are injectable to keep concurrency policy deterministic in unit tests.
+     */
+    internal fun acquireWaiting(
+        keys: List<String>,
+        scope: String,
+        maxWaitMs: Long = 21_000L,
+        now: () -> Long = System::currentTimeMillis,
+        sleep: (Long) -> Unit = { Thread.sleep(it) },
+    ): String? {
+        val started = now()
+        while (true) {
+            acquire(keys, scope, now())?.let { return it }
+            if (!hasInFlight(keys, scope, now())) return null
+            val elapsed = (now() - started).coerceAtLeast(0L)
+            if (elapsed >= maxWaitMs.coerceAtLeast(0L)) return null
+            try {
+                sleep(minOf(100L, maxWaitMs - elapsed))
+            } catch (interrupted: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return null
+            }
+        }
+    }
+
     /** Khóa dùng được cho lần gọi này, hoặc null nếu mọi khóa đang hết lượt hay sai. Khóa vừa chạy tốt được thử trước. */
     @Synchronized fun pick(keys: List<String>, scope: String, now: Long = System.currentTimeMillis()): String? {
         if (keys.isEmpty()) return null
