@@ -747,6 +747,14 @@ class CaptureService : Service() {
     private fun deliver(w: Job, cards: List<Card>) {
         if (cards.isEmpty() || editing || narrate) return
         val now = System.currentTimeMillis()
+        // OCR/ASR có thể gửi bản đầy đủ hơn trong lúc câu cũ đang dịch.
+        // Nếu bản thay thế đã nằm trong hàng đợi, tuyệt đối không phát bản dịch cũ trước nó.
+        val superseded = jobs.any { queued ->
+            queued.replace && queued.lines.any { newer ->
+                w.lines.any { older -> fusion.isSupersededBy(older.text, newer.text) }
+            }
+        }
+        if (superseded) { stats.inc("hang_day"); return }
         // Nếu một câu đã chậm hơn 8 giây và câu mới đang chờ, bỏ kết quả cũ để không lệch cảnh.
         if (jobs.isNotEmpty() && now - w.seenAt > 8_000L) { stats.inc("hang_day"); return }
         val text = cards.joinToString(" ") { it.tr.text }
