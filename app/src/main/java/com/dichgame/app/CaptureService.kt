@@ -133,6 +133,7 @@ class CaptureService : Service() {
     private var needStable = 1
     private var cand = ""
     private var stable = 0
+    private val ocrStability = OcrStabilityFilter()
     private var prevVi = ""
     private var menuUntil = 0L
     private val tvExec = java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -176,7 +177,7 @@ class CaptureService : Service() {
         fusion.clear()
         pacer.cleared()
         RecentLines.clear()
-        last = ""; cand = ""; stable = 0; prevVi = ""; prevOrig = ""
+        last = ""; cand = ""; stable = 0; ocrStability.reset(); prevVi = ""; prevOrig = ""
         lastFine = null; lastSig = null
         textOnScreen = false
         menuUntil = 0L; autoShown = false; autoCand = ""; autoDone = ""; autoStable = 0
@@ -900,7 +901,7 @@ class CaptureService : Service() {
         if (utts.isEmpty()) {
             if (textOnScreen) { textOnScreen = false; textGoneSince = now }
             fusion.onScreenEmpty(now)
-            last = ""; cand = ""; stable = 0
+            last = ""; cand = ""; stable = 0; ocrStability.reset()
             if (narrate || pacer.showing == null) { if (!autoShown) show("") }
             else if (canHide(now)) softHide() else scheduleHide()
             finishBusy()
@@ -909,8 +910,20 @@ class CaptureService : Service() {
         textOnScreen = true
         val sig = DialogueSplitter.signature(utts)
         if (sig == last) { finishBusy(); return }
-        if (sig != cand) { cand = sig; stable = 1 } else stable++
-        if (stable < requiredStable(utts)) { finishBusy(); return }
+        val requiredFrames = requiredStable(utts)
+        val minimumStableMs = when {
+            requiredFrames >= 3 -> 320L
+            requiredFrames >= 2 -> 220L
+            else -> 160L
+        }
+        if (!ocrStability.observe(sig, requiredFrames, now, minimumStableMs)) {
+            cand = sig
+            stable = ocrStability.frameCount
+            finishBusy()
+            return
+        }
+        cand = sig
+        stable = ocrStability.frameCount
         last = sig
         // Chỉ nhớ người nói khi OCR đã ổn định; không lưu tên chưa được xác nhận.
         for (u in utts) if (!u.nameLike && !u.speaker.isNullOrBlank()) prefs.rememberSpeaker(u.speaker!!)
@@ -1382,7 +1395,7 @@ class CaptureService : Service() {
         handle?.visibility = if (on) View.VISIBLE else View.INVISIBLE
         doneBtn?.visibility = if (on) View.VISIBLE else View.GONE
         wm.updateViewLayout(f, flp)
-        last = ""; cand = ""; stable = 0; lastFine = null
+        last = ""; cand = ""; stable = 0; ocrStability.reset(); lastFine = null
         if (on) { clearMenuOverlay(); menuUntil = 0L; jobs.clear(); fusion.clear() }
         show(if (on) "Kéo khung xanh tới dòng phụ đề, kéo ô vuông góc dưới phải để đổi cỡ. Xong thì kéo thông báo xuống, bấm \"Chỉnh/Khóa khung\"." else "")
         if (!on) pump()
