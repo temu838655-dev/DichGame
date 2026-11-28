@@ -45,6 +45,24 @@ def validate_release(
     return expected_phone, expected_tv
 
 
+PUBLIC_RELEASE_SIGNING_SECRETS = (
+    "KEYSTORE_BASE64",
+    "KEYSTORE_PASSWORD",
+    "KEY_ALIAS",
+    "KEY_PASSWORD",
+)
+
+
+def can_publish_public_release(is_public_release: bool, secrets: object) -> bool:
+    """Only publish a public APK Release when every private signing secret is present."""
+    if not is_public_release:
+        return False
+    getter = getattr(secrets, "get", None)
+    if getter is None:
+        return False
+    return all(str(getter(name, "") or "").strip() for name in PUBLIC_RELEASE_SIGNING_SECRETS)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--previous-build", type=int, required=True)
