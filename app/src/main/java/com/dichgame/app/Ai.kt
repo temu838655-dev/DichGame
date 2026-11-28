@@ -154,8 +154,8 @@ object Ai {
         if (keys.isEmpty()) throw AiException(401, "Chưa có khóa Gemini", badKey = true)
         var last: AiException? = null
         while (true) {
-            // Khóa đang bận không đồng nghĩa đã hết quota: chờ tối đa bằng timeout HTTP.
-            val k = KeyRing.acquireWaiting(keys, scope, maxWaitMs = 21_000L)
+            // HTTP có thể mất tối đa 8 giây kết nối + 20 giây đọc phản hồi; cộng biên nhỏ để request kịp nhả khóa.
+            val k = KeyRing.acquireWaiting(keys, scope, maxWaitMs = 30_000L)
             if (k == null) {
                 if (KeyRing.hasInFlight(keys, scope)) {
                     throw AiException(503, "Các khóa Gemini vẫn đang xử lý request khác; chưa thể kết luận đã hết lượt.", retryAfterMs = 500L)
