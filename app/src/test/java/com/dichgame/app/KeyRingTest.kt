@@ -148,6 +148,52 @@ class KeyRingTest {
         KeyRing.release("B", m)
     }
 
+    @Test fun acquireWaitingWaitsForBusyKeyInsteadOfTreatingItAsExhausted() {
+        assertEquals("A", KeyRing.acquire(keys, m, 0))
+        var clock = 0L
+        val acquired = KeyRing.acquireWaiting(
+            keys = listOf("A"),
+            scope = m,
+            maxWaitMs = 500L,
+            now = { clock },
+            sleep = { ms ->
+                clock += ms
+                if (clock >= 200L) KeyRing.release("A", m)
+            }
+        )
+        assertEquals("A", acquired)
+        KeyRing.release("A", m)
+    }
+
+    @Test fun acquireWaitingDoesNotWaitWhenEveryKeyIsQuotaBlocked() {
+        KeyRing.report("A", m, quota(retry = 60_000L), now = 0L)
+        var slept = false
+        val acquired = KeyRing.acquireWaiting(
+            keys = listOf("A"),
+            scope = m,
+            maxWaitMs = 1_000L,
+            now = { 1L },
+            sleep = { slept = true }
+        )
+        assertNull(acquired)
+        assertFalse(slept)
+    }
+
+    @Test fun acquireWaitingStopsAtItsBoundWhenKeysRemainBusy() {
+        assertEquals("A", KeyRing.acquire(keys, m, 0L))
+        var clock = 0L
+        val acquired = KeyRing.acquireWaiting(
+            keys = listOf("A"),
+            scope = m,
+            maxWaitMs = 250L,
+            now = { clock },
+            sleep = { clock += it }
+        )
+        assertNull(acquired)
+        assertTrue(KeyRing.hasInFlight(listOf("A"), m, clock))
+        KeyRing.release("A", m)
+    }
+
     @Test fun humanWait() {
         assertEquals("21 giây", AiRetry.humanWait(21_000))
         assertEquals("5 phút", AiRetry.humanWait(5 * 60_000L))
