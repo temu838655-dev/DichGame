@@ -581,7 +581,7 @@ class CaptureService : Service() {
         val now = System.currentTimeMillis()
         if (now - frameErrAt > 8000) {
             frameErrAt = now
-            show("Không lấy được khung hình để đọc chữ. Đang tự thử lại…")
+            show("Không lấy được khung hình để đọc chữ. Đang tự thử lại…", readAloud = false)
         }
     }
 
@@ -967,7 +967,7 @@ class CaptureService : Service() {
         finishBusy()
         lastSig = null; lastFine = null
         overlay?.let { if (it.visibility != View.VISIBLE) it.visibility = View.VISIBLE }
-        if (m.isNotEmpty() && System.currentTimeMillis() - lastErrAt > 8000) { lastErrAt = System.currentTimeMillis(); show(m) }
+        if (m.isNotEmpty() && System.currentTimeMillis() - lastErrAt > 8000) { lastErrAt = System.currentTimeMillis(); show(m, readAloud = false) }
     }
 
     /** Vùng dịch: khung cam, thả tay là dịch ngay vùng đó (nhiệm vụ, thư, mô tả vật phẩm). Bấm lần nữa để đóng. */
