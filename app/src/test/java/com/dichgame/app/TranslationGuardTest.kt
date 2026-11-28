@@ -49,8 +49,13 @@ class TranslationGuardTest {
     @Test fun shortEnglishEchoIsNotTranslation() {
         assertEquals(Level.REJECT, lv("Continue", "Continue"))
         assertEquals(Level.REJECT, lv("Look out!", "Look out!"))
+        assertEquals(Level.REJECT, lv("Inventory", "Inventory"))
+        assertEquals(Level.REJECT, lv("Equipment", "Equipment"))
+        assertEquals(Level.REJECT, lv("Skill Tree", "Skill Tree"))
+        assertEquals(Level.REJECT, lv("Fast Travel", "Fast Travel"))
         assertEquals(Level.OK, lv("Continue", "Tiếp tục"))
         assertEquals(Level.OK, lv("Lucia", "Lucia"))
+        assertEquals(Level.OK, lv("Geralt", "Geralt"))
     }
 
     @Test fun numberMultiplicityAndNewSingleDigitsAreChecked() {
