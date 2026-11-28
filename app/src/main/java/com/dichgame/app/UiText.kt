@@ -7,6 +7,15 @@ package com.dichgame.app
 object UiText {
     enum class Verdict { TRANSLATE, EMPTY, NO_LETTERS, MOSTLY_SYMBOLS, ID_LIKE, ABBREVIATION, VIETNAMESE, TOO_SHORT, TOO_LONG, LOW_CONFIDENCE }
 
+    /** Một khối chữ đơn lẻ chỉ được tự dịch khi OCR rất chắc và có đủ chữ để phân biệt với nhiễu HUD. */
+    fun isStandaloneAutoCandidate(raw: String, confidence: Float): Boolean {
+        val t = raw.trim()
+        val letters = t.count { it.isLetter() }
+        val words = Regex("\\p{L}+").findAll(t).count()
+        return verdict(t, confidence) == Verdict.TRANSLATE && confidence >= 0.75f &&
+            letters >= 3 && t.length <= 32 && words in 1..4
+    }
+
     /** Chữ viết tắt chỉ số, thuật ngữ máy chơi game quen thuộc: giữ nguyên, người chơi đã quen. */
     private val KEEP = setOf(
         "hp", "mp", "sp", "xp", "exp", "atk", "def", "str", "dex", "int", "luk", "fps", "hud", "npc", "dlc", "ok", "ui",
