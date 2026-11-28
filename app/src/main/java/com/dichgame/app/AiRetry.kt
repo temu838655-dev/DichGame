@@ -99,6 +99,9 @@ object AiRetry {
         Kind.OTHER -> "may_khac"
     }
 
+    /** TTS chỉ thử lại lỗi tạm thời nhanh một lần; không kéo dài hàng chờ thoại khi request đã gần hết timeout HTTP. */
+    fun ttsPlan() = Plan(maxAttempts = 2, maxWaitMs = 1_000L, backoffMs = 350L, maxBackoffMs = 350L, jitterRatio = 0.0, budgetMs = 22_000L)
+
     class Plan(
         /** Tổng số lần gọi tối đa cho một câu. */
         val maxAttempts: Int = 3,
