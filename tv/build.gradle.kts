@@ -17,13 +17,14 @@ android {
         versionName = "1.2"
         buildConfigField("int", "BUILD_NO", "$buildNo")
     }
-    // Cùng cách ký với app điện thoại, xem app/build.gradle.kts.
+    // Không có fallback sang khóa cũ hoặc mật khẩu mặc định.
+    // Release chỉ được ký khi CI cung cấp đủ thông tin từ GitHub Secrets.
     signingConfigs {
         create("release") {
-            storeFile = file(System.getenv("KEYSTORE_FILE") ?: "$rootDir/keystore/dichgame.jks")
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "dichgame123"
-            keyAlias = System.getenv("KEY_ALIAS") ?: "dichgame"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: "dichgame123"
+            storeFile = file(System.getenv("KEYSTORE_FILE") ?: "$buildDir/UNCONFIGURED_RELEASE_KEYSTORE")
+            storePassword = System.getenv("KEYSTORE_PASSWORD").orEmpty()
+            keyAlias = System.getenv("KEY_ALIAS").orEmpty()
+            keyPassword = System.getenv("KEY_PASSWORD").orEmpty()
         }
     }
     buildTypes {
@@ -31,9 +32,7 @@ android {
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
         }
-        debug {
-            signingConfig = signingConfigs.getByName("release")
-        }
+        // Debug dùng debug keystore riêng của Android Gradle Plugin, không dùng khóa Release.
     }
     lint {
         abortOnError = false
