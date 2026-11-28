@@ -22,7 +22,30 @@ object TranslationGuard {
         "tôi không thể dịch", "không thể dịch", "dưới đây là bản dịch", "đây là bản dịch", "bản dịch của câu",
         "cần thêm ngữ cảnh", "không có đủ ngữ cảnh", "nội dung không phù hợp",
     )
-    private val commonEnglish = setOf("yes", "no", "wait", "stop", "run", "go", "help", "continue", "retry", "cancel", "exit", "settings", "loading", "new game", "game over", "try again", "thank you", "come here", "look out", "watch out", "good morning", "good night", "i love you")
+    // Common one-word game UI labels are not safe to accept as unchanged English.
+    // Keep this list curated: character names and arbitrary proper nouns must still be allowed.
+    private val commonEnglish = setOf(
+        "yes", "no", "wait", "stop", "run", "go", "help", "continue", "retry", "cancel", "exit",
+        "settings", "loading", "new game", "game over", "try again", "thank you", "come here",
+        "look out", "watch out", "good morning", "good night", "i love you",
+        "inventory", "equipment", "equip", "unequip", "weapon", "weapons", "armor", "armour",
+        "accessory", "accessories", "items", "item", "consumables", "potion", "potions",
+        "skills", "skill", "abilities", "ability", "talents", "talent", "spells", "spell",
+        "magic", "map", "world map", "quest", "quests", "journal", "mission", "missions",
+        "objective", "objectives", "character", "characters", "status", "statistics", "stats",
+        "craft", "crafting", "upgrade", "upgrades", "enhance", "enhancement", "shop", "store",
+        "buy", "sell", "trade", "loot", "reward", "rewards", "currency", "gold", "money",
+        "save", "load", "delete", "overwrite", "confirm", "decline", "accept", "back", "next",
+        "previous", "select", "start", "pause", "resume", "restart", "quit", "open", "close",
+        "locked", "unlocked", "equipped", "unequipped", "attack", "defend", "dodge", "block",
+        "jump", "crouch", "interact", "reload", "fire", "shoot", "use", "examine", "search",
+        "health", "stamina", "mana", "energy", "level", "experience", "achievements",
+        "leaderboard", "multiplayer", "single player", "co-op", "controls", "audio", "video",
+        "graphics", "language", "difficulty", "brightness", "sensitivity", "main menu",
+        "skill tree", "quest log", "fast travel", "mission complete", "level up", "critical hit",
+        "weak point", "take cover", "use item", "game paused", "resume game", "quit game",
+        "save game", "load game", "new save", "character menu", "map screen"
+    )
     private val QUOTES = "\"“”«»'‘’「」『』"
     // Runtime placeholders and formatting tokens must survive translation byte-for-byte.
     private val PROTECTED_TOKEN = Regex(
