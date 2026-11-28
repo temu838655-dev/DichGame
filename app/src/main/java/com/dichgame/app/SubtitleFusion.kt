@@ -117,8 +117,8 @@ class SubtitleFusion(
         for (s in shown) {
             val r = relation(text, s.text)
             if (r == Rel.NONE) continue
-            if (s.src == Src.OCR && r == Rel.A_EXTENDS_B && s.speaker == null && extendsEnough(s.text, text)) {
-                // OCR mới đọc được nửa câu, ASR nghe đủ: ghép
+            if (s.src == Src.OCR && r == Rel.A_EXTENDS_B && extendsEnough(s.text, text)) {
+                // OCR mới đọc được nửa câu, ASR nghe đủ: ghép; giữ tên người nói đã nhận từ OCR.
                 val fused = fuse(s.text, text)
                 shown.remove(s)
                 shown.add(Seen(fused, s.speaker, Src.MIXED, now))
