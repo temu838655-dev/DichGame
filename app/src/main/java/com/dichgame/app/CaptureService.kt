@@ -102,11 +102,13 @@ class CaptureService : Service() {
     private var translatingSince = 0L
     private val translationEpoch = TranslationCallbackEpoch()
     private val fusion = SubtitleFusion()
-    private val pacer = SubtitlePacer(mergePayload = { a, b ->
-        val x = a as? Payload
-        val y = b as? Payload
-        if (x != null && y != null) Payload(x.cards + y.cards, minOf(x.seenAt, y.seenAt)) else y ?: x
-    })
+    private val pacer by lazy {
+        SubtitlePacer.forPrefs(Prefs(this).holdRead) { a, b ->
+            val x = a as? Payload
+            val y = b as? Payload
+            if (x != null && y != null) Payload(x.cards + y.cards, minOf(x.seenAt, y.seenAt)) else y ?: x
+        }
+    }
     private var audioQueue: GameAudioPcmQueue? = null
     private var audioWorker: GameAudioAsrWorker? = null
     private var phoneAudio: PhoneAudioCapture? = null

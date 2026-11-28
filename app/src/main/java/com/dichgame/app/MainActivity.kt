@@ -69,7 +69,7 @@ class MainActivity : Activity() {
         super.onResume()
         render()
         com.dichgame.update.Updater.onResume()
-        com.dichgame.update.Updater.check(false)
+        if (Prefs(this).updateNotice) com.dichgame.update.Updater.check(false)
         CrashLog.showIfAny(this)
         // "Chọn và dịch ngay" trong Kho game: mở luôn bước bắt đầu
         if (intent?.getBooleanExtra("go", false) == true) {

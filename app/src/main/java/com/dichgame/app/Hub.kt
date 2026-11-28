@@ -39,18 +39,18 @@ object Hub {
 
     fun card(a: Activity, p: Prefs): LinearLayout {
         val c = Ui.card(a, 0)
-        c.addView(Ui.navRow(a, Ui.iconTile(a, ToolIcon.Kind.TRANSLATE, Color.parseColor("#5B9BFF"), Color.parseColor("#2F5FE3")),
+        c.addView(SUi.hubRow(a, Ui.iconTile(a, ToolIcon.Kind.TRANSLATE, Color.parseColor("#5B9BFF"), Color.parseColor("#2F5FE3")),
             "Cách dịch", engineLabel(p) + " · " + Prefs.langName(p.lang).removePrefix("Tiếng ")) {
             a.startActivity(Intent(a, TranslateActivity::class.java))
         })
-        c.divide(66)
-        c.addView(Ui.navRow(a, Ui.iconTile(a, ToolIcon.Kind.SPEAKER_ON, Color.parseColor("#FFB04D"), Color.parseColor("#F0661C")),
+        c.divide(70)
+        c.addView(SUi.hubRow(a, Ui.iconTile(a, ToolIcon.Kind.SPEAKER_ON, Color.parseColor("#FFB04D"), Color.parseColor("#F0661C")),
             "Giọng đọc", voiceLabel(a, p)) { open(a, "voice") })
-        c.divide(66)
-        c.addView(Ui.navRow(a, Ui.iconTile(a, ToolIcon.Kind.SUBS, Color.parseColor("#4EE08F"), Color.parseColor("#18A35A")),
+        c.divide(70)
+        c.addView(SUi.hubRow(a, Ui.iconTile(a, ToolIcon.Kind.SUBS, Color.parseColor("#4EE08F"), Color.parseColor("#18A35A")),
             "Phụ đề", subsLabel(p)) { open(a, "subs") })
-        c.divide(66)
-        c.addView(Ui.navRow(a, Ui.iconTile(a, ToolIcon.Kind.GAMEPAD, Color.parseColor("#BB86FF"), Color.parseColor("#7C4DE8")),
+        c.divide(70)
+        c.addView(SUi.hubRow(a, Ui.iconTile(a, ToolIcon.Kind.GAMEPAD, Color.parseColor("#BB86FF"), Color.parseColor("#7C4DE8")),
             "Hồ sơ game", profileLabel(p)) { open(a, "profile") })
         return c
     }

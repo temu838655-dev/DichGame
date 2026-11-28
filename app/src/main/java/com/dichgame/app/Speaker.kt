@@ -51,7 +51,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
     }
 
     // Trạng thái hàng chờ âm thanh: chỉ đụng tới khi đang giữ [lock].
-    private val clips = SpeechQueue<Clip>()
+    private val clips = SpeechQueue<Clip>(SpeechPolicy.maxPending(p.latestOnly))
     private var nowPlaying: Clip? = null
     private var nowEnds = 0L
     private var track: AudioTrack? = null
@@ -268,7 +268,7 @@ class Speaker(ctx: Context, private val p: Prefs, private val onReady: (() -> Un
         deliveryOf(text, d)?.let { rate *= it.rate; pitch = it.pitch }
         // Câu mới tới lúc câu cũ chưa đọc xong thì xếp hàng đọc sau (không cắt). Dồn tới SYSTEM_MAX_BACKLOG câu mới xóa hàng, đọc câu mới nhất.
         val backlog = utterances.size
-        val flush = interrupt || (!queue && backlog >= SpeechPolicy.SYSTEM_MAX_BACKLOG)
+        val flush = interrupt || (!queue && backlog >= SpeechPolicy.systemBacklog(p.latestOnly))
         if (flush && !interrupt && backlog > 0) {
             count("doc_cat")
             if (backlog > 1) count("doc_bo", backlog - 1L)

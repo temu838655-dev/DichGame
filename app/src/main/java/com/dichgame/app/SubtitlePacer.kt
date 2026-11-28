@@ -16,6 +16,13 @@ class SubtitlePacer(
     /** Cách gộp phần dữ liệu đính kèm của hai dòng khi hàng chờ đầy (nếu không đặt thì lấy của dòng sau). */
     private val mergePayload: ((Any?, Any?) -> Any?)? = null,
 ) {
+    companion object {
+        /** Nhịp mặc định, hoặc nhịp ngắn khi người dùng tắt "Giữ câu đủ lâu để đọc": câu mới thay câu cũ gần như ngay. */
+        fun forPrefs(holdRead: Boolean, mergePayload: ((Any?, Any?) -> Any?)? = null): SubtitlePacer =
+            if (holdRead) SubtitlePacer(mergePayload = mergePayload)
+            else SubtitlePacer(readCps = 60f, minHoldMs = 500L, maxHoldMs = 2_500L, maxQueue = 1, mergePayload = mergePayload)
+    }
+
     class Item(val text: String, val src: Src, val holdMs: Long, val speaker: String? = null, val payload: Any? = null)
 
     private class Queued(val item: Item, val readyAt: Long)

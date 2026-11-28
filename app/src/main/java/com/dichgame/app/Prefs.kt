@@ -610,6 +610,18 @@ class Prefs(ctx: Context) {
     var controllerTranslate: Boolean
         get() = sp.getBoolean("controller_translate", true)
         set(v) = sp.edit().putBoolean("controller_translate", v).apply()
+    /** Báo khi có bản mới của app lúc mở app. Tắt thì chỉ kiểm tra khi bấm "Kiểm tra bản mới" trong Giới thiệu. */
+    var updateNotice: Boolean
+        get() = sp.getBoolean("update_notice", true)
+        set(v) = sp.edit().putBoolean("update_notice", v).apply()
+    /** Lời thoại dồn lại thì bỏ câu cũ, đọc câu mới nhất (mặc định bật). Tắt thì giữ nhiều câu chờ hơn và đọc lần lượt. */
+    var latestOnly: Boolean
+        get() = sp.getBoolean("latest_only", true)
+        set(v) = sp.edit().putBoolean("latest_only", v).apply()
+    /** Giữ mỗi phụ đề đủ lâu để đọc hết (mặc định bật). Tắt thì câu mới thay câu cũ gần như ngay. */
+    var holdRead: Boolean
+        get() = sp.getBoolean("hold_read", true)
+        set(v) = sp.edit().putBoolean("hold_read", v).apply()
     var speak: Boolean
         get() = listenOnly || sp.getBoolean("speak", true)
         set(v) {

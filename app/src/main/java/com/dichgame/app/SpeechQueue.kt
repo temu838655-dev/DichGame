@@ -8,6 +8,13 @@ object SpeechPolicy {
     const val STALE_MS = 10_000L
     /** Giọng máy: tổng số câu đang đọc và đang chờ tới mức này thì xóa hàng, đọc câu mới nhất. */
     const val SYSTEM_MAX_BACKLOG = 3
+    /** Tắt "bỏ câu cũ, đọc câu mới nhất": giữ nhiều câu chờ hơn và đọc lần lượt (câu chờ quá lâu vẫn bị bỏ). */
+    const val MAX_PENDING_ALL = 6
+    const val SYSTEM_MAX_BACKLOG_ALL = 8
+
+    fun maxPending(latestOnly: Boolean): Int = if (latestOnly) MAX_PENDING else MAX_PENDING_ALL
+    fun systemBacklog(latestOnly: Boolean): Int = if (latestOnly) SYSTEM_MAX_BACKLOG else SYSTEM_MAX_BACKLOG_ALL
+
     /** Hai lần gửi cùng một câu trong chừng này thời gian thì chỉ đọc một lần (chữ OCR nháy, bản dịch được sửa lại). */
     const val DUPLICATE_MS = 6_000L
 

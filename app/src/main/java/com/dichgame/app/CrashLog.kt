@@ -24,6 +24,8 @@ object CrashLog {
     private const val KEY_SEEN = "exit_seen_ts"
     private const val KEY_JAVA = "java_crash"
     private const val MAX_TRAIL_BYTES = 6000
+    private const val HISTORY = "dg-crashes.txt"
+    private const val MAX_HISTORY_BYTES = 12000
 
     private val lock = Any()
     @Volatile private var appCtx: Context? = null
@@ -148,7 +150,33 @@ object CrashLog {
         }
         sp.edit().remove(KEY_JAVA).putLong(KEY_SEEN, maxOf(latest, System.currentTimeMillis() - 1)).apply()
         clearTrail()
-        return if (had) sb.toString().trim() else null
+        val out = if (had) sb.toString().trim() else null
+        if (out != null) keepHistory(ctx, out)
+        return out
+    }
+
+    /** Lưu thêm một sự cố vào nhật ký (mới nhất ở trên cùng) để xem lại trong Cài đặt, sau khi hộp báo đã đóng. */
+    private fun keepHistory(ctx: Context, msg: String) {
+        try {
+            synchronized(lock) {
+                val f = File(ctx.filesDir, HISTORY)
+                val old = if (f.exists()) f.readText() else ""
+                f.writeText(("── " + stamp() + " ──\n" + msg.trim() + "\n\n" + old).take(MAX_HISTORY_BYTES))
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
+    /** Nhật ký các lần app bị đóng đột ngột (mới nhất trước), rỗng nếu chưa có. */
+    fun history(ctx: Context): String = try {
+        synchronized(lock) {
+            val f = File(ctx.filesDir, HISTORY)
+            if (f.exists()) f.readText().trim() else ""
+        }
+    } catch (_: Throwable) { "" }
+
+    fun clearHistory(ctx: Context) {
+        try { synchronized(lock) { File(ctx.filesDir, HISTORY).delete() } } catch (_: Throwable) {}
     }
 
     fun showIfAny(a: Activity) {

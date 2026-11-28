@@ -128,11 +128,11 @@ class LiveSubs(private val act: Activity, private val video: () -> SurfaceView?)
     private class Card(val speaker: String?, val orig: String, val tr: TextTranslator.Tr, val unsure: Boolean)
     private class Payload(val cards: List<Card>, val seenAt: Long)
 
-    private val pacer = SubtitlePacer(mergePayload = { a, b ->
+    private val pacer = SubtitlePacer.forPrefs(Prefs(act).holdRead) { a, b ->
         val x = a as? Payload
         val y = b as? Payload
         if (x != null && y != null) Payload(x.cards + y.cards, minOf(x.seenAt, y.seenAt)) else y ?: x
-    })
+    }
 
     // ---- gắn vào màn hình
 
