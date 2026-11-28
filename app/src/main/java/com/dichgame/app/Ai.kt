@@ -154,26 +154,14 @@ object Ai {
         if (keys.isEmpty()) throw AiException(401, "Chưa có khóa Gemini", badKey = true)
         var last: AiException? = null
         while (true) {
-            // Không coi khóa đang được request khác sử dụng là khóa hết lượt.
-            // Nếu tất cả khóa khả dụng đang bận, đợi request hiện tại nhả khóa
-            // (HTTP timeout tối đa 20 giây) thay vì rơi sớm sang dịch máy.
-            val waitStarted = System.currentTimeMillis()
-            var k: String? = null
-            while (k == null) {
-                k = KeyRing.acquire(keys, scope)
-                if (k != null) break
-                if (!KeyRing.hasInFlight(keys, scope)) break
-                if (System.currentTimeMillis() - waitStarted >= 21_000L) {
+            // Khóa đang bận không đồng nghĩa đã hết quota: chờ tối đa bằng timeout HTTP.
+            val k = KeyRing.acquireWaiting(keys, scope, maxWaitMs = 21_000L)
+            if (k == null) {
+                if (KeyRing.hasInFlight(keys, scope)) {
                     throw AiException(503, "Các khóa Gemini vẫn đang xử lý request khác; chưa thể kết luận đã hết lượt.", retryAfterMs = 500L)
                 }
-                try {
-                    Thread.sleep(100L)
-                } catch (interrupted: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    throw AiException(503, "Request Gemini bị ngắt khi đang chờ khóa khả dụng.")
-                }
+                break
             }
-            if (k == null) break
             try {
                 val r = call(k)
                 if (KeyRing.success(k, scope)) SessionStats.live.inc("khoa_doi")
