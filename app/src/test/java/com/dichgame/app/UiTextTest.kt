@@ -13,6 +13,18 @@ class UiTextTest {
             assertEquals(s, UiText.Verdict.TRANSLATE, v(s))
     }
 
+    @Test fun standaloneShortUiNamesNeedHighConfidenceAndRealLetters() {
+        assertTrue(UiText.isStandaloneAutoCandidate("Map", 0.80f))
+        assertTrue(UiText.isStandaloneAutoCandidate("Heal", 0.90f))
+        assertTrue(UiText.isStandaloneAutoCandidate("Inventory", 0.75f))
+        assertTrue(!UiText.isStandaloneAutoCandidate("Map", 0.60f))
+        assertTrue(!UiText.isStandaloneAutoCandidate("A", 0.99f))
+        assertTrue(!UiText.isStandaloneAutoCandidate("HP", 0.99f))
+        assertTrue(!UiText.isStandaloneAutoCandidate("ATK 42", 0.99f))
+        assertTrue(!UiText.isStandaloneAutoCandidate("item_sword_01", 0.99f))
+        assertTrue(!UiText.isStandaloneAutoCandidate("100/200", 0.99f))
+    }
+
     @Test fun numbersAndSymbolsAreSkipped() {
         assertEquals(UiText.Verdict.NO_LETTERS, v("100/200"))
         assertEquals(UiText.Verdict.NO_LETTERS, v("+15%"))
