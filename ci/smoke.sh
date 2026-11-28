@@ -115,7 +115,7 @@ cachdich() {
   shot cachdich-cloud-dia-chi
   ui_has "Địa chỉ CloudAPI" || echo "CloudAPI: bấm Địa chỉ không hiện hộp nhập" >> "$OUT/cachdich-fail.txt"
   adb shell am force-stop "$PKG"
-  adb logcat -d 2>&1 | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 >> "$OUT/cachdich-fail.txt"
+  adb logcat -d 2>&1 | grep "FATAL EXCEPTION" | head -20 >> "$OUT/cachdich-fail.txt"
   [ -s "$OUT/cachdich-fail.txt" ] || rm -f "$OUT/cachdich-fail.txt"
 }
 

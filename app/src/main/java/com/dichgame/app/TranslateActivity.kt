@@ -49,11 +49,12 @@ class TranslateActivity : Activity() {
             "local" -> Prefs.ENGINE_LOCAL
             else -> Prefs.ENGINE_GEMINI
         }
-        if ((kind == "gemini" || kind == "auto") && p.geminiStoredKeys().isEmpty()) {
-            val keys = listOf("AIzaDEMO-khoa-1-0000000000", "AIzaDEMO-khoa-2-1111111111", "AIzaDEMO-khoa-3-2222222222")
-            if (p.setGeminiKeys(keys)) {
-                p.setGeminiKeyEnabled(keys[2], false)
-                KeyRing.blockQuota(keys[1], p.geminiModel, 2 * 3_600_000L + 5 * 60_000L)
+        if (kind == "gemini" || kind == "auto") {
+            val demoKeys = listOf("AIzaDEMO-khoa-1-0000000000", "AIzaDEMO-khoa-2-1111111111", "AIzaDEMO-khoa-3-2222222222")
+            if (p.geminiStoredKeys().isEmpty()) p.setGeminiKeys(demoKeys)
+            if (p.geminiStoredKeys().take(3) == demoKeys) {
+                p.setGeminiKeyEnabled(demoKeys[2], false)
+                KeyRing.blockQuota(demoKeys[1], p.geminiModel, 2 * 3_600_000L + 5 * 60_000L)
             }
         }
         if (kind == "cloud") {
@@ -275,7 +276,7 @@ class TranslateActivity : Activity() {
     }
 
     /** Hộp nhập một giá trị. [reset] có thì hiện thêm nút "Mặc định". */
-    private fun fieldDialog(title: String, hint: String, value: String, secret: Boolean, reset: (() -> Unit)? = null, onSave: (String) -> Unit) {
+    private fun fieldDialog(title: String, hint: String, value: String, secret: Boolean, reset: (() -> Unit)? = null, ok: String = "Lưu", onSave: (String) -> Unit) {
         val edit = Ui.field(this, hint, value, secret)
         val box = FrameLayout(this).apply {
             setPadding(dp(20), dp(8), dp(20), 0)
@@ -285,7 +286,7 @@ class TranslateActivity : Activity() {
             .setTitle(title)
             .setView(box)
             .setNegativeButton("Hủy", null)
-            .setPositiveButton("Lưu") { _, _ -> onSave(edit.text.toString().trim()) }
+            .setPositiveButton(ok) { _, _ -> onSave(edit.text.toString().trim()) }
         if (reset != null) b.setNeutralButton("Mặc định") { _, _ -> reset() }
         val d = b.create()
         d.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
@@ -307,7 +308,13 @@ class TranslateActivity : Activity() {
                 val usableCount = keys.count { p.isGeminiKeyEnabled(it) && KeyRing.status(it, p.geminiModel).state == KeyRing.State.OK }
                 val cooldownCount = keys.count { p.isGeminiKeyEnabled(it) && KeyRing.status(it, p.geminiModel).state == KeyRing.State.QUOTA }
                 val invalidCount = keys.count { p.isGeminiKeyEnabled(it) && KeyRing.status(it, p.geminiModel).state == KeyRing.State.BAD }
-                addView(Ui.tv(a, "Tổng ${keys.size} khóa · bật $enabledCount · khả dụng $usableCount · tạm nghỉ $cooldownCount · cần kiểm tra $invalidCount · tắt ${keys.size - enabledCount}", 12.5f, Ui.SUB).apply {
+                val summary = buildString {
+                    append("${keys.size} khóa · bật $enabledCount · khả dụng $usableCount")
+                    if (cooldownCount > 0) append(" · tạm nghỉ $cooldownCount")
+                    if (invalidCount > 0) append(" · cần kiểm tra $invalidCount")
+                    if (keys.size > enabledCount) append(" · tắt ${keys.size - enabledCount}")
+                }
+                addView(Ui.tv(a, summary, 12.5f, Ui.SUB).apply {
                     setPadding(dp(16), dp(12), dp(16), dp(10))
                 })
                 divide()
@@ -446,7 +453,7 @@ class TranslateActivity : Activity() {
     }
 
     private fun addKeyDialog() {
-        fieldDialog("Thêm khóa Gemini", "Dán khóa (bắt đầu bằng AIza…)", "", true) { v ->
+        fieldDialog("Thêm khóa Gemini", "Dán khóa (bắt đầu bằng AIza…)", "", true, ok = "Thêm") { v ->
             when {
                 v.isEmpty() -> Toast.makeText(this, "Hãy dán khóa vào ô nhập.", Toast.LENGTH_SHORT).show()
                 v in p.geminiStoredKeys() -> Toast.makeText(this, "Khóa này đã có trong danh sách.", Toast.LENGTH_SHORT).show()
