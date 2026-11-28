@@ -81,6 +81,29 @@ class SubtitleFusionTest {
         assertTrue(o[0].kind == Kind.HOLD || o[0].kind == Kind.REPLACE)
     }
 
+    @Test fun shortAsrTailWaitsForOcrThenFusesWithoutLosingLastWord() {
+        val f = SubtitleFusion()
+        f.onOcr("I know him", "Anna", 1_000)
+        val held = f.onAsr("I know him well.", 1_200)
+        assertEquals(listOf(Kind.HOLD), kinds(held))
+        assertTrue(f.poll(2_000).isEmpty())
+        val completed = f.poll(2_600)
+        assertEquals(listOf(Kind.REPLACE), kinds(completed))
+        assertEquals(Src.MIXED, completed[0].src)
+        assertEquals("Anna", completed[0].speaker)
+        assertEquals("I know him well.", completed[0].text)
+    }
+
+    @Test fun shortAsrTailIsSupersededWhenOcrCompletesFirst() {
+        val f = SubtitleFusion()
+        f.onOcr("I know him", "Anna", 1_000)
+        assertEquals(listOf(Kind.HOLD), kinds(f.onAsr("I know him well.", 1_200)))
+        val completed = f.onOcr("I know him well.", "Anna", 1_500)
+        assertEquals(listOf(Kind.REPLACE), kinds(completed))
+        assertEquals("I know him well.", completed[0].text)
+        assertTrue(f.poll(3_000).isEmpty())
+    }
+
     @Test fun tooShortOcrFragmentIsNotFused() {
         val f = SubtitleFusion()
         f.onOcr("We need", null, 1_000)
