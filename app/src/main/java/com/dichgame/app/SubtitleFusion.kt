@@ -127,6 +127,11 @@ class SubtitleFusion(
                     return listOf(Out(Kind.REPLACE, fused, s.speaker, Src.MIXED, "OCR đọc được phần đầu, ASR nghe phần còn lại"))
                 }
                 // ASR chỉ nghe thêm một từ: chờ OCR hoàn tất, không vứt phần đuôi.
+                // Không tạo nhiều mục chờ cho cùng một câu khi ASR phát lại ở các khung liên tiếp.
+                if (pending.any { relation(text, it.text) != Rel.NONE }) {
+                    note("asr_trung_cho")
+                    return listOf(Out(Kind.DROP, text, null, Src.ASR, "câu ASR này đang chờ OCR"))
+                }
                 // Nếu OCR không cập nhật, poll() chỉ ghép khi phần trùng khớp chính xác từ đầu.
                 pending.add(Pending(text, now + confirmHoldMs))
                 note("asr_cho_ocr_mo_rong_ngan")
