@@ -188,6 +188,10 @@ class SubtitleFusion(
 
     internal enum class Rel { NONE, SAME, A_EXTENDS_B, B_EXTENDS_A }
 
+    /** Một bản dịch đang chạy đã lỗi thời nếu hàng đợi có bản thay thế liên quan của cùng câu. */
+    internal fun isSupersededBy(candidate: String, replacement: String): Boolean =
+        relation(candidate, replacement) != Rel.NONE
+
     private fun tokens(s: String): List<String> =
         s.lowercase(Locale.ROOT).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
 
