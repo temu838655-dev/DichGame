@@ -113,7 +113,9 @@ object DialogueSplitter {
 
     /** Nhãn tên [a] nằm ngay phía trên hoặc bên trái khối thoại [b]. */
     private fun labels(a: Box?, b: Box?): Boolean {
-        if (a == null || b == null) return true
+        // Không có tọa độ thì không thể chứng minh hai khối nằm cạnh nhau.
+        // Nhãn có dấu hai chấm được xử lý riêng như một tín hiệu cấu trúc rõ ràng.
+        if (a == null || b == null) return false
         val below = b.t >= a.b - a.h * 0.3 && b.t - a.b <= a.h * 3
         val leftAligned = abs(a.l - b.l) <= b.w * 0.35 || abs(a.cx - b.cx) <= b.w * 0.25
         if (below && leftAligned) return true
@@ -176,11 +178,12 @@ object DialogueSplitter {
             if (!n.nameOnly || n.consumed) continue
             val d = units.getOrNull(i + 1) ?: continue
             if (d.nameOnly || d.consumed || d.speaker != null) continue
-            if (!labels(n.box, d.box)) continue
             val name = cleanName(n.lines[0])
             val text = join(d.lines, cjk)
             val colon = n.lines[0].trimEnd().let { it.endsWith(':') || it.endsWith('：') }
-            val strongShape = allCaps(name) && (n.box == null || d.box == null || n.box!!.w <= d.box!!.w * 0.75)
+            // Dấu hai chấm là tín hiệu nhãn tường minh; nếu không có, bắt buộc phải có hình học OCR.
+            if (!colon && !labels(n.box, d.box)) continue
+            val strongShape = allCaps(name) && n.box != null && d.box != null && n.box!!.w <= d.box!!.w * 0.75
             book.observe(name, text)
             if (book.confirmed(name) || colon || strongShape) {
                 d.speaker = name
