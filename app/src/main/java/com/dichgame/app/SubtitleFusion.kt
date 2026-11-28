@@ -117,13 +117,20 @@ class SubtitleFusion(
         for (s in shown) {
             val r = relation(text, s.text)
             if (r == Rel.NONE) continue
-            if (s.src == Src.OCR && r == Rel.A_EXTENDS_B && extendsEnough(s.text, text)) {
-                // OCR mới đọc được nửa câu, ASR nghe đủ: ghép; giữ tên người nói đã nhận từ OCR.
-                val fused = fuse(s.text, text)
-                shown.remove(s)
-                shown.add(Seen(fused, s.speaker, Src.MIXED, now))
-                note("ghep_ocr_asr")
-                return listOf(Out(Kind.REPLACE, fused, s.speaker, Src.MIXED, "OCR đọc được nửa đầu, ASR nghe phần còn lại"))
+            if (s.src == Src.OCR && r == Rel.A_EXTENDS_B && isPrefixExtension(s.text, text)) {
+                if (extendsEnough(s.text, text)) {
+                    // OCR mới đọc được phần đầu, ASR nghe đủ: ghép và giữ tên người nói từ OCR.
+                    val fused = fuse(s.text, text)
+                    shown.remove(s)
+                    shown.add(Seen(fused, s.speaker, Src.MIXED, now))
+                    note("ghep_ocr_asr")
+                    return listOf(Out(Kind.REPLACE, fused, s.speaker, Src.MIXED, "OCR đọc được phần đầu, ASR nghe phần còn lại"))
+                }
+                // ASR chỉ nghe thêm một từ: chờ OCR hoàn tất, không vứt phần đuôi.
+                // Nếu OCR không cập nhật, poll() chỉ ghép khi phần trùng khớp chính xác từ đầu.
+                pending.add(Pending(text, now + confirmHoldMs))
+                note("asr_cho_ocr_mo_rong_ngan")
+                return listOf(Out(Kind.HOLD, text, null, Src.ASR, "chờ OCR xác nhận phần đuôi ngắn"))
             }
             s.at = now
             note("asr_trung")
@@ -151,9 +158,21 @@ class SubtitleFusion(
             val p = it.next()
             if (now < p.deadline) continue
             it.remove()
-            shown.add(Seen(p.text, null, Src.ASR, now))
-            note("asr_hien_sau_cho")
-            out.add(Out(Kind.SHOW, p.text, null, Src.ASR, "OCR không có câu này"))
+            val ocr = shown.firstOrNull { s ->
+                s.src == Src.OCR && relation(p.text, s.text) == Rel.A_EXTENDS_B &&
+                    OcrGuard.key(p.text).startsWith(OcrGuard.key(s.text))
+            }
+            if (ocr != null) {
+                val fused = fuse(ocr.text, p.text)
+                shown.remove(ocr)
+                shown.add(Seen(fused, ocr.speaker, Src.MIXED, now))
+                note("ghep_ocr_asr_cho")
+                out.add(Out(Kind.REPLACE, fused, ocr.speaker, Src.MIXED, "OCR không cập nhật, ASR xác nhận phần đuôi"))
+            } else {
+                shown.add(Seen(p.text, null, Src.ASR, now))
+                note("asr_hien_sau_cho")
+                out.add(Out(Kind.SHOW, p.text, null, Src.ASR, "OCR không có câu này"))
+            }
         }
         return out
     }
@@ -192,6 +211,13 @@ class SubtitleFusion(
         if (long.length < short.length) return false
         val head = long.take(short.length)
         return OcrGuard.similarity(head, short) >= 0.86f
+    }
+
+    /** Chỉ ghép khi đoạn OCR nằm ở đầu câu ASR; fuse() không áp dụng cho đoạn trùng ở giữa câu. */
+    private fun isPrefixExtension(ocr: String, asr: String): Boolean {
+        val a = OcrGuard.key(ocr)
+        val b = OcrGuard.key(asr)
+        return a.isNotEmpty() && b.length > a.length && b.startsWith(a)
     }
 
     /** Phần mở rộng đủ dài để tin chắc là cùng một câu và có thêm nội dung: thêm ít nhất 2 từ (hoặc 3 ký tự CJK). */
