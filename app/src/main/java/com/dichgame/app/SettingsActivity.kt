@@ -496,7 +496,7 @@ class SettingsActivity : Activity() {
             13f,
             if (installed) Ui.OK else Ui.SUB
         ), Ui.lpm(this, 0, 8))
-        card.addView(note("Khi đã tải model, app nghe âm thanh game để bổ sung cho chữ trên màn hình (chữ khó đọc, bị sót, hoặc game không có phụ đề). Chơi PS trong app: lấy âm thanh từ Remote Play, không dùng micro. Xử lý hoàn toàn trên máy, không gửi âm thanh đi đâu và không lưu lại."), Ui.lpm(this, 0, 10))
+        card.note("Khi đã tải model, app nghe âm thanh game để bổ sung cho chữ trên màn hình (chữ khó đọc, bị sót, hoặc game không có phụ đề). Chơi PS trong app: lấy âm thanh từ Remote Play, không dùng micro. Xử lý hoàn toàn trên máy, không gửi âm thanh đi đâu và không lưu lại.", 0)
         card.divide()
         card.row(Ui.switchRow(this, "Nghe âm thanh game chạy trên điện thoại (thử nghiệm)",
             "Cần Android 10 trở lên, quyền ghi âm và model ở trên; áp dụng khi bấm Bắt đầu dịch từ màn hình chính. Thu âm thanh trong của máy; game có thể chặn kiểu thu này.", p.phoneAudio) { p.phoneAudio = it; render() }, 12, 4)

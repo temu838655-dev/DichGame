@@ -119,6 +119,104 @@ cachdich() {
   [ -s "$OUT/cachdich-fail.txt" ] || rm -f "$OUT/cachdich-fail.txt"
 }
 
+sdemo() {  # $1 = trang Cài đặt, $2 = (tùy chọn) trạng thái mẫu của bản debug
+  set_prefs ""
+  if [ -n "${2:-}" ]; then
+    adb shell am start -W -n "$PKG/.SettingsActivity" --es page "$1" --es demo "$2" >/dev/null 2>&1
+  else
+    adb shell am start -W -n "$PKG/.SettingsActivity" --es page "$1" >/dev/null 2>&1
+  fi
+  sleep 3
+}
+see() {  # $1 = chữ; cuộn xuống tối đa 5 lần tới khi thấy
+  for i in 1 2 3 4 5; do ui_has "$1" && return 0; swipe_up; done
+  return 1
+}
+pref_has() { adb shell "run-as $PKG cat shared_prefs/dg.xml" 2>/dev/null | grep -q "$1"; }
+caidat() {  # 4 trang Cài đặt, Giọng đọc, Phụ đề, Hồ sơ game và Nhật ký lỗi
+  local F="$OUT/caidat-fail.txt" c y
+  adb logcat -c
+  # Trang chính: 4 mục, công tắc Nhận tin mới, 3 hàng cuối
+  sdemo hub; shot caidat-hub-1
+  ui_has "Cài đặt" || echo "Hub: không thấy tiêu đề Cài đặt" >> "$F"
+  for t in "Cách dịch" "Giọng đọc" "Phụ đề" "Hồ sơ game"; do
+    ui_has "$t" || echo "Hub: không thấy mục $t" >> "$F"
+  done
+  swipe_up; shot caidat-hub-2
+  for t in "Nhận tin mới" "Nhật ký lỗi" "Giấy phép mã nguồn mở" "Giới thiệu và hỗ trợ"; do
+    see "$t" || echo "Hub: không thấy hàng $t" >> "$F"
+  done
+  c=$(ui_center "Nhận tin mới"); y=${c#* }
+  if [ -n "$c" ]; then
+    adb shell input tap 980 "$y"; sleep 1
+    pref_has 'name="update_notice" value="false"' || echo "Hub: bấm công tắc Nhận tin mới mà không lưu được" >> "$F"
+    shot caidat-hub-tat-tin
+  fi
+  # Bấm vào từng mục của Hub mở đúng trang
+  for pair in "Giọng đọc|Giọng cơ bản" "Phụ đề|Cỡ chữ phụ đề" "Hồ sơ game|Game"; do
+    t=${pair%%|*}; want=${pair#*|}
+    sdemo hub
+    tap_text "$t" || echo "Hub: không bấm được mục $t" >> "$F"
+    sleep 2
+    see "$want" || echo "Hub: bấm $t không mở đúng trang (không thấy $want)" >> "$F"
+  done
+  adb shell am force-stop "$PKG"
+  # Giọng đọc: 3 kiểu giọng
+  for d in system offline ai; do
+    sdemo voice "voice-$d"; shot "caidat-voice-$d-1"; swipe_up; shot "caidat-voice-$d-2"; swipe_up; shot "caidat-voice-$d-3"
+  done
+  sdemo voice voice-ai
+  ui_has "Giọng AI" || echo "Giọng đọc: không thấy nút Giọng AI" >> "$F"
+  see "Khóa Gemini" || echo "Giọng AI: không thấy hàng Khóa Gemini" >> "$F"
+  see "Model giọng AI" || echo "Giọng AI: không thấy hàng Model giọng AI" >> "$F"
+  see "Giọng theo nhân vật" || echo "Giọng AI: không thấy hàng Giọng theo nhân vật" >> "$F"
+  sdemo voice voice-system
+  see "Tốc độ đọc" || echo "Giọng cơ bản: không thấy thanh Tốc độ đọc" >> "$F"
+  see "Bỏ câu cũ, đọc câu mới nhất" || echo "Giọng cơ bản: không thấy công tắc Bỏ câu cũ, đọc câu mới nhất" >> "$F"
+  c=$(ui_center "Bỏ câu cũ, đọc câu mới nhất"); y=${c#* }
+  if [ -n "$c" ]; then
+    adb shell input tap 980 "$y"; sleep 1
+    pref_has 'name="latest_only" value="false"' || echo "Giọng đọc: công tắc Bỏ câu cũ không lưu" >> "$F"
+  fi
+  # Giọng theo nhân vật
+  sdemo chars; shot caidat-chars-1; swipe_up; shot caidat-chars-2
+  # Phụ đề
+  sdemo subs; shot caidat-subs-1; swipe_up; shot caidat-subs-2; swipe_up; shot caidat-subs-3; swipe_up; shot caidat-subs-4
+  sdemo subs
+  see "Giữ câu đủ lâu để đọc" || echo "Phụ đề: không thấy công tắc Giữ câu đủ lâu để đọc" >> "$F"
+  c=$(ui_center "Giữ câu đủ lâu để đọc"); y=${c#* }
+  if [ -n "$c" ]; then
+    adb shell input tap 980 "$y"; sleep 1
+    pref_has 'name="hold_read" value="false"' || echo "Phụ đề: công tắc Giữ câu đủ lâu để đọc không lưu" >> "$F"
+  fi
+  sdemo subs
+  for t in "Cỡ chữ phụ đề" "Chế độ" "Nâng cao" "Công cụ"; do
+    see "$t" || echo "Phụ đề: không thấy mục $t" >> "$F"
+  done
+  # Hồ sơ game
+  sdemo profile; shot caidat-profile-1; swipe_up; shot caidat-profile-2; swipe_up; shot caidat-profile-3
+  ui_has "Hồ sơ game" || echo "Hồ sơ game: không thấy tiêu đề" >> "$F"
+  # Nhật ký lỗi: có dữ liệu và trống
+  sdemo errlog errlog; shot caidat-errlog
+  ui_has "Sao chép nhật ký" || echo "Nhật ký lỗi: có dữ liệu mà không thấy nút Sao chép nhật ký" >> "$F"
+  tap_text "Xóa nhật ký" || echo "Nhật ký lỗi: không bấm được Xóa nhật ký" >> "$F"
+  shot caidat-errlog-xoa
+  ui_has "Xóa nhật ký lỗi?" || echo "Nhật ký lỗi: bấm Xóa không hiện hộp xác nhận" >> "$F"
+  adb shell input keyevent KEYCODE_BACK; sleep 1
+  sdemo errlog errlog-empty; shot caidat-errlog-trong
+  ui_has "Chưa có lần nào app bị đóng đột ngột." || echo "Nhật ký lỗi: trống mà không có dòng báo chưa có" >> "$F"
+  adb shell am force-stop "$PKG"
+  adb logcat -d 2>&1 | grep "FATAL EXCEPTION" | head -20 >> "$F"
+  [ -s "$F" ] || rm -f "$F"
+}
+
+if [ "${SMOKE_ONLY:-}" = "caidat" ]; then
+  caidat
+  adb logcat -d -b crash > "$OUT/crash.txt" 2>&1
+  grep -q "dichgame" "$OUT/crash.txt" || : > "$OUT/crash.txt"
+  exit 0
+fi
+
 if [ "${SMOKE_ONLY:-}" = "cachdich" ]; then
   cachdich
   adb logcat -d -b crash > "$OUT/crash.txt" 2>&1
@@ -417,6 +515,7 @@ adb shell am force-stop "$PKG"
 start_page voice; shot offline-da-tai
 
 cachdich
+caidat
 
 adb logcat -d -b crash > "$OUT/crash.txt" 2>&1
 adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime|ANR in|dichgame" > "$OUT/logcat-filtered.txt" 2>&1
