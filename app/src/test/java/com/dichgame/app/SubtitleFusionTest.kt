@@ -94,6 +94,16 @@ class SubtitleFusionTest {
         assertEquals("I know him well.", completed[0].text)
     }
 
+    @Test fun repeatedShortAsrTailCreatesOnlyOnePendingFusion() {
+        val f = SubtitleFusion()
+        f.onOcr("I know him", "Anna", 1_000)
+        assertEquals(listOf(Kind.HOLD), kinds(f.onAsr("I know him well.", 1_200)))
+        assertEquals(listOf(Kind.DROP), kinds(f.onAsr("I know him well.", 1_350)))
+        val completed = f.poll(2_600)
+        assertEquals(listOf(Kind.REPLACE), kinds(completed))
+        assertEquals("I know him well.", completed.single().text)
+    }
+
     @Test fun shortAsrTailIsSupersededWhenOcrCompletesFirst() {
         val f = SubtitleFusion()
         f.onOcr("I know him", "Anna", 1_000)
