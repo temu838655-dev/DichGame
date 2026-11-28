@@ -53,7 +53,17 @@ run_screens() {  # $1 = tiền tố tên ảnh
 }
 
 # --- "Cách dịch" (giao diện mới): dựng sẵn từng trạng thái bằng extra demo (chỉ bản debug), chụp ảnh và thử thao tác thật bằng adb ---
-ui_dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb exec-out cat /sdcard/ui.xml 2>/dev/null; }
+raw_dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb exec-out cat /sdcard/ui.xml 2>/dev/null; }
+ui_dump() {  # nếu máy giả lập đang hiện hộp "Pixel Launcher isn't responding" thì bấm Wait trước, kẻo che mất màn hình app
+  local x c; x=$(raw_dump)
+  if printf '%s' "$x" | grep -q "isn't responding"; then
+    c=$(printf '%s' "$x" | grep -o 'text="Wait"[^>]*bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1 \
+      | sed -E 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]"/\1 \2 \3 \4/' | awk 'NF==4 {print int(($1+$3)/2), int(($2+$4)/2)}')
+    [ -n "$c" ] && adb shell input tap $c
+    sleep 1; x=$(raw_dump)
+  fi
+  printf '%s' "$x"
+}
 ui_has() { ui_dump | grep -q "text=\"$1\""; }      # $1 = chữ đang hiện trên màn hình
 ui_center() {                                        # $1 = chữ; in "x y" là tâm của phần tử đó (rỗng nếu không thấy)
   ui_dump | grep -o "text=\"$1\"[^>]*bounds=\"\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]\"" | head -1 \
@@ -126,7 +136,7 @@ sdemo() {  # $1 = trang Cài đặt, $2 = (tùy chọn) trạng thái mẫu củ
   else
     adb shell am start -W -n "$PKG/.SettingsActivity" --es page "$1" >/dev/null 2>&1
   fi
-  sleep 3
+  sleep 3; ui_dump >/dev/null
 }
 see() {  # $1 = chữ; cuộn xuống tối đa 5 lần tới khi thấy
   for i in 1 2 3 4 5; do ui_has "$1" && return 0; swipe_up; done
