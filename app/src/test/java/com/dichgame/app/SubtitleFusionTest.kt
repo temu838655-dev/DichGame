@@ -63,6 +63,16 @@ class SubtitleFusionTest {
         assertEquals("We need to leave before they find us tonight.", o[0].text)
     }
 
+    @Test fun speakerTaggedHalfOcrIsFusedWithFullAsrAndKeepsSpeaker() {
+        val f = SubtitleFusion()
+        f.onOcr("We need to leave before", "Anna", 1_000)
+        val o = f.onAsr("We need to leave before they find us tonight.", 2_000)
+        assertEquals(listOf(Kind.REPLACE), kinds(o))
+        assertEquals(Src.MIXED, o[0].src)
+        assertEquals("Anna", o[0].speaker)
+        assertEquals("We need to leave before they find us tonight.", o[0].text)
+    }
+
     @Test fun fusionKeepsOcrSpellingOfTheOverlap() {
         val f = SubtitleFusion()
         f.onOcr("Geralt of Rivia is", null, 1_000)
