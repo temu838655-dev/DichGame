@@ -11,8 +11,8 @@ Keystore Android cũ `keystore/dichgame.jks` và thông tin mật khẩu mặc �
 Trên máy có Java JDK (có thể dùng Termux hoặc terminal máy tính), tạo khóa mới. Hãy tự nhập mật khẩu mạnh khi `keytool` hỏi và lưu riêng an toàn:
 
 ```bash
-keytool -genkeypair -v -keystore dichgame-release.jks -storetype JKS -alias dichgame-release -keyalg RSA -keysize 4096 -validity 10000
-base64 -w 0 dichgame-release.jks
+keytool -genkeypair -v -keystore dichgame-release.p12 -storetype PKCS12 -alias dichgame-release -keyalg RSA -keysize 3072 -validity 10000
+base64 -w 0 dichgame-release.p12
 ```
 
 Sao chép toàn bộ chuỗi Base64 đầu ra để đặt làm secret. Không đưa chuỗi này vào file trong repository hoặc chat công khai.
@@ -26,7 +26,7 @@ Repository → Settings → Secrets and variables → Actions → New repository
 - `KEY_ALIAS`: `dichgame-release` (hoặc alias đã chọn khi tạo khóa).
 - `KEY_PASSWORD`: mật khẩu của alias.
 
-Không commit file keystore, mật khẩu, Base64 hoặc private key vào repository, issue, log hay chat công khai.
+Không dùng mật khẩu đã gửi trong chat làm mật khẩu ký. Hãy tự đặt một mật khẩu ngẫu nhiên mạnh (ít nhất 24 ký tự), khác mật khẩu tài khoản khác. Không commit file keystore, mật khẩu, Base64 hoặc private key vào repository, issue, log hay chat công khai.
 
 ## Cảnh báo tương thích cập nhật
 
@@ -45,3 +45,11 @@ File đã bị xóa khỏi nhánh hiện tại nhưng vẫn tồn tại trong l�
 - [ ] Bốn GitHub Secrets mới được cấu hình.
 - [ ] Có phương án tương thích nâng cấp cho người cài build-2021.
 - [ ] Build ký bằng khóa mới, xác minh chữ ký và thử cài đè/nâng cấp trên thiết bị thật.
+
+
+## Quy tắc CI sau khi chuyển khóa
+
+- Workflow không còn fallback về `keystore/dichgame.jks` hoặc mật khẩu mặc định.
+- Nhánh thử nghiệm không có secrets dùng khóa PKCS12 tạm thời chỉ để kiểm tra build; APK CI không thể dùng để nâng cấp bản cài production.
+- Main/tag phát hành công khai bắt buộc có đủ bốn secrets mới; thiếu bất kỳ secret nào thì workflow dừng trước build/release.
+- Kiểm tra chứng thư SHA-256 với Release trước vẫn là chốt an toàn. Việc thay chứng thư phải được cho phép có chủ đích trong một lần phát hành chuyển khóa, sau khi chấp nhận người dùng phải gỡ bản cũ/cài lại.
