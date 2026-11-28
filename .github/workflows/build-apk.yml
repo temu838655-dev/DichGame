@@ -63,10 +63,9 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      # Dùng đúng khóa ký lịch sử đã tạo các bản build 1251+ và các Release gần đây.
-      # Ưu tiên bản sao trong GitHub Secrets nếu đã cấu hình; nếu không, dùng keystore lịch sử
-      # trong repo. Release chỉ được tạo sau khi chứng thư SHA-256 khớp APK Release hiện tại.
-      - name: Nạp khóa ký tương thích bản cũ
+      # Khóa Release chỉ được lấy từ GitHub Secrets. CI nhánh thử nghiệm dùng khóa tạm,
+      # không bao giờ fallback về keystore lịch sử đã bị lộ.
+      - name: Nạp khóa ký mới an toàn
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -76,23 +75,41 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -n "${KEYSTORE_BASE64}${KEYSTORE_PASSWORD}${KEY_ALIAS}${KEY_PASSWORD}" ]; then
-            for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
-              if [ -z "${!name}" ]; then
-                echo "::error::GitHub Secrets chưa đầy đủ: $name đang trống."
-                exit 1
-              fi
-            done
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            test -s "$RUNNER_TEMP/release.jks"
-            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          any_secret="${KEYSTORE_BASE64}${KEYSTORE_PASSWORD}${KEY_ALIAS}${KEY_PASSWORD}"
+          all_secrets=true
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then all_secrets=false; fi
+          done
+          if [ -n "$any_secret" ] && [ "$all_secrets" != "true" ]; then
+            echo "::error::Bộ GitHub Secrets ký APK chưa đầy đủ. Cần cấu hình đủ cả 4 secrets."
+            exit 1
+          fi
+          if [ "$IS_PUBLIC_RELEASE" = "true" ] && [ "$all_secrets" != "true" ]; then
+            echo "::error::Từ chối phát hành công khai: chưa cấu hình đủ khóa ký mới trong GitHub Secrets."
+            exit 1
+          fi
+          if [ "$all_secrets" = "true" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
+            test -s "$RUNNER_TEMP/release.p12"
+            echo "::add-mask::$KEYSTORE_PASSWORD"
+            echo "::add-mask::$KEY_PASSWORD"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
             echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
             echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "Đã nạp khóa ký từ GitHub Secrets."
           else
-            test -s keystore/dichgame.jks
-            echo "KEYSTORE_FILE=$GITHUB_WORKSPACE/keystore/dichgame.jks" >> "$GITHUB_ENV"
-            echo "Đã nạp keystore lịch sử trong repo (alias/password dùng mặc định Gradle)."
+            CI_PASS="$(openssl rand -base64 36)"
+            echo "::add-mask::$CI_PASS"
+            keytool -genkeypair -noprompt -keystore "$RUNNER_TEMP/ci-only.p12" -storetype PKCS12 \
+              -storepass "$CI_PASS" -keypass "$CI_PASS" -alias dichgame-ci \
+              -keyalg RSA -keysize 3072 -validity 3650 \
+              -dname "CN=DichGame CI, OU=CI, O=DichGame, L=NA, ST=NA, C=US"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/ci-only.p12" >> "$GITHUB_ENV"
+            echo "KEYSTORE_PASSWORD=$CI_PASS" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=dichgame-ci" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$CI_PASS" >> "$GITHUB_ENV"
+            echo "::notice::Dùng khóa CI tạm thời; APK này không dành cho cài đặt/cập nhật production."
           fi
           if [ "$IS_PUBLIC_RELEASE" = "true" ]; then
             echo "CAN_PUBLISH_RELEASE=true" >> "$GITHUB_ENV"
